@@ -31,6 +31,7 @@ defmodule GobusgoWeb.Router do
 
     live "/", HomeLive
     live "/agencies", AgencyLive
+    live "/vehicles", VehicleLive
   end
 
   scope "/", GobusgoWeb do

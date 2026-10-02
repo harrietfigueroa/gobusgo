@@ -244,7 +244,7 @@ The contract is taken from the documentation and is unverified against a live re
 
 The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
 
-`Gobusgo.OneBusAway.VehicleView` holds the vehicles of each agency's latest complete fetch in memory. It is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.VehicleView` on `Gobusgo.PubSub`, and `Gobusgo.Publisher.InProcess` calls its `apply_records/2` with the records published to `oba.vehicles-for-agency.state`. `Gobusgo.OneBusAway.VehicleView.State` holds the rules and is pure.
+`Gobusgo.OneBusAway.VehicleView` holds the vehicles of each agency's latest complete fetch in memory, and the vehicle test page at `/vehicles` reads it. It is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.VehicleView` on `Gobusgo.PubSub`, and `Gobusgo.Publisher.InProcess` calls its `apply_records/2` with the records published to `oba.vehicles-for-agency.state`. `Gobusgo.OneBusAway.VehicleView.State` holds the rules and is pure.
 
 - A fetch belongs to one agency. It is complete when its manifest and every vehicle the manifest names have been applied, in either order. The view switches that agency to the fetch in one step and leaves every other agency's current fetch as it is.
 - A record is ignored when its fetch is its agency's current one or is older than it, and when its fetch time or agency differs from the ones its fetch is held under. A fetch with the same fetch time and another request identifier replaces the agency's current one.
