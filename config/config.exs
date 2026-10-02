@@ -11,3 +11,9 @@ config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: base_dir
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
 
 config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir
+
+config :phoenix, :json_library, JSON
+
+config :gobusgo, GobusgoWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  render_errors: [formats: [json: GobusgoWeb.ErrorJSON], layout: false]
