@@ -239,7 +239,7 @@ mix format --check-formatted
 mix test
 ```
 
-`mix.exs` also sets `warnings_as_errors` for compilation. The project has no third-party dependencies; adding one needs the justification the style guide requires.
+`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req and, for tests only, Plug; adding one needs the justification the style guide requires.
 
 ## Issue branches
 
@@ -289,15 +289,24 @@ The OneBusAway API reference is https://developer.onebusaway.org/api/where/metho
 
 Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. `Gobusgo.OneBusAway.AgencyBatch.process/2` reads the stored responses of a half-open window through the generic reader and publishes one `{agencies, meta}` output per run through the writer. An S3 mock is not part of the design.
 
-Intended, with no code or service in the repository yet:
+Intended, with no code or service in the repository yet. The decisions are recorded in Linear; GOB-19 holds the trigger definition and names the issues that hold the rest.
 
-- A trigger delivered through Kafka starts each batch, and a scheduler per source calls the recorder.
-- Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
+- **Retrieval.** One scheduler process per source calls the recorder at that source's cadence; agency discovery runs once a minute. Every OneBusAway request passes through a request gate that holds the API key to one request per second.
+- **Trigger.** After a raw response is stored, the recorder publishes a "response stored" event to Kafka, and a consumer processes the file that event names. The window-based `AgencyBatch.process/2` above is the form in the repository today; GOB-80 changes it to process the file an event names.
+- **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the processor publishes one record per agency to a compacted state topic, followed by a manifest record that completes the fetch.
+- **Messages.** Every Kafka message is a CloudEvent 1.0 in structured mode, with its version in `type`. A dead-letter record keeps its key and value untouched and describes the failure in Kafka headers.
+- **Failures.** A failed event is retried in place for about two seconds, then dead-lettered, and the next event for the dataset brings readers up to date. Reconciliation is an on-demand function that re-publishes events for the raw files of a time range.
+- **Reads.** The REST API reads in-application views: in-memory tables kept current from the state topics. A view applies a record only when its fetch time is the same as or later than the one it holds.
+- **Libraries.** BroadwayKafka consumes and brod produces, behind one wrapper module. Building them needs CMake and a C compiler.
+- **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
 ## Open decisions
 
 - Which coding agents the team uses, and therefore whether `AGENTS.md` stays the only guidance file or gains agent-specific files.
-- The Kafka topic layout, message schema, and production service choices.
+- The production Kafka service on AWS, and how much of the event format carries over to it.
+- The reverse-DNS prefix for the CloudEvents `type` attribute.
+- Which aggregates the REST API serves, and therefore which datasets need a history topic.
+- The OneBusAway rate limit; one request per second is an assumption.
 - The writer's interface beyond the local file backend.
 - A valid OneBusAway API key and confirmation that `https://api.pugetsound.onebusaway.org` is the right server (see the integration's AGENTS.md).
 
