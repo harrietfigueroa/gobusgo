@@ -1,5 +1,7 @@
 import Config
 
+kafka_enabled = config_env() != :test
+
 config :esbuild,
   version: "0.25.5",
   default: [
@@ -8,20 +10,29 @@ config :esbuild,
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
-# Records go straight to their subscribers in the running application: a
-# "response stored" event to the consumer that processes the stored response,
-# and the processed records of a dataset to its view.
-config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
+# Outside tests, records go to Kafka: the processor consumes "response
+# stored" events from it and the views read the state topics back. Tests run
+# with no broker, so records go straight to their subscribers in the running
+# application: a "response stored" event to the consumer that processes the
+# stored response, and the processed records of a dataset to its view.
+config :gobusgo, :kafka, enabled: kafka_enabled
 
-config :gobusgo, Gobusgo.Publisher.InProcess,
-  subscribers: %{
-    "oba.agencies-with-coverage.response-stored" =>
-      {Gobusgo.OneBusAway.AgencyBatch.Consumer, :consume, [[]]},
-    "oba.agencies-with-coverage.state" =>
-      {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
-    "oba.vehicles-for-agency.state" =>
-      {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]}
-  }
+if kafka_enabled do
+  config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.Kafka
+  config :gobusgo, Gobusgo.Publisher.Kafka, client: Gobusgo.Kafka.Client
+else
+  config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
+
+  config :gobusgo, Gobusgo.Publisher.InProcess,
+    subscribers: %{
+      "oba.agencies-with-coverage.response-stored" =>
+        {Gobusgo.OneBusAway.AgencyBatch.Consumer, :consume, [[]]},
+      "oba.agencies-with-coverage.state" =>
+        {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
+      "oba.vehicles-for-agency.state" =>
+        {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]}
+    }
+end
 
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
 config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile

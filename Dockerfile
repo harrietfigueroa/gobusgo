@@ -13,6 +13,14 @@ FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSIO
 ENV MIX_ENV=prod
 WORKDIR /app
 
+# brod's crc32cer dependency builds a native library with CMake and a C and
+# C++ compiler.
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends \
+    build-essential \
+    cmake \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN mix local.hex --force && mix local.rebar --force
 
 # Dependencies are fetched and compiled before the sources are copied, so a

@@ -8,11 +8,11 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.Consumer do
   `consume/2` takes record values, the bytes `StoredEvent.record/1` builds,
   and processes them in order in the calling process. A value that is not a
   "response stored" event is skipped. A stored response that fails to
-  process is left failed and the next value is taken: the processor has
-  logged the failure, and a later fetch brings readers up to date.
+  process is left failed and the next value is taken, and a later fetch
+  brings readers up to date.
 
-  Each call logs at most once itself: `warning` with the count of skipped
-  values.
+  Each call logs `error` once per stored response that fails to process,
+  and `warning` once with the count of skipped values.
   """
 
   require Logger
@@ -57,8 +57,16 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.Consumer do
 
   defp process(destination, process_options) do
     case AgencyBatch.process(destination, process_options) do
-      {:ok, _result} -> :ok
-      {:error, %{class: class}} when class in [:permanent, :transient] -> :ok
+      {:ok, _result} ->
+        :ok
+
+      {:error, %{class: class} = failure} when class in [:permanent, :transient] ->
+        Logger.error("Agency batch consumer failed",
+          destination: destination,
+          stage: failure.stage,
+          error_code: failure.error_code,
+          class: class
+        )
     end
   end
 end

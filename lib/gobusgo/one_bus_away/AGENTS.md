@@ -189,7 +189,25 @@ A success is `{:ok, %{destination: ..., request_id: ..., fetched_at: ..., agency
 
 A `:permanent` failure repeats on every call. The error codes are the dead-letter `ERROR_CODE` values decided in GOB-48.
 
-The processor logs one line per call: `info` `Agency batch published` with `destination`, `request_id`, and `agency_count`; or `error` `Agency batch failed` with `destination`, `stage`, `error_code`, `class`, and `reason`.
+The processor logs `info` `Agency batch published` with `destination`, `request_id`, and `agency_count` when it publishes. A failure returns to the caller unlogged; the trigger logs the decision it takes.
+
+## Agency trigger
+
+`Gobusgo.OneBusAway.AgencyTrigger.handle/2` takes one consumed "response stored" record, with its topic, partition, offset, key, value, and headers, and returns once its outcome is final. `RawAgencyResponse.StoredEvent.decode/1` validates the value; an event that is not JSON, does not match the schema, or has another `type` is dead-lettered without an attempt (`INVALID_JSON`, `SCHEMA_MISMATCH`, `UNSUPPORTED_TYPE`). Otherwise each attempt runs `AgencyBatch.process/2` as a task with a 10-second deadline. `Gobusgo.OneBusAway.AgencyTrigger.Policy` is pure and decides what follows:
+
+| Attempt outcome | While attempts remain | After the third attempt |
+| --- | --- | --- |
+| Published | Finished | Finished |
+| `:transient` failure | Retry after a jittered delay of up to 500 ms, then 1,000 ms | Dead-letter with the failure's `error_code` and `EXHAUSTED_RETRY_CONDITION` |
+| Deadline exceeded | Retry | Dead-letter as `TIMEOUT`, exhausted |
+| Crashed | Retry | Dead-letter as `INTERNAL_ERROR`, exhausted |
+| `:permanent` failure | Dead-letter at once with its `error_code` | — |
+
+`Gobusgo.DeadLetter.record/1` builds the dead-letter record: the consumed key and value untouched, on the consumed topic's `.dead-letter` topic, with the consumed headers followed by `ERROR_CODE`, `ERROR_MESSAGE`, `RETRY_ATTEMPTS`, `EXHAUSTED_RETRY_CONDITION` (exhausted only), `ORIGINAL_TOPIC`, `ORIGINAL_PARTITION`, `ORIGINAL_OFFSET`, `CONSUMER_GROUP`, `FIRST_ATTEMPT_TIME`, and `LAST_ATTEMPT_TIME`. A dead-letter record that three publish tries do not store returns `{:error, {:dead_letter_unpublished, reason}}`.
+
+The trigger logs at most one line per record: `warning` `Agency trigger processed after retries`, `error` `Agency trigger dead-lettered`, or `error` `Agency trigger dead letter not published`, with `error_code`, `attempt_count`, `retries_exhausted`, `topic`, `partition`, `offset`, and, for a parsed event, `event_id`, `destination`, and `request_id`.
+
+`Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer` is the Broadway pipeline the application runs on `oba.agencies-with-coverage.response-stored` as the consumer group `gobusgo.agency-processor`, starting from the earliest record when the group has no offset. It acknowledges a record that is processed or dead-lettered. For a record whose dead-letter record is not published it kills its own processor, the only way to leave a Broadway Kafka message unacknowledged: the partition's committed offset stays before that record, and the record is delivered again when the group next assigns the partition.
 
 ## Agency view
 
@@ -199,13 +217,14 @@ The processor logs one line per call: `info` `Agency batch published` with `dest
 - A fetch is complete when its manifest and every agency the manifest names have been applied, in either order. The view switches to a complete fetch in one step, so a reader sees a whole fetch or the one before it.
 - A record is ignored when its fetch is the current one or is older than the current one. A fetch with the same fetch time and another request identifier replaces the current one.
 - At most 8 incomplete fetches are held, the oldest forgotten first, each with at most 1,000 agencies. A switch forgets every held fetch older than the new current one.
+- Outside the test environment, `Gobusgo.Kafka.TopicSubscriber` calls `apply_records/2` with the values of `oba.agencies-with-coverage.state`, read from its earliest record on every start.
 - When the current fetch changes, the view announces it once, after the table holds the new fetch, as `{:agency_view_switched, view}` to every process that called `subscribe/1`. A fetch that is held or ignored announces nothing.
 - `current/1` reads the table without calling the process and returns `nil` before a fetch is complete and while the view is not running.
 - The view starts empty and holds nothing across a restart.
 
 Per `apply_records/2` call the view logs `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; `warning` `Agency view skipped invalid records` with `invalid_count`; and `warning` `Agency view switch not announced` with `reason` when the announcement could not be sent.
 
-The configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It calls `Gobusgo.OneBusAway.AgencyBatch.Consumer.consume/2` with the records published to `oba.agencies-with-coverage.response-stored`. The consumer decodes each value with `RawAgencyResponse.StoredEvent.decode/1` and calls `AgencyBatch.process/2` with the destination it names, in order, in the publishing process. A value that is not a "response stored" event is skipped and counted in one `warning` `Agency batch consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter.
+In the test environment the configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It calls `Gobusgo.OneBusAway.AgencyBatch.Consumer.consume/2` with the records published to `oba.agencies-with-coverage.response-stored`. The consumer decodes each value with `RawAgencyResponse.StoredEvent.decode/1` and calls `AgencyBatch.process/2` with the destination it names, in order, in the publishing process. A value that is not a "response stored" event is skipped and counted in one `warning` `Agency batch consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter, and logged once at `error` `Agency batch consumer failed` with `destination`, `stage`, `error_code`, and `class`.
 
 `AgencyRecorder.record/2` publishes one "response stored" event once the writer has stored the response, with the `source` `/gobusgo/recorder/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. A failed publish leaves the result `{:ok, recorded}` and logs `warning` `OneBusAway agency response recorded without its event` with the `reason` in place of the `info` line.
 
@@ -259,7 +278,7 @@ Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `ag
 
 `Gobusgo.OneBusAway.Reconciliation.republish/2` takes `%{dataset: ..., range: %{start_at: ..., end_at: ...}}` and publishes a "response stored" event again for every stored response of the dataset fetched inside the half-open range `[start_at, end_at)`. The only dataset is `oba/agencies-with-coverage`. Both bounds are UTC times at whole seconds, and a range touches at most 32 UTC dates and holds at most 10,000 stored responses. `Gobusgo.OneBusAway.Reconciliation.TimeRange` holds the range rules and is pure.
 
-It lists the `dt` partition of every date the range touches, takes the destinations whose name carries a fetch time inside the range, and reads them one at a time in destination order. A stored response `RawAgencyResponse.parse/1` rejects is skipped with its reason and gets no event; a destination whose name carries no fetch time is skipped as `destination_mismatch` without being read. Each event has the `source` `/gobusgo/reconciliation/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. Events are published in destination order, at most 1,000 per publisher call.
+It lists the `dt` partition of every date the range touches, takes the destinations whose name carries a fetch time inside the range, and reads them one at a time in destination order. A stored response `RawAgencyResponse.parse/1` rejects is skipped with its reason and gets no event; a destination whose name carries no fetch time is skipped as `destination_mismatch` without being read. Each event has the `source` `/gobusgo/reconciliation/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. Events are published in destination order, at most 1,000 per publisher call, and the trigger processes each one like a recorder's event.
 
 | Result | Meaning |
 | --- | --- |

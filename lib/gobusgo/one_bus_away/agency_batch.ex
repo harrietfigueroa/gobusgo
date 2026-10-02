@@ -52,8 +52,8 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
       `:content_too_large`, or `{:invalid_destination, reason}`, and a
       publish that returns `:record_too_large`. `:transient` otherwise.
 
-  Each call logs its outcome once: `info` when it publishes, `error` when it
-  fails.
+  A call that publishes logs once at `info`. A failure returns to the caller
+  and is not logged here.
 
   ## Options
 
@@ -117,7 +117,14 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
          }}
       end
 
-    log(result, destination)
+    with {:ok, published} <- result do
+      Logger.info("Agency batch published",
+        destination: destination,
+        request_id: published.request_id,
+        agency_count: published.agency_count
+      )
+    end
+
     result
   end
 
@@ -185,23 +192,5 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
       :unknown_topic -> :transient
       other -> Assert.unreachable(other)
     end
-  end
-
-  defp log({:ok, result}, destination) do
-    Logger.info("Agency batch published",
-      destination: destination,
-      request_id: result.request_id,
-      agency_count: result.agency_count
-    )
-  end
-
-  defp log({:error, failure}, destination) do
-    Logger.error("Agency batch failed",
-      destination: destination,
-      stage: failure.stage,
-      error_code: failure.error_code,
-      class: failure.class,
-      reason: inspect(failure.reason)
-    )
   end
 end

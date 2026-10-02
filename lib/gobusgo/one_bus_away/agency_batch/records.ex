@@ -117,6 +117,10 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.Records do
                            "requestId" => :string
                          }}
 
+  @doc "The topic the records go to."
+  @spec topic() :: String.t()
+  def topic, do: @topic
+
   @doc """
   Returns the records that publish `parsed`, a stored response as
   `Gobusgo.OneBusAway.RawAgencyResponse.parse/1` returns it. Raises

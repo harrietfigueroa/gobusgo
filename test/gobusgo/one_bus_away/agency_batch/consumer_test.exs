@@ -179,6 +179,17 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
       refute log =~ "skipped invalid events"
     end
 
+    test "logs a stored response that fails to process once, at error with its stage" do
+      raw = raw(1)
+
+      log = capture_log([metadata: :all], fn -> consume([], [event(raw)]) end)
+
+      assert log =~ "[error] Agency batch consumer failed"
+      assert log =~ "destination=#{raw.destination}"
+      assert log =~ "stage=read"
+      assert log =~ "error_code=READ_FAILURE"
+    end
+
     test "refuses more values than one publisher call holds" do
       values = List.duplicate("{}", Publisher.record_count_max() + 1)
 
