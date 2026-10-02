@@ -50,8 +50,72 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.Records do
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.Publisher
   alias Gobusgo.RequestId
+  alias Gobusgo.Schema
 
   @type t :: %{agencies: [Publisher.topic_record()], manifest: Publisher.topic_record()}
+
+  @type fetch :: %{request_id: RequestId.t(), fetched_at: DateTime.t()}
+
+  @typedoc """
+  What one record holds. An agency is the JSON object of `data.agency`,
+  limited to the fields this module documents.
+  """
+  @type decoded ::
+          {:agency,
+           %{
+             request_id: RequestId.t(),
+             fetched_at: DateTime.t(),
+             agency: %{String.t() => term()}
+           }}
+          | {:manifest,
+             %{
+               request_id: RequestId.t(),
+               fetched_at: DateTime.t(),
+               agency_ids: [String.t()],
+               data_sha256: String.t(),
+               destination: String.t()
+             }}
+
+  @typedoc """
+    * `:invalid_json` — the value is not JSON.
+    * `:schema_mismatch` — the value is not a record `build/1` produces.
+    * `:unsupported_type` — the value is an event of another `type`.
+  """
+  @type decode_error :: :invalid_json | :schema_mismatch | :unsupported_type
+
+  @coverage_fields ["lat", "lon", "latSpan", "lonSpan"]
+  @agency_fields ["id", "name", "url", "timezone", "coverage"]
+
+  @agency_data_schema {:map,
+                       %{
+                         "agency" =>
+                           {:map,
+                            %{
+                              "id" => :string,
+                              "name" => :string,
+                              "url" => :string,
+                              "timezone" => :string,
+                              "coverage" =>
+                                {:map,
+                                 %{
+                                   "lat" => :number,
+                                   "lon" => :number,
+                                   "latSpan" => :number,
+                                   "lonSpan" => :number
+                                 }}
+                            }},
+                         "fetchedAt" => :string,
+                         "requestId" => :string
+                       }}
+
+  @manifest_data_schema {:map,
+                         %{
+                           "agencyIds" => {:list, :string},
+                           "dataSha256" => :string,
+                           "destination" => :string,
+                           "fetchedAt" => :string,
+                           "requestId" => :string
+                         }}
 
   @doc """
   Returns the records that publish `parsed`, a stored response as
@@ -92,6 +156,61 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.Records do
           data: manifest_data
         })
     }
+  end
+
+  @doc """
+  Returns what `value`, the value of a record `build/1` produces, holds. The
+  first rule the value breaks returns as a value.
+  """
+  @spec decode(binary()) :: {:ok, decoded()} | {:error, decode_error()}
+  def decode(value) when is_binary(value) do
+    with {:ok, %{type: type, data: data}} <- CloudEvent.decode(value) do
+      case type do
+        @agency_type -> decode_agency(data)
+        @manifest_type -> decode_manifest(data)
+        _other -> {:error, :unsupported_type}
+      end
+    end
+  end
+
+  defp decode_agency(data) do
+    with nil <- Schema.mismatch(data, @agency_data_schema),
+         {:ok, fetch} <- decode_fetch(data),
+         %{"id" => id, "coverage" => coverage} = agency = data["agency"],
+         true <- id != "" do
+      agency =
+        agency
+        |> Map.take(@agency_fields)
+        |> Map.put("coverage", Map.take(coverage, @coverage_fields))
+
+      {:ok, {:agency, Map.put(fetch, :agency, agency)}}
+    else
+      _mismatch -> {:error, :schema_mismatch}
+    end
+  end
+
+  defp decode_manifest(data) do
+    with nil <- Schema.mismatch(data, @manifest_data_schema),
+         {:ok, fetch} <- decode_fetch(data) do
+      {:ok,
+       {:manifest,
+        Map.merge(fetch, %{
+          agency_ids: data["agencyIds"],
+          data_sha256: data["dataSha256"],
+          destination: data["destination"]
+        })}}
+    else
+      _mismatch -> {:error, :schema_mismatch}
+    end
+  end
+
+  defp decode_fetch(%{"fetchedAt" => fetched_at_text, "requestId" => request_id}) do
+    with true <- RequestId.valid?(request_id),
+         {:ok, fetched_at, 0} <- DateTime.from_iso8601(fetched_at_text) do
+      {:ok, %{request_id: request_id, fetched_at: fetched_at}}
+    else
+      _mismatch -> :error
+    end
   end
 
   defp agency_record(%{id: id, coverage: coverage} = agency, %{fetch: fetch} = context) do

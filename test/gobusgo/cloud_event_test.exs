@@ -78,4 +78,37 @@ defmodule Gobusgo.CloudEventTest do
              }
     end
   end
+
+  describe "decode/1" do
+    test "returns the event an encoded document holds" do
+      assert CloudEvent.decode(CloudEvent.encode(@event)) == {:ok, @event}
+    end
+
+    test "ignores attributes it does not know" do
+      document =
+        @event |> CloudEvent.encode() |> JSON.decode!() |> Map.put("extra", 1) |> JSON.encode!()
+
+      assert CloudEvent.decode(document) == {:ok, @event}
+    end
+
+    test "returns invalid_json for a document that is not JSON" do
+      assert CloudEvent.decode("{not json") == {:error, :invalid_json}
+    end
+
+    for {description, change} <- [
+          {"a document that is not an object", quote(do: fn _document -> [1] end)},
+          {"a missing id", quote(do: &Map.delete(&1, "id"))},
+          {"another specification version", quote(do: &Map.put(&1, "specversion", "0.3"))},
+          {"another data content type", quote(do: &Map.put(&1, "datacontenttype", "text/xml"))},
+          {"data that is not an object", quote(do: &Map.put(&1, "data", "text"))},
+          {"a time that is not a time", quote(do: &Map.put(&1, "time", "yesterday"))}
+        ] do
+      test "returns schema_mismatch for #{description}" do
+        document =
+          @event |> CloudEvent.encode() |> JSON.decode!() |> unquote(change).() |> JSON.encode!()
+
+        assert CloudEvent.decode(document) == {:error, :schema_mismatch}
+      end
+    end
+  end
 end
