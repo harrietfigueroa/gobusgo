@@ -42,6 +42,26 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_ingestion/1" do
+    for scheduled <- [true, false] do
+      test "returns scheduled as #{scheduled} when it is configured so" do
+        assert Config.fetch_ingestion(scheduled: unquote(scheduled)) ==
+                 {:ok, %{scheduled: unquote(scheduled)}}
+      end
+    end
+
+    test "reports scheduled as invalid for an empty environment" do
+      assert Config.fetch_ingestion([]) == {:error, {:invalid, :scheduled}}
+    end
+
+    for value <- ["true", 1, nil] do
+      test "reports scheduled as invalid for #{inspect(value)}" do
+        assert Config.fetch_ingestion(scheduled: unquote(value)) ==
+                 {:error, {:invalid, :scheduled}}
+      end
+    end
+  end
+
   describe "fetch_http/1" do
     test "returns the loopback address and port 4000 for an empty environment" do
       assert Config.fetch_http([]) == {:ok, %{ip: {127, 0, 0, 1}, port: 4000}}

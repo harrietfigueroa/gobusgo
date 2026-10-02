@@ -66,4 +66,54 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEventTest do
       end
     end
   end
+
+  describe "decode/1" do
+    defp value(changes) do
+      @request
+      |> StoredEvent.record()
+      |> Map.fetch!(:value)
+      |> JSON.decode!()
+      |> changes.()
+      |> JSON.encode!()
+    end
+
+    test "returns the stored response a record refers to" do
+      assert StoredEvent.decode(StoredEvent.record(@request).value) == {:ok, @request.response}
+    end
+
+    test "reports a value that is not JSON" do
+      assert StoredEvent.decode("{not json") == {:error, :invalid_json}
+    end
+
+    test "reports a value that is not an event" do
+      assert StoredEvent.decode("{}") == {:error, :schema_mismatch}
+    end
+
+    test "reports an event of another type" do
+      value = value(&Map.put(&1, "type", "gobusgo.agency.processed.v1"))
+
+      assert StoredEvent.decode(value) == {:error, :unsupported_type}
+    end
+
+    for {name, field, replacement} <- [
+          {"another dataset", "dataset", "oba/stops"},
+          {"a destination that is not a string", "destination", 1},
+          {"an empty destination", "destination", ""},
+          {"a fetch time that is not a time", "fetchedAt", "yesterday"},
+          {"a request identifier that is not a UUID version 7", "requestId", "request"},
+          {"a data hash that is not a string", "dataSha256", nil}
+        ] do
+      test "reports #{name}" do
+        value = value(&put_in(&1, ["data", unquote(field)], unquote(replacement)))
+
+        assert StoredEvent.decode(value) == {:error, :schema_mismatch}
+      end
+    end
+
+    test "reports data without a destination" do
+      value = value(&update_in(&1, ["data"], fn data -> Map.delete(data, "destination") end))
+
+      assert StoredEvent.decode(value) == {:error, :schema_mismatch}
+    end
+  end
 end

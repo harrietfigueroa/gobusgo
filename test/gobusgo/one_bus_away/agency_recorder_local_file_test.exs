@@ -1,7 +1,8 @@
 defmodule Gobusgo.OneBusAway.AgencyRecorderLocalFileTest do
   # Runs record/2 against the local file backend in a temporary directory, with
   # a Req.Test stub serving a JSON fixture, to show a recorded response lands
-  # as one readable file and that the backend's create-only rule surfaces.
+  # as one readable file and that the backend's create-only rule surfaces. A
+  # publisher double defined here acknowledges the event and delivers nothing.
   use ExUnit.Case, async: true
 
   alias Gobusgo.OneBusAway.AgencyRecorder
@@ -9,6 +10,13 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderLocalFileTest do
 
   @moduletag :tmp_dir
   @moduletag capture_log: true
+
+  defmodule AcknowledgingPublisher do
+    @behaviour Gobusgo.Publisher
+
+    @impl Gobusgo.Publisher
+    def publish(_records, _options), do: :ok
+  end
 
   @fixture_path Path.expand("../../fixtures/one_bus_away/agencies_with_coverage.json", __DIR__)
   @stub_name AgencyRecorderLocalFile
@@ -30,7 +38,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderLocalFileTest do
         max_retries: 0,
         clock: fn -> ~U[2026-10-02 03:15:00Z] end
       ],
-      write_options: [backend: LocalFile, base_dir: tmp_dir]
+      write_options: [backend: LocalFile, base_dir: tmp_dir],
+      publish_options: [backend: AcknowledgingPublisher]
     ]
 
     %{options: options, body: JSON.decode!(body)}

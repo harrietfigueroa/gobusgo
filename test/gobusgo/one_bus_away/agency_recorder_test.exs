@@ -1,7 +1,8 @@
 defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
   # Drives record/2 with Req.Test stubs serving JSON fixtures and with writer
-  # doubles defined here, so every outcome is observed through the writer
-  # contract with no network access and no storage.
+  # and publisher doubles defined here, so every outcome is observed through
+  # the writer and publisher contracts with no network access, no storage,
+  # and no subscriber.
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
@@ -9,6 +10,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
   alias Gobusgo.Assert.AssertionError
   alias Gobusgo.OneBusAway.AgencyRecorder
   alias Gobusgo.OneBusAway.RawAgencyResponse
+  alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
   alias Gobusgo.RequestId
 
   @moduletag capture_log: true
@@ -33,11 +35,22 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
     end
   end
 
+  defmodule RecordingPublisher do
+    @behaviour Gobusgo.Publisher
+
+    @impl Gobusgo.Publisher
+    def publish(records, options) do
+      send(Keyword.fetch!(options, :recipient), {:published, records})
+      Keyword.fetch!(options, :result)
+    end
+  end
+
   @fixture_directory Path.expand("../../fixtures/one_bus_away", __DIR__)
   @stub_name AgencyRecorder
   @api_key "test-key-3f9a1c07be52"
   @settings %{base_url: "https://oba.example.test", api_key: @api_key}
   @request_id "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10"
+  @event_id "0199c4a2-7e1b-7a3f-9d20-0000000000ff"
   @fetched_at ~U[2026-10-02 03:15:00.500000Z]
 
   defp fixture(name), do: File.read!(Path.join(@fixture_directory, name <> ".json"))
@@ -64,11 +77,17 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
   defp record(options \\ []) do
     defaults = [
       request_id: @request_id,
+      event_id: fn -> @event_id end,
       fetch_options: fetch_options(),
-      write_options: [backend: RecordingBackend, recipient: self()]
+      write_options: [backend: RecordingBackend, recipient: self()],
+      publish_options: publish_options(:ok)
     ]
 
     AgencyRecorder.record(@settings, Keyword.merge(defaults, options))
+  end
+
+  defp publish_options(result) do
+    [backend: RecordingPublisher, recipient: self(), result: result]
   end
 
   defp written_content do
@@ -138,7 +157,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
     test "generates a request identifier when none is given" do
       options = [
         fetch_options: fetch_options(),
-        write_options: [backend: RecordingBackend, recipient: self()]
+        write_options: [backend: RecordingBackend, recipient: self()],
+        publish_options: publish_options(:ok)
       ]
 
       assert {:ok, %{request_id: request_id}} = AgencyRecorder.record(@settings, options)
@@ -177,6 +197,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
         assert record() == {:error, {:fetch, unquote(Macro.escape(reason))}}
         refute_received {:written, _request}
+        refute_received {:published, _records}
       end
     end
 
@@ -224,6 +245,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
         assert record(write_options: write_options) ==
                  {:error, {:write, unquote(Macro.escape(reason))}}
+
+        refute_received {:published, _records}
       end
     end
 
@@ -237,6 +260,77 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
       assert log =~ "[error]"
       assert log =~ "stage=write"
+    end
+  end
+
+  describe "record/2 response stored event" do
+    setup do
+      stub_fixture("agencies_with_coverage")
+      :ok
+    end
+
+    test "publishes one event after the write, naming what it stored" do
+      assert {:ok, recorded} = record()
+
+      assert_received {:written, _request}
+      assert_received {:published, [%{value: value}]}
+      assert StoredEvent.decode(value) == {:ok, recorded}
+      refute_received {:published, _records}
+    end
+
+    test "publishes the event to the dataset's event topic under the dataset's key" do
+      assert {:ok, _recorded} = record()
+
+      assert_received {:published, [record]}
+      assert record.topic == "oba.agencies-with-coverage.response-stored"
+      assert record.key == "oba/agencies-with-coverage"
+    end
+
+    test "gives the event its identifier, the recorder as source, and the fetch time" do
+      assert {:ok, _recorded} = record()
+
+      assert_received {:published, [%{value: value}]}
+
+      assert %{
+               "id" => @event_id,
+               "source" => "/gobusgo/recorder/oba/agencies-with-coverage",
+               "time" => "2026-10-02T03:15:00Z"
+             } = JSON.decode!(value)
+    end
+
+    test "generates an event identifier when none is given" do
+      options = [
+        request_id: @request_id,
+        fetch_options: fetch_options(),
+        write_options: [backend: RecordingBackend, recipient: self()],
+        publish_options: publish_options(:ok)
+      ]
+
+      assert {:ok, _recorded} = AgencyRecorder.record(@settings, options)
+
+      assert_received {:published, [%{value: value}]}
+      assert RequestId.valid?(JSON.decode!(value)["id"])
+    end
+
+    for reason <- [:timeout, :unavailable, :unknown_topic, :record_too_large] do
+      test "returns the recording when the publish fails with #{reason}" do
+        publish_options = publish_options({:error, unquote(reason)})
+
+        assert {:ok, %{destination: destination}} = record(publish_options: publish_options)
+        assert_received {:written, %{destination: ^destination}}
+      end
+    end
+
+    test "logs a recording without its event once, as a warning with the reason" do
+      log =
+        capture_log([metadata: :all], fn ->
+          assert {:ok, _recorded} = record(publish_options: publish_options({:error, :timeout}))
+        end)
+
+      assert log =~ "[warning] OneBusAway agency response recorded without its event"
+      assert log =~ "reason=:timeout"
+      assert log =~ "request_id=#{@request_id}"
+      refute log =~ "[info]"
     end
   end
 

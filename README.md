@@ -42,6 +42,8 @@ mix phx.server
 
 Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
+While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last fetch ended. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints.
+
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
 ```sh
@@ -120,7 +122,7 @@ curl http://127.0.0.1:4000/api/agencies
 curl http://127.0.0.1:4000/api/agencies/40
 ```
 
-With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live response, and its `destination` goes to `AgencyBatch.process/2` the same way.
+With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live response and publishes its "response stored" event, which leads to the same processing with no further call.
 
 ## Running in Docker
 
@@ -228,13 +230,11 @@ The module documentation lists every error value.
 recorded.destination
 ```
 
-`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range. Neither needs an API key. The configured publisher backend delivers records inside the running application: agency and manifest records go to the in-memory view the REST API reads. It has no subscriber for "response stored" events, so reconciliation needs a backend passed in `:publish_options`, as its tests do.
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range. Neither needs an API key. The configured publisher backend delivers records inside the running application: agency and manifest records go to the in-memory view the REST API reads. A "response stored" event goes to the consumer that processes the stored response it names, so `record/2` and reconciliation both lead to the view; `:publish_options` passes another backend.
 
 ```elixir
 {:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, [])
 result.agency_count
-
-publish_options = [backend: MyPublisher]
 
 request = %{
   dataset: "oba/agencies-with-coverage",
@@ -242,7 +242,7 @@ request = %{
 }
 
 {:ok, %{published_count: published_count}} =
-  Gobusgo.OneBusAway.Reconciliation.republish(request, publish_options: publish_options)
+  Gobusgo.OneBusAway.Reconciliation.republish(request, [])
 ```
 
 The module documentation lists every result and error value.
