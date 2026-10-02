@@ -136,6 +136,38 @@ With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live resp
 
 http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency's identifier, name, website, time zone, and coverage area, with the fetch time and request identifier of the fetch they come from. It says "No agency data yet." until a fetch has been processed. The page updates on its own: open it first, run the snippet above in the `iex` shell, and the agencies appear without a reload.
 
+### Vehicle test page
+
+http://127.0.0.1:4000/vehicles lists the vehicles of every agency's latest fetch: each vehicle's identifier, agency, and trip, the position the source estimates for it, the location it last reported and when, whether the source has real-time data for it, and when the fetch was made. A field the source did not supply reads "Not supplied", and a vehicle that has never reported its location reads "No location reported". It says "No vehicle data yet." until a fetch has been processed, and updates on its own.
+
+Nothing fetches vehicles yet, so the page stays empty until records are published by hand. In the `iex` shell of a running server:
+
+```elixir
+vehicle = %{
+  id: "1_4207",
+  active_trip_id: "1_15436438",
+  position: %{lat: 47.6616, lon: -122.3443},
+  orientation: 202.8,
+  last_known_location: %{lat: 47.6611, lon: -122.3439},
+  last_known_orientation: 230.3,
+  last_update_time_ms: System.os_time(:millisecond),
+  last_location_update_time_ms: System.os_time(:millisecond) - 20_000,
+  predicted: true
+}
+
+%{vehicles: vehicles, manifest: manifest} =
+  Gobusgo.OneBusAway.VehicleBatch.Records.build(%{
+    agency_id: "1",
+    destination: "raw/oba/vehicles-for-agency/sample.json",
+    fetched_at: DateTime.utc_now(:second),
+    data_sha256: String.duplicate("0", 64),
+    request_id: Gobusgo.RequestId.generate(),
+    vehicles: [vehicle]
+  })
+
+:ok = Gobusgo.Publisher.publish(vehicles ++ [manifest], [])
+```
+
 ## Running in Docker
 
 The `Dockerfile` builds an image that runs the HTTP server as a release, for local development. It needs a container runtime with `docker` on the path; nothing else from Setup is required. Orchestration with the other local services lives in the infrastructure repository.
