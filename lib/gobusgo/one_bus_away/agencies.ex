@@ -47,6 +47,7 @@ defmodule Gobusgo.OneBusAway.Agencies do
 
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.Client
+  alias Gobusgo.Schema
 
   # https://developer.onebusaway.org/api/where/methods/agencies-with-coverage — checked 2026-10-01
   @path "/api/where/agencies-with-coverage.json"
@@ -76,6 +77,10 @@ defmodule Gobusgo.OneBusAway.Agencies do
           | {:unexpected_redirect, 300..399}
           | {:api_error, %{code: integer(), text: String.t()}}
           | :invalid_json
+  @type parse_error ::
+          {:schema_mismatch, Schema.mismatch()}
+          | {:agency_count_exceeded, pos_integer()}
+          | {:unreferenced_agency, String.t()}
 
   @envelope_schema {:map,
                     %{
@@ -181,24 +186,39 @@ defmodule Gobusgo.OneBusAway.Agencies do
     end
   end
 
-  defp parse_data(data) do
-    %{"list" => entries, "references" => %{"agencies" => references}} =
-      Assert.schema(data, @data_schema)
+  @doc """
+  Returns the agencies in `data`, the `data` member of a decoded envelope,
+  with every coverage entry resolved against the references, or the first
+  way `data` breaks the documented contract. Pure.
+  """
+  @spec parse(term()) :: {:ok, [agency()]} | {:error, parse_error()}
+  def parse(data) do
+    case Schema.mismatch(data, @data_schema) do
+      nil -> parse_entries(data)
+      mismatch -> {:error, {:schema_mismatch, mismatch}}
+    end
+  end
 
+  defp parse_entries(%{"list" => entries, "references" => %{"agencies" => references}}) do
     count = length(entries)
 
-    Assert.condition(
-      count <= @agency_count_max,
-      "agency count #{count} exceeds #{@agency_count_max}"
-    )
+    if count <= @agency_count_max do
+      references_by_id = Map.new(references, &{&1["id"], &1})
+      resolve_entries(entries, references_by_id)
+    else
+      {:error, {:agency_count_exceeded, count}}
+    end
+  end
 
-    references_by_id = Map.new(references, &{&1["id"], &1})
-    Enum.map(entries, &resolve(&1, references_by_id))
+  defp resolve_entries(entries, references_by_id) do
+    case Enum.find(entries, &(not is_map_key(references_by_id, &1["agencyId"]))) do
+      nil -> {:ok, Enum.map(entries, &resolve(&1, references_by_id))}
+      %{"agencyId" => id} -> {:error, {:unreferenced_agency, id}}
+    end
   end
 
   defp resolve(%{"agencyId" => id} = entry, references_by_id) do
-    reference = Map.get(references_by_id, id)
-    Assert.condition(reference != nil, "list entry #{inspect(id)} has no agency reference")
+    reference = Map.fetch!(references_by_id, id)
 
     %{
       id: id,
@@ -212,5 +232,25 @@ defmodule Gobusgo.OneBusAway.Agencies do
         lon_span: entry["lonSpan"]
       }
     }
+  end
+
+  defp parse_data(data) do
+    case parse(data) do
+      {:ok, agencies} ->
+        agencies
+
+      {:error, {:schema_mismatch, %{path: path} = cause}} ->
+        raise Assert.AssertionError,
+          message: "schema mismatch at #{Schema.format_path(path)}",
+          cause: cause
+
+      {:error, {:agency_count_exceeded, count}} ->
+        raise Assert.AssertionError,
+          message: "agency count #{count} exceeds #{@agency_count_max}"
+
+      {:error, {:unreferenced_agency, id}} ->
+        raise Assert.AssertionError,
+          message: "list entry #{inspect(id)} has no agency reference"
+    end
   end
 end

@@ -292,4 +292,45 @@ defmodule Gobusgo.OneBusAway.AgenciesTest do
       end
     end
   end
+
+  describe "parse/1" do
+    defp data(name), do: name |> fixture() |> JSON.decode!() |> Map.fetch!("data")
+
+    test "returns the agencies of valid data" do
+      assert {:ok, [%{id: "1", name: "Metro Transit"}, %{id: "40"}]} =
+               Agencies.parse(data("agencies_with_coverage"))
+    end
+
+    test "returns the path of a schema mismatch" do
+      assert Agencies.parse(data("agencies_with_coverage_schema_violation")) ==
+               {:error, {:schema_mismatch, %{path: ["list", 0, "lat"], expected: :required}}}
+    end
+
+    test "returns the identifier of a list entry without a reference" do
+      assert Agencies.parse(data("agencies_with_coverage_unreferenced")) ==
+               {:error, {:unreferenced_agency, "99"}}
+    end
+
+    test "returns a schema mismatch when the limit is exceeded" do
+      assert {:error, {:schema_mismatch, %{path: ["limitExceeded"]}}} =
+               Agencies.parse(data("agencies_with_coverage_limit_exceeded"))
+    end
+
+    test "returns the count when it exceeds the bound" do
+      entry = %{"agencyId" => "1", "lat" => 1, "lon" => 1, "latSpan" => 1, "lonSpan" => 1}
+      reference = %{"id" => "1", "name" => "n", "url" => "u", "timezone" => "t"}
+
+      data = %{
+        "limitExceeded" => false,
+        "list" => List.duplicate(entry, 1_001),
+        "references" => %{"agencies" => [reference]}
+      }
+
+      assert Agencies.parse(data) == {:error, {:agency_count_exceeded, 1_001}}
+    end
+
+    test "returns a schema mismatch for data that is not a map" do
+      assert {:error, {:schema_mismatch, %{path: []}}} = Agencies.parse("text")
+    end
+  end
 end

@@ -44,6 +44,21 @@ The module documentation lists every error value.
 recorded.destination
 ```
 
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored responses fetched inside a closed time window and publishes one output through `Gobusgo.Writer`, at `processed/oba/agencies/<batchId>_<firstFetchedAt>_<lastFetchedAt>_<processedAt>.json`. It needs no API key and no network. A second run of the same window returns `:already_published` unless `reprocess` is true.
+
+```elixir
+request = %{
+  window: %{start_at: ~U[2026-10-02 00:00:00Z], end_at: ~U[2026-10-03 00:00:00Z]},
+  trigger_id: Gobusgo.RequestId.generate(),
+  reprocess: false
+}
+
+{:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(request, [])
+{result.outcome, result.destination}
+```
+
+The module documentation lists every outcome and error value.
+
 ## Development
 
 ```sh

@@ -103,6 +103,8 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 `Gobusgo.OneBusAway.Agencies.fetch_response/2` makes the same request and returns the agencies together with the whole decoded envelope, the HTTP status, the method, the host, and the fetch time. The key is replaced wherever the server echoes it in the envelope, and the host is the host name alone, so no returned value carries a credential or a URL. Its `:clock` option supplies the fetch time.
 
+`Gobusgo.OneBusAway.Agencies.parse/1` is the pure function from an envelope's `data` to the agencies. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:agency_count_exceeded, count}`, or `{:unreferenced_agency, id}`. The requester raises on those values; a reader of stored responses handles them.
+
 ## Stored raw responses
 
 `Gobusgo.OneBusAway.AgencyRecorder.record/2` calls `fetch_response/2` and passes the result through `Gobusgo.Writer.write/2`. It names no backend; application configuration selects one. `Gobusgo.OneBusAway.RawAgencyResponse.build/1` is the pure function that turns a response and a request identifier into the logical destination and the content.
@@ -140,6 +142,51 @@ Retrieval for the batch design: a batch selects the stored responses whose `meta
 Credentials: the URL is never stored. `RawAgencyResponse.build/1` raises when the destination or `meta` contains `key=`, and the recorder raises when the destination or the content contains the configured key. `body` is exempt from the `key=` check, because it holds text the agencies supply, such as a website link with a `key` parameter of its own.
 
 The recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
+
+## Agency batches
+
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes one batch: every stored raw response whose fetch time falls in a half-open window `[start_at, end_at)`. It reads through `Gobusgo.Reader`, publishes through `Gobusgo.Writer`, runs in the calling process, and names no backend. `Gobusgo.OneBusAway.AgencyBatch.Window` holds the window rules and `Gobusgo.OneBusAway.AgencyBatch.Output` builds the published form; both are pure.
+
+The request is `%{window: %{start_at: ..., end_at: ...}, trigger_id: ..., reprocess: ...}`. Both bounds are UTC times at whole seconds, a window touches at most 32 UTC dates, and `trigger_id` is a UUID version 7. The batch identifier is both bounds in basic ISO 8601 joined by `-`, such as `20261002T000000Z-20261003T000000Z`.
+
+Inputs: the batch lists the `dt` partition of every date the window touches and takes the destinations whose name carries a fetch time inside the window. It reads them one at a time in destination order. `RawAgencyResponse.parse/1` decides validity: the content is the stored wrapper, its data hashes to `meta.dataSha256`, its `meta` names the destination it was read from, and its data is agency discovery data. An invalid input is skipped and recorded with its reason (`invalid_json`, `schema_mismatch`, `hash_mismatch`, `destination_mismatch`). A destination whose name carries no fetch time is skipped as `destination_mismatch` without being read. A window holds at most 10,000 inputs.
+
+Published destination:
+
+```
+processed/oba/agencies/<batchId>_<firstFetchedAt>_<lastFetchedAt>_<processedAt>.json
+```
+
+Published content is one JSON object, compact, with object keys sorted:
+
+| Field | Meaning |
+| --- | --- |
+| `agencies` | The agencies of the latest valid input, sorted by `id`; each has `id`, `name`, `url`, `timezone`, and `coverage` (`lat`, `lon`, `latSpan`, `lonSpan`) |
+| `meta.schemaVersion` | `1`; rises when a field is removed or renamed, or changes type or meaning |
+| `meta.batchId`, `meta.windowStart`, `meta.windowEnd` | The window; the bounds in UTC extended ISO 8601 |
+| `meta.processedAt` | Processing time, UTC extended ISO 8601 at second precision |
+| `meta.triggerId` | The trigger identifier of the request |
+| `meta.inputFileCount` | Valid and skipped inputs together |
+| `meta.inputs` | Every valid input in destination order: `destination`, `fetchedAt`, `dataSha256`, `duplicate` (true when an earlier input carries the same hash) |
+| `meta.skipped` | Every invalid input: `destination`, `reason` |
+
+Results:
+
+| Result | Meaning |
+| --- | --- |
+| `{:ok, %{outcome: :published}}` | One output is stored |
+| `{:ok, %{outcome: :published_with_skips}}` | One output is stored and at least one input was skipped |
+| `{:ok, %{outcome: :no_input}}` | The window holds no input; nothing is stored |
+| `{:ok, %{outcome: :already_published}}` | The window has an output and `reprocess` is false; nothing is read or stored |
+| `{:error, :window_open}` | The window ends after the current time |
+| `{:error, :all_inputs_invalid}` | The window holds inputs and none is valid |
+| `{:error, :too_many_inputs}` | The window or its partitions exceed the bounds |
+| `{:error, {:read, reason}}` | Discovering or reading failed; an input gone between discovery and reading is `{:read, :not_found}` |
+| `{:error, {:write, reason}}` | The writer did not store the output |
+
+Every `{:ok, result}` also carries `batch_id`, `destination`, `input_count`, `skipped_count`, and `duplicate_count`. An error stores nothing. With `reprocess: true` the run skips the existing-output check and stores its own output beside any earlier one; two runs of one window in the same second build the same destination, and the second returns `{:error, {:write, :already_exists}}`.
+
+The batch logs one line per call: `info` `Agency batch finished`, `warning` `Agency batch published with skips`, or `error` `Agency batch failed`, with `batch_id`, `trigger_id`, and the outcome's counts or the failure `reason`.
 
 ## Methods for future work
 
