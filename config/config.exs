@@ -1,8 +1,12 @@
 import Config
 
-config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
-
-config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
+config :esbuild,
+  version: "0.25.5",
+  default: [
+    args: ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
 
 # Records go straight to their subscribers in the running application: a
 # "response stored" event to the consumer that processes the stored response,
@@ -17,11 +21,8 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
       {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]}
   }
 
-# The sources run on their schedule everywhere except under test, where no
-# request may leave the machine.
-config :gobusgo, :ingestion, scheduled: config_env() != :test
-
-config :phoenix, :json_library, JSON
+config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
+config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
 
 # The first format answers a request that accepts anything.
 config :gobusgo, GobusgoWeb.Endpoint,
@@ -33,13 +34,11 @@ config :gobusgo, GobusgoWeb.Endpoint,
   pubsub_server: Gobusgo.PubSub,
   live_view: [signing_salt: "live_view"]
 
-config :esbuild,
-  version: "0.25.5",
-  default: [
-    args: ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js),
-    cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
-  ]
+# The sources run on their schedule everywhere except under test, where no
+# request may leave the machine.
+config :gobusgo, :ingestion, scheduled: config_env() != :test
+
+config :phoenix, :json_library, JSON
 
 config :tailwind,
   version: "4.3.0",

@@ -245,9 +245,15 @@ mix format --check-formatted
 mix test
 ```
 
-`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets and LazyHTML for LiveView tests; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
+`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets, LazyHTML for LiveView tests, and Quokka to rewrite code during `mix format`; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
 
 When a change touches `assets/` or the classes in a template, also run `mix assets.build`; CI runs it as its own job. `mix assets.setup` installs the esbuild and Tailwind binaries at the versions `config/config.exs` pins. `mix format` formats HEEx templates through `Phoenix.LiveView.HTMLFormatter`.
+
+`mix format` also rewrites Elixir code through the Quokka plugin, with every rewrite category `.formatter.exs` lists, so run `mix format` and read its diff before the three commands above. Quokka is an autofixer for style: the engineering style guide stays a review criterion, and a rewrite that conflicts with it is corrected by hand in a form Quokka leaves alone.
+
+- **`.credo.exs` configures Quokka only.** Credo arrives as Quokka's dependency and is not run as a linter. The one setting keeps a module's directives and attributes in the order they are written, because a module here declares the attributes its `@moduledoc` interpolates above that `@moduledoc`.
+- **An explicit `nil` fallback is a `case`.** Quokka removes `else: nil` from an `if` and inverts an `if` whose `do` is `nil`, so a branch that has to name its `nil` outcome is written as a `case` clause.
+- **A comment in `config/*.exs` can move.** Quokka sorts `config` stanzas and does not always carry a stanza's comment with it; check that each comment still sits on its stanza.
 
 When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, also run `docker build --tag gobusgo:local .`; CI runs it as its own job. The image's Elixir, Erlang, and Debian versions are build arguments in the `Dockerfile` and change together with `.tool-versions`. A file the release needs from outside `lib/`, `assets/`, and `config/` has to be admitted in `.dockerignore` and copied in the `Dockerfile`.
 

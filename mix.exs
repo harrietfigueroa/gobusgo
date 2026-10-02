@@ -31,7 +31,8 @@ defmodule Gobusgo.MixProject do
       {:plug, "~> 1.16"},
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
-      {:lazy_html, "~> 0.1", only: :test}
+      {:lazy_html, "~> 0.1", only: :test},
+      {:quokka, "~> 2.13", only: [:dev, :test], runtime: false}
     ]
   end
 

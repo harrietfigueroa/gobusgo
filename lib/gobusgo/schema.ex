@@ -29,13 +29,13 @@ defmodule Gobusgo.Schema do
   def format_path([]), do: "root"
   def format_path(path) when is_list(path), do: Enum.map_join(path, ".", &to_string/1)
 
-  defp mismatch(value, :string, path), do: unless(is_binary(value), do: failure(path, :string))
-  defp mismatch(value, :number, path), do: unless(is_number(value), do: failure(path, :number))
-  defp mismatch(value, :integer, path), do: unless(is_integer(value), do: failure(path, :integer))
-  defp mismatch(value, :boolean, path), do: unless(is_boolean(value), do: failure(path, :boolean))
+  defp mismatch(value, :string, path), do: if(!is_binary(value), do: failure(path, :string))
+  defp mismatch(value, :number, path), do: if(!is_number(value), do: failure(path, :number))
+  defp mismatch(value, :integer, path), do: if(!is_integer(value), do: failure(path, :integer))
+  defp mismatch(value, :boolean, path), do: if(!is_boolean(value), do: failure(path, :boolean))
 
   defp mismatch(value, {:literal, expected}, path) do
-    unless value === expected, do: failure(path, {:literal, expected})
+    if value !== expected, do: failure(path, {:literal, expected})
   end
 
   defp mismatch(value, {:list, element_schema}, path) when is_list(value) do

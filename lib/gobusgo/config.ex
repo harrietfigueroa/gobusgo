@@ -120,8 +120,14 @@ defmodule Gobusgo.Config do
 
   defp text(env, key) do
     case Keyword.get(env, key) do
-      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: value
-      nil -> nil
+      value when is_binary(value) ->
+        case String.trim(value) do
+          "" -> nil
+          _trimmed -> value
+        end
+
+      nil ->
+        nil
     end
   end
 

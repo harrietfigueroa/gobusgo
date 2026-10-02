@@ -22,7 +22,7 @@ defmodule Gobusgo.OneBusAway.Reconciliation.TimeRange do
     assert_bound(end_at, "end_at")
 
     Assert.condition(
-      DateTime.compare(start_at, end_at) == :lt,
+      DateTime.before?(start_at, end_at),
       "start_at must be before end_at: #{start_at} and #{end_at}"
     )
 
@@ -43,7 +43,7 @@ defmodule Gobusgo.OneBusAway.Reconciliation.TimeRange do
   @doc "Returns whether `time` falls in the range: at or after the start, before the end."
   @spec member?(t(), DateTime.t()) :: boolean()
   def member?(%{start_at: start_at, end_at: end_at}, %DateTime{} = time) do
-    DateTime.compare(time, start_at) != :lt and DateTime.compare(time, end_at) == :lt
+    DateTime.compare(time, start_at) != :lt and DateTime.before?(time, end_at)
   end
 
   # The end is exclusive, so the last instant of the range is one second
