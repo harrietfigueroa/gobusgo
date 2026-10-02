@@ -233,6 +233,17 @@ mix test
 
 `mix.exs` also sets `warnings_as_errors` for compilation. The project has no third-party dependencies; adding one needs the justification the style guide requires.
 
+## Linear issue workflow
+
+Update the Linear issue status as the work moves, without waiting to be asked:
+
+1. Move the issue to In Progress when work starts, or when its work is committed locally and not yet pushed.
+2. Make one commit per issue, with the issue key in the subject (for example `(GOB-12)`).
+3. Move the issue to Done once its commit is pushed to `origin`, and after CI passes on that push once the CI workflow runs on GitHub.
+4. Leave an issue in its current status and tell the user when its acceptance criteria are not fully met, such as a pending decision or a missing credential.
+
+Pushing and other outward-facing actions still need the user's go-ahead.
+
 ## Credentials and configuration
 
 Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`) without values. Load them into the shell with:
