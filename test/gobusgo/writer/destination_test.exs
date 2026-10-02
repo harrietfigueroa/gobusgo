@@ -1,36 +1,32 @@
 defmodule Gobusgo.Writer.DestinationTest do
   # Verifies logical destination validation as a pure function of the
-  # destination string and an absolute base directory.
+  # destination string.
   use ExUnit.Case, async: true
 
   alias Gobusgo.Writer.Destination
 
-  @base "/var/data"
-
-  describe "resolve/2 accepts" do
+  describe "validate/1 accepts" do
     test "a single segment" do
-      assert Destination.resolve("a.json", @base) ==
-               {:ok, %{segments: ["a.json"], path: "/var/data/a.json"}}
+      assert Destination.validate("a.json") == {:ok, ["a.json"]}
     end
 
-    test "the partitioned layout with equals signs, underscores, and colons-free timestamps" do
+    test "the partitioned layout with equals signs and underscores" do
       destination =
         "raw/oba/agencies-with-coverage/dt=2026-10-02/20261002T031500Z_0199c4a2_3f9a1c07be52.json"
 
-      assert {:ok, %{segments: segments, path: path}} = Destination.resolve(destination, @base)
+      assert {:ok, segments} = Destination.validate(destination)
       assert length(segments) == 5
-      assert path == Path.join(@base, destination)
     end
   end
 
-  describe "resolve/2 rejects" do
+  describe "validate/1 rejects" do
     for {name, destination, reason} <- [
           {"an empty string", "", :empty},
-          {"an absolute path", "/etc/passwd", :absolute},
-          {"a dot-dot segment", "a/../b", :segment_invalid},
-          {"a leading dot-dot", "../escape", :segment_invalid},
-          {"a lone dot segment", "a/./b", :segment_invalid},
-          {"a hidden file", ".hidden", :segment_invalid},
+          {"a leading slash", "/etc/passwd", :absolute},
+          {"a dot-dot segment", "a/../b", :traversal},
+          {"a leading dot-dot", "../escape", :traversal},
+          {"a lone dot segment", "a/./b", :traversal},
+          {"a leading dot", ".hidden", :segment_invalid},
           {"an empty segment", "a//b", :segment_invalid},
           {"a trailing slash", "a/", :segment_invalid},
           {"a space", "a b", :segment_invalid},
@@ -46,13 +42,9 @@ defmodule Gobusgo.Writer.DestinationTest do
            Enum.join(List.duplicate(String.duplicate("a", 100), 11), "/"), :too_long}
         ] do
       test name do
-        assert Destination.resolve(unquote(destination), @base) ==
+        assert Destination.validate(unquote(destination)) ==
                  {:error, {:invalid_destination, unquote(reason)}}
       end
-    end
-
-    test "a relative base directory" do
-      assert_raise Gobusgo.Assert.AssertionError, fn -> Destination.resolve("a", "relative") end
     end
   end
 end

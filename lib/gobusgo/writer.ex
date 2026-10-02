@@ -3,17 +3,18 @@ defmodule Gobusgo.Writer do
   A backend-neutral contract for storing a binary under a logical destination,
   and the entry point that selects the backend.
 
-  Callers use `write/2` and never name a backend, a filesystem path, or a
-  bucket. A logical destination is a relative, `/`-separated name such as
-  `"raw/oba/dt=2026-10-02/response.json"`; the backend decides where it
-  physically lives.
+  Callers use `write/2` and name no backend. A logical destination is a
+  relative, `/`-separated name such as `"raw/oba/dt=2026-10-02/response.json"`
+  whose rules are in `Gobusgo.Writer.Destination`; the backend decides where
+  it physically lives.
 
   ## Contract
 
   A write is create-only: a destination that already exists yields
   `{:error, :already_exists}` and the existing content stays intact. A write
-  is atomic: readers see the whole content or no object. Content is a binary,
-  bounded by the backend's size limit. Missing parent levels are created.
+  is atomic: readers see the whole content or nothing. Content is a binary,
+  bounded by the backend's size limit. Any hierarchy the destination implies
+  is created.
 
   Results:
 
@@ -21,52 +22,14 @@ defmodule Gobusgo.Writer do
     * `{:error, reason}` — a documented outcome, one of `t:error_reason/0`.
 
   Operating errors return as values. Anything outside the documented set
-  (an unrecognized POSIX reason, a backend answering off-contract) raises
-  `Gobusgo.Assert.AssertionError`.
+  (a failure the backend cannot classify, a backend answering off-contract)
+  raises `Gobusgo.Assert.AssertionError`.
 
   ## Selecting a backend
 
-  Configure the default in application config:
-
-      config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
-
-  Or inject one per call with the `:backend` option. Every other option goes
-  to the backend untouched.
-
-  ## File backend example
-
-      config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: Path.expand("data")
-
-      :ok =
-        Gobusgo.Writer.write(%{
-          destination: "raw/oba/dt=2026-10-02/response.json",
-          content: ~s({"ok":true})
-        })
-
-      {:error, :already_exists} =
-        Gobusgo.Writer.write(%{
-          destination: "raw/oba/dt=2026-10-02/response.json",
-          content: "second"
-        })
-
-  ## Writing an S3 backend
-
-  An S3 backend is a module with `@behaviour Gobusgo.Writer` and a `write/2`
-  that maps the logical destination to an object key under a configured
-  bucket and prefix, and returns the same results:
-
-    * Validate the destination with `Gobusgo.Writer.Destination.resolve/2`
-      semantics (the same segment rules apply to object keys).
-    * Put the object with a conditional write (`If-None-Match: *`), so an
-      existing key yields `{:error, :already_exists}` (HTTP 412). A put is
-      atomic, so no temporary object is needed.
-    * Map the provider's documented error codes to the reasons in
-      `t:error_reason/0` (for example 403 to `:permission_denied`) and raise
-      for undocumented ones.
-    * Read the bucket and credentials from its own config key, and select it
-      with `config :gobusgo, Gobusgo.Writer, backend: MyApp.S3Writer`.
-
-  Callers do not change.
+  The application config key `:backend` under `Gobusgo.Writer` names the
+  default backend module. The `:backend` option of `write/2` overrides it per
+  call. Every other option goes to the backend untouched.
   """
 
   alias Gobusgo.Assert
@@ -82,9 +45,18 @@ defmodule Gobusgo.Writer do
           | :io_failure
           | :destination_conflict
           | :content_too_large
-          | {:invalid_destination, Destination.reason()}
+          | {:invalid_destination, invalid_destination_reason()}
+
+  @typedoc """
+  Why a destination is rejected: a logical-name rule from `Gobusgo.Writer.Destination`,
+  or `:redirected` when the backend finds that the destination resolves somewhere
+  other than its logical name.
+  """
+  @type invalid_destination_reason :: Destination.reason() | :redirected
 
   @type result :: :ok | {:error, error_reason()}
+
+  @invalid_destination_reasons [:redirected | Destination.reasons()]
 
   @error_atoms [
     :already_exists,
@@ -141,7 +113,7 @@ defmodule Gobusgo.Writer do
 
   defp known_reason?(reason) do
     case reason do
-      {:invalid_destination, detail} -> detail in Destination.reasons()
+      {:invalid_destination, detail} -> detail in @invalid_destination_reasons
       atom -> atom in @error_atoms
     end
   end

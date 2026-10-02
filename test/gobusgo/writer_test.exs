@@ -1,6 +1,6 @@
 defmodule Gobusgo.WriterTest do
   # Verifies backend selection and the result contract through Gobusgo.Writer
-  # with in-memory backends, so no filesystem is touched. Application config
+  # with in-memory backends, so no storage is touched. Application config
   # is global state, hence the non-async case.
   use ExUnit.Case, async: false
 

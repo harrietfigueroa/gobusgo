@@ -1,9 +1,9 @@
-defmodule Gobusgo.Writer.PosixErrorTest do
+defmodule Gobusgo.Writer.LocalFile.PosixErrorTest do
   # Verifies the closed mapping from POSIX reasons to writer error reasons as
   # a pure function, including that unknown reasons raise.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.Writer.PosixError
+  alias Gobusgo.Writer.LocalFile.PosixError
 
   for {posix, reason} <- [
         eexist: :already_exists,
@@ -16,7 +16,7 @@ defmodule Gobusgo.Writer.PosixErrorTest do
         enotdir: :destination_conflict,
         eisdir: :destination_conflict,
         enametoolong: {:invalid_destination, :too_long},
-        eloop: {:invalid_destination, :symlink}
+        eloop: {:invalid_destination, :redirected}
       ] do
     test "maps #{posix} to #{inspect(reason)}" do
       assert PosixError.to_reason(unquote(posix)) == unquote(Macro.escape(reason))

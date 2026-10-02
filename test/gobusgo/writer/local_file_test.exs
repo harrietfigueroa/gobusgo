@@ -9,10 +9,6 @@ defmodule Gobusgo.Writer.LocalFileTest do
 
   @moduletag :tmp_dir
 
-  # Path.safe_relative/2 resolves symlinks and can report :traversal before
-  # the backend's own lstat walk reports :symlink; both reject the write.
-  @symlink_reasons [:symlink, :traversal]
-
   defp write(tmp_dir, destination, content) do
     Writer.write(%{destination: destination, content: content},
       backend: LocalFile,
@@ -150,16 +146,14 @@ defmodule Gobusgo.Writer.LocalFileTest do
       File.mkdir_p!(base)
       File.ln_s!(outside, Path.join(base, "link"))
 
-      assert {:error, {:invalid_destination, reason}} = write(base, "link/a.json", "x")
-      assert reason in @symlink_reasons
+      assert write(base, "link/a.json", "x") == {:error, {:invalid_destination, :redirected}}
       assert File.ls!(outside) == []
     end
 
     test "rejects a destination that is itself a symlink", %{tmp_dir: tmp_dir} do
       File.ln_s!(Path.join(tmp_dir, "target"), Path.join(tmp_dir, "link"))
 
-      assert {:error, {:invalid_destination, reason}} = write(tmp_dir, "link", "x")
-      assert reason in @symlink_reasons
+      assert write(tmp_dir, "link", "x") == {:error, {:invalid_destination, :redirected}}
     end
   end
 

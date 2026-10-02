@@ -10,6 +10,23 @@ defmodule Gobusgo.Writer.LocalFile do
       it once in config (`Path.expand/1`), so a changing working directory
       cannot move it.
 
+  ## Example
+
+      config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
+      config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: Path.expand("data")
+
+      :ok =
+        Gobusgo.Writer.write(%{
+          destination: "raw/oba/dt=2026-10-02/response.json",
+          content: ~s({"ok":true})
+        })
+
+      {:error, :already_exists} =
+        Gobusgo.Writer.write(%{
+          destination: "raw/oba/dt=2026-10-02/response.json",
+          content: "second"
+        })
+
   ## Durability sequence
 
   The content goes to an exclusive hidden temporary file in the destination
@@ -19,7 +36,9 @@ defmodule Gobusgo.Writer.LocalFile do
   publication leaves no file at the destination; a directory sync failure
   after publication returns an error while the destination exists.
 
-  Symlink rejection is a check followed by a later open, and the standard
+  A symlinked segment, or a destination that is itself a symlink, is rejected
+  as `{:invalid_destination, :redirected}`. POSIX reasons map to the writer's
+  error reasons in `Gobusgo.Writer.LocalFile.PosixError`. Symlink rejection is a check followed by a later open, and the standard
   library has no `O_NOFOLLOW`, so a process that can write inside the base
   directory can race it. The base directory must be writable only by this
   application.
@@ -29,7 +48,8 @@ defmodule Gobusgo.Writer.LocalFile do
 
   alias Gobusgo.Assert
   alias Gobusgo.Writer.Destination
-  alias Gobusgo.Writer.PosixError
+  alias Gobusgo.Writer.LocalFile.Location
+  alias Gobusgo.Writer.LocalFile.PosixError
 
   @content_bytes_max 16 * 1024 * 1024
   @temp_prefix ".tmp-"
@@ -45,7 +65,8 @@ defmodule Gobusgo.Writer.LocalFile do
     base_dir = fetch_base_dir(options)
 
     with :ok <- check_content_size(content),
-         {:ok, %{segments: segments, path: path}} <- Destination.resolve(destination, base_dir),
+         {:ok, segments} <- Destination.validate(destination),
+         {:ok, path} <- Location.place(segments, base_dir),
          :ok <- reject_symlinks(base_dir, segments),
          :ok <- make_parent(path) do
       publish(path, content)
@@ -83,10 +104,17 @@ defmodule Gobusgo.Writer.LocalFile do
       path = Path.join(parent, segment)
 
       case File.lstat(path) do
-        {:ok, %File.Stat{type: :symlink}} -> {:halt, {:error, {:invalid_destination, :symlink}}}
-        {:ok, %File.Stat{}} -> {:cont, path}
-        {:error, posix} when posix in [:enoent, :enotdir] -> {:halt, :ok}
-        {:error, posix} -> {:halt, {:error, PosixError.to_reason(posix)}}
+        {:ok, %File.Stat{type: :symlink}} ->
+          {:halt, {:error, {:invalid_destination, :redirected}}}
+
+        {:ok, %File.Stat{}} ->
+          {:cont, path}
+
+        {:error, posix} when posix in [:enoent, :enotdir] ->
+          {:halt, :ok}
+
+        {:error, posix} ->
+          {:halt, {:error, PosixError.to_reason(posix)}}
       end
     end)
     |> case do
