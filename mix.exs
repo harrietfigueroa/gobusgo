@@ -22,7 +22,9 @@ defmodule Gobusgo.MixProject do
   defp deps do
     [
       {:req, "~> 0.7.4"},
-      {:plug, "~> 1.16", only: :test}
+      {:phoenix, "~> 1.8.15"},
+      {:bandit, "~> 1.12"},
+      {:plug, "~> 1.16"}
     ]
   end
 end

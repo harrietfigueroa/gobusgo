@@ -4,7 +4,7 @@ Gobusgo is an Elixir application that consumes the [OneBusAway API](https://deve
 
 ## Requirements
 
-Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req); `plug` is a test-only dependency for `Req.Test`.
+Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req). The HTTP server is [Phoenix](https://hex.pm/packages/phoenix) on [Bandit](https://hex.pm/packages/bandit); [Plug](https://hex.pm/packages/plug) is also what `Req.Test` uses in tests.
 
 ## Setup
 
@@ -22,6 +22,36 @@ Configuration is read from environment variables: `ONEBUSAWAY_BASE_URL` and `ONE
 ```sh
 cp .env.example .env
 set -a; source .env; set +a
+```
+
+The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GOBUSGO_HTTP_PORT`. Unset, they default to `127.0.0.1` and `4000`. A value that is not valid stops the application at startup.
+
+## Running the server
+
+```sh
+mix phx.server
+```
+
+`GET /health` answers `200` with `{"status": "ok"}` while the server is running.
+
+```sh
+curl -i http://127.0.0.1:4000/health
+```
+
+Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served as `application/problem+json` with `type`, `title`, `status`, and, where the error has a written explanation, `detail`:
+
+```sh
+curl -i http://127.0.0.1:4000/nope
+```
+
+```json
+{"detail":"No route matches GET /nope.","status":404,"title":"Not Found","type":"about:blank"}
+```
+
+To listen elsewhere, set the variables for the command:
+
+```sh
+GOBUSGO_HTTP_HOST=0.0.0.0 GOBUSGO_HTTP_PORT=8080 mix phx.server
 ```
 
 ## Usage

@@ -214,10 +214,11 @@ The sections above are the generic engineering style guide. This section holds c
 
 ## Purpose and source layout
 
-Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, the CloudEvents encoding, the generic publisher contract, the agency processor that publishes the records of one stored response, and the reconciliation function that publishes "response stored" events again exist. The publisher has no backend yet, and the supervision tree in `lib/gobusgo/application.ex` has no children, so nothing calls the recorder, the processor, or reconciliation, and nothing reaches Kafka.
+Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, the CloudEvents encoding, the generic publisher contract, the agency processor that publishes the records of one stored response, the reconciliation function that publishes "response stored" events again, and a Phoenix HTTP server with a health endpoint exist. The publisher has no backend yet, and the HTTP endpoint is the only child of the supervision tree in `lib/gobusgo/application.ex`, so nothing calls the recorder, the processor, or reconciliation, and nothing reaches Kafka.
 
-- `lib/gobusgo/application.ex` is the OTP application entry point.
+- `lib/gobusgo/application.ex` is the OTP application entry point. It validates the HTTP listener settings and starts the endpoint with them.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
+- `lib/gobusgo_web/` holds the HTTP server: the Phoenix endpoint, the router, the controllers, and `GobusgoWeb.ErrorJSON`, the body of every error response.
 - `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response and its "response stored" event, the recorder, the agency processor with its records module, and reconciliation with its time range module. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
 - `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/schema.ex` checks decoded data against a schema and returns the first mismatch as a value; `lib/gobusgo/assert.ex` raises on it.
@@ -228,7 +229,7 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
 - `lib/gobusgo/local_file/` holds what the local file backends share.
 - `lib/gobusgo/publisher.ex` is the backend-neutral contract and entry point for publishing records to topics. It has no backend in the repository.
-- `config/config.exs` selects the writer and reader backends and gives both one base directory. It selects no publisher backend.
+- `config/config.exs` selects the writer and reader backends and gives both one base directory, and configures the HTTP endpoint. It selects no publisher backend. `config/runtime.exs` reads the environment variables.
 - `test/` mirrors `lib/`.
 
 ## Toolchain and commands
@@ -241,7 +242,7 @@ mix format --check-formatted
 mix test
 ```
 
-`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req and, for tests only, Plug; adding one needs the justification the style guide requires.
+`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Bandit, and Plug; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
 
 ## Issue branches
 
@@ -273,15 +274,26 @@ Pushing and other outward-facing actions still need the user's go-ahead.
 
 TODO items live in Linear. Record follow-up work as a comment on the relevant issue, or as a new issue when it stands alone. Code, comments, documentation, and commit messages carry no `TODO`, `FIXME`, or similar markers.
 
+## HTTP server
+
+Phoenix serves the HTTP API on Bandit; GOB-17 records the choice and its rationale. `mix phx.server` starts it on `GOBUSGO_HTTP_HOST` and `GOBUSGO_HTTP_PORT`, which default to `127.0.0.1` and `4000`.
+
+- **Routes.** `GET /health` answers `{"status": "ok"}` and is not logged. New API routes go under `/api`.
+- **Errors.** Every error response is an RFC 9457 problem details object, served as `application/problem+json`, with `type` (`about:blank`), `title`, and `status`. `detail` appears only for an error whose explanation `GobusgoWeb.ErrorJSON` writes itself, so the message of an unexpected error never reaches a client.
+- **Plugs that can raise go in a router pipeline, never in the endpoint.** The endpoint registers the callback that sets the problem media type, and only an error raised inside the router reaches the error renderer with that callback.
+- **Tests** send requests through the endpoint with `Phoenix.ConnTest`; no socket is opened.
+
+The endpoint has no session, no signing secret, and no HTML layer. Those arrive with the LiveView front end.
+
 ## Credentials and configuration
 
-Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`) without values. Load them into the shell with:
+Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`); the OneBusAway ones carry placeholder values. Load them into the shell with:
 
 ```sh
 set -a; source .env; set +a
 ```
 
-Never commit secrets, and never put a key in code, tests, logs, documentation, or error output. `.env.example` carries names only. The OneBusAway key travels in a query string, so the integration's AGENTS.md rules on redacting it apply to every HTTP client.
+Never commit secrets, and never put a key in code, tests, logs, documentation, or error output. `.env.example` carries placeholders and non-secret defaults, never a real credential. The OneBusAway key travels in a query string, so the integration's AGENTS.md rules on redacting it apply to every HTTP client.
 
 ## Integration reference
 
@@ -298,7 +310,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the state topic the processor publishes to is compacted, and the manifest record completes the fetch.
 - **Messages.** Every Kafka message is a CloudEvent 1.0 in structured mode, with its version in `type`. A dead-letter record keeps its key and value untouched and describes the failure in Kafka headers.
 - **Failures.** A failed event is retried in place for about two seconds when the processor classes the failure as transient, then dead-lettered with the processor's error code, and the next event for the dataset brings readers up to date. Reconciliation runs on demand, never on a schedule.
-- **Reads.** The REST API reads in-application views: in-memory tables kept current from the state topics. A view applies a record only when its fetch time is the same as or later than the one it holds.
+- **Reads.** The REST API and a LiveView front end read in-application views: in-memory tables kept current from the state topics. A view applies a record only when its fetch time is the same as or later than the one it holds.
 - **Libraries.** BroadwayKafka consumes and brod produces, as the backend of the publisher contract. Building them needs CMake and a C compiler.
 - **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
