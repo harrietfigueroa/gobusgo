@@ -10,12 +10,19 @@ defmodule GobusgoWeb.Router do
   import Phoenix.Controller, only: [accepts: 2]
 
   pipeline :api do
-    plug(:accepts, ["json"])
+    plug :accepts, ["json"]
   end
 
   scope "/", GobusgoWeb do
-    pipe_through(:api)
+    pipe_through :api
 
-    get("/health", HealthController, :show)
+    get "/health", HealthController, :show
+  end
+
+  scope "/api", GobusgoWeb do
+    pipe_through :api
+
+    get "/agencies", AgencyController, :index
+    get "/agencies/:id", AgencyController, :show
   end
 end

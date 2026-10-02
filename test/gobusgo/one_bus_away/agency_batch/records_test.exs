@@ -137,4 +137,94 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.RecordsTest do
       end
     end
   end
+
+  describe "decode/1" do
+    defp rewritten(record, change) do
+      record.value |> JSON.decode!() |> change.() |> JSON.encode!()
+    end
+
+    test "returns the agency, the fetch time, and the request identifier of an agency record" do
+      %{agencies: [record]} = Records.build(parsed([agency("1", "Metro Transit")]))
+
+      assert Records.decode(record.value) ==
+               {:ok,
+                {:agency,
+                 %{
+                   request_id: @request_id,
+                   fetched_at: ~U[2026-10-02 03:15:00Z],
+                   agency: %{
+                     "id" => "1",
+                     "name" => "Metro Transit",
+                     "url" => "https://1.example.test",
+                     "timezone" => "America/Los_Angeles",
+                     "coverage" => %{
+                       "lat" => 47.5,
+                       "lon" => -122.25,
+                       "latSpan" => 0.5,
+                       "lonSpan" => 0.75
+                     }
+                   }
+                 }}}
+    end
+
+    test "returns the membership and the provenance of a manifest record" do
+      %{manifest: record} =
+        Records.build(parsed([agency("40", "Regional Transit"), agency("1", "Metro Transit")]))
+
+      assert Records.decode(record.value) ==
+               {:ok,
+                {:manifest,
+                 %{
+                   request_id: @request_id,
+                   fetched_at: ~U[2026-10-02 03:15:00Z],
+                   agency_ids: ["1", "40"],
+                   data_sha256: @data_sha256,
+                   destination: @destination
+                 }}}
+    end
+
+    test "drops agency fields it does not know" do
+      %{agencies: [record]} = Records.build(parsed([agency("1", "Metro Transit")]))
+      value = rewritten(record, &put_in(&1, ["data", "agency", "phone"], "555"))
+
+      assert {:ok, {:agency, %{agency: agency}}} = Records.decode(value)
+      refute is_map_key(agency, "phone")
+    end
+
+    test "returns invalid_json for a value that is not JSON" do
+      assert Records.decode("{not json") == {:error, :invalid_json}
+    end
+
+    test "returns unsupported_type for an event of another type" do
+      %{manifest: record} = Records.build(parsed([]))
+      value = rewritten(record, &Map.put(&1, "type", "gobusgo.agency.fetch.completed.v2"))
+
+      assert Records.decode(value) == {:error, :unsupported_type}
+    end
+
+    for {description, change} <- [
+          {"a value that is not a CloudEvent", quote(do: &Map.delete(&1, "specversion"))},
+          {"an agency without a name",
+           quote(do: &(pop_in(&1, ["data", "agency", "name"]) |> elem(1)))},
+          {"an agency with an empty identifier",
+           quote(do: &put_in(&1, ["data", "agency", "id"], ""))},
+          {"a fetch time that is not a time",
+           quote(do: &put_in(&1, ["data", "fetchedAt"], "yesterday"))},
+          {"a request identifier that is not a UUID version 7",
+           quote(do: &put_in(&1, ["data", "requestId"], "request"))}
+        ] do
+      test "returns schema_mismatch for #{description}" do
+        %{agencies: [record]} = Records.build(parsed([agency("1", "Metro Transit")]))
+
+        assert Records.decode(rewritten(record, unquote(change))) == {:error, :schema_mismatch}
+      end
+    end
+
+    test "returns schema_mismatch for a manifest whose agency identifiers are not strings" do
+      %{manifest: record} = Records.build(parsed([agency("1", "Metro Transit")]))
+      value = rewritten(record, &put_in(&1, ["data", "agencyIds"], [1]))
+
+      assert Records.decode(value) == {:error, :schema_mismatch}
+    end
+  end
 end

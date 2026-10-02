@@ -20,10 +20,10 @@ defmodule GobusgoWeb.Endpoint do
   # problem_content_type/2 registers; an error raised by a plug of this
   # module reaches the renderer with the connection as it arrived.
   # deps/phoenix/lib/phoenix/endpoint.ex, __before_compile__/1 — checked 2026-10-02
-  plug(:problem_content_type)
-  plug(Plug.RequestId)
-  plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []})
-  plug(GobusgoWeb.Router)
+  plug :problem_content_type
+  plug Plug.RequestId
+  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
+  plug GobusgoWeb.Router
 
   @doc "The level a request is logged at, or `false` for a request that is not logged."
   @spec log_level(Plug.Conn.t()) :: Logger.level() | false

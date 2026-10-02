@@ -24,15 +24,27 @@ defmodule GobusgoWeb.ErrorJSON do
           %{String.t() => term()}
   def render(template, %{status: status, reason: reason})
       when is_binary(template) and is_integer(status) do
-    problem = %{
+    case detail(reason) do
+      nil -> problem(%{status: status})
+      detail -> problem(%{status: status, detail: detail})
+    end
+  end
+
+  @doc """
+  Returns the problem details for `status`, with `detail` when one is given.
+  """
+  @spec problem(%{required(:status) => pos_integer(), optional(:detail) => String.t()}) ::
+          %{String.t() => term()}
+  def problem(%{status: status} = problem) when is_integer(status) do
+    details = %{
       "type" => @type_default,
       "title" => Plug.Conn.Status.reason_phrase(status),
       "status" => status
     }
 
-    case detail(reason) do
-      nil -> problem
-      detail -> Map.put(problem, "detail", detail)
+    case problem do
+      %{detail: detail} when is_binary(detail) -> Map.put(details, "detail", detail)
+      _no_detail -> details
     end
   end
 

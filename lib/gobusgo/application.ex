@@ -3,6 +3,7 @@ defmodule Gobusgo.Application do
   use Application
 
   alias Gobusgo.Config
+  alias Gobusgo.OneBusAway.AgencyView
 
   @restart_count_max 3
   @restart_window_seconds 5
@@ -11,7 +12,10 @@ defmodule Gobusgo.Application do
   def start(_type, _args) do
     case Config.http() do
       {:ok, %{ip: ip, port: port}} ->
-        children = [{GobusgoWeb.Endpoint, http: [ip: ip, port: port]}]
+        children = [
+          {AgencyView, name: AgencyView},
+          {GobusgoWeb.Endpoint, http: [ip: ip, port: port]}
+        ]
 
         Supervisor.start_link(children,
           strategy: :one_for_one,

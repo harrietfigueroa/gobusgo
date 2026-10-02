@@ -12,6 +12,15 @@ config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
 
 config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir
 
+# Records go straight to the views of the running application.
+config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
+
+config :gobusgo, Gobusgo.Publisher.InProcess,
+  subscribers: %{
+    "oba.agencies-with-coverage.state" =>
+      {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]}
+  }
+
 config :phoenix, :json_library, JSON
 
 config :gobusgo, GobusgoWeb.Endpoint,

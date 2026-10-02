@@ -54,6 +54,64 @@ To listen elsewhere, set the variables for the command:
 GOBUSGO_HTTP_HOST=0.0.0.0 GOBUSGO_HTTP_PORT=8080 mix phx.server
 ```
 
+### Agency endpoints
+
+| Request | Response |
+| --- | --- |
+| `GET /api/agencies` | `200` with every agency of the latest processed fetch, sorted by identifier |
+| `GET /api/agencies/:id` | `200` with one agency, or `404` problem details when the fetch holds no such agency |
+
+Both answer `503` problem details with a `Retry-After` header until a fetch has been processed. A response body holds `data` and `meta`:
+
+```json
+{
+  "data": [
+    {
+      "id": "1",
+      "name": "Metro Transit",
+      "url": "https://metro.example.test",
+      "timezone": "America/Los_Angeles",
+      "coverage": { "lat": 47.53009, "lon": -122.1462285, "latSpan": 0.681946, "lonSpan": 0.720787 }
+    }
+  ],
+  "meta": { "count": 1, "fetchedAt": "2026-10-02T03:15:00Z", "requestId": "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10" }
+}
+```
+
+`GET /api/agencies/:id` returns the one agency as `data`, and its `meta` holds `fetchedAt` and `requestId`. Every agency in a response comes from the fetch `meta` names.
+
+The agencies are held in memory and start empty. To see data without an API key, start the server in a shell with `iex -S mix phx.server` and process the test fixture as a stored response:
+
+```elixir
+envelope =
+  "test/fixtures/one_bus_away/agencies_with_coverage.json" |> File.read!() |> JSON.decode!()
+
+response = %{
+  agencies: [],
+  envelope: envelope,
+  fetched_at: DateTime.utc_now(),
+  host: "oba.example.test",
+  http_status: 200,
+  method: "GET"
+}
+
+stored =
+  Gobusgo.OneBusAway.RawAgencyResponse.build(%{
+    response: response,
+    request_id: Gobusgo.RequestId.generate()
+  })
+
+:ok = Gobusgo.Writer.write(Map.take(stored, [:destination, :content]), [])
+{:ok, _result} = Gobusgo.OneBusAway.AgencyBatch.process(stored.destination, [])
+```
+
+```sh
+curl http://127.0.0.1:4000/api/agencies
+curl http://127.0.0.1:4000/api/agencies/40
+```
+
+With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live response, and its `destination` goes to `AgencyBatch.process/2` the same way.
+
 ## Usage
 
 `Gobusgo.OneBusAway.Agencies.fetch/2` requests agency discovery (`agencies-with-coverage`) and returns each agency with its coverage area, or an error value. It writes nothing to disk. With the environment variables exported, run it in `iex -S mix`:
@@ -74,15 +132,13 @@ The module documentation lists every error value.
 recorded.destination
 ```
 
-`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range. Neither needs an API key. The publisher has no backend in the repository yet, so both run only with a backend passed in `:publish_options`, as the tests do.
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range. Neither needs an API key. The configured publisher backend delivers records inside the running application: agency and manifest records go to the in-memory view the REST API reads. It has no subscriber for "response stored" events, so reconciliation needs a backend passed in `:publish_options`, as its tests do.
 
 ```elixir
-publish_options = [backend: MyPublisher]
-
-{:ok, result} =
-  Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, publish_options: publish_options)
-
+{:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, [])
 result.agency_count
+
+publish_options = [backend: MyPublisher]
 
 request = %{
   dataset: "oba/agencies-with-coverage",

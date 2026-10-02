@@ -1,5 +1,5 @@
 defmodule Gobusgo.ApplicationTest do
-  # Verifies the application boots: its supervisor and the HTTP endpoint the
+  # Verifies the application boots: its supervisor and the children the
   # supervisor starts are alive.
   use ExUnit.Case, async: true
 
@@ -7,10 +7,10 @@ defmodule Gobusgo.ApplicationTest do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
 
-  test "the supervisor runs the HTTP endpoint" do
-    assert [{GobusgoWeb.Endpoint, pid, :supervisor, _modules}] =
-             Supervisor.which_children(Gobusgo.Supervisor)
+  test "the supervisor runs the agency view and the HTTP endpoint" do
+    children = Supervisor.which_children(Gobusgo.Supervisor)
 
-    assert Process.alive?(pid)
+    assert Enum.sort(for {id, pid, _type, _modules} <- children, is_pid(pid), do: id) ==
+             [Gobusgo.OneBusAway.AgencyView, GobusgoWeb.Endpoint]
   end
 end

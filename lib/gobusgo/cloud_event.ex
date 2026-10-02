@@ -31,6 +31,7 @@ defmodule Gobusgo.CloudEvent do
   alias Gobusgo.Assert
   alias Gobusgo.CanonicalJson
   alias Gobusgo.Publisher
+  alias Gobusgo.Schema
 
   @type t :: %{
           id: String.t(),
@@ -54,6 +55,25 @@ defmodule Gobusgo.CloudEvent do
   # https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/bindings/kafka-protocol-binding.md — checked 2026-10-02
   @content_type_header "content-type"
   @content_type "application/cloudevents+json"
+
+  @document_schema {:map,
+                    %{
+                      "specversion" => {:literal, @spec_version},
+                      "id" => :string,
+                      "source" => :string,
+                      "type" => :string,
+                      "time" => :string,
+                      "subject" => :string,
+                      "datacontenttype" => {:literal, @data_content_type},
+                      "partitionkey" => :string,
+                      "data" => {:map, %{}}
+                    }}
+
+  @typedoc """
+    * `:invalid_json` — the document is not JSON.
+    * `:schema_mismatch` — the document is not an event `encode/1` produces.
+  """
+  @type decode_error :: :invalid_json | :schema_mismatch
 
   @doc """
   Returns the `type` for `name`, dot-separated words such as
@@ -124,6 +144,39 @@ defmodule Gobusgo.CloudEvent do
       value: encode(event),
       headers: [{@content_type_header, @content_type}]
     }
+  end
+
+  @doc """
+  Returns the event `document` holds, a structured-mode JSON document as
+  `encode/1` produces it. Attributes outside the event are ignored. The
+  first rule the document breaks returns as a value.
+  """
+  @spec decode(binary()) :: {:ok, t()} | {:error, decode_error()}
+  def decode(document) when is_binary(document) do
+    with {:ok, decoded} <- decode_json(document),
+         nil <- Schema.mismatch(decoded, @document_schema),
+         {:ok, time, 0} <- DateTime.from_iso8601(decoded["time"]) do
+      {:ok,
+       %{
+         id: decoded["id"],
+         source: decoded["source"],
+         type: decoded["type"],
+         time: time,
+         subject: decoded["subject"],
+         partition_key: decoded["partitionkey"],
+         data: decoded["data"]
+       }}
+    else
+      {:error, :invalid_json} -> {:error, :invalid_json}
+      _mismatch -> {:error, :schema_mismatch}
+    end
+  end
+
+  defp decode_json(document) do
+    case JSON.decode(document) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, _reason} -> {:error, :invalid_json}
+    end
   end
 
   defp assert_text(value, name) do

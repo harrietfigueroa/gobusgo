@@ -214,12 +214,12 @@ The sections above are the generic engineering style guide. This section holds c
 
 ## Purpose and source layout
 
-Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, the CloudEvents encoding, the generic publisher contract, the agency processor that publishes the records of one stored response, the reconciliation function that publishes "response stored" events again, and a Phoenix HTTP server with a health endpoint exist. The publisher has no backend yet, and the HTTP endpoint is the only child of the supervision tree in `lib/gobusgo/application.ex`, so nothing calls the recorder, the processor, or reconciliation, and nothing reaches Kafka.
+Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, the CloudEvents encoding, the generic publisher contract, the agency processor that publishes the records of one stored response, the reconciliation function that publishes "response stored" events again, the in-memory agency view, and a Phoenix HTTP server with a health endpoint and agency endpoints exist. The publisher's only backend delivers records inside the application, and the supervision tree in `lib/gobusgo/application.ex` holds the agency view and the HTTP endpoint, so nothing calls the recorder, the processor, or reconciliation on a schedule, and nothing reaches Kafka.
 
 - `lib/gobusgo/application.ex` is the OTP application entry point. It validates the HTTP listener settings and starts the endpoint with them.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
 - `lib/gobusgo_web/` holds the HTTP server: the Phoenix endpoint, the router, the controllers, and `GobusgoWeb.ErrorJSON`, the body of every error response.
-- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response and its "response stored" event, the recorder, the agency processor with its records module, and reconciliation with its time range module. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
+- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response and its "response stored" event, the recorder, the agency processor with its records module, the agency view with its state module, and reconciliation with its time range module. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
 - `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/schema.ex` checks decoded data against a schema and returns the first mismatch as a value; `lib/gobusgo/assert.ex` raises on it.
 - `lib/gobusgo/canonical_json.ex` encodes compact JSON with sorted keys, the encoding of every stored file and every published event.
@@ -228,8 +228,8 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/writer.ex` is the backend-neutral write contract and entry point; `lib/gobusgo/writer/local_file.ex` is its local file backend.
 - `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
 - `lib/gobusgo/local_file/` holds what the local file backends share.
-- `lib/gobusgo/publisher.ex` is the backend-neutral contract and entry point for publishing records to topics. It has no backend in the repository.
-- `config/config.exs` selects the writer and reader backends and gives both one base directory, and configures the HTTP endpoint. It selects no publisher backend. `config/runtime.exs` reads the environment variables.
+- `lib/gobusgo/publisher.ex` is the backend-neutral contract and entry point for publishing records to topics; `lib/gobusgo/publisher/in_process.ex` is its in-process backend, which calls a subscriber per topic and stores nothing.
+- `config/config.exs` selects the writer, reader, and publisher backends, gives the file backends one base directory, names the publisher's subscribers, and configures the HTTP endpoint. `config/runtime.exs` reads the environment variables.
 - `test/` mirrors `lib/`.
 
 ## Toolchain and commands
@@ -278,7 +278,8 @@ TODO items live in Linear. Record follow-up work as a comment on the relevant is
 
 Phoenix serves the HTTP API on Bandit; GOB-17 records the choice and its rationale. `mix phx.server` starts it on `GOBUSGO_HTTP_HOST` and `GOBUSGO_HTTP_PORT`, which default to `127.0.0.1` and `4000`.
 
-- **Routes.** `GET /health` answers `{"status": "ok"}` and is not logged. New API routes go under `/api`.
+- **Routes.** `GET /health` answers `{"status": "ok"}` and is not logged. API routes go under `/api`: `GET /api/agencies` and `GET /api/agencies/:id` serve the current fetch of the agency view.
+- **Success bodies** hold `data` and `meta`. `meta` names the fetch the data comes from (`fetchedAt`, `requestId`), and a collection adds `count`. A route whose view has no current fetch answers `503` problem details with `Retry-After`, never an empty `200`.
 - **Errors.** Every error response is an RFC 9457 problem details object, served as `application/problem+json`, with `type` (`about:blank`), `title`, and `status`. `detail` appears only for an error whose explanation `GobusgoWeb.ErrorJSON` writes itself, so the message of an unexpected error never reaches a client.
 - **Plugs that can raise go in a router pipeline, never in the endpoint.** The endpoint registers the callback that sets the problem media type, and only an error raised inside the router reaches the error renderer with that callback.
 - **Tests** send requests through the endpoint with `Phoenix.ConnTest`; no socket is opened.
@@ -301,7 +302,7 @@ The OneBusAway API reference is https://developer.onebusaway.org/api/where/metho
 
 ## Data flow design
 
-Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. `Gobusgo.OneBusAway.AgencyBatch.process/2` reads the stored response at one destination through the generic reader and publishes it through the generic publisher: one record per agency, keyed `agency/<agency id>`, then one manifest record keyed `manifest`, all to the topic `oba.agencies-with-coverage.state`. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response of a dataset fetched inside a time range. Every published record holds a CloudEvent 1.0 in structured mode. The publisher has no backend, so both functions run only against a test double. An S3 mock is not part of the design.
+Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. `Gobusgo.OneBusAway.AgencyBatch.process/2` reads the stored response at one destination through the generic reader and publishes it through the generic publisher: one record per agency, keyed `agency/<agency id>`, then one manifest record keyed `manifest`, all to the topic `oba.agencies-with-coverage.state`. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response of a dataset fetched inside a time range. Every published record holds a CloudEvent 1.0 in structured mode. `Gobusgo.OneBusAway.AgencyView` holds the agencies of the latest complete fetch in memory: it holds a fetch's agency records until its manifest arrives, switches to the fetch in one step, and ignores a fetch older than the current one. The REST API reads the view. The configured publisher backend is in-process and hands the state topic's records straight to the view, so a processed response reaches the REST API with no broker; it has no subscriber for "response stored" events. The view starts empty and holds nothing across a restart. An S3 mock is not part of the design.
 
 Intended, with no process or service in the repository yet. The decisions are recorded in Linear; GOB-19 holds the trigger definition and names the issues that hold the rest.
 
@@ -310,7 +311,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the state topic the processor publishes to is compacted, and the manifest record completes the fetch.
 - **Messages.** Every Kafka message is a CloudEvent 1.0 in structured mode, with its version in `type`. A dead-letter record keeps its key and value untouched and describes the failure in Kafka headers.
 - **Failures.** A failed event is retried in place for about two seconds when the processor classes the failure as transient, then dead-lettered with the processor's error code, and the next event for the dataset brings readers up to date. Reconciliation runs on demand, never on a schedule.
-- **Reads.** The REST API and a LiveView front end read in-application views: in-memory tables kept current from the state topics. A view applies a record only when its fetch time is the same as or later than the one it holds.
+- **Reads.** A subscriber per state topic feeds the in-application views from Kafka, from the beginning of the topic on every start, in place of the in-process publisher backend. A LiveView front end reads the views beside the REST API.
 - **Libraries.** BroadwayKafka consumes and brod produces, as the backend of the publisher contract. Building them needs CMake and a C compiler.
 - **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
