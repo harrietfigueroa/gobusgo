@@ -1,0 +1,19 @@
+# Mix build artifacts
+/_build/
+/deps/
+/cover/
+/doc/
+erl_crash.dump
+*.ez
+gobusgo-*.tar
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+/config/*.secret.exs
+*.secret.exs
+
+# Editor and OS
+.elixir_ls/
+.DS_Store
