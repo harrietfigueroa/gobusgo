@@ -10,9 +10,13 @@ defmodule Gobusgo.OneBusAway.AgencyView do
   table and never waits on the process. The table holds the current fetch as
   one entry, so a reader sees a whole fetch or the one before it.
 
-  A value that is not a record is skipped. Each call logs at most twice:
-  `info` when the current fetch changed, `warning` with the count of skipped
-  values.
+  When the current fetch changes, the view announces it once to the
+  processes that called `subscribe/1`, as `{:agency_view_switched, view}`,
+  after the table holds the new fetch.
+
+  A value that is not a record is skipped. Each call logs `info` when the
+  current fetch changed and `warning` with the count of skipped values, and
+  `warning` when an announcement could not be sent.
 
   A view starts empty. It holds nothing across a restart.
   """
@@ -29,12 +33,28 @@ defmodule Gobusgo.OneBusAway.AgencyView do
   @call_timeout_ms 5_000
   @current_key :current
 
-  @doc "Starts a view registered under `options[:name]`."
-  @spec start_link(name: atom()) :: GenServer.on_start()
+  @doc """
+  Starts a view registered under `options[:name]` that announces its
+  switches on the publish-subscribe server `options[:pubsub]`.
+  """
+  @spec start_link(name: atom(), pubsub: atom()) :: GenServer.on_start()
   def start_link(options) when is_list(options) do
+    options = Keyword.validate!(options, [:name, :pubsub])
     name = Keyword.fetch!(options, :name)
+    pubsub = Keyword.fetch!(options, :pubsub)
     Assert.condition(is_atom(name), "name must be an atom, got: #{inspect(name)}")
-    GenServer.start_link(__MODULE__, name, name: name)
+    Assert.condition(is_atom(pubsub), "pubsub must be an atom, got: #{inspect(pubsub)}")
+    GenServer.start_link(__MODULE__, %{name: name, pubsub: pubsub}, name: name)
+  end
+
+  @doc """
+  Subscribes the calling process to the switches of `view` on `pubsub`, the
+  server the view was started with. Each switch arrives as
+  `{:agency_view_switched, view}`.
+  """
+  @spec subscribe(%{view: atom(), pubsub: atom()}) :: :ok
+  def subscribe(%{view: view, pubsub: pubsub}) when is_atom(view) and is_atom(pubsub) do
+    :ok = Phoenix.PubSub.subscribe(pubsub, topic(view))
   end
 
   @doc """
@@ -74,9 +94,9 @@ defmodule Gobusgo.OneBusAway.AgencyView do
   end
 
   @impl GenServer
-  def init(name) do
+  def init(%{name: name, pubsub: pubsub}) do
     table = :ets.new(name, [:named_table, :protected, :set, read_concurrency: true])
-    {:ok, %{table: table, state: State.new()}}
+    {:ok, %{name: name, pubsub: pubsub, table: table, state: State.new()}}
   end
 
   @impl GenServer
@@ -92,6 +112,8 @@ defmodule Gobusgo.OneBusAway.AgencyView do
         fetched_at: DateTime.to_iso8601(current.fetched_at, :extended),
         agency_count: length(current.agency_ids)
       )
+
+      announce(server)
     end
 
     if counts.invalid >= 1 do
@@ -100,6 +122,18 @@ defmodule Gobusgo.OneBusAway.AgencyView do
 
     {:reply, :ok, %{server | state: state}}
   end
+
+  defp announce(%{name: name, pubsub: pubsub}) do
+    case Phoenix.PubSub.broadcast(pubsub, topic(name), {:agency_view_switched, name}) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Agency view switch not announced", reason: inspect(reason))
+    end
+  end
+
+  defp topic(view), do: "agency_view:" <> Atom.to_string(view)
 
   defp apply_value(value, {state, counts}) do
     case Records.decode(value) do

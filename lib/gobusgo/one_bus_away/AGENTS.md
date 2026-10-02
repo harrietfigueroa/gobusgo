@@ -181,16 +181,17 @@ The processor logs one line per call: `info` `Agency batch published` with `dest
 
 ## Agency view
 
-`Gobusgo.OneBusAway.AgencyView` holds the agencies of the latest complete fetch in memory, and the REST API reads it. A view is a process registered under a name and a table of the same name; the application starts one named `Gobusgo.OneBusAway.AgencyView`. `Gobusgo.OneBusAway.AgencyView.State` holds the rules and is pure.
+`Gobusgo.OneBusAway.AgencyView` holds the agencies of the latest complete fetch in memory, and the REST API and the agency test page read it. A view is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.AgencyView` on `Gobusgo.PubSub`. `Gobusgo.OneBusAway.AgencyView.State` holds the rules and is pure.
 
 - `apply_records/2` takes record values, the bytes `AgencyBatch.Records.build/1` produces, and applies them in order. `AgencyBatch.Records.decode/1` validates each one; a value it rejects is skipped and counted.
 - A fetch is complete when its manifest and every agency the manifest names have been applied, in either order. The view switches to a complete fetch in one step, so a reader sees a whole fetch or the one before it.
 - A record is ignored when its fetch is the current one or is older than the current one. A fetch with the same fetch time and another request identifier replaces the current one.
 - At most 8 incomplete fetches are held, the oldest forgotten first, each with at most 1,000 agencies. A switch forgets every held fetch older than the new current one.
+- When the current fetch changes, the view announces it once, after the table holds the new fetch, as `{:agency_view_switched, view}` to every process that called `subscribe/1`. A fetch that is held or ignored announces nothing.
 - `current/1` reads the table without calling the process and returns `nil` before a fetch is complete and while the view is not running.
 - The view starts empty and holds nothing across a restart.
 
-The view logs at most twice per `apply_records/2` call: `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; and `warning` `Agency view skipped invalid records` with `invalid_count`.
+Per `apply_records/2` call the view logs `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; `warning` `Agency view skipped invalid records` with `invalid_count`; and `warning` `Agency view switch not announced` with `reason` when the announcement could not be sent.
 
 The configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It has no subscriber for `oba.agencies-with-coverage.response-stored`, so publishing a "response stored" event through it returns `{:error, :unknown_topic}`.
 
