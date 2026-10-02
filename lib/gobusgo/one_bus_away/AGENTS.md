@@ -101,6 +101,46 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 `Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. The client sets `retry: :transient` with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
 
+`Gobusgo.OneBusAway.Agencies.fetch_response/2` makes the same request and returns the agencies together with the whole decoded envelope, the HTTP status, the method, the host, and the fetch time. The key is replaced wherever the server echoes it in the envelope, and the host is the host name alone, so no returned value carries a credential or a URL. Its `:clock` option supplies the fetch time.
+
+## Stored raw responses
+
+`Gobusgo.OneBusAway.AgencyRecorder.record/2` calls `fetch_response/2` and passes the result through `Gobusgo.Writer.write/2`. It names no backend; application configuration selects one. `Gobusgo.OneBusAway.RawAgencyResponse.build/1` is the pure function that turns a response and a request identifier into the logical destination and the content.
+
+What is stored: only an HTTP 200 response whose envelope `code` is 200 and whose `data` passes the requester's schema. Every other outcome returns `{:error, {:fetch, reason}}` or raises, and stores nothing. A writer failure returns `{:error, {:write, reason}}`. Writes are create-only, so every response is kept and none is replaced.
+
+Logical destination:
+
+```
+raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json
+```
+
+| Part | Meaning |
+| --- | --- |
+| `dt` | UTC date of the fetch time |
+| `fetchedAt` | Fetch time, UTC basic ISO 8601 at second precision (`20261002T031500Z`) |
+| `requestId` | UUID version 7 generated for the request (`Gobusgo.RequestId`) |
+| `dataHash12` | First 12 characters of `meta.dataSha256` |
+
+Content is one JSON object, `{"meta": ..., "body": ...}`, compact, with object keys sorted. `body` is the whole response envelope, re-encoded from the decoded response with no field removed, so the coverage list and the `references` section stay available. `meta`:
+
+| Field | Meaning |
+| --- | --- |
+| `fetchedAt` | Fetch time, UTC extended ISO 8601 at second precision (`2026-10-02T03:15:00Z`); the same instant as in the destination |
+| `host` | Host name of the server, without scheme, port, path, or credentials |
+| `method` | HTTP method, `GET` |
+| `httpStatus` | HTTP status, always `200` |
+| `envelopeVersion` | The envelope's `version` |
+| `envelopeCurrentTime` | The envelope's `currentTime`, milliseconds since the Unix epoch |
+| `dataSha256` | Lowercase hexadecimal SHA-256 of `data`, encoded as compact JSON with sorted keys |
+| `requestId` | The request identifier in the destination |
+
+Retrieval for the batch design: a batch selects the stored responses whose `meta.fetchedAt` falls in a half-open window `[start, end)`. The `dt` partitions narrow the listing, names within a partition sort by fetch time, and `meta.fetchedAt` is authoritative. The hash covers `data` alone because `currentTime` differs on every response; equal hashes mark responses with the same agencies, which the batch flags as duplicates and keeps.
+
+Credentials: the URL is never stored. `RawAgencyResponse.build/1` raises when the destination or `meta` contains `key=`, and the recorder raises when the destination or the content contains the configured key. `body` is exempt from the `key=` check, because it holds text the agencies supply, such as a website link with a `key` parameter of its own.
+
+The recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
+
 ## Methods for future work
 
 Not implemented here. Each link was checked 2026-10-01 from the method index.

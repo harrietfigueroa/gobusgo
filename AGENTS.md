@@ -214,11 +214,12 @@ The sections above are the generic engineering style guide. This section holds c
 
 ## Purpose and source layout
 
-Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, and the OneBusAway integration documentation exist; the supervision tree in `lib/gobusgo/application.ex` has no children yet.
+Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, and the recorder that stores agency responses through the writer exist; the supervision tree in `lib/gobusgo/application.ex` has no children yet, so nothing calls the recorder on a schedule.
 
 - `lib/gobusgo/application.ex` is the OTP application entry point.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
-- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
+- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response, and the recorder. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
+- `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/destination.ex` owns the logical destination and prefix rules that the writer and the reader share.
 - `lib/gobusgo/writer.ex` is the backend-neutral write contract and entry point; `lib/gobusgo/writer/local_file.ex` is its local file backend.
 - `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
@@ -284,9 +285,11 @@ The OneBusAway API reference is https://developer.onebusaway.org/api/where/metho
 
 ## Data flow design
 
-These describe the intended design. Nothing below is implemented, and no code or service for it exists in the repository yet.
+Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. An S3 mock is not part of the design.
 
-- Output goes through a generic writer with a local file backend. An S3 mock is not part of the design.
+Intended, with no code or service in the repository yet:
+
+- A batch reads the stored responses by a half-open window over `meta.fetchedAt`.
 - Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
 ## Open decisions

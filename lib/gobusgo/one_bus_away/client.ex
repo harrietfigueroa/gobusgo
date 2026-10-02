@@ -49,6 +49,18 @@ defmodule Gobusgo.OneBusAway.Client do
     end
   end
 
+  @doc """
+  Returns the host name of the configured server, without scheme, port, path,
+  or user information.
+  """
+  @spec host(settings()) :: String.t()
+  def host(%{base_url: base_url}) when is_binary(base_url) do
+    host = URI.parse(base_url).host
+    Assert.condition(is_binary(host), "base_url must name a host")
+    Assert.condition(host != "", "base_url must name a non-empty host")
+    host
+  end
+
   @doc "Replaces every occurrence of `secret` inside `term` with a placeholder."
   @spec scrub(term(), String.t()) :: term()
   def scrub(term, secret) when is_binary(secret) and secret != "" do
