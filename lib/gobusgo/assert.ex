@@ -36,6 +36,15 @@ defmodule Gobusgo.Assert do
   end
 
   @doc """
+  Raises `AssertionError` for a value that no clause of an exhaustive match
+  accounts for.
+  """
+  @spec unreachable(term()) :: no_return()
+  def unreachable(value) do
+    raise AssertionError, message: "unreachable value: #{inspect(value)}"
+  end
+
+  @doc """
   Returns `value` when it matches `schema`; otherwise raises `AssertionError`
   whose `cause` holds the path and the expected shape of the first mismatch.
   Map schemas require their keys and ignore unknown ones. The message and the

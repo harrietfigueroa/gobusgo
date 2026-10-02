@@ -237,6 +237,17 @@ mix test
 
 Before starting work on an issue, take its branch name from Linear: the "Copy git branch name" value, which `get_issue` returns as `gitBranchName`. Use it as the exact branch name, never one composed from the issue key and title. Create and check out that branch before making changes. When the value cannot be retrieved, ask the user to paste it.
 
+## Naming across implementation levels
+
+Each level names only what it contains or depends on.
+
+- **Contract level** (behaviours, entry points, shared types, error reasons, and their docs): names domain concepts such as logical destination, content, and outcome. It names no storage technology (no file system, directory, path, bucket, object key, POSIX reason, or concrete backend module) and lists none of its implementations.
+- **Implementation level** (a backend module and everything in its namespace): names its own technology and nothing of its siblings. A local-file backend speaks of directories, paths, and POSIX reasons; an S3 backend would speak of buckets, keys, and HTTP statuses. Translation from technology errors to contract outcomes happens here.
+- **Composition level** (application configuration and wiring): the only place that selects and names a concrete backend.
+- **Tests**: contract tests use a test double defined in the test; implementation tests name their backend.
+
+The rule applies to every backend-neutral interface: the writer, the reader, and later ones. Explanations of how a future backend would implement a contract live in Linear, not in the repository.
+
 ## Linear issue workflow
 
 Update the Linear issue status as the work moves, without waiting to be asked:

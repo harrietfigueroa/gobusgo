@@ -18,6 +18,14 @@ defmodule Gobusgo.AssertTest do
     end
   end
 
+  describe "unreachable/1" do
+    test "raises the shared assertion error naming the value" do
+      assert_raise AssertionError, "unreachable value: :surprise", fn ->
+        Assert.unreachable(:surprise)
+      end
+    end
+  end
+
   describe "schema/2" do
     @schema {:map,
              %{

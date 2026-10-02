@@ -17,3 +17,7 @@ gobusgo-*.tar
 # Editor and OS
 .elixir_ls/
 .DS_Store
+
+# Local file writer output
+/data/
+/tmp/
