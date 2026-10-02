@@ -233,6 +233,10 @@ mix test
 
 `mix.exs` also sets `warnings_as_errors` for compilation. The project has no third-party dependencies; adding one needs the justification the style guide requires.
 
+## Issue branches
+
+Before starting work on an issue, take its branch name from Linear: the "Copy git branch name" value, which `get_issue` returns as `gitBranchName`. Use it as the exact branch name, never one composed from the issue key and title. Create and check out that branch before making changes. When the value cannot be retrieved, ask the user to paste it.
+
 ## Linear issue workflow
 
 Update the Linear issue status as the work moves, without waiting to be asked:
