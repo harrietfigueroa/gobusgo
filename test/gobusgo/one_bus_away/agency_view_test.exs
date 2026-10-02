@@ -1,7 +1,8 @@
 defmodule Gobusgo.OneBusAway.AgencyViewTest do
   # Starts a view of its own per test and feeds it the record values
   # AgencyBatch.Records builds, the bytes the processor publishes, then reads
-  # the view back the way a request does.
+  # the view back the way a request does. Announcements travel over the
+  # application's publish-subscribe server, on a topic of the test's own view.
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
@@ -15,7 +16,7 @@ defmodule Gobusgo.OneBusAway.AgencyViewTest do
 
   setup context do
     view = Module.concat(__MODULE__, "View#{context.line}")
-    start_supervised!({AgencyView, name: view})
+    start_supervised!({AgencyView, name: view, pubsub: Gobusgo.PubSub})
     %{view: view}
   end
 
@@ -119,6 +120,35 @@ defmodule Gobusgo.OneBusAway.AgencyViewTest do
       assert log =~ "[warning]"
       assert log =~ "Agency view skipped invalid records"
       assert log =~ "invalid_count=2"
+    end
+  end
+
+  describe "subscribe/1" do
+    test "delivers one announcement when the current fetch changes", %{view: view} do
+      assert AgencyView.subscribe(%{view: view, pubsub: Gobusgo.PubSub}) == :ok
+
+      :ok = AgencyView.apply_records(view, values(records(["1", "40"])))
+
+      assert_received {:agency_view_switched, ^view}
+      refute_received {:agency_view_switched, ^view}
+    end
+
+    test "delivers nothing while a fetch is held", %{view: view} do
+      :ok = AgencyView.subscribe(%{view: view, pubsub: Gobusgo.PubSub})
+      %{agencies: agencies} = records(["1", "40"])
+
+      :ok = AgencyView.apply_records(view, Enum.map(agencies, & &1.value))
+
+      refute_received {:agency_view_switched, _view}
+    end
+
+    test "delivers nothing for the current fetch applied again", %{view: view} do
+      :ok = AgencyView.apply_records(view, values(records(["1"])))
+      :ok = AgencyView.subscribe(%{view: view, pubsub: Gobusgo.PubSub})
+
+      :ok = AgencyView.apply_records(view, values(records(["1"])))
+
+      refute_received {:agency_view_switched, _view}
     end
   end
 end

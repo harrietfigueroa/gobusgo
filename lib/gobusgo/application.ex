@@ -26,7 +26,7 @@ defmodule Gobusgo.Application do
       # supervisor starts before the schedulers and stops after them.
       children = [
         {Phoenix.PubSub, name: Gobusgo.PubSub},
-        {AgencyView, name: AgencyView},
+        {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
         {Task.Supervisor,
          name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
         scheduler_supervisor(source_specs(scheduled)),
