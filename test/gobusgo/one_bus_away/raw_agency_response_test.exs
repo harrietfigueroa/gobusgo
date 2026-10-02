@@ -244,6 +244,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponseTest do
                   destination: stored.destination,
                   fetched_at: ~U[2026-10-02 03:15:00Z],
                   data_sha256: stored.data_sha256,
+                  request_id: @request_id,
                   agencies: [
                     %{
                       id: "1",
@@ -301,6 +302,39 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponseTest do
       changed = rewritten(stored(), &put_in(&1, ["meta", "requestId"], "other/../identifier"))
 
       assert RawAgencyResponse.parse(changed) == {:error, :destination_mismatch}
+    end
+
+    test "returns schema_mismatch for a request identifier that is not a UUID version 7" do
+      stored = stored()
+      renamed = String.replace(stored.destination, @request_id, "request")
+
+      changed =
+        rewritten(
+          %{stored | destination: renamed},
+          &put_in(&1, ["meta", "requestId"], "request")
+        )
+
+      assert RawAgencyResponse.parse(changed) == {:error, :schema_mismatch}
+    end
+
+    for {description, change} <- [
+          {"an agency listed twice", quote(do: &(&1 ++ &1))},
+          {"an agency with an empty identifier",
+           quote(do: fn [entry] -> [%{entry | "agencyId" => ""}] end)}
+        ] do
+      test "returns schema_mismatch for #{description}" do
+        data =
+          @agency_data
+          |> update_in(["list"], unquote(change))
+          |> update_in(["references", "agencies"], fn [reference] ->
+            [reference, %{reference | "id" => ""}]
+          end)
+
+        stored = stored(data)
+
+        assert RawAgencyResponse.parse(Map.take(stored, [:destination, :content])) ==
+                 {:error, :schema_mismatch}
+      end
     end
 
     test "returns destination_mismatch for content stored under another name" do

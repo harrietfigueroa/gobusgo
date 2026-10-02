@@ -214,19 +214,21 @@ The sections above are the generic engineering style guide. This section holds c
 
 ## Purpose and source layout
 
-Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, and the batch processor that publishes one output per window of stored responses exist; the supervision tree in `lib/gobusgo/application.ex` has no children yet, so nothing calls the recorder or the batch processor on a schedule.
+Gobusgo is an Elixir application that reads Puget Sound transit data from the OneBusAway API. The application skeleton, runtime configuration validation, the OneBusAway agency requester, the generic writer and reader with their local file backends, the recorder that stores agency responses through the writer, the CloudEvents encoding, the generic publisher contract, the agency processor that publishes the records of one stored response, and the reconciliation function that publishes "response stored" events again exist. The publisher has no backend yet, and the supervision tree in `lib/gobusgo/application.ex` has no children, so nothing calls the recorder, the processor, or reconciliation, and nothing reaches Kafka.
 
 - `lib/gobusgo/application.ex` is the OTP application entry point.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
-- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response, the recorder, and the agency batch processor with its window and output modules. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
+- `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response and its "response stored" event, the recorder, the agency processor with its records module, and reconciliation with its time range module. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
 - `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/schema.ex` checks decoded data against a schema and returns the first mismatch as a value; `lib/gobusgo/assert.ex` raises on it.
-- `lib/gobusgo/canonical_json.ex` encodes compact JSON with sorted keys, the encoding of every stored and published file.
+- `lib/gobusgo/canonical_json.ex` encodes compact JSON with sorted keys, the encoding of every stored file and every published event.
+- `lib/gobusgo/cloud_event.ex` encodes a CloudEvent 1.0 in structured mode and turns it into a publisher record.
 - `lib/gobusgo/destination.ex` owns the logical destination and prefix rules that the writer and the reader share.
 - `lib/gobusgo/writer.ex` is the backend-neutral write contract and entry point; `lib/gobusgo/writer/local_file.ex` is its local file backend.
 - `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
 - `lib/gobusgo/local_file/` holds what the local file backends share.
-- `config/config.exs` selects the writer and reader backends and gives both one base directory.
+- `lib/gobusgo/publisher.ex` is the backend-neutral contract and entry point for publishing records to topics. It has no backend in the repository.
+- `config/config.exs` selects the writer and reader backends and gives both one base directory. It selects no publisher backend.
 - `test/` mirrors `lib/`.
 
 ## Toolchain and commands
@@ -254,7 +256,7 @@ Each level names only what it contains or depends on.
 - **Composition level** (application configuration and wiring): the only place that selects and names a concrete backend.
 - **Tests**: contract tests use a test double defined in the test; implementation tests name their backend.
 
-The rule applies to every backend-neutral interface: the writer, the reader, and later ones. Explanations of how a future backend would implement a contract live in Linear, not in the repository.
+The rule applies to every backend-neutral interface: the writer, the reader, the publisher, and later ones. Explanations of how a future backend would implement a contract live in Linear, not in the repository.
 
 ## Linear issue workflow
 
@@ -287,17 +289,17 @@ The OneBusAway API reference is https://developer.onebusaway.org/api/where/metho
 
 ## Data flow design
 
-Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. `Gobusgo.OneBusAway.AgencyBatch.process/2` reads the stored responses of a half-open window through the generic reader and publishes one `{agencies, meta}` output per run through the writer. An S3 mock is not part of the design.
+Implemented: output goes through the generic writer with a local file backend, and `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores each successful agency response through it as one `{meta, body}` object. `Gobusgo.OneBusAway.AgencyBatch.process/2` reads the stored response at one destination through the generic reader and publishes it through the generic publisher: one record per agency, keyed `agency/<agency id>`, then one manifest record keyed `manifest`, all to the topic `oba.agencies-with-coverage.state`. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response of a dataset fetched inside a time range. Every published record holds a CloudEvent 1.0 in structured mode. The publisher has no backend, so both functions run only against a test double. An S3 mock is not part of the design.
 
-Intended, with no code or service in the repository yet. The decisions are recorded in Linear; GOB-19 holds the trigger definition and names the issues that hold the rest.
+Intended, with no process or service in the repository yet. The decisions are recorded in Linear; GOB-19 holds the trigger definition and names the issues that hold the rest.
 
 - **Retrieval.** One scheduler process per source calls the recorder at that source's cadence; agency discovery runs once a minute. Every OneBusAway request passes through a request gate that holds the API key to one request per second.
-- **Trigger.** After a raw response is stored, the recorder publishes a "response stored" event to Kafka, and a consumer processes the file that event names. The window-based `AgencyBatch.process/2` above is the form in the repository today; GOB-80 changes it to process the file an event names.
-- **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the processor publishes one record per agency to a compacted state topic, followed by a manifest record that completes the fetch.
+- **Trigger.** After a raw response is stored, the recorder publishes a "response stored" event to Kafka, and a consumer calls `AgencyBatch.process/2` with the destination that event names.
+- **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the state topic the processor publishes to is compacted, and the manifest record completes the fetch.
 - **Messages.** Every Kafka message is a CloudEvent 1.0 in structured mode, with its version in `type`. A dead-letter record keeps its key and value untouched and describes the failure in Kafka headers.
-- **Failures.** A failed event is retried in place for about two seconds, then dead-lettered, and the next event for the dataset brings readers up to date. Reconciliation is an on-demand function that re-publishes events for the raw files of a time range.
+- **Failures.** A failed event is retried in place for about two seconds when the processor classes the failure as transient, then dead-lettered with the processor's error code, and the next event for the dataset brings readers up to date. Reconciliation runs on demand, never on a schedule.
 - **Reads.** The REST API reads in-application views: in-memory tables kept current from the state topics. A view applies a record only when its fetch time is the same as or later than the one it holds.
-- **Libraries.** BroadwayKafka consumes and brod produces, behind one wrapper module. Building them needs CMake and a C compiler.
+- **Libraries.** BroadwayKafka consumes and brod produces, as the backend of the publisher contract. Building them needs CMake and a C compiler.
 - **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
 ## Open decisions
@@ -308,6 +310,7 @@ Intended, with no code or service in the repository yet. The decisions are recor
 - Which aggregates the REST API serves, and therefore which datasets need a history topic.
 - The OneBusAway rate limit; one request per second is an assumption.
 - The writer's interface beyond the local file backend.
+- Tombstone cleanup for agencies that no longer exist; their records stay in the state topic and no manifest names them.
 - A valid OneBusAway API key and confirmation that `https://api.pugetsound.onebusaway.org` is the right server (see the integration's AGENTS.md).
 
 Do not resolve an open decision in code without confirming it with the user, then update this list.

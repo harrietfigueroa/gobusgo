@@ -44,20 +44,26 @@ The module documentation lists every error value.
 recorded.destination
 ```
 
-`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored responses fetched inside a closed time window and publishes one output through `Gobusgo.Writer`, at `processed/oba/agencies/<batchId>_<firstFetchedAt>_<lastFetchedAt>_<processedAt>.json`. It needs no API key and no network. A second run of the same window returns `:already_published` unless `reprocess` is true.
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range. Neither needs an API key. The publisher has no backend in the repository yet, so both run only with a backend passed in `:publish_options`, as the tests do.
 
 ```elixir
+publish_options = [backend: MyPublisher]
+
+{:ok, result} =
+  Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, publish_options: publish_options)
+
+result.agency_count
+
 request = %{
-  window: %{start_at: ~U[2026-10-02 00:00:00Z], end_at: ~U[2026-10-03 00:00:00Z]},
-  trigger_id: Gobusgo.RequestId.generate(),
-  reprocess: false
+  dataset: "oba/agencies-with-coverage",
+  range: %{start_at: ~U[2026-10-02 00:00:00Z], end_at: ~U[2026-10-03 00:00:00Z]}
 }
 
-{:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(request, [])
-{result.outcome, result.destination}
+{:ok, %{published_count: published_count}} =
+  Gobusgo.OneBusAway.Reconciliation.republish(request, publish_options: publish_options)
 ```
 
-The module documentation lists every outcome and error value.
+The module documentation lists every result and error value.
 
 ## Development
 
