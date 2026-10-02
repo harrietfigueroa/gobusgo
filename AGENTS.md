@@ -259,6 +259,10 @@ Update the Linear issue status as the work moves, without waiting to be asked:
 
 Pushing and other outward-facing actions still need the user's go-ahead.
 
+## Deferred work
+
+TODO items live in Linear. Record follow-up work as a comment on the relevant issue, or as a new issue when it stands alone. Code, comments, documentation, and commit messages carry no `TODO`, `FIXME`, or similar markers.
+
 ## Credentials and configuration
 
 Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`) without values. Load them into the shell with:
