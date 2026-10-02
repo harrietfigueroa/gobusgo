@@ -219,6 +219,11 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/application.ex` is the OTP application entry point.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
 - `lib/gobusgo/one_bus_away/` holds the OneBusAway integration. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
+- `lib/gobusgo/destination.ex` owns the logical destination and prefix rules that the writer and the reader share.
+- `lib/gobusgo/writer.ex` is the backend-neutral write contract and entry point; `lib/gobusgo/writer/local_file.ex` is its local file backend.
+- `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
+- `lib/gobusgo/local_file/` holds what the local file backends share.
+- `config/config.exs` selects the writer and reader backends and gives both one base directory.
 - `test/` mirrors `lib/`.
 
 ## Toolchain and commands

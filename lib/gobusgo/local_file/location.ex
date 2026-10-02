@@ -1,8 +1,8 @@
-defmodule Gobusgo.Writer.LocalFile.Location do
+defmodule Gobusgo.LocalFile.Location do
   @moduledoc """
-  Places validated destination segments under the base directory of the local
-  file backend. Pure: nothing here touches the file system, so the symlink
-  walk stays in `Gobusgo.Writer.LocalFile`, which owns the IO.
+  Places validated destination segments under a base directory, for every
+  backend that keeps destinations as local files. Pure: nothing here touches
+  the file system, which is what lets placement be tested without one.
   """
 
   alias Gobusgo.Assert

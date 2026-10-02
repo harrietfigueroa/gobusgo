@@ -47,8 +47,8 @@ defmodule Gobusgo.Writer.LocalFile do
   @behaviour Gobusgo.Writer
 
   alias Gobusgo.Assert
-  alias Gobusgo.Writer.Destination
-  alias Gobusgo.Writer.LocalFile.Location
+  alias Gobusgo.Destination
+  alias Gobusgo.LocalFile.Location
   alias Gobusgo.Writer.LocalFile.PosixError
 
   @content_bytes_max 16 * 1024 * 1024

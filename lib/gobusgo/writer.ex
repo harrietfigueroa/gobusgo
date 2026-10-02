@@ -5,7 +5,7 @@ defmodule Gobusgo.Writer do
 
   Callers use `write/2` and name no backend. A logical destination is a
   relative, `/`-separated name such as `"raw/oba/dt=2026-10-02/response.json"`
-  whose rules are in `Gobusgo.Writer.Destination`; the backend decides where
+  whose rules are in `Gobusgo.Destination`; the backend decides where
   it physically lives.
 
   ## Contract
@@ -33,7 +33,7 @@ defmodule Gobusgo.Writer do
   """
 
   alias Gobusgo.Assert
-  alias Gobusgo.Writer.Destination
+  alias Gobusgo.Destination
 
   @type request :: %{destination: String.t(), content: binary()}
 
@@ -48,7 +48,7 @@ defmodule Gobusgo.Writer do
           | {:invalid_destination, invalid_destination_reason()}
 
   @typedoc """
-  Why a destination is rejected: a logical-name rule from `Gobusgo.Writer.Destination`,
+  Why a destination is rejected: a logical-name rule from `Gobusgo.Destination`,
   or `:redirected` when the backend finds that the destination resolves somewhere
   other than its logical name.
   """

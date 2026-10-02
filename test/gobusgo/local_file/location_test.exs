@@ -1,9 +1,9 @@
-defmodule Gobusgo.Writer.LocalFile.LocationTest do
+defmodule Gobusgo.LocalFile.LocationTest do
   # Verifies placement of validated segments under a base directory as a pure
   # function of the segment list and the base.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.Writer.LocalFile.Location
+  alias Gobusgo.LocalFile.Location
 
   test "joins the segments under the base directory" do
     assert Location.place(["raw", "a.json"], "/var/data") == {:ok, "/var/data/raw/a.json"}
