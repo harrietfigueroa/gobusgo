@@ -30,6 +30,7 @@ defmodule GobusgoWeb.Router do
     pipe_through :browser
 
     live "/", HomeLive
+    live "/agencies", AgencyLive
   end
 
   scope "/", GobusgoWeb do

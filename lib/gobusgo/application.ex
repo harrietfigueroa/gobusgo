@@ -17,7 +17,7 @@ defmodule Gobusgo.Application do
          {:ok, configured_secret} <- Config.secret_key_base() do
       children = [
         {Phoenix.PubSub, name: Gobusgo.PubSub},
-        {AgencyView, name: AgencyView},
+        {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
         {GobusgoWeb.Endpoint,
          http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
       ]
