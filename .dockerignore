@@ -1,0 +1,11 @@
+# The build context is an allowlist: everything is excluded, then the release's
+# inputs are named. Credentials (.env) and generated data (data/, _build/,
+# deps/) stay out of the context because nothing here admits them.
+*
+
+!mix.exs
+!mix.lock
+!config/config.exs
+!config/runtime.exs
+!assets
+!lib

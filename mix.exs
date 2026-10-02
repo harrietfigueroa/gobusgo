@@ -9,7 +9,8 @@ defmodule Gobusgo.MixProject do
       elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -31,6 +32,16 @@ defmodule Gobusgo.MixProject do
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:lazy_html, "~> 0.1", only: :test}
+    ]
+  end
+
+  defp releases do
+    [
+      gobusgo: [
+        include_executables_for: [:unix],
+        include_erts: true,
+        strip_beams: true
+      ]
     ]
   end
 

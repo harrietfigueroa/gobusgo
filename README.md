@@ -30,6 +30,8 @@ set -a; source .env; set +a
 
 The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GOBUSGO_HTTP_PORT`. Unset, they default to `127.0.0.1` and `4000`. A value that is not valid stops the application at startup.
 
+`GOBUSGO_DATA_DIR` is the directory stored responses are written to and read from. Unset or blank, it is `data/` under the directory the server starts in; a relative value resolves against that directory.
+
 `SECRET_KEY_BASE` signs the browser session. Leave it unset in development and test: a random secret is generated at each start, so restarting the server makes open pages reload. Production refuses to start without it; generate one with `mix phx.gen.secret`. A value shorter than 64 bytes stops the application at startup.
 
 ## Running the server
@@ -119,6 +121,92 @@ curl http://127.0.0.1:4000/api/agencies/40
 ```
 
 With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live response, and its `destination` goes to `AgencyBatch.process/2` the same way.
+
+## Running in Docker
+
+The `Dockerfile` builds an image that runs the HTTP server as a release, for local development. It needs a container runtime with `docker` on the path; nothing else from Setup is required. Orchestration with the other local services lives in the infrastructure repository.
+
+### Build
+
+```sh
+docker build --tag gobusgo:local .
+```
+
+The build downloads the dependencies and the esbuild and Tailwind binaries, so it needs network access. `.dockerignore` admits only `mix.exs`, `mix.lock`, `config/config.exs`, `config/runtime.exs`, `assets/`, and `lib/` into the build context, so `.env` and `data/` never reach the image.
+
+### Start
+
+The image is a production build, so it refuses to start without `SECRET_KEY_BASE`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
+
+```sh
+docker volume create gobusgo-data
+
+docker run --detach --init --name gobusgo \
+  --publish 127.0.0.1:4000:4000 \
+  --mount type=volume,source=gobusgo-data,target=/data \
+  --env SECRET_KEY_BASE \
+  --env ONEBUSAWAY_BASE_URL \
+  --env ONEBUSAWAY_API_KEY \
+  gobusgo:local
+```
+
+`--env NAME` with no value passes the variable from the shell, so the credentials reach the container at run time and are never written to the image. The OneBusAway variables are needed only to make live requests; the server starts without them.
+
+Open http://localhost:4000/ for the front end, and check the health endpoint from the host:
+
+```sh
+curl -i http://localhost:4000/health
+docker inspect --format '{{.State.Health.Status}}' gobusgo
+```
+
+The image's health check requests `/health` inside the container, and the status reads `healthy` a second or two after the start.
+
+| Setting in the image | Value | Meaning |
+| --- | --- | --- |
+| `GOBUSGO_HTTP_HOST` | `0.0.0.0` | The listener binds every interface of the container; `--publish 127.0.0.1:…` keeps it private to the host. |
+| `GOBUSGO_HTTP_PORT` | `4000` | The port the container listens on. To use another host port, change the left side: `--publish 127.0.0.1:8080:4000`. |
+| `GOBUSGO_DATA_DIR` | `/data` | The directory the writer stores raw responses in and the reader reads them from. |
+
+### Data
+
+Stored responses live in the `gobusgo-data` volume mounted at `/data`, so they outlast the container and an image rebuild. The agencies the API serves are held in memory and start empty; process a stored response to fill them. `bin/gobusgo rpc` evaluates an expression in the running server:
+
+```sh
+docker exec gobusgo find /data -type f
+
+docker exec gobusgo /app/bin/gobusgo rpc '
+  {:ok, settings} = Gobusgo.Config.one_bus_away()
+  {:ok, recorded} = Gobusgo.OneBusAway.AgencyRecorder.record(settings, [])
+  {:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, [])
+  IO.inspect(result.agency_count)
+'
+```
+
+To process a file already on the volume, pass its path below `/data` to `AgencyBatch.process/2` as the destination.
+
+### Stop
+
+```sh
+docker stop gobusgo
+docker rm gobusgo
+```
+
+`docker stop` sends `SIGTERM`, and the release shuts its supervision tree down and exits with status `0`. The volume keeps its files; `docker volume rm gobusgo-data` deletes them. After a rebuild, remove the container and run the start command again.
+
+### Troubleshooting
+
+`docker logs gobusgo` shows the server's output, and `docker exec -it gobusgo /app/bin/gobusgo remote` opens an IEx shell in the running server.
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The container exits at once and the log holds `{:missing_setting, :secret_key_base}` | `SECRET_KEY_BASE` is unset or blank in the shell that ran `docker run`. Export `.env` and start again. |
+| The log holds `{:invalid_setting, :secret_key_base}` | The secret is shorter than 64 bytes. |
+| `curl` cannot connect, and the container is running | `GOBUSGO_HTTP_HOST` was overridden with a loopback address, which a published port cannot reach. Passing the whole `.env` with `--env-file` does this, because the file sets `127.0.0.1`. Pass the variables by name as above. |
+| `docker run` fails with "port is already allocated" | Another process, such as `mix phx.server`, holds port 4000. Stop it or publish another host port. |
+| The page loads and then keeps reloading, or the log holds "Could not check origin for Phoenix.Socket transport" | A production build accepts the LiveView socket only from pages on `localhost`. Open http://localhost:4000/, never http://127.0.0.1:4000/. |
+| `GET /api/agencies` answers `503` after a restart | The agencies are held in memory. Process a stored response again, as under Data. |
+| Stored responses are missing after a restart | The container ran without the `--mount` flag, so `/data` was the container's own file system. |
+| The build fails while downloading | The build stage has no network access, or a pinned base image is no longer published. |
 
 ## Usage
 

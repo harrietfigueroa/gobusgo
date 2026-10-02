@@ -1,16 +1,8 @@
 import Config
 
-# The base directory is expanded once, when configuration loads. The writer
-# and the reader share it, so content one stores is content the other finds.
-base_dir = Path.expand("data")
-
 config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
 
-config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: base_dir
-
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
-
-config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir
 
 # Records go straight to the views of the running application.
 config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
@@ -60,4 +52,15 @@ end
 # only a production deployment has.
 if config_env() != :prod do
   config :gobusgo, GobusgoWeb.Endpoint, check_origin: false
+end
+
+# A production build is a release, which has no command that starts the
+# listener separately. Its assets are the digested ones `mix assets.deploy`
+# writes, named in the manifest.
+if config_env() == :prod do
+  config :gobusgo, GobusgoWeb.Endpoint,
+    server: true,
+    cache_static_manifest: "priv/static/cache_manifest.json"
+
+  config :logger, level: :info
 end
