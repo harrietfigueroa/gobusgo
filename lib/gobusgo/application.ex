@@ -8,6 +8,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Config
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
 
   @ingestion_task_count_max 8
@@ -27,6 +28,7 @@ defmodule Gobusgo.Application do
       children = [
         {Phoenix.PubSub, name: Gobusgo.PubSub},
         {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
+        {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub},
         {Task.Supervisor,
          name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
         scheduler_supervisor(source_specs(scheduled)),

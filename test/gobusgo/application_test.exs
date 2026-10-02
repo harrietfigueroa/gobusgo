@@ -7,13 +7,14 @@ defmodule Gobusgo.ApplicationTest do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
 
-  test "the supervisor runs the publish-subscribe server, the view, the ingestion processes, and the HTTP endpoint" do
+  test "the supervisor runs the publish-subscribe server, the views, the ingestion processes, and the HTTP endpoint" do
     children = Supervisor.which_children(Gobusgo.Supervisor)
 
     # which_children/1 lists the children last started first.
     assert Enum.reverse(for {id, pid, _type, _modules} <- children, is_pid(pid), do: id) == [
              Phoenix.PubSub.Supervisor,
              Gobusgo.OneBusAway.AgencyView,
+             Gobusgo.OneBusAway.VehicleView,
              Gobusgo.IngestionTaskSupervisor,
              Gobusgo.SchedulerSupervisor,
              GobusgoWeb.Endpoint

@@ -3,7 +3,8 @@ defmodule Gobusgo.Schema do
   A structural check of decoded data against a schema, with the first mismatch
   returned as a value. Everything here is pure.
 
-  Map schemas require their keys and ignore unknown ones. A mismatch holds the
+  Map schemas require their keys and ignore unknown ones. A nullable schema
+  matches `nil` and whatever its inner schema matches. A mismatch holds the
   path to the offending value and the shape expected there, and never the
   value itself, so a payload cannot leak through a reported mismatch.
   """
@@ -14,6 +15,7 @@ defmodule Gobusgo.Schema do
           | :integer
           | :boolean
           | {:literal, term()}
+          | {:nullable, t()}
           | {:list, t()}
           | {:map, %{optional(String.t()) => t()}}
 
@@ -37,6 +39,9 @@ defmodule Gobusgo.Schema do
   defp mismatch(value, {:literal, expected}, path) do
     if value !== expected, do: failure(path, {:literal, expected})
   end
+
+  defp mismatch(nil, {:nullable, _inner_schema}, _path), do: nil
+  defp mismatch(value, {:nullable, inner_schema}, path), do: mismatch(value, inner_schema, path)
 
   defp mismatch(value, {:list, element_schema}, path) when is_list(value) do
     value

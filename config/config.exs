@@ -10,7 +10,7 @@ config :esbuild,
 
 # Records go straight to their subscribers in the running application: a
 # "response stored" event to the consumer that processes the stored response,
-# and the processed records to the view.
+# and the processed records of a dataset to its view.
 config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
 
 config :gobusgo, Gobusgo.Publisher.InProcess,
@@ -18,7 +18,9 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
     "oba.agencies-with-coverage.response-stored" =>
       {Gobusgo.OneBusAway.AgencyBatch.Consumer, :consume, [[]]},
     "oba.agencies-with-coverage.state" =>
-      {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]}
+      {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
+    "oba.vehicles-for-agency.state" =>
+      {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]}
   }
 
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile

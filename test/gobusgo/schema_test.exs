@@ -57,6 +57,27 @@ defmodule Gobusgo.SchemaTest do
     end
   end
 
+  describe "mismatch/2 with a nullable schema" do
+    @nullable_schema {:map, %{"position" => {:nullable, {:map, %{"lat" => :number}}}}}
+
+    test "returns nil for a null value" do
+      assert Schema.mismatch(%{"position" => nil}, @nullable_schema) == nil
+    end
+
+    test "returns nil for a value that matches the inner schema" do
+      assert Schema.mismatch(%{"position" => %{"lat" => 47.5}}, @nullable_schema) == nil
+    end
+
+    test "returns the inner mismatch for a value that is neither" do
+      assert Schema.mismatch(%{"position" => %{"lat" => "north"}}, @nullable_schema) ==
+               %{path: ["position", "lat"], expected: :number}
+    end
+
+    test "returns a missing nullable key as required" do
+      assert Schema.mismatch(%{}, @nullable_schema) == %{path: ["position"], expected: :required}
+    end
+  end
+
   describe "format_path/1" do
     test "names the root for an empty path" do
       assert Schema.format_path([]) == "root"
