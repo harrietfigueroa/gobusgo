@@ -19,7 +19,10 @@ defmodule Gobusgo.LocalFile.Location do
 
     # Path.safe_relative/2 backs up the segment allowlist: the two checks are
     # independent paths to the same no-escape property.
-    case segments |> Path.join() |> Path.safe_relative(base_dir) do
+    segments
+    |> Path.join()
+    |> Path.safe_relative(base_dir)
+    |> case do
       {:ok, safe} ->
         path = Path.join(base_dir, safe)
         Assert.condition(String.starts_with?(path, base_dir <> "/"), "path escaped base: #{path}")

@@ -40,7 +40,7 @@ defmodule Gobusgo.OneBusAway.ReconciliationTest do
             |> Enum.filter(&after_cursor?(&1, cursor, order))
 
           page = Enum.take(matching, limit)
-          next = if length(matching) > limit, do: List.last(page), else: nil
+          next = if length(matching) > limit, do: List.last(page)
           {:ok, %{destinations: page, cursor: next}}
 
         reason ->

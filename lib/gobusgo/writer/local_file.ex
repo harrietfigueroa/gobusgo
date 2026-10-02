@@ -138,9 +138,8 @@ defmodule Gobusgo.Writer.LocalFile do
 
     result =
       try do
-        with :ok <- write_temp(temp, content),
-             :ok <- link(temp, path) do
-          :ok
+        with :ok <- write_temp(temp, content) do
+          link(temp, path)
         end
       catch
         kind, reason ->

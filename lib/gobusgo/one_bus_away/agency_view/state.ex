@@ -82,7 +82,7 @@ defmodule Gobusgo.OneBusAway.AgencyView.State do
   defp superseded?(%{request_id: request_id}, %{request_id: request_id}), do: true
 
   defp superseded?(%{fetched_at: current_fetched_at}, %{fetched_at: fetched_at}) do
-    DateTime.compare(fetched_at, current_fetched_at) == :lt
+    DateTime.before?(fetched_at, current_fetched_at)
   end
 
   defp hold(fetch, :manifest, %{agency_ids: agency_ids}) do
@@ -124,7 +124,7 @@ defmodule Gobusgo.OneBusAway.AgencyView.State do
       held
       |> Map.delete(request_id)
       |> Map.reject(fn {_request_id, other} ->
-        DateTime.compare(other.fetched_at, fetch.fetched_at) == :lt
+        DateTime.before?(other.fetched_at, fetch.fetched_at)
       end)
 
     %{current: current, held: held}

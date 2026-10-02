@@ -172,7 +172,10 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   """
   @spec fetched_at(String.t()) :: {:ok, DateTime.t()} | :error
   def fetched_at(destination) when is_binary(destination) do
-    case destination |> String.split("/") |> List.last() do
+    destination
+    |> String.split("/")
+    |> List.last()
+    |> case do
       <<stamp::binary-size(@fetched_at_name_bytes), "_", _rest::binary>> ->
         case DateTime.from_iso8601(stamp, :basic) do
           {:ok, fetched_at, 0} -> {:ok, fetched_at}

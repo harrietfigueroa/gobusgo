@@ -350,7 +350,11 @@ defmodule Gobusgo.Reader.LocalFileTest do
               nil
 
             cursor ->
-              cursor = if cursor == :first, do: nil, else: cursor
+              cursor =
+                case cursor do
+                  :first -> nil
+                  cursor -> cursor
+                end
 
               {:ok, page} = discover(tmp_dir, "p/", limit: 2, order: order, cursor: cursor)
               {page.destinations, page.cursor || :done}
