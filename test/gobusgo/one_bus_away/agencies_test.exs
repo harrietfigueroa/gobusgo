@@ -79,6 +79,73 @@ defmodule Gobusgo.OneBusAway.AgenciesTest do
     end
   end
 
+  describe "fetch_response/2" do
+    @fetched_at ~U[2026-10-02 03:15:00.123456Z]
+
+    defp fetch_response(options \\ []) do
+      options = Keyword.merge(@fast_options, [clock: fn -> @fetched_at end] ++ options)
+      Agencies.fetch_response(@settings, options)
+    end
+
+    test "returns the whole decoded envelope, unknown fields included" do
+      stub_fixture("agencies_with_coverage")
+
+      assert {:ok, response} = fetch_response()
+      assert response.envelope == JSON.decode!(fixture("agencies_with_coverage"))
+    end
+
+    test "returns the same agencies as fetch/2" do
+      stub_fixture("agencies_with_coverage")
+
+      assert {:ok, response} = fetch_response()
+      assert {:ok, response.agencies} == fetch()
+    end
+
+    test "returns the time the clock reports" do
+      stub_fixture("agencies_with_coverage_empty")
+
+      assert {:ok, %{fetched_at: @fetched_at}} = fetch_response()
+    end
+
+    test "returns the HTTP status, the method, and the host" do
+      stub_fixture("agencies_with_coverage_empty")
+
+      assert {:ok, %{http_status: 200, method: "GET", host: "oba.example.test"}} =
+               fetch_response()
+    end
+
+    test "replaces a key echoed anywhere in the envelope" do
+      body =
+        "agencies_with_coverage"
+        |> fixture()
+        |> String.replace("Metro Transit", "Metro #{@api_key}")
+
+      stub_body(body)
+
+      assert {:ok, response} = fetch_response()
+      refute inspect(response, limit: :infinity) =~ @api_key
+    end
+
+    for {name, fixture_name, status, error} <- [
+          {"a 500 response", "server_error", 500, {:http_status, 500}},
+          {"a 401 response", "unauthorized", 401, {:http_status, 401}},
+          {"an API-level error", "api_error", 200,
+           {:api_error, %{code: 400, text: "invalid parameter"}}}
+        ] do
+      test "returns the same error as fetch/2 for #{name}" do
+        stub_fixture(unquote(fixture_name), unquote(status))
+
+        assert fetch_response() == {:error, unquote(Macro.escape(error))}
+      end
+    end
+
+    test "raises for a payload that violates the schema" do
+      stub_fixture("agencies_with_coverage_schema_violation")
+
+      assert_raise AssertionError, fn -> fetch_response() end
+    end
+  end
+
   describe "fetch/2 value errors" do
     test "returns the status for a 500 response" do
       stub_fixture("server_error", 500)
