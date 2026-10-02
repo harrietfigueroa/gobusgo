@@ -22,7 +22,7 @@ defmodule Gobusgo.Writer do
 
   Operating errors return as values. Anything outside the documented set
   (an unrecognized POSIX reason, a backend answering off-contract) raises
-  `Gobusgo.AssertionError`.
+  `Gobusgo.Assert.AssertionError`.
 
   ## Selecting a backend
 
@@ -110,7 +110,7 @@ defmodule Gobusgo.Writer do
   def write(%{destination: destination, content: content} = request, options \\ [])
       when is_binary(destination) and is_binary(content) and is_list(options) do
     {backend, backend_options} = Keyword.pop_lazy(options, :backend, &configured_backend/0)
-    Assert.that!(is_atom(backend), "backend must be a module, got: #{inspect(backend)}")
+    Assert.condition(is_atom(backend), "backend must be a module, got: #{inspect(backend)}")
 
     request
     |> backend.write(backend_options)
@@ -126,7 +126,7 @@ defmodule Gobusgo.Writer do
   defp assert_result(:ok, _backend), do: :ok
 
   defp assert_result({:error, reason} = result, backend) do
-    Assert.that!(
+    Assert.condition(
       known_reason?(reason),
       "#{inspect(backend)} returned an undocumented error: #{inspect(reason)}"
     )
@@ -135,7 +135,8 @@ defmodule Gobusgo.Writer do
   end
 
   defp assert_result(other, backend) do
-    Assert.fail!("#{inspect(backend)} returned off-contract: #{inspect(other)}")
+    raise Assert.AssertionError,
+      message: "#{inspect(backend)} returned off-contract: #{inspect(other)}"
   end
 
   defp known_reason?(reason) do

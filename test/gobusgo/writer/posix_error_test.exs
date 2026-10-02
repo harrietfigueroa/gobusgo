@@ -25,7 +25,7 @@ defmodule Gobusgo.Writer.PosixErrorTest do
 
   for posix <- [:einval, :enomem, :emfile, :ebusy] do
     test "raises for unrecognized reason #{posix}" do
-      assert_raise Gobusgo.AssertionError, fn -> PosixError.to_reason(unquote(posix)) end
+      assert_raise Gobusgo.Assert.AssertionError, fn -> PosixError.to_reason(unquote(posix)) end
     end
   end
 end

@@ -62,7 +62,7 @@ defmodule Gobusgo.WriterTest do
     test "raises when a backend returns an error outside the contract" do
       request = %{destination: "a", content: "x"}
 
-      assert_raise Gobusgo.AssertionError, fn ->
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
         Writer.write(request, backend: OffContractBackend)
       end
     end

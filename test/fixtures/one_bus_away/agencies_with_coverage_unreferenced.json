@@ -1,0 +1,17 @@
+{
+  "code": 200,
+  "currentTime": 1710953797130,
+  "data": {
+    "limitExceeded": false,
+    "list": [
+      { "agencyId": "99", "lat": 47.5, "latSpan": 0.6, "lon": -122.1, "lonSpan": 0.7 }
+    ],
+    "references": {
+      "agencies": [
+        { "id": "1", "name": "Metro Transit", "url": "https://metro.example.test", "timezone": "America/Los_Angeles" }
+      ]
+    }
+  },
+  "text": "OK",
+  "version": 2
+}

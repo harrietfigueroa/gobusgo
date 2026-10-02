@@ -58,8 +58,12 @@ defmodule Gobusgo.Writer.LocalFile do
         :gobusgo |> Application.get_env(__MODULE__, []) |> Keyword.get(:base_dir)
       end)
 
-    Assert.that!(is_binary(base_dir), "base_dir must be configured, got: #{inspect(base_dir)}")
-    Assert.that!(Path.type(base_dir) == :absolute, "base_dir must be absolute: #{base_dir}")
+    Assert.condition(
+      is_binary(base_dir),
+      "base_dir must be configured, got: #{inspect(base_dir)}"
+    )
+
+    Assert.condition(Path.type(base_dir) == :absolute, "base_dir must be absolute: #{base_dir}")
     base_dir
   end
 
@@ -143,9 +147,14 @@ defmodule Gobusgo.Writer.LocalFile do
 
   defp write_temp(temp, content) do
     case :file.open(temp, [:write, :exclusive, :binary]) do
-      {:ok, device} -> write_and_close(device, content)
-      {:error, :eexist} -> Assert.fail!("temporary name collided: #{temp}")
-      {:error, posix} -> {:error, PosixError.to_reason(posix)}
+      {:ok, device} ->
+        write_and_close(device, content)
+
+      {:error, :eexist} ->
+        raise Assert.AssertionError, message: "temporary name collided: #{temp}"
+
+      {:error, posix} ->
+        {:error, PosixError.to_reason(posix)}
     end
   end
 

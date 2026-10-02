@@ -165,7 +165,7 @@ defmodule Gobusgo.Writer.LocalFileTest do
 
   describe "configuration" do
     test "raises when the base directory is relative", %{tmp_dir: _tmp_dir} do
-      assert_raise Gobusgo.AssertionError, fn ->
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
         Writer.write(%{destination: "a", content: "x"}, backend: LocalFile, base_dir: "relative")
       end
     end
@@ -175,7 +175,7 @@ defmodule Gobusgo.Writer.LocalFileTest do
       on_exit(fn -> Application.put_env(:gobusgo, LocalFile, previous) end)
       Application.put_env(:gobusgo, LocalFile, [])
 
-      assert_raise Gobusgo.AssertionError, fn ->
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
         Writer.write(%{destination: "a", content: "x"}, backend: LocalFile)
       end
     end

@@ -57,7 +57,7 @@ defmodule Gobusgo.Writer.Destination do
   @spec resolve(String.t(), Path.t()) ::
           {:ok, resolved()} | {:error, {:invalid_destination, reason()}}
   def resolve(destination, base_dir) when is_binary(destination) and is_binary(base_dir) do
-    Assert.that!(Path.type(base_dir) == :absolute, "base_dir must be absolute: #{base_dir}")
+    Assert.condition(Path.type(base_dir) == :absolute, "base_dir must be absolute: #{base_dir}")
 
     with :ok <- check_shape(destination),
          segments = String.split(destination, "/"),
@@ -106,7 +106,7 @@ defmodule Gobusgo.Writer.Destination do
     case Path.safe_relative(destination, base_dir) do
       {:ok, safe} ->
         path = Path.join(base_dir, safe)
-        Assert.that!(String.starts_with?(path, base_dir <> "/"), "path escaped base: #{path}")
+        Assert.condition(String.starts_with?(path, base_dir <> "/"), "path escaped base: #{path}")
         {:ok, path}
 
       :error ->

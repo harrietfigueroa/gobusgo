@@ -20,5 +20,5 @@ defmodule Gobusgo.Writer.PosixError do
   def to_reason(:eisdir), do: :destination_conflict
   def to_reason(:enametoolong), do: {:invalid_destination, :too_long}
   def to_reason(:eloop), do: {:invalid_destination, :symlink}
-  def to_reason(other), do: Assert.unreachable!(other)
+  def to_reason(other), do: Assert.unreachable(other)
 end

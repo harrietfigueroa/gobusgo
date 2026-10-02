@@ -52,7 +52,7 @@ defmodule Gobusgo.Writer.DestinationTest do
     end
 
     test "a relative base directory" do
-      assert_raise Gobusgo.AssertionError, fn -> Destination.resolve("a", "relative") end
+      assert_raise Gobusgo.Assert.AssertionError, fn -> Destination.resolve("a", "relative") end
     end
   end
 end
