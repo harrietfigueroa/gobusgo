@@ -8,7 +8,15 @@ Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HT
 
 ## Setup
 
-Install [mise](https://mise.jdx.dev) with Homebrew (`brew install mise`), then install the pinned toolchain from the repository root.
+Install [mise](https://mise.jdx.dev) with Homebrew (`brew install mise`) and activate it in your shell, so that `mix` and `iex` are on your `PATH` inside the repository. For zsh, add the activation line to `~/.zshrc` and open a new terminal; the [mise documentation](https://mise.jdx.dev/getting-started.html) covers other shells.
+
+```sh
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+```
+
+Without activation, prefix a command with `mise exec --`, as in `mise exec -- mix test`.
+
+Then install the pinned toolchain and build from the repository root.
 
 ```sh
 mise install
@@ -123,6 +131,10 @@ curl http://127.0.0.1:4000/api/agencies/40
 ```
 
 With an API key, `Gobusgo.OneBusAway.AgencyRecorder.record/2` stores a live response and publishes its "response stored" event, which leads to the same processing with no further call.
+
+### Agency test page
+
+http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency's identifier, name, website, time zone, and coverage area, with the fetch time and request identifier of the fetch they come from. It says "No agency data yet." until a fetch has been processed. The page updates on its own: open it first, run the snippet above in the `iex` shell, and the agencies appear without a reload.
 
 ## Running in Docker
 

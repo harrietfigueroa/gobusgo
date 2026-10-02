@@ -30,7 +30,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderInProcessTest do
     end)
 
     view = Module.concat(__MODULE__, "View#{context.line}")
-    start_supervised!({AgencyView, name: view})
+    start_supervised!({AgencyView, name: view, pubsub: Gobusgo.PubSub})
 
     state_subscribers = %{
       "oba.agencies-with-coverage.state" => {AgencyView, :apply_records, [view]}
