@@ -4,7 +4,7 @@ Gobusgo is an Elixir application that consumes the [OneBusAway API](https://deve
 
 ## Requirements
 
-Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The project has no Hex dependencies.
+Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req); `plug` is a test-only dependency for `Req.Test`.
 
 ## Setup
 
@@ -23,6 +23,18 @@ Configuration is read from environment variables: `ONEBUSAWAY_BASE_URL` and `ONE
 cp .env.example .env
 set -a; source .env; set +a
 ```
+
+## Usage
+
+`Gobusgo.OneBusAway.Agencies.fetch/2` requests agency discovery (`agencies-with-coverage`) and returns each agency with its coverage area, or an error value. It writes nothing to disk. With the environment variables exported, run it in `iex -S mix`:
+
+```elixir
+{:ok, settings} = Gobusgo.Config.one_bus_away()
+{:ok, agencies} = Gobusgo.OneBusAway.Agencies.fetch(settings, [])
+Enum.map(agencies, & &1.name)
+```
+
+The module documentation lists every error value.
 
 ## Development
 
