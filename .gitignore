@@ -21,3 +21,7 @@ gobusgo-*.tar
 # Local file writer output
 /data/
 /tmp/
+
+# Built assets
+/priv/static/assets/
+/priv/static/cache_manifest.json

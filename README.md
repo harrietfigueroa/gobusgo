@@ -4,7 +4,7 @@ Gobusgo is an Elixir application that consumes the [OneBusAway API](https://deve
 
 ## Requirements
 
-Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req). The HTTP server is [Phoenix](https://hex.pm/packages/phoenix) on [Bandit](https://hex.pm/packages/bandit); [Plug](https://hex.pm/packages/plug) is also what `Req.Test` uses in tests.
+Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req). The HTTP server is [Phoenix](https://hex.pm/packages/phoenix) on [Bandit](https://hex.pm/packages/bandit), and browser pages are [Phoenix LiveView](https://hex.pm/packages/phoenix_live_view). [Plug](https://hex.pm/packages/plug) is also what `Req.Test` uses in tests. Assets are built by [esbuild](https://hex.pm/packages/esbuild) and [Tailwind](https://hex.pm/packages/tailwind), which download their own binaries; Node.js is not needed.
 
 ## Setup
 
@@ -13,7 +13,11 @@ Install [mise](https://mise.jdx.dev) with Homebrew (`brew install mise`), then i
 ```sh
 mise install
 mix deps.get
+mix assets.setup
+mix assets.build
 ```
+
+`mix assets.setup` downloads the esbuild and Tailwind binaries, and `mix assets.build` writes the JavaScript and CSS the pages load to `priv/static/assets/` (ignored by git).
 
 ## Configuration
 
@@ -26,11 +30,15 @@ set -a; source .env; set +a
 
 The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GOBUSGO_HTTP_PORT`. Unset, they default to `127.0.0.1` and `4000`. A value that is not valid stops the application at startup.
 
+`SECRET_KEY_BASE` signs the browser session. Leave it unset in development and test: a random secret is generated at each start, so restarting the server makes open pages reload. Production refuses to start without it; generate one with `mix phx.gen.secret`. A value shorter than 64 bytes stops the application at startup.
+
 ## Running the server
 
 ```sh
 mix phx.server
 ```
+
+Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
@@ -38,7 +46,7 @@ mix phx.server
 curl -i http://127.0.0.1:4000/health
 ```
 
-Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served as `application/problem+json` with `type`, `title`, `status`, and, where the error has a written explanation, `detail`:
+Every error response under `/api` is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served as `application/problem+json` with `type`, `title`, `status`, and, where the error has a written explanation, `detail`. Elsewhere, an error is an HTML page for a request that accepts HTML first, such as a browser's, and problem details otherwise:
 
 ```sh
 curl -i http://127.0.0.1:4000/nope

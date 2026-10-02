@@ -16,6 +16,7 @@ defmodule Gobusgo.Config do
   @http_port_default 4000
   @http_port_min 1
   @http_port_max 65_535
+  @secret_key_base_bytes_min 64
 
   @doc """
   Returns the OneBusAway settings from `env`, or the first missing key.
@@ -62,6 +63,37 @@ defmodule Gobusgo.Config do
   @spec http() :: {:ok, http()} | {:error, http_error()}
   def http do
     :gobusgo |> Application.get_env(:http, []) |> fetch_http()
+  end
+
+  @doc """
+  Returns the secret that signs sessions from `env`: `:secret_key_base`,
+  text of at least #{@secret_key_base_bytes_min} bytes, and `:required`, a
+  boolean. A nil or blank secret is `{:ok, nil}` when it is not required and
+  `{:error, {:missing, :secret_key_base}}` when it is.
+  """
+  @spec fetch_secret_key_base(Keyword.t()) ::
+          {:ok, String.t() | nil} | {:error, {:missing | :invalid, :secret_key_base}}
+  def fetch_secret_key_base(env) when is_list(env) do
+    required = Keyword.fetch!(env, :required)
+
+    case text(env, :secret_key_base) do
+      nil ->
+        if required, do: {:error, {:missing, :secret_key_base}}, else: {:ok, nil}
+
+      secret ->
+        if byte_size(secret) >= @secret_key_base_bytes_min do
+          {:ok, secret}
+        else
+          {:error, {:invalid, :secret_key_base}}
+        end
+    end
+  end
+
+  @doc "Reads the session secret configured for the running application."
+  @spec secret_key_base() ::
+          {:ok, String.t() | nil} | {:error, {:missing | :invalid, :secret_key_base}}
+  def secret_key_base do
+    :gobusgo |> Application.fetch_env!(:session) |> fetch_secret_key_base()
   end
 
   defp text(env, key) do

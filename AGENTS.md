@@ -218,7 +218,8 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 
 - `lib/gobusgo/application.ex` is the OTP application entry point. It validates the HTTP listener settings and starts the endpoint with them.
 - `lib/gobusgo/config.ex` validates runtime settings as pure functions over the application environment.
-- `lib/gobusgo_web/` holds the HTTP server: the Phoenix endpoint, the router, the controllers, and `GobusgoWeb.ErrorJSON`, the body of every error response.
+- `lib/gobusgo_web/` holds the HTTP server: the Phoenix endpoint, the router, the controllers, the LiveView pages under `live/`, the layouts under `components/`, and the error bodies `GobusgoWeb.ErrorJSON` and `GobusgoWeb.ErrorHTML`.
+- `assets/` holds the front end's JavaScript and CSS sources; `mix assets.build` writes the built files to `priv/static/assets/`, which git ignores.
 - `lib/gobusgo/one_bus_away/` holds the OneBusAway integration: the HTTP client, the agency requester, the stored form of a raw agency response and its "response stored" event, the recorder, the agency processor with its records module, the agency view with its state module, and reconciliation with its time range module. Read `lib/gobusgo/one_bus_away/AGENTS.md` before changing it.
 - `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/schema.ex` checks decoded data against a schema and returns the first mismatch as a value; `lib/gobusgo/assert.ex` raises on it.
@@ -242,7 +243,9 @@ mix format --check-formatted
 mix test
 ```
 
-`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Bandit, and Plug; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
+`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets and LazyHTML for LiveView tests; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
+
+When a change touches `assets/` or the classes in a template, also run `mix assets.build`; CI runs it as its own job. `mix assets.setup` installs the esbuild and Tailwind binaries at the versions `config/config.exs` pins. `mix format` formats HEEx templates through `Phoenix.LiveView.HTMLFormatter`.
 
 ## Issue branches
 
@@ -280,15 +283,15 @@ Phoenix serves the HTTP API on Bandit; GOB-17 records the choice and its rationa
 
 - **Routes.** `GET /health` answers `{"status": "ok"}` and is not logged. API routes go under `/api`: `GET /api/agencies` and `GET /api/agencies/:id` serve the current fetch of the agency view.
 - **Success bodies** hold `data` and `meta`. `meta` names the fetch the data comes from (`fetchedAt`, `requestId`), and a collection adds `count`. A route whose view has no current fetch answers `503` problem details with `Retry-After`, never an empty `200`.
-- **Errors.** Every error response is an RFC 9457 problem details object, served as `application/problem+json`, with `type` (`about:blank`), `title`, and `status`. `detail` appears only for an error whose explanation `GobusgoWeb.ErrorJSON` writes itself, so the message of an unexpected error never reaches a client.
-- **Plugs that can raise go in a router pipeline, never in the endpoint.** The endpoint registers the callback that sets the problem media type, and only an error raised inside the router reaches the error renderer with that callback.
-- **Tests** send requests through the endpoint with `Phoenix.ConnTest`; no socket is opened.
-
-The endpoint has no session, no signing secret, and no HTML layer. Those arrive with the LiveView front end.
+- **Errors.** A JSON error response is an RFC 9457 problem details object, served as `application/problem+json`, with `type` (`about:blank`), `title`, and `status`. `detail` appears only for an error whose explanation the application writes itself, so the message of an unexpected error never reaches a client. Every error under `/api` is problem details: `GobusgoWeb.FallbackController` answers the requests no API route matches. Elsewhere, the error is an HTML page from `GobusgoWeb.ErrorHTML` for a request that accepts HTML first, and problem details otherwise.
+- **Plugs that can raise go in a router pipeline, never in the endpoint.** The endpoint registers the callback that sets the problem media type, and only an error raised inside the router reaches the error renderer with that callback. `Plug.Static` is the one exception, because it has to run before the router.
+- **Browser pages** are LiveViews routed through the `:browser` pipeline and rendered inside `GobusgoWeb.Layouts.root/1`. `GET /` is a placeholder page. The LiveView socket is at `/live`, over WebSocket only.
+- **Session.** The session is a signed cookie. `SECRET_KEY_BASE` supplies the secret: production refuses to start without it, and development and test generate a random one at startup when it is unset. The signing salts in the code are not secrets. Outside production the socket accepts any origin; a production deployment has to configure its public host name first.
+- **Tests** send requests through the endpoint with `Phoenix.ConnTest` and mount pages with `Phoenix.LiveViewTest`; no socket is opened.
 
 ## Credentials and configuration
 
-Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`); the OneBusAway ones carry placeholder values. Load them into the shell with:
+Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`, `SECRET_KEY_BASE`); the OneBusAway ones carry placeholder values and the secret is left empty. Load them into the shell with:
 
 ```sh
 set -a; source .env; set +a
@@ -311,7 +314,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the state topic the processor publishes to is compacted, and the manifest record completes the fetch.
 - **Messages.** Every Kafka message is a CloudEvent 1.0 in structured mode, with its version in `type`. A dead-letter record keeps its key and value untouched and describes the failure in Kafka headers.
 - **Failures.** A failed event is retried in place for about two seconds when the processor classes the failure as transient, then dead-lettered with the processor's error code, and the next event for the dataset brings readers up to date. Reconciliation runs on demand, never on a schedule.
-- **Reads.** A subscriber per state topic feeds the in-application views from Kafka, from the beginning of the topic on every start, in place of the in-process publisher backend. A LiveView front end reads the views beside the REST API.
+- **Reads.** A subscriber per state topic feeds the in-application views from Kafka, from the beginning of the topic on every start, in place of the in-process publisher backend. LiveView pages read the views beside the REST API.
 - **Libraries.** BroadwayKafka consumes and brod produces, as the backend of the publisher contract. Building them needs CMake and a C compiler.
 - **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
@@ -324,6 +327,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - The OneBusAway rate limit; one request per second is an assumption.
 - The writer's interface beyond the local file backend.
 - Tombstone cleanup for agencies that no longer exist; their records stay in the state topic and no manifest names them.
+- The public host name of a production deployment, which the LiveView socket's origin check needs.
 - A valid OneBusAway API key and confirmation that `https://api.pugetsound.onebusaway.org` is the right server (see the integration's AGENTS.md).
 
 Do not resolve an open decision in code without confirming it with the user, then update this list.

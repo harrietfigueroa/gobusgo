@@ -8,3 +8,7 @@ config :gobusgo, :one_bus_away,
 config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),
   port: System.get_env("GOBUSGO_HTTP_PORT")
+
+config :gobusgo, :session,
+  secret_key_base: System.get_env("SECRET_KEY_BASE"),
+  required: config_env() == :prod

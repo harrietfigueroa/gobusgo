@@ -23,6 +23,41 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
 
 config :phoenix, :json_library, JSON
 
+# The first format answers a request that accepts anything.
 config :gobusgo, GobusgoWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
-  render_errors: [formats: [json: GobusgoWeb.ErrorJSON], layout: false]
+  render_errors: [
+    formats: [json: GobusgoWeb.ErrorJSON, html: GobusgoWeb.ErrorHTML],
+    layout: false
+  ],
+  pubsub_server: Gobusgo.PubSub,
+  live_view: [signing_salt: "live_view"]
+
+config :esbuild,
+  version: "0.25.5",
+  default: [
+    args: ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+config :tailwind,
+  version: "4.3.0",
+  default: [
+    args: ~w(--input=assets/css/app.css --output=priv/static/assets/css/app.css),
+    cd: Path.expand("..", __DIR__)
+  ]
+
+if config_env() == :dev do
+  config :gobusgo, GobusgoWeb.Endpoint,
+    watchers: [
+      esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
+      tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    ]
+end
+
+# The socket checks a page's origin against the public host name, which
+# only a production deployment has.
+if config_env() != :prod do
+  config :gobusgo, GobusgoWeb.Endpoint, check_origin: false
+end

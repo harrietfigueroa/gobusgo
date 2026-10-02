@@ -7,10 +7,10 @@ defmodule Gobusgo.ApplicationTest do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
 
-  test "the supervisor runs the agency view and the HTTP endpoint" do
+  test "the supervisor runs the publish-subscribe server, the agency view, and the HTTP endpoint" do
     children = Supervisor.which_children(Gobusgo.Supervisor)
 
     assert Enum.sort(for {id, pid, _type, _modules} <- children, is_pid(pid), do: id) ==
-             [Gobusgo.OneBusAway.AgencyView, GobusgoWeb.Endpoint]
+             [Gobusgo.OneBusAway.AgencyView, GobusgoWeb.Endpoint, Phoenix.PubSub.Supervisor]
   end
 end

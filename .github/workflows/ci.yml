@@ -12,7 +12,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# The three jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The four jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -82,3 +82,27 @@ jobs:
             mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
       - run: mix deps.get
       - run: mix test
+
+  assets:
+    name: assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: mix assets.setup
+      - run: mix assets.build

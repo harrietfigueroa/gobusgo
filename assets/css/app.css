@@ -1,0 +1,5 @@
+/* Class names are collected from the sources named here and nowhere else. */
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/gobusgo_web";
