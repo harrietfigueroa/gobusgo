@@ -10,6 +10,8 @@ All links checked 2026-10-01.
 - REST conventions, envelope, response codes, references: https://developer.onebusaway.org/api/where
 - `agencies-with-coverage`: https://developer.onebusaway.org/api/where/methods/agencies-with-coverage
 - API key process: https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd
+- `vehicles-for-agency`: https://developer.onebusaway.org/api/where/methods/vehicles-for-agency — checked 2026-10-02
+- Trip status element: https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-10-02
 
 ## Server and credentials
 
@@ -206,6 +208,52 @@ Per `apply_records/2` call the view logs `info` `Agency view switched` with `req
 The configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It calls `Gobusgo.OneBusAway.AgencyBatch.Consumer.consume/2` with the records published to `oba.agencies-with-coverage.response-stored`. The consumer decodes each value with `RawAgencyResponse.StoredEvent.decode/1` and calls `AgencyBatch.process/2` with the destination it names, in order, in the publishing process. A value that is not a "response stored" event is skipped and counted in one `warning` `Agency batch consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter.
 
 `AgencyRecorder.record/2` publishes one "response stored" event once the writer has stored the response, with the `source` `/gobusgo/recorder/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. A failed publish leaves the result `{:ok, recorded}` and logs `warning` `OneBusAway agency response recorded without its event` with the `reason` in place of the `info` line.
+
+## Vehicle records and vehicle view
+
+No requester, recorder, or processor for `vehicles-for-agency` exists. The records and the view below are the contract those will publish to, and nothing publishes to it outside the tests.
+
+The contract is taken from the documentation and is unverified against a live response. The trip status element documents `position` as the real-time position when one is available and the scheduled position otherwise, `lastKnownLocation` as the last reported position, and `lastUpdateTime` and `lastLocationUpdateTime` as milliseconds since the Unix epoch with zero for "none received". Which of these the `vehicles-for-agency` response nests under `tripStatus` and which it carries on the vehicle itself is for the integration to confirm.
+
+`Gobusgo.OneBusAway.VehicleBatch.Records.build/1` takes the vehicles one request for one agency returned and builds the records; `decode/1` reads one back and returns a rule it breaks as a value. Both are pure.
+
+| Record | Topic | Key | `type` |
+| --- | --- | --- | --- |
+| Vehicle | `oba.vehicles-for-agency.state` | `vehicle/<agency id>/<vehicle id>` | `gobusgo.vehicle.processed.v1` |
+| Manifest | `oba.vehicles-for-agency.state` | `manifest/<agency id>` | `gobusgo.vehicle.fetch.completed.v1` |
+
+| Record | `id` | `source` | `time` | `subject` | `data` |
+| --- | --- | --- | --- | --- | --- |
+| Vehicle | `<requestId>/vehicle/<agency id>/<vehicle id>` | `/gobusgo/processor/oba/vehicles-for-agency` | The fetch time | The vehicle identifier | `vehicle`, `fetchedAt`, `requestId` |
+| Manifest | `<requestId>/manifest/<agency id>` | `/gobusgo/processor/oba/vehicles-for-agency` | The fetch time | The stored destination | `agencyId`, `vehicleIds` (sorted), `dataSha256`, `destination`, `fetchedAt`, `requestId` |
+
+`data.vehicle` always holds every key below. `id` and `agencyId` are non-empty strings, and every other field is `null` when the source did not supply it, so a missing value is told apart from a supplied one.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The vehicle identifier |
+| `agencyId` | The agency the fetch asked for |
+| `activeTripId` | The trip the vehicle serves |
+| `position` | `lat` and `lon` of where the source places the vehicle now: an estimate, extrapolated or taken from the schedule when no fresh report exists |
+| `orientation` | The direction that goes with `position`, in degrees |
+| `lastKnownLocation` | `lat` and `lon` of the last location the vehicle reported |
+| `lastKnownOrientation` | The last direction the vehicle reported, in degrees |
+| `lastUpdateTimeMs` | When the source last heard from the vehicle, milliseconds since the Unix epoch; `0` is the source's "never" |
+| `lastLocationUpdateTimeMs` | When the vehicle last reported a location, milliseconds since the Unix epoch; `0` is the source's "never" and is kept apart from `null` |
+| `predicted` | Whether the source has real-time data for the vehicle |
+
+The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
+
+`Gobusgo.OneBusAway.VehicleView` holds the vehicles of each agency's latest complete fetch in memory. It is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.VehicleView` on `Gobusgo.PubSub`, and `Gobusgo.Publisher.InProcess` calls its `apply_records/2` with the records published to `oba.vehicles-for-agency.state`. `Gobusgo.OneBusAway.VehicleView.State` holds the rules and is pure.
+
+- A fetch belongs to one agency. It is complete when its manifest and every vehicle the manifest names have been applied, in either order. The view switches that agency to the fetch in one step and leaves every other agency's current fetch as it is.
+- A record is ignored when its fetch is its agency's current one or is older than it, and when its fetch time or agency differs from the ones its fetch is held under. A fetch with the same fetch time and another request identifier replaces the agency's current one.
+- At most 64 agencies have a current fetch, at most 32 incomplete fetches are held, the oldest forgotten first, and a fetch holds at most 5,000 vehicles. A switch forgets every held fetch of the same agency older than the new current one.
+- An `apply_records/2` call that switches at least one agency announces once, after the table holds the new fetches, as `{:vehicle_view_switched, view}` to every process that called `subscribe/1`.
+- `current/1` reads the table without calling the process and returns the current fetch of every agency, in agency identifier order, each with its own fetch time. It returns `[]` before a fetch is complete and while the view is not running.
+- An agency that is no longer fetched keeps its last fetch. The view starts empty and holds nothing across a restart.
+
+Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `agency_count` and `vehicle_count`; `warning` `Vehicle view skipped invalid records` with `invalid_count`; and `warning` `Vehicle view switch not announced` with `reason`.
 
 ## Reconciliation
 
