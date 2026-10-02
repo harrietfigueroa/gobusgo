@@ -1,6 +1,13 @@
 import Config
 
-# The base directory is expanded once, when configuration loads.
+# The base directory is expanded once, when configuration loads. The writer
+# and the reader share it, so content one stores is content the other finds.
+base_dir = Path.expand("data")
+
 config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
 
-config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: Path.expand("data")
+config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: base_dir
+
+config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
+
+config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir

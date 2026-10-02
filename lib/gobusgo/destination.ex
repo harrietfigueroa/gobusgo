@@ -1,14 +1,22 @@
-defmodule Gobusgo.Writer.Destination do
-  @moduledoc """
-  The rules every logical destination obeys, whatever the backend: a
-  non-empty, relative, valid UTF-8 name without NUL bytes, made of
-  `/`-separated segments that match an allowlist, with bounded length and
-  depth. Everything here is pure.
-  """
-
+defmodule Gobusgo.Destination do
   @destination_bytes_max 1024
   @segment_bytes_max 128
   @segment_count_max 16
+
+  @moduledoc """
+  The rules every logical destination obeys, whatever stores it: a non-empty,
+  relative, valid UTF-8 name without NUL bytes, made of `/`-separated segments
+  that match an allowlist, with bounded length and depth. Everything here is
+  pure.
+
+  A segment is 1 to #{@segment_bytes_max} bytes of `A-Z`, `a-z`, `0-9`, `.`,
+  `_`, `=` and `-`, and does not start with `.`. A destination is at most
+  #{@destination_bytes_max} bytes and #{@segment_count_max} segments.
+
+  A prefix selects every destination that starts with it, compared as a
+  string. It obeys the same rules, except that its last segment may be
+  incomplete, or empty when the prefix ends in `/`.
+  """
 
   # The first character excludes `.` so that hidden names fail.
   @segment_pattern ~r/\A[A-Za-z0-9_=-][A-Za-z0-9._=-]*\z/
@@ -36,9 +44,15 @@ defmodule Gobusgo.Writer.Destination do
           | :segment_invalid
           | :traversal
 
-  @doc "Every reason a destination can be rejected for."
+  @type prefix :: %{segments: [String.t()], remainder: String.t()}
+
+  @doc "Every reason a destination or a prefix can be rejected for."
   @spec reasons() :: [reason(), ...]
   def reasons, do: @reasons
+
+  @doc "Segments allowed in one destination."
+  @spec segment_count_max() :: pos_integer()
+  def segment_count_max, do: @segment_count_max
 
   @doc """
   Returns the segments of a valid `destination`, or the first rule it breaks.
@@ -56,6 +70,29 @@ defmodule Gobusgo.Writer.Destination do
       {:error, reason} -> {:error, {:invalid_destination, reason}}
     end
   end
+
+  @doc """
+  Returns the complete leading segments of a valid `prefix` and the remainder
+  after the last `/`, or the first rule the prefix breaks. The remainder is
+  `""` when the prefix ends in `/`. The empty prefix is rejected as `:empty`.
+  """
+  @spec validate_prefix(String.t()) ::
+          {:ok, prefix()} | {:error, {:invalid_destination, reason()}}
+  def validate_prefix(prefix) when is_binary(prefix) do
+    with :ok <- check_shape(prefix),
+         parts = String.split(prefix, "/"),
+         :ok <- check_depth(parts),
+         {segments, [remainder]} = Enum.split(parts, -1),
+         :ok <- check_segments(segments),
+         :ok <- check_remainder(remainder) do
+      {:ok, %{segments: segments, remainder: remainder}}
+    else
+      {:error, reason} -> {:error, {:invalid_destination, reason}}
+    end
+  end
+
+  defp check_remainder(""), do: :ok
+  defp check_remainder(remainder), do: check_segments([remainder])
 
   defp check_shape(""), do: {:error, :empty}
 
