@@ -25,7 +25,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
     * `fetchedAt`: the fetch time in UTC extended ISO 8601 at second precision,
       such as `2026-10-02T03:15:00Z`. It is the same instant as the one in the
-      destination, and the value a half-open `[start, end)` selection compares.
+      destination.
     * `host`: the server's host name, without credentials.
     * `method`: the HTTP method of the request.
     * `httpStatus`: the HTTP status of the response, always 200.
@@ -57,13 +57,15 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
           destination: String.t(),
           fetched_at: DateTime.t(),
           data_sha256: String.t(),
+          request_id: RequestId.t(),
           agencies: [Agencies.agency()]
         }
 
   @typedoc """
     * `:invalid_json` — the content is not JSON.
     * `:schema_mismatch` — the content is not the wrapper `build/1` produces,
-      or its data is not agency discovery data.
+      its data is not agency discovery data, or its data names an agency with
+      an empty identifier or names one agency twice.
     * `:hash_mismatch` — the data does not hash to `meta.dataSha256`.
     * `:destination_mismatch` — `meta` names a destination other than the one
       the content was read from.
@@ -184,9 +186,11 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
   @doc """
   Returns what `content`, read back from `destination`, stored: the fetch
-  time, the data hash, and the agencies. The content must be the wrapper
-  `build/1` produces, its data must hash to the recorded hash, and its `meta`
-  must name `destination`. The first rule it breaks returns as a value.
+  time, the data hash, the request identifier, and the agencies. The content
+  must be the wrapper `build/1` produces, its data must hash to the recorded
+  hash, its `meta` must name `destination`, and its agencies must carry
+  distinct, non-empty identifiers. The first rule it breaks returns as a
+  value.
   """
   @spec parse(%{destination: String.t(), content: binary()}) ::
           {:ok, parsed()} | {:error, parse_error()}
@@ -196,14 +200,17 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
          {:ok, fetched_at} <- parse_fetched_at(meta["fetchedAt"]),
          data_sha256 = data_sha256(data),
          :ok <- check(data_sha256 == meta["dataSha256"], :hash_mismatch),
-         named = destination_for(fetched_at, meta["requestId"], data_sha256),
+         request_id = meta["requestId"],
+         named = destination_for(fetched_at, request_id, data_sha256),
          :ok <- check(named == destination, :destination_mismatch),
+         :ok <- check(RequestId.valid?(request_id), :schema_mismatch),
          {:ok, agencies} <- parse_agencies(data) do
       {:ok,
        %{
          destination: destination,
          fetched_at: fetched_at,
          data_sha256: data_sha256,
+         request_id: request_id,
          agencies: agencies
        }}
     end
@@ -237,9 +244,14 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
   defp parse_agencies(data) do
     case Agencies.parse(data) do
-      {:ok, agencies} -> {:ok, agencies}
+      {:ok, agencies} -> check(identifiable?(agencies), :schema_mismatch, agencies)
       {:error, _reason} -> {:error, :schema_mismatch}
     end
+  end
+
+  defp identifiable?(agencies) do
+    ids = Enum.map(agencies, & &1.id)
+    "" not in ids and ids == Enum.uniq(ids)
   end
 
   defp check(true, _reason), do: :ok

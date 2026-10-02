@@ -137,56 +137,63 @@ Content is one JSON object, `{"meta": ..., "body": ...}`, compact, with object k
 | `dataSha256` | Lowercase hexadecimal SHA-256 of `data`, encoded as compact JSON with sorted keys |
 | `requestId` | The request identifier in the destination |
 
-Retrieval for the batch design: a batch selects the stored responses whose `meta.fetchedAt` falls in a half-open window `[start, end)`. The `dt` partitions narrow the listing, names within a partition sort by fetch time, and `meta.fetchedAt` is authoritative. The hash covers `data` alone because `currentTime` differs on every response; equal hashes mark responses with the same agencies, which the batch flags as duplicates and keeps.
+Reading a stored response back: `RawAgencyResponse.parse/1` returns the fetch time, the data hash, the request identifier, and the agencies. It rejects, as a value, content that is not the stored wrapper, data that does not hash to `meta.dataSha256`, a `meta` that names another destination, a request identifier that is not a UUID version 7, and agencies whose identifiers are empty or repeat. The hash covers `data` alone because `currentTime` differs on every response, so equal hashes mark responses with the same agencies.
 
 Credentials: the URL is never stored. `RawAgencyResponse.build/1` raises when the destination or `meta` contains `key=`, and the recorder raises when the destination or the content contains the configured key. `body` is exempt from the `key=` check, because it holds text the agencies supply, such as a website link with a `key` parameter of its own.
 
 The recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
 
-## Agency batches
+## Published records
 
-`Gobusgo.OneBusAway.AgencyBatch.process/2` processes one batch: every stored raw response whose fetch time falls in a half-open window `[start_at, end_at)`. It reads through `Gobusgo.Reader`, publishes through `Gobusgo.Writer`, runs in the calling process, and names no backend. `Gobusgo.OneBusAway.AgencyBatch.Window` holds the window rules and `Gobusgo.OneBusAway.AgencyBatch.Output` builds the published form; both are pure.
+Every record goes through `Gobusgo.Publisher.publish/2`, which names no backend, and holds one CloudEvent 1.0 in structured mode built by `Gobusgo.CloudEvent`: compact JSON with sorted keys, a `content-type` header of `application/cloudevents+json`, and the `partitionkey` attribute as the record key. The `type` carries the version as its suffix.
 
-The request is `%{window: %{start_at: ..., end_at: ...}, trigger_id: ..., reprocess: ...}`. Both bounds are UTC times at whole seconds, a window touches at most 32 UTC dates, and `trigger_id` is a UUID version 7. The batch identifier is both bounds in basic ISO 8601 joined by `-`, such as `20261002T000000Z-20261003T000000Z`.
+| Record | Topic | Key | `type` | Built by |
+| --- | --- | --- | --- | --- |
+| Response stored | `oba.agencies-with-coverage.response-stored` | `oba/agencies-with-coverage` | `gobusgo.response.stored.v1` | `RawAgencyResponse.StoredEvent.record/1` |
+| Agency | `oba.agencies-with-coverage.state` | `agency/<agency id>` | `gobusgo.agency.processed.v1` | `AgencyBatch.Records.build/1` |
+| Manifest | `oba.agencies-with-coverage.state` | `manifest` | `gobusgo.agency.fetch.completed.v1` | `AgencyBatch.Records.build/1` |
 
-Inputs: the batch lists the `dt` partition of every date the window touches and takes the destinations whose name carries a fetch time inside the window. It reads them one at a time in destination order. `RawAgencyResponse.parse/1` decides validity: the content is the stored wrapper, its data hashes to `meta.dataSha256`, its `meta` names the destination it was read from, and its data is agency discovery data. An invalid input is skipped and recorded with its reason (`invalid_json`, `schema_mismatch`, `hash_mismatch`, `destination_mismatch`). A destination whose name carries no fetch time is skipped as `destination_mismatch` without being read. A window holds at most 10,000 inputs.
+Event attributes and `data`:
 
-Published destination:
+| Record | `id` | `source` | `time` | `subject` | `data` |
+| --- | --- | --- | --- | --- | --- |
+| Response stored | A UUID version 7 | The producer's | The producer's | The stored destination | `dataset`, `destination`, `fetchedAt`, `dataSha256`, `requestId` |
+| Agency | `<requestId>/agency/<agency id>` | `/gobusgo/processor/oba/agencies-with-coverage` | The fetch time | The agency identifier | `agency` (`id`, `name`, `url`, `timezone`, `coverage` with `lat`, `lon`, `latSpan`, `lonSpan`), `fetchedAt`, `requestId` |
+| Manifest | `<requestId>/manifest` | `/gobusgo/processor/oba/agencies-with-coverage` | The fetch time | The stored destination | `agencyIds` (sorted), `dataSha256`, `destination`, `fetchedAt`, `requestId` |
 
-```
-processed/oba/agencies/<batchId>_<firstFetchedAt>_<lastFetchedAt>_<processedAt>.json
-```
+The agency and manifest records are a pure function of the stored response, so a repeated run publishes the same bytes. The `agency/` prefix keeps an agency identifier from ever equaling the manifest key. The manifest completes a fetch and is the source of membership: an agency absent from `agencyIds` is gone.
 
-Published content is one JSON object, compact, with object keys sorted:
+## Agency processor
 
-| Field | Meaning |
-| --- | --- |
-| `agencies` | The agencies of the latest valid input, sorted by `id`; each has `id`, `name`, `url`, `timezone`, and `coverage` (`lat`, `lon`, `latSpan`, `lonSpan`) |
-| `meta.schemaVersion` | `1`; rises when a field is removed or renamed, or changes type or meaning |
-| `meta.batchId`, `meta.windowStart`, `meta.windowEnd` | The window; the bounds in UTC extended ISO 8601 |
-| `meta.processedAt` | Processing time, UTC extended ISO 8601 at second precision |
-| `meta.triggerId` | The trigger identifier of the request |
-| `meta.inputFileCount` | Valid and skipped inputs together |
-| `meta.inputs` | Every valid input in destination order: `destination`, `fetchedAt`, `dataSha256`, `duplicate` (true when an earlier input carries the same hash) |
-| `meta.skipped` | Every invalid input: `destination`, `reason` |
+`Gobusgo.OneBusAway.AgencyBatch.process/2` takes the destination of one stored response, the destination a "response stored" event names. It reads through `Gobusgo.Reader`, validates with `RawAgencyResponse.parse/1`, and publishes through `Gobusgo.Publisher`: the agency records in one call, then the manifest record once that call returns `:ok`. It runs in the calling process, lists nothing, keeps nothing between calls, and names no backend. Every valid response is published, changed or not.
 
-Results:
+A success is `{:ok, %{destination: ..., request_id: ..., fetched_at: ..., agency_count: ...}}`. A failure is `{:error, %{class: ..., error_code: ..., stage: ..., reason: ...}}`, and no manifest is published for it:
+
+| `stage` | `error_code` | `class` |
+| --- | --- | --- |
+| `:read` | `READ_FAILURE` | `:permanent` for `:not_found`, `:content_too_large`, and `{:invalid_destination, reason}`; `:transient` for `:permission_denied` and `:io_failure` |
+| `:parse` | `INVALID_JSON`, `SCHEMA_MISMATCH`, `HASH_MISMATCH`, or `DESTINATION_MISMATCH`, from the `RawAgencyResponse.parse/1` reason | `:permanent` |
+| `:publish_agencies`, `:publish_manifest` | `WRITE_FAILURE` | `:permanent` for `:record_too_large`; `:transient` for `:timeout`, `:unavailable`, and `:unknown_topic` |
+
+A `:permanent` failure repeats on every call. The error codes are the dead-letter `ERROR_CODE` values decided in GOB-48.
+
+The processor logs one line per call: `info` `Agency batch published` with `destination`, `request_id`, and `agency_count`; or `error` `Agency batch failed` with `destination`, `stage`, `error_code`, `class`, and `reason`.
+
+## Reconciliation
+
+`Gobusgo.OneBusAway.Reconciliation.republish/2` takes `%{dataset: ..., range: %{start_at: ..., end_at: ...}}` and publishes a "response stored" event again for every stored response of the dataset fetched inside the half-open range `[start_at, end_at)`. The only dataset is `oba/agencies-with-coverage`. Both bounds are UTC times at whole seconds, and a range touches at most 32 UTC dates and holds at most 10,000 stored responses. `Gobusgo.OneBusAway.Reconciliation.TimeRange` holds the range rules and is pure.
+
+It lists the `dt` partition of every date the range touches, takes the destinations whose name carries a fetch time inside the range, and reads them one at a time in destination order. A stored response `RawAgencyResponse.parse/1` rejects is skipped with its reason and gets no event; a destination whose name carries no fetch time is skipped as `destination_mismatch` without being read. Each event has the `source` `/gobusgo/reconciliation/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. Events are published in destination order, at most 1,000 per publisher call.
 
 | Result | Meaning |
 | --- | --- |
-| `{:ok, %{outcome: :published}}` | One output is stored |
-| `{:ok, %{outcome: :published_with_skips}}` | One output is stored and at least one input was skipped |
-| `{:ok, %{outcome: :no_input}}` | The window holds no input; nothing is stored |
-| `{:ok, %{outcome: :already_published}}` | The window has an output and `reprocess` is false; nothing is read or stored |
-| `{:error, :window_open}` | The window ends after the current time |
-| `{:error, :all_inputs_invalid}` | The window holds inputs and none is valid |
-| `{:error, :too_many_inputs}` | The window or its partitions exceed the bounds |
-| `{:error, {:read, reason}}` | Discovering or reading failed; an input gone between discovery and reading is `{:read, :not_found}` |
-| `{:error, {:write, reason}}` | The writer did not store the output |
+| `{:ok, %{published_count: ..., skipped: [...]}}` | The events are published; `skipped` lists each skipped destination with its reason |
+| `{:error, :unknown_dataset}` | The dataset is not known; nothing is read |
+| `{:error, :too_many_files}` | The range or its partitions exceed the bounds; nothing is published |
+| `{:error, {:read, reason}}` | Discovering or reading failed; nothing is published |
+| `{:error, {:publish, reason}}` | A publisher call failed; events of earlier calls are published |
 
-Every `{:ok, result}` also carries `batch_id`, `destination`, `input_count`, `skipped_count`, and `duplicate_count`. An error stores nothing. With `reprocess: true` the run skips the existing-output check and stores its own output beside any earlier one; two runs of one window in the same second build the same destination, and the second returns `{:error, {:write, :already_exists}}`.
-
-The batch logs one line per call: `info` `Agency batch finished`, `warning` `Agency batch published with skips`, or `error` `Agency batch failed`, with `batch_id`, `trigger_id`, and the outcome's counts or the failure `reason`.
+Reconciliation logs one line per call: `info` `Reconciliation finished`, `warning` `Reconciliation finished with skips`, or `error` `Reconciliation failed`, with `dataset`, `range_start`, `range_end`, and the counts or the failure `reason`.
 
 ## Methods for future work
 
