@@ -8,6 +8,9 @@ defmodule Gobusgo.Config do
   @type one_bus_away :: %{base_url: String.t(), api_key: String.t()}
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
+  @type ingestion :: %{scheduled: boolean()}
+  @type ingestion_error :: {:invalid, :scheduled}
+
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
   @type http_error :: {:invalid, :host | :port}
 
@@ -43,6 +46,25 @@ defmodule Gobusgo.Config do
   @spec one_bus_away() :: {:ok, one_bus_away()} | {:error, one_bus_away_error()}
   def one_bus_away do
     :gobusgo |> Application.get_env(:one_bus_away, []) |> fetch_one_bus_away()
+  end
+
+  @doc """
+  Returns the ingestion settings from `env`: `:scheduled`, whether the
+  sources run on their schedule. Returns the first value that is not valid;
+  a missing value is not valid.
+  """
+  @spec fetch_ingestion(Keyword.t()) :: {:ok, ingestion()} | {:error, ingestion_error()}
+  def fetch_ingestion(env) when is_list(env) do
+    case Keyword.get(env, :scheduled) do
+      scheduled when is_boolean(scheduled) -> {:ok, %{scheduled: scheduled}}
+      _other -> {:error, {:invalid, :scheduled}}
+    end
+  end
+
+  @doc "Reads the ingestion settings configured for the running application."
+  @spec ingestion() :: {:ok, ingestion()} | {:error, ingestion_error()}
+  def ingestion do
+    :gobusgo |> Application.get_env(:ingestion, []) |> fetch_ingestion()
   end
 
   @doc """

@@ -4,14 +4,22 @@ config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile
 
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
 
-# Records go straight to the views of the running application.
+# Records go straight to their subscribers in the running application: a
+# "response stored" event to the consumer that processes the stored response,
+# and the processed records to the view.
 config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
 
 config :gobusgo, Gobusgo.Publisher.InProcess,
   subscribers: %{
+    "oba.agencies-with-coverage.response-stored" =>
+      {Gobusgo.OneBusAway.AgencyBatch.Consumer, :consume, [[]]},
     "oba.agencies-with-coverage.state" =>
       {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]}
   }
+
+# The sources run on their schedule everywhere except under test, where no
+# request may leave the machine.
+config :gobusgo, :ingestion, scheduled: config_env() != :test
 
 config :phoenix, :json_library, JSON
 

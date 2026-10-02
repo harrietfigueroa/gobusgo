@@ -28,6 +28,23 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent do
   alias Gobusgo.Assert
   alias Gobusgo.Publisher
   alias Gobusgo.RequestId
+  alias Gobusgo.Schema
+
+  @typedoc """
+    * `:invalid_json` — the value is not JSON.
+    * `:schema_mismatch` — the value is not a record `record/1` produces.
+    * `:unsupported_type` — the value is an event of another `type`.
+  """
+  @type decode_error :: :invalid_json | :schema_mismatch | :unsupported_type
+
+  @data_schema {:map,
+                %{
+                  "dataset" => {:literal, @dataset},
+                  "destination" => :string,
+                  "fetchedAt" => :string,
+                  "dataSha256" => :string,
+                  "requestId" => :string
+                }}
 
   @type response :: %{
           destination: String.t(),
@@ -78,5 +95,37 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent do
         "requestId" => request_id
       }
     })
+  end
+
+  @doc """
+  Returns the stored response that `value`, the value of a record `record/1`
+  produces, refers to. The first rule the value breaks returns as a value.
+  """
+  @spec decode(binary()) :: {:ok, response()} | {:error, decode_error()}
+  def decode(value) when is_binary(value) do
+    with {:ok, %{type: type, data: data}} <- CloudEvent.decode(value) do
+      case type do
+        @type_name -> decode_data(data)
+        _other -> {:error, :unsupported_type}
+      end
+    end
+  end
+
+  defp decode_data(data) do
+    with nil <- Schema.mismatch(data, @data_schema),
+         %{"destination" => destination, "requestId" => request_id} = data,
+         true <- destination != "",
+         true <- RequestId.valid?(request_id),
+         {:ok, fetched_at, 0} <- DateTime.from_iso8601(data["fetchedAt"]) do
+      {:ok,
+       %{
+         destination: destination,
+         fetched_at: fetched_at,
+         data_sha256: data["dataSha256"],
+         request_id: request_id
+       }}
+    else
+      _mismatch -> {:error, :schema_mismatch}
+    end
   end
 end

@@ -143,6 +143,16 @@ Credentials: the URL is never stored. `RawAgencyResponse.build/1` raises when th
 
 The recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
 
+## Scheduled sources
+
+`Gobusgo.OneBusAway.Sources.specs/2` returns one spec per source for `Gobusgo.Scheduler`: the name the scheduler is registered under, the function to run, the interval, and the deadline of one run. It is pure and starts nothing. The application starts a scheduler per spec when the OneBusAway settings are present, and none under test.
+
+| Source | Scheduler name | Run | Interval | Deadline |
+| --- | --- | --- | --- | --- |
+| Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | 60 seconds | 45 seconds |
+
+A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the ticks it skipped during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped ticks are intended.
+
 ## Published records
 
 Every record goes through `Gobusgo.Publisher.publish/2`, which names no backend, and holds one CloudEvent 1.0 in structured mode built by `Gobusgo.CloudEvent`: compact JSON with sorted keys, a `content-type` header of `application/cloudevents+json`, and the `partitionkey` attribute as the record key. The `type` carries the version as its suffix.
@@ -192,7 +202,9 @@ The processor logs one line per call: `info` `Agency batch published` with `dest
 
 The view logs at most twice per `apply_records/2` call: `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; and `warning` `Agency view skipped invalid records` with `invalid_count`.
 
-The configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It has no subscriber for `oba.agencies-with-coverage.response-stored`, so publishing a "response stored" event through it returns `{:error, :unknown_topic}`.
+The configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It calls `Gobusgo.OneBusAway.AgencyBatch.Consumer.consume/2` with the records published to `oba.agencies-with-coverage.response-stored`. The consumer decodes each value with `RawAgencyResponse.StoredEvent.decode/1` and calls `AgencyBatch.process/2` with the destination it names, in order, in the publishing process. A value that is not a "response stored" event is skipped and counted in one `warning` `Agency batch consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter.
+
+`AgencyRecorder.record/2` publishes one "response stored" event once the writer has stored the response, with the `source` `/gobusgo/recorder/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. A failed publish leaves the result `{:ok, recorded}` and logs `warning` `OneBusAway agency response recorded without its event` with the `reason` in place of the `info` line.
 
 ## Reconciliation
 
