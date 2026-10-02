@@ -1,0 +1,69 @@
+defmodule Gobusgo.SchemaTest do
+  # Verifies the schema check as a pure function that returns the first
+  # mismatch as a value: each case names a value, a schema, and the path and
+  # expectation the mismatch must carry.
+  use ExUnit.Case, async: true
+
+  alias Gobusgo.Schema
+
+  @schema {:map,
+           %{
+             "name" => :string,
+             "count" => :integer,
+             "ratio" => :number,
+             "open" => :boolean,
+             "kind" => {:literal, "agency"},
+             "tags" => {:list, :string}
+           }}
+
+  @valid %{
+    "name" => "Metro",
+    "count" => 2,
+    "ratio" => 0.5,
+    "open" => true,
+    "kind" => "agency",
+    "tags" => ["a", "b"]
+  }
+
+  describe "mismatch/2" do
+    test "returns nil for a matching value, ignoring unknown map keys" do
+      assert Schema.mismatch(Map.put(@valid, "extra", 1), @schema) == nil
+    end
+
+    for {description, key, value, path, expected} <- [
+          {"a wrong string", "name", 1, ["name"], :string},
+          {"a wrong integer", "count", 1.5, ["count"], :integer},
+          {"a wrong number", "ratio", "x", ["ratio"], :number},
+          {"a wrong boolean", "open", "yes", ["open"], :boolean},
+          {"a wrong literal", "kind", "stop", ["kind"], {:literal, "agency"}},
+          {"a wrong list element", "tags", ["a", 2], ["tags", 1], :string},
+          {"a list that is not a list", "tags", "a", ["tags"], {:list, :string}}
+        ] do
+      test "returns the path and the expectation for #{description}" do
+        value = Map.put(@valid, unquote(key), unquote(Macro.escape(value)))
+
+        assert Schema.mismatch(value, @schema) ==
+                 %{path: unquote(path), expected: unquote(Macro.escape(expected))}
+      end
+    end
+
+    test "returns the missing key as required" do
+      assert Schema.mismatch(Map.delete(@valid, "name"), @schema) ==
+               %{path: ["name"], expected: :required}
+    end
+
+    test "returns the root path for a value that is not a map" do
+      assert %{path: []} = Schema.mismatch("text", @schema)
+    end
+  end
+
+  describe "format_path/1" do
+    test "names the root for an empty path" do
+      assert Schema.format_path([]) == "root"
+    end
+
+    test "joins keys and indexes with dots" do
+      assert Schema.format_path(["data", "list", 0, "lat"]) == "data.list.0.lat"
+    end
+  end
+end

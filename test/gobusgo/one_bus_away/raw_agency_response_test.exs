@@ -178,4 +178,137 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponseTest do
       assert body == linking
     end
   end
+
+  describe "partition_prefix/1" do
+    test "is the prefix of every destination fetched on that UTC date" do
+      assert RawAgencyResponse.partition_prefix(~D[2026-10-02]) ==
+               "raw/oba/agencies-with-coverage/dt=2026-10-02/"
+
+      assert String.starts_with?(
+               build().destination,
+               "raw/oba/agencies-with-coverage/dt=2026-10-02/"
+             )
+    end
+  end
+
+  describe "fetched_at/1" do
+    test "returns the fetch time a built destination carries" do
+      assert RawAgencyResponse.fetched_at(build().destination) == {:ok, ~U[2026-10-02 03:15:00Z]}
+    end
+
+    for {description, destination} <- [
+          {"a name without a fetch time",
+           "raw/oba/agencies-with-coverage/dt=2026-10-02/notes.json"},
+          {"a fetch time that is not a time",
+           "raw/oba/agencies-with-coverage/dt=2026-10-02/20261340T996199Z_x_y.json"},
+          {"a fetch time without a separator",
+           "raw/oba/agencies-with-coverage/dt=2026-10-02/20261002T031500Zx.json"}
+        ] do
+      test "returns :error for #{description}" do
+        assert RawAgencyResponse.fetched_at(unquote(destination)) == :error
+      end
+    end
+  end
+
+  describe "parse/1" do
+    @agency_data %{
+      "limitExceeded" => false,
+      "list" => [
+        %{"agencyId" => "1", "lat" => 47.5, "lon" => -122.1, "latSpan" => 0.6, "lonSpan" => 0.7}
+      ],
+      "references" => %{
+        "agencies" => [
+          %{
+            "id" => "1",
+            "name" => "Metro Transit",
+            "url" => "https://metro.example.test",
+            "timezone" => "America/Los_Angeles"
+          }
+        ]
+      }
+    }
+
+    defp stored(data \\ @agency_data), do: build(%{envelope: envelope(%{"data" => data})})
+
+    defp rewritten(stored, change) do
+      content = stored.content |> JSON.decode!() |> change.() |> JSON.encode!()
+      %{destination: stored.destination, content: content}
+    end
+
+    test "returns what a built response stored" do
+      stored = stored()
+
+      assert RawAgencyResponse.parse(Map.take(stored, [:destination, :content])) ==
+               {:ok,
+                %{
+                  destination: stored.destination,
+                  fetched_at: ~U[2026-10-02 03:15:00Z],
+                  data_sha256: stored.data_sha256,
+                  agencies: [
+                    %{
+                      id: "1",
+                      name: "Metro Transit",
+                      url: "https://metro.example.test",
+                      timezone: "America/Los_Angeles",
+                      coverage: %{lat: 47.5, lon: -122.1, lat_span: 0.6, lon_span: 0.7}
+                    }
+                  ]
+                }}
+    end
+
+    test "returns invalid_json for content that is not JSON" do
+      assert RawAgencyResponse.parse(%{destination: stored().destination, content: "{not json"}) ==
+               {:error, :invalid_json}
+    end
+
+    for {description, change} <- [
+          {"content that is not an object", quote(do: fn _wrapper -> [1, 2] end)},
+          {"a missing meta", quote(do: &Map.delete(&1, "meta"))},
+          {"a missing body", quote(do: &Map.delete(&1, "body"))},
+          {"an envelope code other than 200", quote(do: &put_in(&1, ["body", "code"], 500))},
+          {"a fetch time that is not a time",
+           quote(do: &put_in(&1, ["meta", "fetchedAt"], "yesterday"))},
+          {"a fetch time outside UTC",
+           quote(do: &put_in(&1, ["meta", "fetchedAt"], "2026-10-02T04:15:00+01:00"))}
+        ] do
+      test "returns schema_mismatch for #{description}" do
+        assert RawAgencyResponse.parse(rewritten(stored(), unquote(change))) ==
+                 {:error, :schema_mismatch}
+      end
+    end
+
+    test "returns schema_mismatch for data that is not agency data" do
+      stored = build()
+
+      assert RawAgencyResponse.parse(Map.take(stored, [:destination, :content])) ==
+               {:error, :schema_mismatch}
+    end
+
+    test "returns hash_mismatch when the data differs from the recorded hash" do
+      changed =
+        rewritten(stored(), &put_in(&1, ["body", "data", "references", "agencies"], []))
+
+      assert RawAgencyResponse.parse(changed) == {:error, :hash_mismatch}
+    end
+
+    test "returns destination_mismatch when the fetch time differs from the name" do
+      changed = rewritten(stored(), &put_in(&1, ["meta", "fetchedAt"], "2026-10-02T03:16:00Z"))
+
+      assert RawAgencyResponse.parse(changed) == {:error, :destination_mismatch}
+    end
+
+    test "returns destination_mismatch when the request identifier differs from the name" do
+      changed = rewritten(stored(), &put_in(&1, ["meta", "requestId"], "other/../identifier"))
+
+      assert RawAgencyResponse.parse(changed) == {:error, :destination_mismatch}
+    end
+
+    test "returns destination_mismatch for content stored under another name" do
+      stored = stored()
+      moved = String.replace(stored.destination, "dt=2026-10-02", "dt=2026-10-03")
+
+      assert RawAgencyResponse.parse(%{destination: moved, content: stored.content}) ==
+               {:error, :destination_mismatch}
+    end
+  end
 end

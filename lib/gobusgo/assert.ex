@@ -13,14 +13,9 @@ defmodule Gobusgo.Assert do
     @type t :: %__MODULE__{message: String.t(), cause: map() | nil}
   end
 
-  @type schema ::
-          :string
-          | :number
-          | :integer
-          | :boolean
-          | {:literal, term()}
-          | {:list, schema()}
-          | {:map, %{optional(String.t()) => schema()}}
+  alias Gobusgo.Schema
+
+  @type schema :: Schema.t()
 
   @doc """
   Raises `AssertionError` with `message` unless `condition` is truthy. The
@@ -53,47 +48,14 @@ defmodule Gobusgo.Assert do
   """
   @spec schema(term(), schema()) :: term()
   def schema(value, schema) do
-    case mismatch(value, schema, []) do
+    case Schema.mismatch(value, schema) do
       nil ->
         value
 
       %{path: path} = cause ->
         raise AssertionError,
-          message: "schema mismatch at #{format_path(path)}",
+          message: "schema mismatch at #{Schema.format_path(path)}",
           cause: cause
     end
   end
-
-  defp format_path([]), do: "root"
-  defp format_path(path), do: Enum.map_join(path, ".", &to_string/1)
-
-  defp mismatch(value, :string, path), do: unless(is_binary(value), do: failure(path, :string))
-  defp mismatch(value, :number, path), do: unless(is_number(value), do: failure(path, :number))
-  defp mismatch(value, :integer, path), do: unless(is_integer(value), do: failure(path, :integer))
-  defp mismatch(value, :boolean, path), do: unless(is_boolean(value), do: failure(path, :boolean))
-
-  defp mismatch(value, {:literal, expected}, path) do
-    unless value === expected, do: failure(path, {:literal, expected})
-  end
-
-  defp mismatch(value, {:list, element_schema}, path) when is_list(value) do
-    value
-    |> Enum.with_index()
-    |> Enum.find_value(fn {element, index} ->
-      mismatch(element, element_schema, path ++ [index])
-    end)
-  end
-
-  defp mismatch(value, {:map, fields}, path) when is_map(value) do
-    Enum.find_value(fields, fn {key, field_schema} ->
-      case Map.fetch(value, key) do
-        {:ok, field} -> mismatch(field, field_schema, path ++ [key])
-        :error -> failure(path ++ [key], :required)
-      end
-    end)
-  end
-
-  defp mismatch(_value, schema, path), do: failure(path, schema)
-
-  defp failure(path, expected), do: %{path: path, expected: expected}
 end

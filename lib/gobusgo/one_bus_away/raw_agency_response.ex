@@ -40,9 +40,11 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.CanonicalJson
   alias Gobusgo.Destination
   alias Gobusgo.OneBusAway.Agencies
   alias Gobusgo.RequestId
+  alias Gobusgo.Schema
 
   @type t :: %{
           destination: String.t(),
@@ -51,7 +53,25 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
           data_sha256: String.t()
         }
 
+  @type parsed :: %{
+          destination: String.t(),
+          fetched_at: DateTime.t(),
+          data_sha256: String.t(),
+          agencies: [Agencies.agency()]
+        }
+
+  @typedoc """
+    * `:invalid_json` — the content is not JSON.
+    * `:schema_mismatch` — the content is not the wrapper `build/1` produces,
+      or its data is not agency discovery data.
+    * `:hash_mismatch` — the data does not hash to `meta.dataSha256`.
+    * `:destination_mismatch` — `meta` names a destination other than the one
+      the content was read from.
+  """
+  @type parse_error :: :invalid_json | :schema_mismatch | :hash_mismatch | :destination_mismatch
+
   @destination_prefix "raw/oba/agencies-with-coverage"
+  @fetched_at_name_bytes byte_size("20261002T031500Z")
   @hash_prefix_size 12
   @http_status_stored 200
   @credential_parameter "key="
@@ -64,6 +84,18 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
                       "currentTime" => :integer,
                       "data" => {:map, %{}}
                     }}
+
+  @wrapper_schema {:map,
+                   %{
+                     "meta" =>
+                       {:map,
+                        %{
+                          "fetchedAt" => :string,
+                          "dataSha256" => :string,
+                          "requestId" => :string
+                        }},
+                     "body" => @envelope_schema
+                   }}
 
   @doc """
   Returns the destination and content that store `response` under
@@ -123,7 +155,111 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
     :sha256 |> :crypto.hash(encode(data)) |> Base.encode16(case: :lower)
   end
 
+  @doc """
+  Returns the prefix shared by every destination whose fetch time falls on the
+  UTC `date`.
+  """
+  @spec partition_prefix(Date.t()) :: String.t()
+  def partition_prefix(%Date{} = date) do
+    @destination_prefix <> "/dt=" <> Date.to_iso8601(date) <> "/"
+  end
+
+  @doc """
+  Returns the fetch time the name of `destination` carries, or `:error` when
+  the name does not start with one.
+  """
+  @spec fetched_at(String.t()) :: {:ok, DateTime.t()} | :error
+  def fetched_at(destination) when is_binary(destination) do
+    case destination |> String.split("/") |> List.last() do
+      <<stamp::binary-size(@fetched_at_name_bytes), "_", _rest::binary>> ->
+        case DateTime.from_iso8601(stamp, :basic) do
+          {:ok, fetched_at, 0} -> {:ok, fetched_at}
+          _other -> :error
+        end
+
+      _other ->
+        :error
+    end
+  end
+
+  @doc """
+  Returns what `content`, read back from `destination`, stored: the fetch
+  time, the data hash, and the agencies. The content must be the wrapper
+  `build/1` produces, its data must hash to the recorded hash, and its `meta`
+  must name `destination`. The first rule it breaks returns as a value.
+  """
+  @spec parse(%{destination: String.t(), content: binary()}) ::
+          {:ok, parsed()} | {:error, parse_error()}
+  def parse(%{destination: destination, content: content})
+      when is_binary(destination) and is_binary(content) do
+    with {:ok, %{"meta" => meta, "body" => %{"data" => data}}} <- decode(content),
+         {:ok, fetched_at} <- parse_fetched_at(meta["fetchedAt"]),
+         data_sha256 = data_sha256(data),
+         :ok <- check(data_sha256 == meta["dataSha256"], :hash_mismatch),
+         named = destination_for(fetched_at, meta["requestId"], data_sha256),
+         :ok <- check(named == destination, :destination_mismatch),
+         {:ok, agencies} <- parse_agencies(data) do
+      {:ok,
+       %{
+         destination: destination,
+         fetched_at: fetched_at,
+         data_sha256: data_sha256,
+         agencies: agencies
+       }}
+    end
+  end
+
+  defp decode(content) do
+    case JSON.decode(content) do
+      {:ok, decoded} -> check_schema(decoded)
+      {:error, _reason} -> {:error, :invalid_json}
+    end
+  end
+
+  defp check_schema(decoded) do
+    case Schema.mismatch(decoded, @wrapper_schema) do
+      nil -> {:ok, decoded}
+      _mismatch -> {:error, :schema_mismatch}
+    end
+  end
+
+  # Only the exact text `build/1` writes is accepted, which rules out other
+  # offsets and precisions that name the same instant.
+  defp parse_fetched_at(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, fetched_at, 0} ->
+        check(DateTime.to_iso8601(fetched_at, :extended) == text, :schema_mismatch, fetched_at)
+
+      _other ->
+        {:error, :schema_mismatch}
+    end
+  end
+
+  defp parse_agencies(data) do
+    case Agencies.parse(data) do
+      {:ok, agencies} -> {:ok, agencies}
+      {:error, _reason} -> {:error, :schema_mismatch}
+    end
+  end
+
+  defp check(true, _reason), do: :ok
+  defp check(false, reason), do: {:error, reason}
+
+  defp check(true, _reason, value), do: {:ok, value}
+  defp check(false, reason, _value), do: {:error, reason}
+
   defp destination(fetched_at, request_id, data_sha256) do
+    destination = destination_for(fetched_at, request_id, data_sha256)
+
+    Assert.condition(
+      match?({:ok, _segments}, Destination.validate(destination)),
+      "built an invalid destination"
+    )
+
+    destination
+  end
+
+  defp destination_for(fetched_at, request_id, data_sha256) do
     name =
       Enum.join(
         [
@@ -134,18 +270,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
         "_"
       )
 
-    destination =
-      Enum.join(
-        [@destination_prefix, "dt=" <> Date.to_iso8601(DateTime.to_date(fetched_at)), name],
-        "/"
-      ) <> ".json"
-
-    Assert.condition(
-      match?({:ok, _segments}, Destination.validate(destination)),
-      "built an invalid destination"
-    )
-
-    destination
+    partition_prefix(DateTime.to_date(fetched_at)) <> name <> ".json"
   end
 
   # The body is exempt: it holds text the agencies supply, where `key=` is a
@@ -163,14 +288,5 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
     )
   end
 
-  defp encode(value),
-    do: value |> JSON.encode_to_iodata!(&encode_sorted/2) |> IO.iodata_to_binary()
-
-  # A map's iteration order depends on its size, so the keys are sorted to
-  # make the bytes, and the hash over them, a function of the value alone.
-  defp encode_sorted(value, encoder) when is_map(value) and not is_struct(value) do
-    value |> Enum.sort_by(fn {key, _value} -> key end) |> :json.encode_key_value_list(encoder)
-  end
-
-  defp encode_sorted(value, encoder), do: JSON.protocol_encode(value, encoder)
+  defp encode(value), do: CanonicalJson.encode(value)
 end
