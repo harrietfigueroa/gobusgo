@@ -12,7 +12,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# The four jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The four mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -106,3 +106,13 @@ jobs:
       - run: mix deps.get
       - run: mix assets.setup
       - run: mix assets.build
+
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build --tag gobusgo:ci .

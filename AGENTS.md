@@ -230,7 +230,8 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/reader.ex` is the backend-neutral contract and entry point for reading content and discovering destinations; `lib/gobusgo/reader/local_file.ex` is its local file backend.
 - `lib/gobusgo/local_file/` holds what the local file backends share.
 - `lib/gobusgo/publisher.ex` is the backend-neutral contract and entry point for publishing records to topics; `lib/gobusgo/publisher/in_process.ex` is its in-process backend, which calls a subscriber per topic and stores nothing.
-- `config/config.exs` selects the writer, reader, and publisher backends, gives the file backends one base directory, names the publisher's subscribers, and configures the HTTP endpoint. `config/runtime.exs` reads the environment variables.
+- `config/config.exs` selects the writer, reader, and publisher backends, names the publisher's subscribers, and configures the HTTP endpoint; a production build also serves HTTP on start, reads the digested asset names, and logs from `info` upward. `config/runtime.exs` reads the environment variables and gives the file backends one base directory from `GOBUSGO_DATA_DIR`.
+- `Dockerfile` and `.dockerignore` build the local development image: a release, run by a non-root user, with the base directory at `/data`. `mix.exs` defines the release.
 - `test/` mirrors `lib/`.
 
 ## Toolchain and commands
@@ -246,6 +247,8 @@ mix test
 `mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets and LazyHTML for LiveView tests; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
 
 When a change touches `assets/` or the classes in a template, also run `mix assets.build`; CI runs it as its own job. `mix assets.setup` installs the esbuild and Tailwind binaries at the versions `config/config.exs` pins. `mix format` formats HEEx templates through `Phoenix.LiveView.HTMLFormatter`.
+
+When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, also run `docker build --tag gobusgo:local .`; CI runs it as its own job. The image's Elixir, Erlang, and Debian versions are build arguments in the `Dockerfile` and change together with `.tool-versions`. A file the release needs from outside `lib/`, `assets/`, and `config/` has to be admitted in `.dockerignore` and copied in the `Dockerfile`.
 
 ## Issue branches
 
@@ -291,13 +294,13 @@ Phoenix serves the HTTP API on Bandit; GOB-17 records the choice and its rationa
 
 ## Credentials and configuration
 
-Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`, `SECRET_KEY_BASE`); the OneBusAway ones carry placeholder values and the secret is left empty. Load them into the shell with:
+Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`, `GOBUSGO_DATA_DIR`, `SECRET_KEY_BASE`); the OneBusAway ones carry placeholder values and the secret is left empty. Load them into the shell with:
 
 ```sh
 set -a; source .env; set +a
 ```
 
-Never commit secrets, and never put a key in code, tests, logs, documentation, or error output. `.env.example` carries placeholders and non-secret defaults, never a real credential. The OneBusAway key travels in a query string, so the integration's AGENTS.md rules on redacting it apply to every HTTP client.
+Never commit secrets, and never put a key in code, tests, logs, documentation, a `Dockerfile`, or error output. A container receives its credentials as environment variables at run time. `.env.example` carries placeholders and non-secret defaults, never a real credential. The OneBusAway key travels in a query string, so the integration's AGENTS.md rules on redacting it apply to every HTTP client.
 
 ## Integration reference
 
