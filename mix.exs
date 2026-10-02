@@ -8,6 +8,7 @@ defmodule Gobusgo.MixProject do
       elixir: "~> 1.20",
       elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps()
     ]
   end
@@ -23,8 +24,21 @@ defmodule Gobusgo.MixProject do
     [
       {:req, "~> 0.7.4"},
       {:phoenix, "~> 1.8.15"},
+      {:phoenix_live_view, "~> 1.2"},
+      {:phoenix_html, "~> 4.3"},
       {:bandit, "~> 1.12"},
-      {:plug, "~> 1.16"}
+      {:plug, "~> 1.16"},
+      {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
+      {:lazy_html, "~> 0.1", only: :test}
+    ]
+  end
+
+  defp aliases do
+    [
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["tailwind default", "esbuild default"],
+      "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"]
     ]
   end
 end

@@ -73,4 +73,34 @@ defmodule Gobusgo.ConfigTest do
       end
     end
   end
+
+  describe "fetch_secret_key_base/1" do
+    @secret String.duplicate("s", 64)
+
+    test "returns a configured secret of 64 bytes" do
+      assert Config.fetch_secret_key_base(secret_key_base: @secret, required: true) ==
+               {:ok, @secret}
+    end
+
+    test "returns nil for an unset secret that is not required" do
+      assert Config.fetch_secret_key_base(secret_key_base: nil, required: false) == {:ok, nil}
+    end
+
+    test "returns nil for a blank secret that is not required" do
+      assert Config.fetch_secret_key_base(secret_key_base: "  ", required: false) == {:ok, nil}
+    end
+
+    test "reports the secret as missing when it is required and unset" do
+      assert Config.fetch_secret_key_base(secret_key_base: nil, required: true) ==
+               {:error, {:missing, :secret_key_base}}
+    end
+
+    for required <- [true, false] do
+      test "reports a secret shorter than 64 bytes as invalid when required is #{required}" do
+        env = [secret_key_base: String.duplicate("s", 63), required: unquote(required)]
+
+        assert Config.fetch_secret_key_base(env) == {:error, {:invalid, :secret_key_base}}
+      end
+    end
+  end
 end

@@ -14,7 +14,7 @@ defmodule GobusgoWeb.AgencyController do
 
   alias Gobusgo.OneBusAway.AgencyView
   alias GobusgoWeb.AgencyJSON
-  alias GobusgoWeb.ErrorJSON
+  alias GobusgoWeb.Problem
 
   @doc "Answers `200` with every agency of the current fetch, in identifier order."
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -39,19 +39,13 @@ defmodule GobusgoWeb.AgencyController do
         json(conn, AgencyJSON.show(%{agency: agency, fetch: fetch}))
 
       _fetch ->
-        problem(conn, %{status: 404, detail: "No agency has the identifier #{id}."})
+        Problem.respond(conn, %{status: 404, detail: "No agency has the identifier #{id}."})
     end
   end
 
   defp unavailable(conn) do
     conn
     |> put_resp_header("retry-after", Integer.to_string(@retry_after_seconds))
-    |> problem(%{status: 503, detail: "No agency fetch is available yet."})
-  end
-
-  defp problem(conn, %{status: status} = problem) do
-    conn
-    |> put_status(status)
-    |> json(ErrorJSON.problem(problem))
+    |> Problem.respond(%{status: 503, detail: "No agency fetch is available yet."})
   end
 end
