@@ -103,7 +103,22 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
     RawAgencyResponse.build(%{response: response, request_id: request_id})
   end
 
-  defp stored(raws), do: Map.new(raws, &{&1.destination, &1.content})
+  # What the backend holds: a gzip stream under a compressed destination,
+  # and the content itself under any other.
+  defp stored(raws) do
+    Map.new(raws, fn %{destination: destination, content: content} ->
+      if Gobusgo.Compression.compressed?(destination) do
+        {destination, Gobusgo.Compression.compress(content)}
+      else
+        {destination, content}
+      end
+    end)
+  end
+
+  # The same response under the name it has when stored uncompressed.
+  defp uncompressed(%{destination: destination} = raw) do
+    %{raw | destination: String.replace_suffix(destination, ".gz", "")}
+  end
 
   defp process(stored, destination, overrides \\ []) do
     read_options =
@@ -164,6 +179,18 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
       assert Enum.map(published(), & &1.key) == ["agency/1", "agency/40"]
       assert manifest_data(published())["agencyIds"] == ["1", "40"]
       refute_received {:published, _records}
+    end
+
+    test "publishes a response that is stored uncompressed under a .json name" do
+      raw = uncompressed(raw([@metro]))
+      assert String.ends_with?(raw.destination, ".json")
+
+      assert {:ok, %{destination: destination, agency_count: 1}} =
+               process(stored([raw]), raw.destination)
+
+      assert destination == raw.destination
+      assert Enum.map(published(), & &1.key) == ["agency/1"]
+      assert manifest_data(published())["destination"] == raw.destination
     end
 
     test "publishes the manifest alone for a fetch without agencies" do
@@ -256,7 +283,8 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
           io_failure: :transient,
           permission_denied: :transient,
           not_found: :permanent,
-          content_too_large: :permanent
+          content_too_large: :permanent,
+          content_corrupt: :permanent
         ] do
       test "returns a #{class} READ_FAILURE and publishes nothing for #{reason}" do
         raw = raw([@metro])
@@ -277,6 +305,21 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
 
         refute_received {:published, _records}
       end
+    end
+
+    test "returns a permanent READ_FAILURE for stored bytes that are not a gzip stream" do
+      raw = raw([@metro])
+
+      assert process(%{raw.destination => raw.content}, raw.destination) ==
+               {:error,
+                %{
+                  class: :permanent,
+                  error_code: "READ_FAILURE",
+                  stage: :read,
+                  reason: :content_corrupt
+                }}
+
+      refute_received {:published, _records}
     end
 
     test "returns a permanent READ_FAILURE for a destination the reader rejects" do

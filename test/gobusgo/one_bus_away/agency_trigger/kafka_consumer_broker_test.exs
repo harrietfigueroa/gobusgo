@@ -133,7 +133,10 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumerBrokerTest do
        consumer_group: group,
        task_supervisor: start_supervised!(Task.Supervisor),
        retry_delay_ms_base: 1,
-       read_options: [backend: StoredReader, stored: %{stored.destination => stored.content}],
+       read_options: [
+         backend: StoredReader,
+         stored: %{stored.destination => Gobusgo.Compression.compress(stored.content)}
+       ],
        publish_options: [backend: ForwardingPublisher, client: client, recipient: self()]}
     )
 

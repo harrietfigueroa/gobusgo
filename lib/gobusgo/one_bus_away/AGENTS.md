@@ -158,8 +158,10 @@ What is stored: only an HTTP 200 response whose envelope `code` is 200 and whose
 Logical destination:
 
 ```
-raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json
+raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json.gz
 ```
+
+The `.gz` ending makes the writer store the content as one gzip stream, and the reader returns the content as the recorder passed it. `meta.dataSha256` and every size and credential check apply to the content before compression. A response stored before compression has the same name ending in `.json` and holds the content as it is; `RawAgencyResponse.parse/1`, the processor, and reconciliation accept both names.
 
 | Part | Meaning |
 | --- | --- |
@@ -225,7 +227,7 @@ A success is `{:ok, %{destination: ..., request_id: ..., fetched_at: ..., agency
 
 | `stage` | `error_code` | `class` |
 | --- | --- | --- |
-| `:read` | `READ_FAILURE` | `:permanent` for `:not_found`, `:content_too_large`, and `{:invalid_destination, reason}`; `:transient` for `:permission_denied` and `:io_failure` |
+| `:read` | `READ_FAILURE` | `:permanent` for `:not_found`, `:content_too_large`, `:content_corrupt`, and `{:invalid_destination, reason}`; `:transient` for `:permission_denied` and `:io_failure` |
 | `:parse` | `INVALID_JSON`, `SCHEMA_MISMATCH`, `HASH_MISMATCH`, or `DESTINATION_MISMATCH`, from the `RawAgencyResponse.parse/1` reason | `:permanent` |
 | `:publish_agencies`, `:publish_manifest` | `WRITE_FAILURE` | `:permanent` for `:record_too_large`; `:transient` for `:timeout`, `:unavailable`, and `:unknown_topic` |
 

@@ -16,7 +16,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
 
       destination =
         "raw/oba/agencies-with-coverage/dt=2026-10-02/" <>
-          "20261002T031500Z_0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10_3f2a9c1b7d4e.json"
+          "20261002T031500Z_0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10_3f2a9c1b7d4e.json.gz"
 
       case Gobusgo.OneBusAway.AgencyBatch.process(destination, []) do
         {:ok, %{agency_count: agency_count}} -> agency_count
@@ -49,7 +49,8 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
       `:parse`; `WRITE_FAILURE` at the publish stages.
     * `:class` — `:permanent` when a repeated call fails the same way: every
       `:parse` failure, a read that returns `:not_found`,
-      `:content_too_large`, or `{:invalid_destination, reason}`, and a
+      `:content_too_large`, `:content_corrupt`, or
+      `{:invalid_destination, reason}`, and a
       publish that returns `:record_too_large`. `:transient` otherwise.
 
   A call that publishes logs once at `info`. A failure returns to the caller
@@ -143,6 +144,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
     case reason do
       :not_found -> :permanent
       :content_too_large -> :permanent
+      :content_corrupt -> :permanent
       {:invalid_destination, _rule} -> :permanent
       :permission_denied -> :transient
       :io_failure -> :transient
