@@ -1,0 +1,144 @@
+{
+  "code": 200,
+  "currentTime": 1790985906180,
+  "text": "OK",
+  "version": 2,
+  "data": {
+    "limitExceeded": false,
+    "outOfRange": false,
+    "references": {
+      "agencies": [],
+      "routes": [],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [],
+      "trips": []
+    },
+    "list": [
+      {
+        "lastLocationUpdateTime": 1790985895000,
+        "lastUpdateTime": 1790985888000,
+        "location": {
+          "lat": 47.3177375793457,
+          "lon": -122.2967300415039
+        },
+        "occupancyCapacity": -1,
+        "occupancyCount": -1,
+        "occupancyStatus": "",
+        "phase": "in_progress",
+        "status": "SCHEDULED",
+        "tripId": "40_1655020",
+        "tripStatus": {
+          "activeTripId": "40_1655020",
+          "blockTripSequence": 2,
+          "closestStop": "3_2442",
+          "closestStopTimeOffset": 378,
+          "distanceAlongTrip": 30979.71430207359,
+          "frequency": null,
+          "lastKnownDistanceAlongTrip": 0,
+          "lastKnownLocation": {
+            "lat": 47.3177375793457,
+            "lon": -122.2967300415039
+          },
+          "lastKnownOrientation": 338.1999969482422,
+          "lastLocationUpdateTime": 1790985895000,
+          "lastUpdateTime": 1790985888000,
+          "nextStop": "3_2442",
+          "nextStopTimeOffset": 378,
+          "occupancyCapacity": -1,
+          "occupancyCount": -1,
+          "occupancyStatus": "",
+          "orientation": 176.51420881742143,
+          "phase": "in_progress",
+          "position": {
+            "lat": 47.316389,
+            "lon": -122.304008
+          },
+          "predicted": true,
+          "scheduleDeviation": 666,
+          "scheduledDistanceAlongTrip": 30979.71430207359,
+          "serviceDate": 1790924400000,
+          "situationIds": [],
+          "status": "SCHEDULED",
+          "totalDistanceAlongTrip": 30963.06191049015,
+          "vehicleFeatures": [],
+          "vehicleId": "40_41605"
+        },
+        "vehicleId": "40_41605"
+      },
+      {
+        "lastLocationUpdateTime": 0,
+        "lastUpdateTime": 1790985877000,
+        "occupancyCapacity": -1,
+        "occupancyCount": -1,
+        "occupancyStatus": "",
+        "phase": "in_progress",
+        "status": "SCHEDULED",
+        "tripId": "40_16687274__H:121:0:Weekday:1:26SEP:52043:12345",
+        "tripStatus": {
+          "activeTripId": "40_16687274__H:121:0:Weekday:1:26SEP:52043:12345",
+          "blockTripSequence": 2,
+          "closestStop": "29_2422",
+          "closestStopTimeOffset": -217,
+          "distanceAlongTrip": 23081.55722618704,
+          "frequency": null,
+          "lastKnownDistanceAlongTrip": 0,
+          "lastKnownOrientation": 0,
+          "lastLocationUpdateTime": 0,
+          "lastUpdateTime": 1790985877000,
+          "nextStop": "29_2543",
+          "nextStopTimeOffset": 923,
+          "occupancyCapacity": -1,
+          "occupancyCount": -1,
+          "occupancyStatus": "",
+          "orientation": 359.4195995112881,
+          "phase": "in_progress",
+          "position": {
+            "lat": 47.815963,
+            "lon": -122.296309
+          },
+          "predicted": true,
+          "scheduleDeviation": 0,
+          "scheduledDistanceAlongTrip": 23081.55722618704,
+          "serviceDate": 1790924400000,
+          "situationIds": [
+            "29_74741",
+            "29_74740",
+            "29_74742"
+          ],
+          "status": "SCHEDULED",
+          "totalDistanceAlongTrip": 23076.511095767128,
+          "vehicleFeatures": [],
+          "vehicleId": "40_H:121:0:Weekday:1:26SEP:52043:12345"
+        },
+        "vehicleId": "40_H:121:0:Weekday:1:26SEP:52043:12345"
+      },
+      {
+        "lastLocationUpdateTime": 1790970852000,
+        "lastUpdateTime": 1790970852000,
+        "location": {
+          "lat": 47.613616943359375,
+          "lon": -122.20159912109375
+        },
+        "occupancyCapacity": -1,
+        "occupancyCount": -1,
+        "occupancyStatus": "",
+        "phase": "in_progress",
+        "status": "SCHEDULED",
+        "tripId": "",
+        "vehicleId": "40_9636"
+      },
+      {
+        "lastLocationUpdateTime": 0,
+        "lastUpdateTime": 1790984286000,
+        "occupancyCapacity": -1,
+        "occupancyCount": -1,
+        "occupancyStatus": "",
+        "phase": "in_progress",
+        "status": "SCHEDULED",
+        "tripId": "",
+        "vehicleId": "40_H:121:0:Weekday:1:26SEP:52006:12345"
+      }
+    ]
+  }
+}

@@ -44,14 +44,17 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     * `lastKnownLocation`: `lat` and `lon` of the last location the vehicle
       reported.
     * `lastKnownOrientation`: the last direction the vehicle reported, in
-      degrees.
+      degrees. The source sends `0` for a vehicle that has reported no
+      location as well, so `0` does not always mean due north.
     * `lastUpdateTimeMs`: when the source last heard from the vehicle, in
       milliseconds since the Unix epoch. `0` is the source's value for
       "never".
     * `lastLocationUpdateTimeMs`: when the vehicle last reported a location,
       in milliseconds since the Unix epoch. `0` is the source's value for
       "never", and is kept apart from `null`.
-    * `predicted`: whether the source has real-time data for the vehicle.
+    * `predicted`: whether the source has real-time data for the vehicle's
+      trip. It is `true` for a vehicle that has reported no location too,
+      so it says nothing about `lastKnownLocation`.
 
   ## Manifest record
 
