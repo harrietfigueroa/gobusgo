@@ -78,6 +78,28 @@ defmodule Gobusgo.SchemaTest do
     end
   end
 
+  describe "mismatch/2 with an optional schema" do
+    @optional_schema {:map, %{"location" => {:optional, {:map, %{"lat" => :number}}}}}
+
+    test "returns nil for an absent key" do
+      assert Schema.mismatch(%{}, @optional_schema) == nil
+    end
+
+    test "returns nil for a present value that matches the inner schema" do
+      assert Schema.mismatch(%{"location" => %{"lat" => 47.5}}, @optional_schema) == nil
+    end
+
+    test "returns the inner mismatch for a present value that does not match" do
+      assert Schema.mismatch(%{"location" => %{"lat" => "north"}}, @optional_schema) ==
+               %{path: ["location", "lat"], expected: :number}
+    end
+
+    test "returns the inner expectation for a present null" do
+      assert Schema.mismatch(%{"location" => nil}, @optional_schema) ==
+               %{path: ["location"], expected: {:map, %{"lat" => :number}}}
+    end
+  end
+
   describe "format_path/1" do
     test "names the root for an empty path" do
       assert Schema.format_path([]) == "root"

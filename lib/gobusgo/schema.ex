@@ -3,10 +3,12 @@ defmodule Gobusgo.Schema do
   A structural check of decoded data against a schema, with the first mismatch
   returned as a value. Everything here is pure.
 
-  Map schemas require their keys and ignore unknown ones. A nullable schema
-  matches `nil` and whatever its inner schema matches. A mismatch holds the
-  path to the offending value and the shape expected there, and never the
-  value itself, so a payload cannot leak through a reported mismatch.
+  Map schemas require their keys and ignore unknown ones, except a key whose
+  schema is optional, which may be absent and otherwise matches its inner
+  schema. A nullable schema matches `nil` and whatever its inner schema
+  matches. A mismatch holds the path to the offending value and the shape
+  expected there, and never the value itself, so a payload cannot leak through
+  a reported mismatch.
   """
 
   @type t ::
@@ -16,6 +18,7 @@ defmodule Gobusgo.Schema do
           | :boolean
           | {:literal, term()}
           | {:nullable, t()}
+          | {:optional, t()}
           | {:list, t()}
           | {:map, %{optional(String.t()) => t()}}
 
@@ -43,6 +46,8 @@ defmodule Gobusgo.Schema do
   defp mismatch(nil, {:nullable, _inner_schema}, _path), do: nil
   defp mismatch(value, {:nullable, inner_schema}, path), do: mismatch(value, inner_schema, path)
 
+  defp mismatch(value, {:optional, inner_schema}, path), do: mismatch(value, inner_schema, path)
+
   defp mismatch(value, {:list, element_schema}, path) when is_list(value) do
     value
     |> Enum.with_index()
@@ -55,12 +60,15 @@ defmodule Gobusgo.Schema do
     Enum.find_value(fields, fn {key, field_schema} ->
       case Map.fetch(value, key) do
         {:ok, field} -> mismatch(field, field_schema, path ++ [key])
-        :error -> failure(path ++ [key], :required)
+        :error -> absent(field_schema, path ++ [key])
       end
     end)
   end
 
   defp mismatch(_value, schema, path), do: failure(path, schema)
+
+  defp absent({:optional, _inner_schema}, _path), do: nil
+  defp absent(_field_schema, path), do: failure(path, :required)
 
   defp failure(path, expected), do: %{path: path, expected: expected}
 end

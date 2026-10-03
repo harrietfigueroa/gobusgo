@@ -47,12 +47,12 @@ defmodule Gobusgo.OneBusAway.Agencies do
 
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.Client
+  alias Gobusgo.OneBusAway.Envelope
   alias Gobusgo.Schema
 
   # https://developer.onebusaway.org/api/where/methods/agencies-with-coverage — checked 2026-10-01
   @path "/api/where/agencies-with-coverage.json"
   @method "GET"
-  @success_code 200
   @agency_count_max 1_000
 
   @type coverage :: %{lat: number(), lon: number(), lat_span: number(), lon_span: number()}
@@ -71,24 +71,11 @@ defmodule Gobusgo.OneBusAway.Agencies do
           http_status: 200,
           method: String.t()
         }
-  @type error ::
-          Client.failure()
-          | {:http_status, 400..599}
-          | {:unexpected_redirect, 300..399}
-          | {:api_error, %{code: integer(), text: String.t()}}
-          | :invalid_json
+  @type error :: Client.failure() | Envelope.failure()
   @type parse_error ::
           {:schema_mismatch, Schema.mismatch()}
           | {:agency_count_exceeded, pos_integer()}
           | {:unreferenced_agency, String.t()}
-
-  @envelope_schema {:map,
-                    %{
-                      "code" => :integer,
-                      "text" => :string,
-                      "version" => :integer,
-                      "currentTime" => :integer
-                    }}
 
   @data_schema {:map,
                 %{
@@ -136,10 +123,10 @@ defmodule Gobusgo.OneBusAway.Agencies do
     Assert.condition(is_function(clock, 0), "clock must be a zero-arity function")
 
     case Client.get(settings, @path, client_options) do
-      {:ok, %{status: status, body: body}} ->
+      {:ok, %{status: status} = client_response} ->
         fetched_at = clock.()
 
-        with {:ok, envelope} <- interpret(status, body, api_key) do
+        with {:ok, envelope} <- Envelope.interpret(client_response, api_key) do
           {:ok,
            %{
              agencies: parse_data(envelope["data"]),
@@ -153,36 +140,6 @@ defmodule Gobusgo.OneBusAway.Agencies do
 
       {:error, failure} ->
         {:error, failure}
-    end
-  end
-
-  defp interpret(200, body, api_key) when is_binary(body) do
-    case JSON.decode(body) do
-      {:ok, decoded} -> interpret_envelope(decoded, api_key)
-      {:error, _reason} -> {:error, :invalid_json}
-    end
-  end
-
-  defp interpret(status, _body, _api_key) when status in 300..399 do
-    {:error, {:unexpected_redirect, status}}
-  end
-
-  defp interpret(status, _body, _api_key) when status in 400..599 do
-    {:error, {:http_status, status}}
-  end
-
-  defp interpret(status, _body, _api_key) do
-    raise Assert.AssertionError, message: "unexpected HTTP status #{status}"
-  end
-
-  defp interpret_envelope(decoded, api_key) do
-    %{"code" => code, "text" => text} =
-      envelope = decoded |> Assert.schema(@envelope_schema) |> Client.scrub(api_key)
-
-    if code == @success_code do
-      {:ok, envelope}
-    else
-      {:error, {:api_error, %{code: code, text: text}}}
     end
   end
 

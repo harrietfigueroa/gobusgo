@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, starting with agency discovery via `agencies-with-coverage`. Stop, route, and arrival methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. Stop, route, and arrival methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -15,9 +15,9 @@ All links checked 2026-10-01.
 
 ## Server and credentials
 
-The documentation host (`developer.onebusaway.org`) serves docs only; it is not the API server. The Puget Sound API server is `https://api.pugetsound.onebusaway.org`, taken from the example request in the `agencies-with-coverage` documentation (checked 2026-10-01). Assumption, unverified by a live call: that this host is the production Sound Transit server and accepts keys issued through the process below. Verify with one authenticated request once a key exists.
+The documentation host (`developer.onebusaway.org`) serves docs only; it is not the API server. The Puget Sound API server is `https://api.pugetsound.onebusaway.org`, taken from the example request in the `agencies-with-coverage` documentation (checked 2026-10-01). Authenticated calls with the project's issued key on 2026-10-02 succeeded: `agencies-with-coverage` returned 12 agencies, Sound Transit (`40`) and King County Metro (`1`) among them, and `vehicles-for-agency` returned HTTP 200 for each of them.
 
-Key process, per Sound Transit: email `oba_api_key@soundtransit.org` with the contact's first and last name, an email address if different from the sender, and acknowledgment of the Transit Data Terms of Use. Sound Transit states processing takes 20 business days. Status: unresolved until a key is issued.
+Key process, per Sound Transit: email `oba_api_key@soundtransit.org` with the contact's first and last name, an email address if different from the sender, and acknowledgment of the Transit Data Terms of Use. Sound Transit states processing takes 20 business days. The project's key is issued.
 
 Every request carries the `key` query parameter. The key is read from configuration at runtime (environment variable `ONEBUSAWAY_API_KEY`) and never committed, logged, or written to documentation. The documentation's `key=TEST` example value is not a credential for this project.
 
@@ -101,11 +101,31 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 ## Implementation
 
-`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. The client sets `retry: :transient` with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
+`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. `Gobusgo.OneBusAway.Envelope.interpret/2` is the pure step every requester shares from an HTTP status and body to the decoded envelope or a documented failure. The client sets `retry: :transient` with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
 
 `Gobusgo.OneBusAway.Agencies.fetch_response/2` makes the same request and returns the agencies together with the whole decoded envelope, the HTTP status, the method, the host, and the fetch time. The key is replaced wherever the server echoes it in the envelope, and the host is the host name alone, so no returned value carries a credential or a URL. Its `:clock` option supplies the fetch time.
 
 `Gobusgo.OneBusAway.Agencies.parse/1` is the pure function from an envelope's `data` to the agencies. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:agency_count_exceeded, count}`, or `{:unreferenced_agency, id}`. The requester raises on those values; a reader of stored responses handles them.
+
+## Vehicles: `vehicles-for-agency`
+
+`GET /api/where/vehicles-for-agency/<agency id>.json?key=<key>`. The agency identifier is the only documented parameter besides `key`, and the requester percent-encodes it into the path. The method is unpaginated and documents `data.limitExceeded` as "results were truncated", so the requester asserts it is `false`.
+
+`Gobusgo.OneBusAway.Vehicles.fetch_response/2` takes the agency in its `:agency_id` option and returns the vehicles together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. `Gobusgo.OneBusAway.Vehicles.parse/1` is the pure function from `data` to the vehicles, in the form `Gobusgo.OneBusAway.VehicleBatch.Records` publishes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:vehicle_count_exceeded, count}` above 5,000, `{:invalid_vehicle, index}` for an empty identifier or a time before zero, or `{:duplicate_vehicle, id}`. The requester raises on those values.
+
+Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096 vehicles, the largest fetch King County Metro's 1,885, `limitExceeded` `false` throughout):
+
+| Field | Where | Presence |
+| --- | --- | --- |
+| `vehicleId`, `tripId`, `lastUpdateTime`, `lastLocationUpdateTime`, `status`, `phase`, `occupancyCapacity`, `occupancyCount`, `occupancyStatus` | On the vehicle | Always. `tripId` is `""` when the vehicle serves no trip |
+| `location` | On the vehicle | Exactly when `lastLocationUpdateTime` is not `0`, with or without a trip |
+| `tripStatus` | On the vehicle | Only when the vehicle serves a trip; the key is absent otherwise, never `null` |
+| `activeTripId`, `position`, `orientation`, `lastKnownOrientation`, `predicted`, `lastUpdateTime`, `lastLocationUpdateTime`, `serviceDate`, `scheduleDeviation`, stop and distance fields | In `tripStatus` | Always within a trip status |
+| `lastKnownLocation` | In `tripStatus` | Exactly when the vehicle carries `location`, with the same value |
+
+The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, and `predicted` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `references` and `outOfRange` are kept in the envelope and not read.
+
+Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are cut from the live Sound Transit response, one vehicle for each combination of trip and reported location.
 
 ## Stored raw responses
 
@@ -230,9 +250,9 @@ In the test environment the configured publisher backend, `Gobusgo.Publisher.InP
 
 ## Vehicle records and vehicle view
 
-No requester, recorder, or processor for `vehicles-for-agency` exists. The records and the view below are the contract those will publish to, and nothing publishes to it outside the tests.
+No recorder or processor for `vehicles-for-agency` exists. The records and the view below are the contract those will publish to, and nothing publishes to it outside the tests. The requester above returns its vehicles in this contract's form.
 
-The contract is taken from the documentation and is unverified against a live response. The trip status element documents `position` as the real-time position when one is available and the scheduled position otherwise, `lastKnownLocation` as the last reported position, and `lastUpdateTime` and `lastLocationUpdateTime` as milliseconds since the Unix epoch with zero for "none received". Which of these the `vehicles-for-agency` response nests under `tripStatus` and which it carries on the vehicle itself is for the integration to confirm.
+The trip status element documents `position` as the real-time position when one is available and the scheduled position otherwise, `lastKnownLocation` as the last reported position, and `lastUpdateTime` and `lastLocationUpdateTime` as milliseconds since the Unix epoch with zero for "none received". Where each sits in the live response is in the table above.
 
 `Gobusgo.OneBusAway.VehicleBatch.Records.build/1` takes the vehicles one request for one agency returned and builds the records; `decode/1` reads one back and returns a rule it breaks as a value. Both are pure.
 
@@ -256,10 +276,10 @@ The contract is taken from the documentation and is unverified against a live re
 | `position` | `lat` and `lon` of where the source places the vehicle now: an estimate, extrapolated or taken from the schedule when no fresh report exists |
 | `orientation` | The direction that goes with `position`, in degrees |
 | `lastKnownLocation` | `lat` and `lon` of the last location the vehicle reported |
-| `lastKnownOrientation` | The last direction the vehicle reported, in degrees |
+| `lastKnownOrientation` | The last direction the vehicle reported, in degrees; also `0` for a vehicle that has reported no location |
 | `lastUpdateTimeMs` | When the source last heard from the vehicle, milliseconds since the Unix epoch; `0` is the source's "never" |
 | `lastLocationUpdateTimeMs` | When the vehicle last reported a location, milliseconds since the Unix epoch; `0` is the source's "never" and is kept apart from `null` |
-| `predicted` | Whether the source has real-time data for the vehicle |
+| `predicted` | Whether the source has real-time data for the vehicle's trip; `true` also when the vehicle has reported no location |
 
 The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
 
@@ -302,6 +322,4 @@ List-returning methods must follow the bounded-read contract (explicit bound, la
 
 ## Open items
 
-1. API key not yet requested or issued (20 business days per Sound Transit).
-2. Production status of `api.pugetsound.onebusaway.org` for Sound Transit confirmed only by the documentation example, not by a live call.
-3. Rate limits and `Retry-After` behavior are undocumented in the pages checked.
+1. Rate limits and `Retry-After` behavior are undocumented in the pages checked.

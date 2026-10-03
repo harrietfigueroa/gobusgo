@@ -1,0 +1,19 @@
+{
+  "code": 200,
+  "currentTime": 1790985906180,
+  "text": "OK",
+  "version": 2,
+  "data": {
+    "limitExceeded": false,
+    "outOfRange": false,
+    "references": {
+      "agencies": [],
+      "routes": [],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [],
+      "trips": []
+    },
+    "list": []
+  }
+}
