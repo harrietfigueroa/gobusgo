@@ -100,8 +100,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
   end
 
   defp written_content do
-    assert_received {:written, %{content: content}}
-    JSON.decode!(content)
+    assert_received {:written, %{content: stored}}
+    stored |> :zlib.gunzip() |> JSON.decode!()
   end
 
   describe "record/2 success" do
@@ -118,7 +118,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
       destination =
         "raw/oba/agencies-with-coverage/dt=2026-10-02/" <>
-          "20261002T031500Z_#{@request_id}_#{binary_part(data_sha256, 0, 12)}.json"
+          "20261002T031500Z_#{@request_id}_#{binary_part(data_sha256, 0, 12)}.json.gz"
 
       assert_received {:written, %{destination: ^destination}}
     end
@@ -354,9 +354,9 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       stub_body(body)
 
       assert {:ok, _recorded} = record()
-      assert_received {:written, %{destination: destination, content: content}}
+      assert_received {:written, %{destination: destination, content: stored}}
       refute destination =~ @api_key
-      refute content =~ @api_key
+      refute :zlib.gunzip(stored) =~ @api_key
     end
 
     test "stores an agency link that carries a key parameter" do
@@ -368,8 +368,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       stub_body(body)
 
       assert {:ok, _recorded} = record()
-      assert_received {:written, %{content: content}}
-      assert content =~ "https://metro.example.test/?key=x"
+      assert_received {:written, %{content: stored}}
+      assert :zlib.gunzip(stored) =~ "https://metro.example.test/?key=x"
     end
 
     test "returns and logs no key when the server echoes it in an error" do

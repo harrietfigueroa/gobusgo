@@ -103,7 +103,11 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
   end
 
   defp handle(consumed, context, overrides \\ []) do
-    read = Keyword.get(overrides, :read, fn _destination -> {:ok, raw().content} end)
+    read =
+      Keyword.get(overrides, :read, fn _destination ->
+        {:ok, Gobusgo.Compression.compress(raw().content)}
+      end)
+
     publish = Keyword.get(overrides, :publish, fn _records -> :ok end)
 
     AgencyTrigger.handle(consumed,
@@ -215,7 +219,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
       read = fn _destination ->
         case Agent.get_and_update(calls, &{&1, &1 + 1}) do
           0 -> {:error, :io_failure}
-          _later -> {:ok, raw().content}
+          _later -> {:ok, Gobusgo.Compression.compress(raw().content)}
         end
       end
 
@@ -300,7 +304,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
       read = fn _destination ->
         case Agent.get_and_update(calls, &{&1, &1 + 1}) do
           0 -> {:error, :io_failure}
-          _later -> {:ok, raw().content}
+          _later -> {:ok, Gobusgo.Compression.compress(raw().content)}
         end
       end
 

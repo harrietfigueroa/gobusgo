@@ -19,6 +19,19 @@ defmodule Gobusgo.ReaderWriterTest do
     assert Reader.read(@destination, base_dir: tmp_dir) == {:ok, content}
   end
 
+  test "stores a compressed destination as a gzip file and reads the content back", %{
+    tmp_dir: tmp_dir
+  } do
+    destination = @destination <> ".gz"
+    content = String.duplicate(~s({"meta":{},"body":{}}), 100)
+    :ok = Writer.write(%{destination: destination, content: content}, base_dir: tmp_dir)
+
+    stored = File.read!(Path.join(tmp_dir, destination))
+    assert byte_size(stored) < byte_size(content)
+    assert :zlib.gunzip(stored) == content
+    assert Reader.read(destination, base_dir: tmp_dir) == {:ok, content}
+  end
+
   test "discovers the destination the writer stored and nothing else", %{tmp_dir: tmp_dir} do
     :ok = Writer.write(%{destination: @destination, content: "x"}, base_dir: tmp_dir)
 

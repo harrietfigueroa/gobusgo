@@ -1,4 +1,6 @@
 defmodule Gobusgo.Writer do
+  alias Gobusgo.Compression
+
   @moduledoc """
   A backend-neutral contract for storing a binary under a logical destination,
   and the entry point that selects the backend.
@@ -15,6 +17,11 @@ defmodule Gobusgo.Writer do
   is atomic: readers see the whole content or nothing. Content is a binary,
   bounded by the backend's size limit. Any hierarchy the destination implies
   is created.
+
+  A destination that ends in `#{Compression.suffix()}` holds compressed
+  content: the caller passes the content as it is, at most
+  #{Compression.content_bytes_max()} bytes, and the backend stores it as one
+  gzip stream. Every other destination stores the content unchanged.
 
   Results:
 
@@ -84,9 +91,27 @@ defmodule Gobusgo.Writer do
     {backend, backend_options} = Keyword.pop_lazy(options, :backend, &configured_backend/0)
     Assert.condition(is_atom(backend), "backend must be a module, got: #{inspect(backend)}")
 
-    request
-    |> backend.write(backend_options)
-    |> assert_result(backend)
+    case stored_content(destination, content) do
+      {:ok, stored} ->
+        %{request | content: stored}
+        |> backend.write(backend_options)
+        |> assert_result(backend)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp stored_content(destination, content) do
+    if Compression.compressed?(destination) do
+      if byte_size(content) <= Compression.content_bytes_max() do
+        {:ok, Compression.compress(content)}
+      else
+        {:error, :content_too_large}
+      end
+    else
+      {:ok, content}
+    end
   end
 
   defp configured_backend do

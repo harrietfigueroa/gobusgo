@@ -51,7 +51,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponseTest do
 
       assert build().destination ==
                "raw/oba/agencies-with-coverage/dt=2026-10-02/" <>
-                 "20261002T031500Z_#{@request_id}_#{hash_prefix}.json"
+                 "20261002T031500Z_#{@request_id}_#{hash_prefix}.json.gz"
     end
 
     test "partitions by the UTC date of the fetch time" do
@@ -255,6 +255,23 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponseTest do
                     }
                   ]
                 }}
+    end
+
+    test "returns what a response stored uncompressed, under the .json name, stored" do
+      stored = stored()
+      destination = String.replace_suffix(stored.destination, ".json.gz", ".json")
+      assert destination != stored.destination
+
+      assert {:ok, %{destination: ^destination, request_id: @request_id}} =
+               RawAgencyResponse.parse(%{destination: destination, content: stored.content})
+    end
+
+    test "returns destination_mismatch for the same name under another ending" do
+      stored = stored()
+      destination = String.replace_suffix(stored.destination, ".json.gz", ".json.zst")
+
+      assert RawAgencyResponse.parse(%{destination: destination, content: stored.content}) ==
+               {:error, :destination_mismatch}
     end
 
     test "returns invalid_json for content that is not JSON" do

@@ -92,6 +92,44 @@ defmodule Gobusgo.ReaderTest do
     end
   end
 
+  describe "read/2 of a destination that holds compressed content" do
+    test "returns the content the stored gzip stream holds" do
+      content = String.duplicate("payload ", 100)
+      answer = {:ok, Gobusgo.Compression.compress(content)}
+
+      assert Reader.read("a/b.json.gz", backend: ScriptedBackend, answer: answer) ==
+               {:ok, content}
+    end
+
+    test "returns content that is not a gzip stream as corrupt" do
+      answer = {:ok, ~s({"meta":{}})}
+
+      assert Reader.read("a/b.json.gz", backend: ScriptedBackend, answer: answer) ==
+               {:error, :content_corrupt}
+    end
+
+    test "returns content that expands past the limit as too large" do
+      content = :binary.copy(<<0>>, Gobusgo.Compression.content_bytes_max() + 1)
+      answer = {:ok, Gobusgo.Compression.compress(content)}
+
+      assert Reader.read("a/b.json.gz", backend: ScriptedBackend, answer: answer) ==
+               {:error, :content_too_large}
+    end
+
+    test "returns a backend error as it is" do
+      assert Reader.read("a/b.json.gz", backend: MissingBackend) == {:error, :not_found}
+    end
+  end
+
+  describe "read/2 of a destination that holds content as it is" do
+    test "returns a gzip stream untouched" do
+      stored = Gobusgo.Compression.compress("payload")
+
+      assert Reader.read("a/b.json", backend: ScriptedBackend, answer: {:ok, stored}) ==
+               {:ok, stored}
+    end
+  end
+
   describe "discover/2 with an injected backend" do
     test "passes the request to the backend and returns its page" do
       request = discovery([])

@@ -68,6 +68,34 @@ defmodule Gobusgo.WriterTest do
     end
   end
 
+  describe "write/2 to a destination that holds compressed content" do
+    test "passes the backend a gzip stream of the content under the same destination" do
+      request = %{destination: "a/b.json.gz", content: String.duplicate("payload ", 100)}
+
+      assert Writer.write(request, backend: RecordingBackend, recipient: self()) == :ok
+      assert_received {:written, %{destination: "a/b.json.gz", content: stored}, _options}
+      assert stored != request.content
+      assert :zlib.gunzip(stored) == request.content
+    end
+
+    test "refuses content past the limit without calling the backend" do
+      content = :binary.copy(<<0>>, Gobusgo.Compression.content_bytes_max() + 1)
+      request = %{destination: "a/b.json.gz", content: content}
+
+      assert Writer.write(request, backend: RecordingBackend, recipient: self()) ==
+               {:error, :content_too_large}
+
+      refute_received {:written, _request, _options}
+    end
+
+    test "passes content at the limit to the backend" do
+      content = :binary.copy(<<0>>, Gobusgo.Compression.content_bytes_max())
+      request = %{destination: "a/b.json.gz", content: content}
+
+      assert Writer.write(request, backend: RecordingBackend, recipient: self()) == :ok
+    end
+  end
+
   describe "backend selection from application config" do
     setup do
       previous = Application.fetch_env!(:gobusgo, Writer)

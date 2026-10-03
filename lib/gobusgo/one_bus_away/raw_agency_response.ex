@@ -6,7 +6,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
   ## Destination
 
-      raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json
+      raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json.gz
 
     * `dt` is the UTC date of the fetch time.
     * `fetchedAt` is the fetch time in UTC basic ISO 8601 at second precision,
@@ -15,7 +15,9 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
     * `dataHash12` is the first 12 characters of `meta.dataSha256`.
 
   Names within a partition sort by fetch time, and the request identifier
-  makes each name unique.
+  makes each name unique. The `.gz` ending makes the writer store the content
+  compressed. `parse/1` also accepts the same name ending in `.json`, the
+  name of a response stored uncompressed.
 
   ## Content
 
@@ -41,6 +43,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
   alias Gobusgo.Assert
   alias Gobusgo.CanonicalJson
+  alias Gobusgo.Compression
   alias Gobusgo.Destination
   alias Gobusgo.OneBusAway.Agencies
   alias Gobusgo.RequestId
@@ -68,11 +71,13 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
       an empty identifier or names one agency twice.
     * `:hash_mismatch` — the data does not hash to `meta.dataSha256`.
     * `:destination_mismatch` — `meta` names a destination other than the one
-      the content was read from.
+      the content was read from, under either ending.
   """
   @type parse_error :: :invalid_json | :schema_mismatch | :hash_mismatch | :destination_mismatch
 
   @destination_prefix "raw/oba/agencies-with-coverage"
+  @extension_uncompressed ".json"
+  @extension @extension_uncompressed <> Compression.suffix()
   @fetched_at_name_bytes byte_size("20261002T031500Z")
   @hash_prefix_size 12
   @http_status_stored 200
@@ -204,8 +209,9 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
          data_sha256 = data_sha256(data),
          :ok <- check(data_sha256 == meta["dataSha256"], :hash_mismatch),
          request_id = meta["requestId"],
-         named = destination_for(fetched_at, request_id, data_sha256),
-         :ok <- check(named == destination, :destination_mismatch),
+         stem = destination_stem(fetched_at, request_id, data_sha256),
+         named = [stem <> @extension, stem <> @extension_uncompressed],
+         :ok <- check(destination in named, :destination_mismatch),
          :ok <- check(RequestId.valid?(request_id), :schema_mismatch),
          {:ok, agencies} <- parse_agencies(data) do
       {:ok,
@@ -264,17 +270,19 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   defp check(false, reason, _value), do: {:error, reason}
 
   defp destination(fetched_at, request_id, data_sha256) do
-    destination = destination_for(fetched_at, request_id, data_sha256)
+    destination = destination_stem(fetched_at, request_id, data_sha256) <> @extension
 
     Assert.condition(
       match?({:ok, _segments}, Destination.validate(destination)),
       "built an invalid destination"
     )
 
+    Assert.condition(Compression.compressed?(destination), "destination must be compressed")
+
     destination
   end
 
-  defp destination_for(fetched_at, request_id, data_sha256) do
+  defp destination_stem(fetched_at, request_id, data_sha256) do
     name =
       Enum.join(
         [
@@ -285,7 +293,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
         "_"
       )
 
-    partition_prefix(DateTime.to_date(fetched_at)) <> name <> ".json"
+    partition_prefix(DateTime.to_date(fetched_at)) <> name
   end
 
   # The body is exempt: it holds text the agencies supply, where `key=` is a

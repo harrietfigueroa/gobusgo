@@ -65,7 +65,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderLocalFileTest do
     assert File.ls!(partition) == [Path.basename(destination)]
 
     assert %{"body" => ^body} =
-             tmp_dir |> Path.join(destination) |> File.read!() |> JSON.decode!()
+             tmp_dir |> Path.join(destination) |> File.read!() |> :zlib.gunzip() |> JSON.decode!()
   end
 
   test "returns already_exists for a second record under the same name", %{options: options} do

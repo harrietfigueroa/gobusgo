@@ -121,7 +121,17 @@ defmodule Gobusgo.OneBusAway.ReconciliationTest do
     RawAgencyResponse.build(%{response: response, request_id: request_id(index)})
   end
 
-  defp stored(raws), do: Map.new(raws, &{&1.destination, &1.content})
+  # What the backend holds: a gzip stream under a compressed destination,
+  # and the content itself under any other.
+  defp stored(raws) do
+    Map.new(raws, fn %{destination: destination, content: content} ->
+      if Gobusgo.Compression.compressed?(destination) do
+        {destination, Gobusgo.Compression.compress(content)}
+      else
+        {destination, content}
+      end
+    end)
+  end
 
   defp republish(stored, overrides \\ []) do
     {request_overrides, option_overrides} = Keyword.split(overrides, [:dataset, :range])
@@ -172,6 +182,22 @@ defmodule Gobusgo.OneBusAway.ReconciliationTest do
                [first.destination, last.destination]
 
       refute_received {:published, _records}
+    end
+
+    test "publishes responses stored uncompressed and compressed, each under its own name" do
+      compressed = raw(~U[2026-10-02 03:20:00Z], 2)
+      earlier = raw(~U[2026-10-02 03:10:00Z], 1)
+
+      uncompressed = %{
+        earlier
+        | destination: String.replace_suffix(earlier.destination, ".gz", "")
+      }
+
+      assert republish(stored([uncompressed, compressed])) ==
+               {:ok, %{published_count: 2, skipped: []}}
+
+      assert Enum.map(published_events(), & &1["data"]["destination"]) ==
+               [uncompressed.destination, compressed.destination]
     end
 
     test "publishes a response stored event that refers to the stored response" do
@@ -293,7 +319,13 @@ defmodule Gobusgo.OneBusAway.ReconciliationTest do
       refute_received {:published, _records}
     end
 
-    for reason <- [:io_failure, :not_found, :permission_denied, :content_too_large] do
+    for reason <- [
+          :io_failure,
+          :not_found,
+          :permission_denied,
+          :content_too_large,
+          :content_corrupt
+        ] do
       test "aborts and publishes nothing when a read returns #{reason}" do
         first = raw(~U[2026-10-02 03:10:00Z], 1)
         second = raw(~U[2026-10-02 03:20:00Z], 2)

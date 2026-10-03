@@ -1,4 +1,6 @@
 defmodule Gobusgo.Reader do
+  alias Gobusgo.Compression
+
   @discovery_limit_max 1000
 
   @moduledoc """
@@ -17,13 +19,19 @@ defmodule Gobusgo.Reader do
   `Gobusgo.Writer` enforces, so every destination a write accepts is a
   destination a read accepts, and a destination either one rejects is
   rejected by the other with the same `{:invalid_destination, reason}`.
-  Content is the binary a write stored, returned unchanged. A write is atomic,
-  so a read returns the whole content or `{:error, :not_found}`.
+  Content is the binary a caller passed to a write, returned unchanged. A
+  write is atomic, so a read returns the whole content or
+  `{:error, :not_found}`.
 
   ## Reading
 
   `read/2` returns `{:ok, content}` or `{:error, reason}`. Content is a
   binary, bounded by the backend's size limit.
+
+  A destination that ends in `#{Compression.suffix()}` holds compressed
+  content: the backend returns one gzip stream and the read returns the
+  content it holds, at most #{Compression.content_bytes_max()} bytes. Every
+  other destination returns what is stored.
 
   ## Discovery
 
@@ -76,7 +84,10 @@ defmodule Gobusgo.Reader do
     * `:permission_denied` — the backend is not allowed to load the content
       or to list part of the prefix.
     * `:io_failure` — the storage failed while loading or listing.
-    * `:content_too_large` — the content exceeds the backend's size limit.
+    * `:content_too_large` — the content exceeds the backend's size limit,
+      or compressed content expands past the limit above.
+    * `:content_corrupt` — the destination holds compressed content and what
+      is stored there is not one complete gzip stream.
     * `:discovery_too_large` — the backend examined more entries than its
       bound allows before filling the page; a narrower prefix avoids it.
     * `:invalid_cursor` — the cursor did not come from a page.
@@ -88,6 +99,7 @@ defmodule Gobusgo.Reader do
           | :permission_denied
           | :io_failure
           | :content_too_large
+          | :content_corrupt
           | :discovery_too_large
           | :invalid_cursor
           | {:invalid_destination, invalid_destination_reason()}
@@ -109,6 +121,7 @@ defmodule Gobusgo.Reader do
     :permission_denied,
     :io_failure,
     :content_too_large,
+    :content_corrupt,
     :discovery_too_large,
     :invalid_cursor
   ]
@@ -140,12 +153,24 @@ defmodule Gobusgo.Reader do
     {backend, backend_options} = pop_backend(options)
 
     case backend.read(destination, backend_options) do
-      {:ok, content} = result ->
-        Assert.condition(is_binary(content), "#{inspect(backend)} returned non-binary content")
-        result
+      {:ok, stored} ->
+        Assert.condition(is_binary(stored), "#{inspect(backend)} returned non-binary content")
+        content(destination, stored)
 
       other ->
         assert_error(other, backend)
+    end
+  end
+
+  defp content(destination, stored) do
+    if Compression.compressed?(destination) do
+      case Compression.decompress(stored, Compression.content_bytes_max()) do
+        {:ok, content} -> {:ok, content}
+        {:error, :corrupt} -> {:error, :content_corrupt}
+        {:error, :too_large} -> {:error, :content_too_large}
+      end
+    else
+      {:ok, stored}
     end
   end
 

@@ -306,7 +306,7 @@ Enum.map(agencies, & &1.name)
 
 The module documentation lists every error value.
 
-`Gobusgo.OneBusAway.AgencyRecorder.record/2` makes the same request and stores the successful response through `Gobusgo.Writer`. With the default configuration the local file backend writes it under `data/` (ignored by git), at `raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json`. A failed request stores nothing. After the write it publishes a "response stored" event; when that fails, the response stays stored and the call logs a `warning`.
+`Gobusgo.OneBusAway.AgencyRecorder.record/2` makes the same request and stores the successful response through `Gobusgo.Writer`. With the default configuration the local file backend writes it under `data/` (ignored by git), at `raw/oba/agencies-with-coverage/dt=YYYY-MM-DD/<fetchedAt>_<requestId>_<dataHash12>.json.gz`, compressed with gzip (`gunzip --stdout <file>` prints it). A response stored before compression keeps its `.json` name and is still read. A failed request stores nothing. After the write it publishes a "response stored" event; when that fails, the response stays stored and the call logs a `warning`.
 
 ```elixir
 {:ok, settings} = Gobusgo.Config.one_bus_away()

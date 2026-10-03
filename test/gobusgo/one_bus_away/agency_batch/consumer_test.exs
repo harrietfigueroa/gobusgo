@@ -105,7 +105,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
       [
         read_options: [
           backend: StoredContent,
-          stored: Map.new(raws, &{&1.destination, &1.content})
+          stored: Map.new(raws, &{&1.destination, Gobusgo.Compression.compress(&1.content)})
         ],
         publish_options: [backend: RecordingPublisher, recipient: self()]
       ],
