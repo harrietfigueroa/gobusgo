@@ -17,8 +17,16 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderInProcessTest do
 
   @fixture_path Path.expand("../../fixtures/one_bus_away/agencies_with_coverage.json", __DIR__)
   @stub_name AgencyRecorderInProcess
+  @gate Module.concat(__MODULE__, Gate)
   @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
   @request_id "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10"
+
+  # The requests go through a gate of their own that refills at once, so
+  # the tests neither wait on the application's gate nor spend its budget.
+  setup do
+    start_supervised!({Gobusgo.OneBusAway.RequestGate, name: @gate, refill_interval_ms: 1})
+    :ok
+  end
 
   setup %{tmp_dir: tmp_dir} = context do
     body = File.read!(@fixture_path)
@@ -49,6 +57,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderInProcessTest do
       request_id: @request_id,
       fetch_options: [
         plug: {Req.Test, @stub_name},
+        gate: @gate,
         max_retries: 0,
         clock: fn -> ~U[2026-10-02 03:15:00Z] end
       ],

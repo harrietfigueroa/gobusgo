@@ -11,6 +11,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
+  alias Gobusgo.OneBusAway.RequestGate
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
@@ -33,7 +34,8 @@ defmodule Gobusgo.Application do
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, kafka} <- Config.kafka() do
       # A scheduler starts its runs under the task supervisor, so the task
-      # supervisor starts before the schedulers and stops after them.
+      # supervisor starts before the schedulers and stops after them. Every
+      # run's requests take their permits from the gate, which starts first.
       children =
         [
           {Phoenix.PubSub, name: Gobusgo.PubSub},
@@ -42,6 +44,7 @@ defmodule Gobusgo.Application do
         ] ++
           kafka_children(kafka) ++
           [
+            {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
             scheduler_supervisor(source_specs(scheduled)),

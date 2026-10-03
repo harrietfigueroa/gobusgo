@@ -28,7 +28,15 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
 
   @fixture_directory Path.expand("../../fixtures/one_bus_away", __DIR__)
   @stub_name Sources
+  @gate Module.concat(__MODULE__, Gate)
   @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
+
+  # The requests go through a gate of their own that refills at once, so
+  # the tests neither wait on the application's gate nor spend its budget.
+  setup do
+    start_supervised!({Gobusgo.OneBusAway.RequestGate, name: @gate, refill_interval_ms: 1})
+    :ok
+  end
 
   defp agency_discovery(record_options) do
     assert [spec] = Sources.specs(@settings, record_options)
@@ -59,7 +67,12 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
 
       spec =
         agency_discovery(
-          fetch_options: [plug: {Req.Test, @stub_name}, max_retries: 0, retry_delay_ms_base: 1],
+          fetch_options: [
+            plug: {Req.Test, @stub_name},
+            gate: @gate,
+            max_retries: 0,
+            retry_delay_ms_base: 1
+          ],
           write_options: [backend: RecordingBackend, recipient: self()],
           publish_options: [backend: AcknowledgingPublisher]
         )

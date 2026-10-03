@@ -36,6 +36,7 @@ defmodule Gobusgo.OneBusAway.Agencies do
 
     * `{:transport, reason}`: a network fault such as `:timeout` or `:econnrefused`
     * `:deadline_exceeded`: all attempts together outlasted `:deadline_ms`
+    * `:rate_limited`: the request gate granted no permit inside the deadline
     * `{:http_status, status}`: a 4xx or 5xx response
     * `{:unexpected_redirect, status}`: a 3xx response, never followed
     * `{:api_error, %{code: code, text: text}}`: HTTP 200 with a non-200 envelope code
