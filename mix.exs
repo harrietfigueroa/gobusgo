@@ -7,6 +7,7 @@ defmodule Gobusgo.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       elixirc_options: [warnings_as_errors: true],
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -21,6 +22,9 @@ defmodule Gobusgo.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_environment), do: ["lib"]
+
   defp deps do
     [
       {:req, "~> 0.7.4"},
@@ -29,6 +33,8 @@ defmodule Gobusgo.MixProject do
       {:phoenix_html, "~> 4.3"},
       {:bandit, "~> 1.12"},
       {:plug, "~> 1.16"},
+      {:broadway_kafka, "~> 0.7.0"},
+      {:brod, "~> 4.7"},
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:lazy_html, "~> 0.1", only: :test},

@@ -167,6 +167,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
                            "requestId" => :string
                          }}
 
+  @doc "The topic the records go to."
+  @spec topic() :: String.t()
+  def topic, do: @topic
+
   @doc """
   Returns the records that publish `fetch`, the vehicles one request for one
   agency returned. Raises `Gobusgo.Assert.AssertionError` when the request

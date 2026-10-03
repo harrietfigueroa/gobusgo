@@ -14,6 +14,8 @@ config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),
   port: System.get_env("GOBUSGO_HTTP_PORT")
 
+config :gobusgo, :kafka, bootstrap_servers: System.get_env("GOBUSGO_KAFKA_BOOTSTRAP_SERVERS")
+
 # Credentials come from the environment only; nothing here is committed.
 config :gobusgo, :one_bus_away,
   base_url: System.get_env("ONEBUSAWAY_BASE_URL"),

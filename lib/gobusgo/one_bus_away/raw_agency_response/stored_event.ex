@@ -53,12 +53,24 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent do
           request_id: RequestId.t()
         }
 
+  @type decoded :: %{
+          event_id: RequestId.t(),
+          destination: String.t(),
+          fetched_at: DateTime.t(),
+          data_sha256: String.t(),
+          request_id: RequestId.t()
+        }
+
   @type request :: %{
           event_id: RequestId.t(),
           source: String.t(),
           time: DateTime.t(),
           response: response()
         }
+
+  @doc "The topic the record goes to."
+  @spec topic() :: String.t()
+  def topic, do: @topic
 
   @doc "The name of the agency discovery dataset."
   @spec dataset() :: String.t()
@@ -98,27 +110,30 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent do
   end
 
   @doc """
-  Returns the stored response that `value`, the value of a record `record/1`
-  produces, refers to. The first rule the value breaks returns as a value.
+  Returns the event identifier and the stored response that `value`, the
+  value of a record `record/1` produces, refers to. Fields of `data` outside
+  the event are ignored. The first rule the value breaks returns as a value.
   """
-  @spec decode(binary()) :: {:ok, response()} | {:error, decode_error()}
+  @spec decode(binary()) :: {:ok, decoded()} | {:error, decode_error()}
   def decode(value) when is_binary(value) do
-    with {:ok, %{type: type, data: data}} <- CloudEvent.decode(value) do
+    with {:ok, %{id: event_id, type: type, data: data}} <- CloudEvent.decode(value) do
       case type do
-        @type_name -> decode_data(data)
+        @type_name -> decode_data(event_id, data)
         _other -> {:error, :unsupported_type}
       end
     end
   end
 
-  defp decode_data(data) do
+  defp decode_data(event_id, data) do
     with nil <- Schema.mismatch(data, @data_schema),
          %{"destination" => destination, "requestId" => request_id} = data,
          true <- destination != "",
+         true <- RequestId.valid?(event_id),
          true <- RequestId.valid?(request_id),
          {:ok, fetched_at, 0} <- DateTime.from_iso8601(data["fetchedAt"]) do
       {:ok,
        %{
+         event_id: event_id,
          destination: destination,
          fetched_at: fetched_at,
          data_sha256: data["dataSha256"],

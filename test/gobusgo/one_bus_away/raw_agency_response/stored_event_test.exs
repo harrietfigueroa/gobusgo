@@ -25,6 +25,12 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEventTest do
     }
   }
 
+  describe "topic/0" do
+    test "names the dataset's event topic" do
+      assert StoredEvent.topic() == "oba.agencies-with-coverage.response-stored"
+    end
+  end
+
   describe "dataset/0" do
     test "names the agency discovery dataset" do
       assert StoredEvent.dataset() == "oba/agencies-with-coverage"
@@ -77,8 +83,27 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse.StoredEventTest do
       |> JSON.encode!()
     end
 
-    test "returns the stored response a record refers to" do
-      assert StoredEvent.decode(StoredEvent.record(@request).value) == {:ok, @request.response}
+    test "returns the event identifier and the stored response a record refers to" do
+      assert StoredEvent.decode(StoredEvent.record(@request).value) ==
+               {:ok, Map.put(@request.response, :event_id, @event_id)}
+    end
+
+    test "ignores a data field it does not know" do
+      value = value(&put_in(&1, ["data", "later"], true))
+
+      assert {:ok, %{event_id: @event_id}} = StoredEvent.decode(value)
+    end
+
+    for {name, path, replacement} <- [
+          {"a document that is not a CloudEvent", ["specversion"], "0.3"},
+          {"an event identifier that is not a UUID version 7", ["id"], "event"},
+          {"a fetch time outside UTC", ["data", "fetchedAt"], "2026-10-02T03:15:00+02:00"}
+        ] do
+      test "reports #{name}" do
+        value = value(&put_in(&1, unquote(path), unquote(replacement)))
+
+        assert StoredEvent.decode(value) == {:error, :schema_mismatch}
+      end
     end
 
     test "reports a value that is not JSON" do

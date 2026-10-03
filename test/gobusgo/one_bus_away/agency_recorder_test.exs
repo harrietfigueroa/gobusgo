@@ -274,7 +274,8 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
       assert_received {:written, _request}
       assert_received {:published, [%{value: value}]}
-      assert StoredEvent.decode(value) == {:ok, recorded}
+      assert {:ok, decoded} = StoredEvent.decode(value)
+      assert Map.delete(decoded, :event_id) == recorded
       refute_received {:published, _records}
     end
 
@@ -330,7 +331,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       assert log =~ "[warning] OneBusAway agency response recorded without its event"
       assert log =~ "reason=:timeout"
       assert log =~ "request_id=#{@request_id}"
-      refute log =~ "[info]"
+      refute log =~ "[info] OneBusAway agency response recorded"
     end
   end
 

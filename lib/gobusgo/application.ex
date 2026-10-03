@@ -6,8 +6,13 @@ defmodule Gobusgo.Application do
 
   alias Gobusgo.Assert
   alias Gobusgo.Config
+  alias Gobusgo.Kafka
+  alias Gobusgo.OneBusAway.AgencyBatch
+  alias Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
 
@@ -18,23 +23,31 @@ defmodule Gobusgo.Application do
   # 48 random bytes encode to the 64 characters a session secret needs.
   @generated_secret_byte_count 48
 
+  @agency_consumer_group "gobusgo.agency-processor"
+  @trigger_task_count_max 8
+
   @impl Application
   def start(_type, _args) do
     with {:ok, %{ip: ip, port: port}} <- Config.http(),
          {:ok, configured_secret} <- Config.secret_key_base(),
-         {:ok, %{scheduled: scheduled}} <- Config.ingestion() do
+         {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
+         {:ok, kafka} <- Config.kafka() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them.
-      children = [
-        {Phoenix.PubSub, name: Gobusgo.PubSub},
-        {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
-        {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub},
-        {Task.Supervisor,
-         name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
-        scheduler_supervisor(source_specs(scheduled)),
-        {GobusgoWeb.Endpoint,
-         http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
-      ]
+      children =
+        [
+          {Phoenix.PubSub, name: Gobusgo.PubSub},
+          {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
+          {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub}
+        ] ++
+          kafka_children(kafka) ++
+          [
+            {Task.Supervisor,
+             name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
+            scheduler_supervisor(source_specs(scheduled)),
+            {GobusgoWeb.Endpoint,
+             http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
+          ]
 
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -46,6 +59,37 @@ defmodule Gobusgo.Application do
       {:error, {:invalid, key}} -> {:error, {:invalid_setting, key}}
       {:error, {:missing, key}} -> {:error, {:missing_setting, key}}
     end
+  end
+
+  defp kafka_children(%{enabled: false}), do: []
+
+  defp kafka_children(%{enabled: true, endpoints: endpoints}) do
+    :ok = Kafka.Client.start(%{client: Kafka.Client, endpoints: endpoints})
+
+    [
+      {Task.Supervisor,
+       name: Gobusgo.OneBusAway.AgencyTriggerTasks, max_children: @trigger_task_count_max},
+      {Kafka.TopicSubscriber,
+       name: Gobusgo.OneBusAway.AgencyViewSubscriber,
+       client: Kafka.Client,
+       topic: AgencyBatch.Records.topic(),
+       subscriber: {AgencyView, :apply_records, [AgencyView]}},
+      {Kafka.TopicSubscriber,
+       name: Gobusgo.OneBusAway.VehicleViewSubscriber,
+       client: Kafka.Client,
+       topic: VehicleBatch.Records.topic(),
+       subscriber: {VehicleView, :apply_records, [VehicleView]}},
+      {KafkaConsumer,
+       name: Gobusgo.OneBusAway.AgencyTriggerConsumer,
+       producer:
+         KafkaConsumer.producer(%{
+           endpoints: endpoints,
+           consumer_group: @agency_consumer_group,
+           topic: StoredEvent.topic()
+         }),
+       consumer_group: @agency_consumer_group,
+       task_supervisor: Gobusgo.OneBusAway.AgencyTriggerTasks}
+    ]
   end
 
   defp generate_secret do

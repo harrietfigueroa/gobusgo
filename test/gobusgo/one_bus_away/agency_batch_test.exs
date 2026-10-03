@@ -342,21 +342,18 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
       assert [%{key: "manifest"}] = published()
     end
 
-    test "logs a failure once at error with its stage and error code" do
+    test "logs nothing for a failure, which returns to the caller" do
       raw = raw([@metro])
 
       log =
         capture_log([metadata: :all], fn ->
-          process(stored([raw]), raw.destination,
-            publish_options: [result: fn _records -> {:error, :timeout} end]
-          )
+          assert {:error, %{stage: :publish_agencies}} =
+                   process(stored([raw]), raw.destination,
+                     publish_options: [result: fn _records -> {:error, :timeout} end]
+                   )
         end)
 
-      assert log =~ "[error]"
-      assert log =~ "Agency batch failed"
-      assert log =~ "stage=publish_agencies"
-      assert log =~ "error_code=WRITE_FAILURE"
-      assert log =~ "class=transient"
+      assert log == ""
     end
   end
 end
