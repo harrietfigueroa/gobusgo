@@ -48,14 +48,7 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 Outside the test environment the application needs a Kafka broker for its data flow: the recorder publishes a "response stored" event for each stored response, a consumer group processes each event and publishes the processed records to a state topic, and the in-memory agency view reads that topic from its earliest record on every start. Tests run with no broker.
 
-The local broker is defined in the [infrastructure repository](https://github.com/harrietfigueroa/gobusgo-infra); its README covers start, stop, and reset. It listens on `localhost:9092` and creates no topic on its own, so create the topics once after each reset:
-
-```sh
-docker exec gobusgo-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic oba.agencies-with-coverage.response-stored --partitions 12 --replication-factor 1 --config cleanup.policy=delete --config retention.ms=604800000 --config segment.ms=86400000
-docker exec gobusgo-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic oba.agencies-with-coverage.response-stored.dead-letter --partitions 12 --replication-factor 1 --config cleanup.policy=delete --config retention.ms=2592000000 --config segment.ms=86400000
-docker exec gobusgo-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic oba.agencies-with-coverage.state --partitions 12 --replication-factor 1 --config cleanup.policy=compact --config segment.ms=86400000
-docker exec gobusgo-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic oba.vehicles-for-agency.state --partitions 12 --replication-factor 1 --config cleanup.policy=compact --config segment.ms=86400000
-```
+The local broker is defined in the [infrastructure repository](https://github.com/harrietfigueroa/gobusgo-infra), and its `apply` also creates the topics below with their partitions and settings; its README covers start, stop, reset, and the topics. The broker listens on `localhost:9092`, and its automatic topic creation is off.
 
 | Topic | Holds | Kept |
 | --- | --- | --- |
@@ -227,7 +220,7 @@ The build downloads the dependencies and the esbuild and Tailwind binaries, so i
 
 ### Start
 
-The image is a production build, so it refuses to start without `SECRET_KEY_BASE`, and it publishes to and reads from Kafka. Start the local broker from the infrastructure repository and create the topics (see Kafka) first; the container joins the broker's `gobusgo` Docker network and reaches it as `kafka:19092`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
+The image is a production build, so it refuses to start without `SECRET_KEY_BASE`, and it publishes to and reads from Kafka. Start the local broker from the infrastructure repository first, which also creates the topics (see Kafka); the container joins the broker's `gobusgo` Docker network and reaches it as `kafka:19092`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
 
 ```sh
 docker volume create gobusgo-data
