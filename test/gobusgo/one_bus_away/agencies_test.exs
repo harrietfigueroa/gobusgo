@@ -9,9 +9,22 @@ defmodule Gobusgo.OneBusAway.AgenciesTest do
 
   @fixture_directory Path.expand("../../fixtures/one_bus_away", __DIR__)
   @stub_name Agencies
+  @gate Module.concat(__MODULE__, Gate)
   @api_key "test-key-3f9a1c07be52"
   @settings %{base_url: "https://oba.example.test", api_key: @api_key}
-  @fast_options [plug: {Req.Test, @stub_name}, max_retries: 0, retry_delay_ms_base: 1]
+  @fast_options [
+    plug: {Req.Test, @stub_name},
+    gate: @gate,
+    max_retries: 0,
+    retry_delay_ms_base: 1
+  ]
+
+  # The requests go through a gate of their own that refills at once, so
+  # the tests neither wait on the application's gate nor spend its budget.
+  setup do
+    start_supervised!({Gobusgo.OneBusAway.RequestGate, name: @gate, refill_interval_ms: 1})
+    :ok
+  end
 
   defp fixture(name), do: File.read!(Path.join(@fixture_directory, name <> ".json"))
 

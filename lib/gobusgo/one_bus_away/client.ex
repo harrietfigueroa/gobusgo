@@ -6,25 +6,47 @@ defmodule Gobusgo.OneBusAway.Client do
 
   `get/3` returns the HTTP status and the raw body as data, or a transport
   failure as data. Retries, timeouts, and the total deadline are explicit.
+
+  Every attempt, a retry included, takes a permit from the request gate
+  first and releases it with the attempt's outcome. Waiting for a permit
+  counts against the total deadline, and a caller the gate turns away gets
+  `:rate_limited`. A 429 response is released as rate-limited, which pauses
+  the gate, and is returned without a retry.
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.OneBusAway.RequestGate
 
   @type settings :: %{base_url: String.t(), api_key: String.t()}
   @type response :: %{status: non_neg_integer(), body: binary()}
-  @type failure :: {:transport, term()} | :deadline_exceeded
+  @type failure :: {:transport, term()} | :deadline_exceeded | :rate_limited
 
   @connect_timeout_ms 5_000
   @deadline_ms_default 30_000
+  @gate_default RequestGate
+  @gate_permit_key :gobusgo_gate_permit
+  @gate_wait_margin_ms 250
   @receive_timeout_ms 10_000
   @retries_default 2
   @retry_delay_ms_base_default 500
   @retry_delay_ms_cap 4_000
+  @retry_statuses [408, 500, 502, 503, 504]
+  @retry_transport_reasons [:timeout, :econnrefused, :closed]
+
+  defmodule RateLimitedError do
+    @moduledoc false
+    defexception message: "the request gate granted no permit"
+  end
 
   @doc """
   Issues a GET for `path` on the configured server and returns the status and
   body. Options: `:plug` (a Req plug, for tests), `:max_retries`,
-  `:retry_delay_ms_base`, and `:deadline_ms`, the bound on all attempts together.
+  `:retry_delay_ms_base`, `:deadline_ms`, the bound on all attempts and
+  every wait for a permit together, and `:gate`, the request gate, which is
+  `#{inspect(@gate_default)}` by default.
+
+  The wait for a permit ends #{@gate_wait_margin_ms} ms before the deadline,
+  the least time left in which a request is still worth starting.
   """
   @spec get(settings(), String.t(), Keyword.t()) :: {:ok, response()} | {:error, failure()}
   def get(%{base_url: base_url, api_key: api_key}, path, options)
@@ -34,11 +56,14 @@ defmodule Gobusgo.OneBusAway.Client do
         plug: nil,
         max_retries: @retries_default,
         retry_delay_ms_base: @retry_delay_ms_base_default,
-        deadline_ms: @deadline_ms_default
+        deadline_ms: @deadline_ms_default,
+        gate: @gate_default
       )
 
     deadline_ms = Keyword.fetch!(options, :deadline_ms)
     Assert.condition(deadline_ms > 0, "deadline_ms must be positive, got #{deadline_ms}")
+    permit_deadline_at_ms = now_ms() + deadline_ms - @gate_wait_margin_ms
+    options = Keyword.put(options, :permit_deadline_at_ms, permit_deadline_at_ms)
 
     task = Task.async(fn -> request(base_url, api_key, path, options) end)
 
@@ -95,7 +120,7 @@ defmodule Gobusgo.OneBusAway.Client do
         headers: [accept: "application/json"],
         decode_body: false,
         redirect: false,
-        retry: :transient,
+        retry: &retry?/2,
         max_retries: Keyword.fetch!(options, :max_retries),
         retry_delay: &retry_delay_ms(&1, base_delay_ms),
         retry_log_level: false,
@@ -103,16 +128,88 @@ defmodule Gobusgo.OneBusAway.Client do
         connect_options: [timeout: @connect_timeout_ms]
       ] ++ plug_option(Keyword.fetch!(options, :plug))
 
+    gate = Keyword.fetch!(options, :gate)
+    permit_deadline_at_ms = Keyword.fetch!(options, :permit_deadline_at_ms)
+
     try do
-      case Req.get(request_options) do
+      request =
+        request_options
+        |> Req.new()
+        |> Req.Request.prepend_request_steps(
+          gate_acquire: &acquire_permit(&1, gate, permit_deadline_at_ms)
+        )
+        |> Req.Request.prepend_response_steps(gate_release: &release_permit(&1, gate))
+        |> Req.Request.prepend_error_steps(gate_release: &release_permit(&1, gate))
+
+      case Req.get(request) do
         {:ok, %Req.Response{status: status, body: body}} -> {:ok, %{status: status, body: body}}
         {:error, %Req.TransportError{reason: reason}} -> {:error, {:transport, reason}}
+        {:error, %RateLimitedError{}} -> {:error, :rate_limited}
         {:error, exception} -> {:raised, exception.__struct__}
       end
     rescue
       exception -> {:raised, exception.__struct__}
     end
   end
+
+  # Req runs its request steps again for every retry, so each attempt takes
+  # its own permit. A halted request skips the adapter and every later step.
+  defp acquire_permit(request, gate, permit_deadline_at_ms) do
+    wait_ms = max(permit_deadline_at_ms - now_ms(), 0)
+
+    case RequestGate.acquire(gate, wait_ms) do
+      {:ok, permit} -> Req.Request.put_private(request, @gate_permit_key, permit)
+      {:error, :rate_limited} -> Req.Request.halt(request, %RateLimitedError{})
+    end
+  end
+
+  # These steps run ahead of Req's retry step, so the permit of an attempt
+  # is released before the delay that precedes the next one.
+  defp release_permit({request, response_or_exception}, gate) do
+    permit = Req.Request.get_private(request, @gate_permit_key)
+    Assert.condition(is_reference(permit), "an attempt must hold a permit")
+
+    outcome =
+      case response_or_exception do
+        # OneBusAway documents no 429 and no Retry-After; the gate treats one
+        # as rate limiting on the project owner's statement that limits exist.
+        # https://developer.onebusaway.org/api/where — checked 2026-10-03
+        %Req.Response{status: 429} = response ->
+          {:rate_limited, retry_after_ms(response)}
+
+        %Req.Response{} ->
+          :completed
+
+        %{__exception__: true} ->
+          :failed
+      end
+
+    :ok = RequestGate.release(gate, %{permit: permit, outcome: outcome})
+    {request, response_or_exception}
+  end
+
+  # A Retry-After value that is malformed or in the past names no time, and
+  # the gate then backs off on its own.
+  defp retry_after_ms(response) do
+    case Req.Response.get_retry_after(response) do
+      retry_after_ms when is_integer(retry_after_ms) -> max(retry_after_ms, 0)
+      nil -> nil
+    end
+  rescue
+    _exception -> nil
+  end
+
+  # A 429 is left to the gate, which pauses every caller; repeating the
+  # request here would spend the budget the pause protects.
+  defp retry?(_request, %Req.Response{status: status}), do: status in @retry_statuses
+
+  defp retry?(_request, %Req.TransportError{reason: reason}) do
+    reason in @retry_transport_reasons
+  end
+
+  defp retry?(_request, %{__exception__: true}), do: false
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
 
   defp plug_option(nil), do: []
   defp plug_option(plug), do: [plug: plug]

@@ -101,11 +101,33 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 ## Implementation
 
-`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. `Gobusgo.OneBusAway.Envelope.interpret/2` is the pure step every requester shares from an HTTP status and body to the decoded envelope or a documented failure. The client sets `retry: :transient` with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
+`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. `Gobusgo.OneBusAway.Envelope.interpret/2` is the pure step every requester shares from an HTTP status and body to the decoded envelope or a documented failure. The client retries network faults and the statuses 408, 500, 502, 503, and 504 with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), and sets `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts and every wait at the request gate. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `:rate_limited`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
 
 `Gobusgo.OneBusAway.Agencies.fetch_response/2` makes the same request and returns the agencies together with the whole decoded envelope, the HTTP status, the method, the host, and the fetch time. The key is replaced wherever the server echoes it in the envelope, and the host is the host name alone, so no returned value carries a credential or a URL. Its `:clock` option supplies the fetch time.
 
 `Gobusgo.OneBusAway.Agencies.parse/1` is the pure function from an envelope's `data` to the agencies. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:agency_count_exceeded, count}`, or `{:unreferenced_agency, id}`. The requester raises on those values; a reader of stored responses handles them.
+
+## Request gate
+
+`Gobusgo.OneBusAway.RequestGate` owns the request budget of the API key. The application starts one, registered under the module's name, and `Client.get/3` takes a permit from it before every attempt, a retry included, and releases the permit with the attempt's outcome; its `:gate` option names another gate, which the tests use. `Gobusgo.OneBusAway.RequestGate.State` holds the rules and is pure. The gate never sees the key.
+
+| Rule | Value | Meaning |
+| --- | --- | --- |
+| Refill interval | 100 ms | Ten permits a second; the bucket holds one token, so idle time buys no burst |
+| In-flight cap | 4 | Permits held at one time |
+| Waiter bound | 32 | Callers waiting for a permit, served in arrival order |
+| Backoff window | 1,000 ms doubling to 60,000 ms | The pause after a 429 without `Retry-After`, jittered between half the window and all of it |
+| `Retry-After` bound | 300,000 ms | The longest pause a response can name |
+
+- A caller waits for a permit until 250 ms before its request's deadline. A caller whose wait runs out, or who arrives while 32 callers wait, gets `{:error, :rate_limited}`, which the requesters return unchanged.
+- A 429 response pauses every caller, is returned as `{:error, {:http_status, 429}}`, and is never retried by the client. When the pause ends, one caller probes alone: a response that is not a 429 reopens the gate and resets the window, another 429 pauses again for a doubled window, and a probe that ends with no response lets the next caller probe.
+- The gate monitors each caller, so a caller that exits or is killed at its deadline gives up its permit or its place among the waiters.
+- State is in memory and per node: a restart begins open with a full bucket, and two running instances each spend a full budget.
+- Logs: `warning` `OneBusAway request gate paused` with `pause_ms` and `pause_count`, and `info` `OneBusAway request gate reopened`.
+
+The budget of ten requests per second is an assumption. OneBusAway documents neither a rate limit nor a 429 status nor `Retry-After` (https://developer.onebusaway.org/api/where — checked 2026-10-03); the gate treats a 429 as rate limiting on the project owner's statement that limits exist, and no 429 has been observed from the live server.
+
+A new source needs no change here: its requests reach the gate through the client. A deadline shorter than the time its requests spend waiting for permits ends in `:rate_limited`, so a source that issues many requests per run sizes its deadline to 100 ms per request, plus the time the requests themselves take while four are in flight.
 
 ## Vehicles: `vehicles-for-agency`
 
