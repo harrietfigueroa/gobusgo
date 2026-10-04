@@ -5,6 +5,9 @@ defmodule Gobusgo.Config do
   global state.
   """
 
+  @type basemap :: %{dir: String.t()}
+  @type basemap_error :: {:missing, :dir}
+
   @type one_bus_away :: %{base_url: String.t(), api_key: String.t()}
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
@@ -128,6 +131,31 @@ defmodule Gobusgo.Config do
     with {:ok, %{endpoints: endpoints}} <- fetch_kafka(env) do
       {:ok, %{enabled: enabled, endpoints: endpoints}}
     end
+  end
+
+  @doc """
+  Returns the basemap settings from `env`: `:dir`, the directory the basemap
+  archives are served from. A nil or blank value counts as missing.
+  """
+  @spec fetch_basemap(Keyword.t()) :: {:ok, basemap()} | {:error, basemap_error()}
+  def fetch_basemap(env) when is_list(env) do
+    case Keyword.get(env, :dir) do
+      dir when is_binary(dir) ->
+        if String.trim(dir) == "" do
+          {:error, {:missing, :dir}}
+        else
+          {:ok, %{dir: dir}}
+        end
+
+      nil ->
+        {:error, {:missing, :dir}}
+    end
+  end
+
+  @doc "Reads the basemap settings configured for the running application."
+  @spec basemap() :: {:ok, basemap()} | {:error, basemap_error()}
+  def basemap do
+    :gobusgo |> Application.get_env(:basemap, []) |> fetch_basemap()
   end
 
   @doc """

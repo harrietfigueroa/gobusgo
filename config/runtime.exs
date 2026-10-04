@@ -10,6 +10,10 @@ base_dir = Path.expand(if String.trim(data_dir) == "", do: data_dir_default, els
 config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir
 config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: base_dir
 
+# The basemap archives are served from a directory beside the stored
+# responses.
+config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")
+
 config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),
   port: System.get_env("GOBUSGO_HTTP_PORT")

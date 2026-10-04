@@ -339,6 +339,19 @@ Measured on 2026-10-04 with build `20261004` (Protomaps basemap 4.15.2) and the 
 
 The sizes for zooms 12 to 14 come from `pmtiles extract --dry-run`. The basemap is an Open Database License produced work, so a page that shows it has to show the OpenStreetMap attribution.
 
+### Serving the archives
+
+The server serves the files of `<GOBUSGO_DATA_DIR>/basemap` (`data/basemap` by default, `/data/basemap` in the container) under `/basemap`: the archives and `manifest.json`. So an extraction with `--output-dir data/basemap` is served with no further step, and a refreshed basemap is published by extracting a newer build into that directory; `manifest.json` then names the new archives, and the old ones can be deleted.
+
+A PMTiles reader fetches parts of an archive with HTTP `Range` requests. To check that against a running server:
+
+```sh
+curl --silent --dump-header - --output /dev/null --range 0-16383 http://127.0.0.1:4000/basemap/basemap-20261004-01.pmtiles
+mise exec -- pmtiles show http://127.0.0.1:4000/basemap/basemap-20261004-01.pmtiles
+```
+
+The first answers `206 Partial Content` with `content-range: bytes 0-16383/<size>`, and the second prints the archive's header, read through range requests. A cache may keep an archive for an hour (`cache-control: public, max-age=3600`) and has to revalidate `manifest.json` on every use (`no-cache`); both carry an `etag`. The pages come from the same origin as the archives, so the server sets no CORS header.
+
 ## Development
 
 ```sh

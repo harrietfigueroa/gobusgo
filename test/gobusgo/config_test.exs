@@ -124,6 +124,22 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_basemap/1" do
+    test "returns the configured directory" do
+      assert Config.fetch_basemap(dir: "/data/basemap") == {:ok, %{dir: "/data/basemap"}}
+    end
+
+    for {description, env} <- [
+          {"an empty environment", []},
+          {"a nil directory", [dir: nil]},
+          {"a blank directory", [dir: "  "]}
+        ] do
+      test "reports dir as missing for #{description}" do
+        assert Config.fetch_basemap(unquote(env)) == {:error, {:missing, :dir}}
+      end
+    end
+  end
+
   describe "fetch_secret_key_base/1" do
     @secret String.duplicate("s", 64)
 
