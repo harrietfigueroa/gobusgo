@@ -60,4 +60,20 @@ defmodule Gobusgo.Publisher.InProcessTest do
 
     assert publish([record("a", "1")], subscribers) == {:error, :unavailable}
   end
+
+  test "delivers no value for a tombstone, among the values around it" do
+    records = [record("a", "1"), record("a", ""), record("a", "3")]
+
+    assert publish(records, %{"a" => subscriber("a")}) == :ok
+    assert_received {:delivered, "a", ["1", "3"]}
+  end
+
+  test "calls no subscriber for a run of tombstones alone" do
+    assert publish([record("a", "")], %{"a" => subscriber("a")}) == :ok
+    refute_received {:delivered, "a", _values}
+  end
+
+  test "returns unknown_topic for a tombstone on a topic without a subscriber" do
+    assert publish([record("nowhere", "")], %{}) == {:error, :unknown_topic}
+  end
 end

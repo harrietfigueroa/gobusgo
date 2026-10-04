@@ -13,9 +13,9 @@ The modules follow the library source in `deps/`, which is the version actually 
 ## Modules
 
 - `Gobusgo.Kafka.Client.start/1` registers one brod client under brod's own supervisor. The application starts it as `Gobusgo.Kafka.Client` with the endpoints from `GOBUSGO_KAFKA_BOOTSTRAP_SERVERS`. Topic auto-creation is off in every request.
-- `Gobusgo.Publisher.Kafka` is the publisher backend. It starts a producer per topic on first use with the settings from GOB-43 (all in-sync replicas acknowledge, gzip, one request in flight per partition, three retries), sends every record of a call before awaiting the acknowledgements, and bounds the call with a deadline. It rejects a record over 1,000,000 bytes before sending, because brod's producer process crashes on the broker's `message_too_large`.
-- `Gobusgo.Kafka.TopicSubscriber` reads one topic without a consumer group and feeds a `{module, function, arguments}`. It restarts its brod subscriber after a delay when it stops, and stops the client's partition consumers of the topic before each start so the new reader begins at the earliest record.
-- `Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer` is the BroadwayKafka pipeline; its contract is in `lib/gobusgo/one_bus_away/AGENTS.md`. BroadwayKafka starts its own brod client per producer.
+- `Gobusgo.Publisher.Kafka` is the publisher backend. It starts a producer per topic on first use with the settings from GOB-43 (all in-sync replicas acknowledge, gzip, one request in flight per partition, three retries), sends every record of a call before awaiting the acknowledgements, and bounds the call with a deadline. A tombstone, a record with an empty value, is produced with a null value: `kafka_protocol` writes an empty value with the length -1 (`deps/kafka_protocol/src/kpro_batch.erl`, `enc_byte_size/1`, read 2026-10-03), and brod hands a null value back as an empty binary (verified against the local broker, 2026-10-03). It rejects a record over 1,000,000 bytes before sending, because brod's producer process crashes on the broker's `message_too_large`.
+- `Gobusgo.Kafka.TopicSubscriber` reads one topic without a consumer group and feeds a `{module, function, arguments}` the record values, leaving out tombstones. It restarts its brod subscriber after a delay when it stops, and stops the client's partition consumers of the topic before each start so the new reader begins at the earliest record.
+- `Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer` is the BroadwayKafka pipeline, one per dataset; its contract is in `lib/gobusgo/one_bus_away/AGENTS.md`. BroadwayKafka starts its own brod client per producer.
 
 ## Observed behavior
 
@@ -27,4 +27,4 @@ The modules follow the library source in `deps/`, which is the version actually 
 
 ## Configuration and topics
 
-`GOBUSGO_KAFKA_BOOTSTRAP_SERVERS` is a comma-separated `host:port` list, at most 16 entries, defaulting to `localhost:9092`. Kafka is off in the test environment. The application creates no topic; the README lists the commands that create the agency topics on the local broker. Tests tagged `kafka` read `GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` and create and delete topics of their own.
+`GOBUSGO_KAFKA_BOOTSTRAP_SERVERS` is a comma-separated `host:port` list, at most 16 entries, defaulting to `localhost:9092`. Kafka is off in the test environment. The application creates no topic; the infrastructure repository's local target creates the agency and vehicle topics on the local broker. Tests tagged `kafka` read `GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` and create and delete topics of their own.

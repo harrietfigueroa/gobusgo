@@ -41,20 +41,11 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   share a hash although their envelope `currentTime` differs.
   """
 
-  alias Gobusgo.Assert
-  alias Gobusgo.CanonicalJson
-  alias Gobusgo.Compression
-  alias Gobusgo.Destination
   alias Gobusgo.OneBusAway.Agencies
+  alias Gobusgo.OneBusAway.RawResponse
   alias Gobusgo.RequestId
-  alias Gobusgo.Schema
 
-  @type t :: %{
-          destination: String.t(),
-          content: binary(),
-          fetched_at: DateTime.t(),
-          data_sha256: String.t()
-        }
+  @type t :: RawResponse.t()
 
   @type parsed :: %{
           destination: String.t(),
@@ -73,36 +64,9 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
     * `:destination_mismatch` — `meta` names a destination other than the one
       the content was read from, under either ending.
   """
-  @type parse_error :: :invalid_json | :schema_mismatch | :hash_mismatch | :destination_mismatch
+  @type parse_error :: RawResponse.parse_error()
 
   @destination_prefix "raw/oba/agencies-with-coverage"
-  @extension_uncompressed ".json"
-  @extension @extension_uncompressed <> Compression.suffix()
-  @fetched_at_name_bytes byte_size("20261002T031500Z")
-  @hash_prefix_size 12
-  @http_status_stored 200
-  @credential_parameter "key="
-  @utc_time_zone "Etc/UTC"
-
-  @envelope_schema {:map,
-                    %{
-                      "code" => {:literal, 200},
-                      "version" => :integer,
-                      "currentTime" => :integer,
-                      "data" => {:map, %{}}
-                    }}
-
-  @wrapper_schema {:map,
-                   %{
-                     "meta" =>
-                       {:map,
-                        %{
-                          "fetchedAt" => :string,
-                          "dataSha256" => :string,
-                          "requestId" => :string
-                        }},
-                     "body" => @envelope_schema
-                   }}
 
   @doc """
   Returns the destination and content that store `response` under
@@ -115,42 +79,13 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   """
   @spec build(%{response: Agencies.response(), request_id: RequestId.t()}) :: t()
   def build(%{response: response, request_id: request_id}) do
-    %{envelope: envelope, fetched_at: fetched_at, host: host, http_status: http_status} = response
-    Assert.condition(RequestId.valid?(request_id), "request identifier must be a UUID version 7")
-
-    Assert.condition(
-      http_status == @http_status_stored,
-      "HTTP status must be 200: #{http_status}"
-    )
-
-    Assert.condition(is_binary(host), "host must be a string")
-    Assert.condition(host != "", "host must be non-empty")
-    Assert.condition(fetched_at.time_zone == @utc_time_zone, "fetch time must be in UTC")
-
-    %{"data" => data} = Assert.schema(envelope, @envelope_schema)
-    fetched_at = DateTime.truncate(fetched_at, :second)
-    data_sha256 = data_sha256(data)
-
-    meta = %{
-      "dataSha256" => data_sha256,
-      "envelopeCurrentTime" => envelope["currentTime"],
-      "envelopeVersion" => envelope["version"],
-      "fetchedAt" => DateTime.to_iso8601(fetched_at, :extended),
-      "host" => host,
-      "httpStatus" => http_status,
-      "method" => response.method,
-      "requestId" => request_id
-    }
-
-    destination = destination(fetched_at, request_id, data_sha256)
-    assert_credential_free(%{destination: destination, meta: encode(meta)})
-
-    %{
-      destination: destination,
-      content: encode(%{"meta" => meta, "body" => envelope}),
-      fetched_at: fetched_at,
-      data_sha256: data_sha256
-    }
+    RawResponse.build(%{
+      response: response,
+      request_id: request_id,
+      prefix: @destination_prefix,
+      segments: [],
+      meta: %{}
+    })
   end
 
   @doc """
@@ -158,9 +93,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   with object keys sorted, so the hash is independent of key order.
   """
   @spec data_sha256(%{String.t() => term()}) :: String.t()
-  def data_sha256(data) when is_map(data) do
-    :sha256 |> :crypto.hash(encode(data)) |> Base.encode16(case: :lower)
-  end
+  defdelegate data_sha256(data), to: RawResponse
 
   @doc """
   Returns the prefix shared by every destination whose fetch time falls on the
@@ -168,7 +101,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   """
   @spec partition_prefix(Date.t()) :: String.t()
   def partition_prefix(%Date{} = date) do
-    @destination_prefix <> "/dt=" <> Date.to_iso8601(date) <> "/"
+    RawResponse.partition_prefix(@destination_prefix, date)
   end
 
   @doc """
@@ -176,21 +109,7 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
   the name does not start with one.
   """
   @spec fetched_at(String.t()) :: {:ok, DateTime.t()} | :error
-  def fetched_at(destination) when is_binary(destination) do
-    destination
-    |> String.split("/")
-    |> List.last()
-    |> case do
-      <<stamp::binary-size(@fetched_at_name_bytes), "_", _rest::binary>> ->
-        case DateTime.from_iso8601(stamp, :basic) do
-          {:ok, fetched_at, 0} -> {:ok, fetched_at}
-          _other -> :error
-        end
-
-      _other ->
-        :error
-    end
-  end
+  defdelegate fetched_at(destination), to: RawResponse
 
   @doc """
   Returns what `content`, read back from `destination`, stored: the fetch
@@ -204,57 +123,38 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
           {:ok, parsed()} | {:error, parse_error()}
   def parse(%{destination: destination, content: content})
       when is_binary(destination) and is_binary(content) do
-    with {:ok, %{"meta" => meta, "body" => %{"data" => data}}} <- decode(content),
-         {:ok, fetched_at} <- parse_fetched_at(meta["fetchedAt"]),
-         data_sha256 = data_sha256(data),
-         :ok <- check(data_sha256 == meta["dataSha256"], :hash_mismatch),
-         request_id = meta["requestId"],
-         stem = destination_stem(fetched_at, request_id, data_sha256),
-         named = [stem <> @extension, stem <> @extension_uncompressed],
-         :ok <- check(destination in named, :destination_mismatch),
-         :ok <- check(RequestId.valid?(request_id), :schema_mismatch),
+    raw =
+      RawResponse.parse(%{
+        destination: destination,
+        content: content,
+        prefix: @destination_prefix,
+        segments: fn _meta -> {:ok, []} end
+      })
+
+    with {:ok, %{data: data} = stored} <- raw,
          {:ok, agencies} <- parse_agencies(data) do
       {:ok,
        %{
          destination: destination,
-         fetched_at: fetched_at,
-         data_sha256: data_sha256,
-         request_id: request_id,
+         fetched_at: stored.fetched_at,
+         data_sha256: stored.data_sha256,
+         request_id: stored.request_id,
          agencies: agencies
        }}
     end
   end
 
-  defp decode(content) do
-    case JSON.decode(content) do
-      {:ok, decoded} -> check_schema(decoded)
-      {:error, _reason} -> {:error, :invalid_json}
-    end
-  end
-
-  defp check_schema(decoded) do
-    case Schema.mismatch(decoded, @wrapper_schema) do
-      nil -> {:ok, decoded}
-      _mismatch -> {:error, :schema_mismatch}
-    end
-  end
-
-  # Only the exact text `build/1` writes is accepted, which rules out other
-  # offsets and precisions that name the same instant.
-  defp parse_fetched_at(text) do
-    case DateTime.from_iso8601(text) do
-      {:ok, fetched_at, 0} ->
-        check(DateTime.to_iso8601(fetched_at, :extended) == text, :schema_mismatch, fetched_at)
-
-      _other ->
-        {:error, :schema_mismatch}
-    end
-  end
-
   defp parse_agencies(data) do
     case Agencies.parse(data) do
-      {:ok, agencies} -> check(identifiable?(agencies), :schema_mismatch, agencies)
-      {:error, _reason} -> {:error, :schema_mismatch}
+      {:ok, agencies} ->
+        if identifiable?(agencies) do
+          {:ok, agencies}
+        else
+          {:error, :schema_mismatch}
+        end
+
+      {:error, _reason} ->
+        {:error, :schema_mismatch}
     end
   end
 
@@ -262,54 +162,4 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
     ids = Enum.map(agencies, & &1.id)
     "" not in ids and ids == Enum.uniq(ids)
   end
-
-  defp check(true, _reason), do: :ok
-  defp check(false, reason), do: {:error, reason}
-
-  defp check(true, _reason, value), do: {:ok, value}
-  defp check(false, reason, _value), do: {:error, reason}
-
-  defp destination(fetched_at, request_id, data_sha256) do
-    destination = destination_stem(fetched_at, request_id, data_sha256) <> @extension
-
-    Assert.condition(
-      match?({:ok, _segments}, Destination.validate(destination)),
-      "built an invalid destination"
-    )
-
-    Assert.condition(Compression.compressed?(destination), "destination must be compressed")
-
-    destination
-  end
-
-  defp destination_stem(fetched_at, request_id, data_sha256) do
-    name =
-      Enum.join(
-        [
-          DateTime.to_iso8601(fetched_at, :basic),
-          request_id,
-          binary_part(data_sha256, 0, @hash_prefix_size)
-        ],
-        "_"
-      )
-
-    partition_prefix(DateTime.to_date(fetched_at)) <> name
-  end
-
-  # The body is exempt: it holds text the agencies supply, where `key=` is a
-  # legitimate part of a link. The messages name the field and never its
-  # value: the value is the leak.
-  defp assert_credential_free(%{destination: destination, meta: meta}) do
-    Assert.condition(
-      :binary.match(destination, @credential_parameter) == :nomatch,
-      "destination carries a key= parameter"
-    )
-
-    Assert.condition(
-      :binary.match(meta, @credential_parameter) == :nomatch,
-      "meta carries a key= parameter"
-    )
-  end
-
-  defp encode(value), do: CanonicalJson.encode(value)
 end

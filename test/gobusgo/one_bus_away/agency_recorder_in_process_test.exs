@@ -7,7 +7,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderInProcessTest do
   # response leads to is read from the view, the way a request reads it.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.OneBusAway.AgencyBatch.Consumer
+  alias Gobusgo.OneBusAway.ResponseConsumer
   alias Gobusgo.OneBusAway.AgencyRecorder
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.Publisher.InProcess
@@ -50,7 +50,15 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderInProcessTest do
     ]
 
     event_subscribers = %{
-      "oba.agencies-with-coverage.response-stored" => {Consumer, :consume, [process_options]}
+      "oba.agencies-with-coverage.response-stored" =>
+        {ResponseConsumer, :consume,
+         [
+           %{
+             event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+             processor: Gobusgo.OneBusAway.AgencyBatch
+           },
+           process_options
+         ]}
     }
 
     options = [

@@ -23,6 +23,12 @@ defmodule Gobusgo.Publisher do
   (a failure the backend cannot classify, a backend answering off-contract)
   raises `Gobusgo.Assert.AssertionError`.
 
+  ## Tombstones
+
+  A record whose `:value` is empty is a tombstone: it removes the earlier
+  records of its key from the topic, and a reader of the topic receives no
+  value for it. A later record under the same key supersedes the tombstone.
+
   ## Selecting a backend
 
   The application config key `:backend` under `Gobusgo.Publisher` names the

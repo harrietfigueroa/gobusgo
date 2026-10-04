@@ -17,6 +17,9 @@ defmodule Gobusgo.OneBusAway.VehicleView do
   `subscribe/1`, as `{:vehicle_view_switched, view}`, after the table holds
   the new fetches.
 
+  The table also holds when each vehicle of each agency was last seen, and
+  `expired_vehicle_ids/2` reads it the way `current/1` reads the fetches.
+
   A value that is not a record is skipped. Each call logs `info` when a
   current fetch changed and `warning` with the count of skipped values, and
   `warning` when an announcement could not be sent.
@@ -73,9 +76,36 @@ defmodule Gobusgo.OneBusAway.VehicleView do
 
       table ->
         table
-        |> :ets.tab2list()
-        |> Enum.sort_by(fn {agency_id, _fetch} -> agency_id end)
-        |> Enum.map(fn {_agency_id, fetch} -> fetch end)
+        |> :ets.match_object({{:current, :_}, :_})
+        |> Enum.sort_by(fn {{:current, agency_id}, _fetch} -> agency_id end)
+        |> Enum.map(fn {_key, fetch} -> fetch end)
+    end
+  end
+
+  @doc """
+  Returns, sorted, the vehicles of `fetch.agency_id` in `view` that have
+  expired at `fetch`, a fetch made at `fetch.fetched_at` with the vehicles
+  `fetch.vehicle_ids`: absent from it, and last seen more than
+  `Gobusgo.OneBusAway.VehicleView.State.tombstone_grace_ms/0` before it.
+  Returns `[]` for an agency the view has seen no vehicle of and while the
+  view is not running.
+  """
+  @spec expired_vehicle_ids(atom(), %{
+          agency_id: String.t(),
+          fetched_at: DateTime.t(),
+          vehicle_ids: [String.t()]
+        }) :: [String.t()]
+  def expired_vehicle_ids(view, %{agency_id: agency_id} = fetch)
+      when is_atom(view) and is_binary(agency_id) do
+    case :ets.whereis(view) do
+      :undefined ->
+        []
+
+      table ->
+        case :ets.lookup(table, {:last_seen, agency_id}) do
+          [{_key, last_seen}] -> State.expired_vehicle_ids(last_seen, fetch)
+          [] -> []
+        end
     end
   end
 
@@ -104,14 +134,16 @@ defmodule Gobusgo.OneBusAway.VehicleView do
 
   @impl GenServer
   def handle_call({:apply_records, values}, _from, %{table: table, state: state} = server) do
-    {state, counts} =
-      Enum.reduce(values, {state, %{switched_agency_ids: [], invalid: 0}}, &apply_value/2)
-
+    counts = %{switched_agency_ids: [], seen_agency_ids: [], invalid: 0}
+    {state, counts} = Enum.reduce(values, {state, counts}, &apply_value/2)
     switched_agency_ids = Enum.uniq(counts.switched_agency_ids)
+    seen_agency_ids = Enum.uniq(counts.seen_agency_ids ++ switched_agency_ids)
+    last_seen = state |> State.last_seen() |> Map.take(seen_agency_ids)
+    true = :ets.insert(table, for({id, seen} <- last_seen, do: {{:last_seen, id}, seen}))
 
     if switched_agency_ids != [] do
       fetches = state |> State.current() |> Map.take(switched_agency_ids)
-      true = :ets.insert(table, Map.to_list(fetches))
+      true = :ets.insert(table, for({id, fetch} <- fetches, do: {{:current, id}, fetch}))
 
       Logger.info("Vehicle view switched",
         agency_count: map_size(fetches),
@@ -142,7 +174,9 @@ defmodule Gobusgo.OneBusAway.VehicleView do
 
   defp apply_value(value, {state, counts}) do
     case Records.decode(value) do
-      {:ok, {_kind, %{agency_id: agency_id}} = decoded} ->
+      {:ok, {kind, %{agency_id: agency_id}} = decoded} ->
+        counts = see(counts, kind, agency_id)
+
         case State.put(state, decoded) do
           {state, :switched} ->
             {state, %{counts | switched_agency_ids: [agency_id | counts.switched_agency_ids]}}
@@ -154,5 +188,11 @@ defmodule Gobusgo.OneBusAway.VehicleView do
       {:error, _reason} ->
         {state, %{counts | invalid: counts.invalid + 1}}
     end
+  end
+
+  defp see(counts, :manifest, _agency_id), do: counts
+
+  defp see(counts, :vehicle, agency_id) do
+    %{counts | seen_agency_ids: [agency_id | counts.seen_agency_ids]}
   end
 end

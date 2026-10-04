@@ -1,11 +1,11 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumerBrokerTest do
+defmodule Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumerBrokerTest do
   # Runs the consumer pipeline against a real broker: records are published
   # to an event topic created for the test, consumed by a consumer group of
   # its own, and the dead-letter topic and the processed records are read
   # back. The reader is a double defined here, so no storage is involved.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer
+  alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
   alias Gobusgo.Publisher
@@ -123,6 +123,8 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumerBrokerTest do
 
     start_supervised!(
       {KafkaConsumer,
+       event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+       processor: Gobusgo.OneBusAway.AgencyBatch,
        name: Module.concat(__MODULE__, "Consumer#{System.unique_integer([:positive])}"),
        producer:
          KafkaConsumer.producer(%{

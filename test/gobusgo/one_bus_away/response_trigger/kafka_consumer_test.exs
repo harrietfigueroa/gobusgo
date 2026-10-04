@@ -1,10 +1,10 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumerTest do
+defmodule Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumerTest do
   # Runs the consumer pipeline on Broadway's dummy producer, so messages are
   # pushed in by the test and their acknowledgement is observed with no
   # broker. The reader and the publisher are doubles defined here.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer
+  alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
 
   @moduletag capture_log: true
 
@@ -37,6 +37,8 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumerTest do
 
     start_supervised!(
       {KafkaConsumer,
+       event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+       processor: Gobusgo.OneBusAway.AgencyBatch,
        name: name,
        producer: {Broadway.DummyProducer, []},
        consumer_group: "test-group",

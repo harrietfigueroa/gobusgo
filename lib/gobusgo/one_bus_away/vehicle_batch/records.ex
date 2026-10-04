@@ -69,6 +69,11 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     * `data.dataSha256`: the data hash of the stored response.
     * `data.destination`: the destination of the stored response.
     * `data.fetchedAt` and `data.requestId`: as in a vehicle record.
+
+  ## Tombstone record
+
+  One per vehicle whose record is removed from the topic: the vehicle's key
+  with an empty value and no headers.
   """
 
   alias Gobusgo.Assert
@@ -221,6 +226,25 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
           data: manifest_data
         })
     }
+  end
+
+  @doc """
+  Returns the tombstone records of the vehicles `vehicle_ids` of the agency
+  `agency_id`, in the order given. Raises `Gobusgo.Assert.AssertionError`
+  when an identifier is empty.
+  """
+  @spec tombstones(%{agency_id: String.t(), vehicle_ids: [String.t()]}) ::
+          [Publisher.topic_record()]
+  def tombstones(%{agency_id: agency_id, vehicle_ids: vehicle_ids})
+      when is_binary(agency_id) and is_list(vehicle_ids) do
+    Assert.condition(agency_id != "", "agency identifier must be non-empty")
+
+    for id <- vehicle_ids do
+      Assert.condition(is_binary(id), "vehicle identifier must be a string")
+      Assert.condition(id != "", "vehicle identifier must be non-empty")
+      key = @vehicle_key_prefix <> agency_id <> "/" <> id
+      %{topic: @topic, key: key, value: "", headers: []}
+    end
   end
 
   @doc """

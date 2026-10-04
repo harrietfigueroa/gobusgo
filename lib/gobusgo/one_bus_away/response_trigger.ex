@@ -1,14 +1,21 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger do
+defmodule Gobusgo.OneBusAway.ResponseTrigger do
   @attempt_deadline_ms_default 10_000
   @dead_letter_attempt_count_max 3
 
   @moduledoc """
-  Handles one consumed "response stored" record: processes the stored
-  response the event names with `Gobusgo.OneBusAway.AgencyBatch.process/2`,
-  retries in place, and dead-letters the record when it gives up. This
-  module orchestrates and logs; the retry rules live in
-  `Gobusgo.OneBusAway.AgencyTrigger.Policy` and the dead-letter record in
+  Handles one consumed "response stored" record of one dataset: processes
+  the stored response the event names with the dataset's processor, retries
+  in place, and dead-letters the record when it gives up. This module
+  orchestrates and logs; the retry rules live in
+  `Gobusgo.OneBusAway.ResponseTrigger.Policy` and the dead-letter record in
   `Gobusgo.DeadLetter`.
+
+  A dataset is two modules. The event module has `dataset/0`, the name of
+  the dataset, and `decode/1`, which returns the `:event_id`, the
+  `:destination`, and the `:request_id` of a "response stored" value or the
+  reason it is none. The processor module has `process/2`, which takes the
+  destination and returns `{:ok, result}` or
+  `{:error, failure}` with a `t:Gobusgo.OneBusAway.BatchFailure.t/0`.
 
   `handle/2` runs in the calling process and returns once the outcome of the
   record is final. Each attempt runs as a task under the given task
@@ -17,7 +24,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
 
   ## Results
 
-    * `:processed` — the agency records and the manifest are published.
+    * `:processed` — the processor published the stored response.
     * `:dead_lettered` — the record is on its dead-letter topic, key and
       value as consumed.
     * `{:error, {:dead_letter_unpublished, reason}}` — the consumer gave up
@@ -26,15 +33,18 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
       `t:Gobusgo.Publisher.error_reason/0`. The record is neither processed
       nor dead-lettered.
 
-  A record whose value is not a "response stored" event is dead-lettered
-  without an attempt.
+  A record whose value is not a "response stored" event of the dataset is
+  dead-lettered without an attempt.
 
   Each call logs at most once: nothing when the first attempt processes the
   response, `warning` when a later attempt does, `error` when the record is
   dead-lettered, and `error` when its dead-letter record is not published.
+  Every line carries the `dataset`.
 
   ## Options
 
+    * `:event` (required): the dataset's event module.
+    * `:processor` (required): the dataset's processor module.
     * `:consumer_group` (required): the name of the consumer group, for the
       dead-letter record.
     * `:task_supervisor` (required): the `Task.Supervisor` the attempts run
@@ -42,7 +52,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
     * `:attempt_deadline_ms`: the bound on one attempt. Defaults to
       #{@attempt_deadline_ms_default}.
     * `:retry_delay_ms_base`: the window of the first retry delay. Defaults
-      to `Gobusgo.OneBusAway.AgencyTrigger.Policy.retry_delay_ms_base/0`.
+      to `Gobusgo.OneBusAway.ResponseTrigger.Policy.retry_delay_ms_base/0`.
     * `:read_options`: options for `Gobusgo.Reader.read/2`.
     * `:publish_options`: options for `Gobusgo.Publisher.publish/2`, for the
       processed records and the dead-letter record alike.
@@ -54,9 +64,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
 
   alias Gobusgo.Assert
   alias Gobusgo.DeadLetter
-  alias Gobusgo.OneBusAway.AgencyBatch
-  alias Gobusgo.OneBusAway.AgencyTrigger.Policy
-  alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
+  alias Gobusgo.OneBusAway.ResponseTrigger.Policy
   alias Gobusgo.Publisher
 
   @type result ::
@@ -69,6 +77,8 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
   def handle(%{value: value} = consumed, options) when is_binary(value) and is_list(options) do
     options =
       Keyword.validate!(options, [
+        :event,
+        :processor,
         :consumer_group,
         :task_supervisor,
         attempt_deadline_ms: @attempt_deadline_ms_default,
@@ -79,6 +89,9 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
       ])
 
     deadline_ms = Keyword.fetch!(options, :attempt_deadline_ms)
+    event_module = Keyword.fetch!(options, :event)
+    Assert.condition(is_atom(event_module), "event must be a module")
+    Assert.condition(is_atom(Keyword.fetch!(options, :processor)), "processor must be a module")
 
     Assert.condition(
       is_binary(Keyword.fetch!(options, :consumer_group)),
@@ -89,11 +102,11 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
 
     first_attempt_at = Keyword.fetch!(options, :clock).()
 
-    case StoredEvent.decode(value) do
+    case event_module.decode(value) do
       {:ok, event} ->
         case attempt(event, options) do
           {:finished, attempt_count} ->
-            log_processed(consumed, event, attempt_count)
+            log_processed(%{consumed: consumed, event: event}, attempt_count, options)
             :processed
 
           {:dead_letter, failure, last_attempt_at} ->
@@ -140,11 +153,12 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
 
   defp run(destination, options) do
     process_options = Keyword.take(options, [:read_options, :publish_options])
+    processor = Keyword.fetch!(options, :processor)
 
     task =
       options
       |> Keyword.fetch!(:task_supervisor)
-      |> Task.Supervisor.async_nolink(fn -> AgencyBatch.process(destination, process_options) end)
+      |> Task.Supervisor.async_nolink(fn -> processor.process(destination, process_options) end)
 
     deadline_ms = Keyword.fetch!(options, :attempt_deadline_ms)
 
@@ -167,12 +181,14 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
 
     case publish_dead_letter(record, options) do
       :ok ->
-        log_given_up("Agency trigger dead-lettered", given_up, [])
+        log_given_up("Response trigger dead-lettered", given_up, dataset(options))
         :dead_lettered
 
       {:error, reason} ->
-        log_given_up("Agency trigger dead letter not published", given_up,
-          reason: inspect(reason)
+        log_given_up(
+          "Response trigger dead letter not published",
+          given_up,
+          dataset(options) ++ [reason: inspect(reason)]
         )
 
         {:error, {:dead_letter_unpublished, reason}}
@@ -209,12 +225,15 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger do
     Process.sleep(delay_ms)
   end
 
-  defp log_processed(_consumed, _event, 1), do: :ok
+  defp dataset(options), do: [dataset: Keyword.fetch!(options, :event).dataset()]
 
-  defp log_processed(consumed, event, attempt_count) do
+  defp log_processed(_handled, 1, _options), do: :ok
+
+  defp log_processed(%{consumed: consumed, event: event}, attempt_count, options) do
     Logger.warning(
-      "Agency trigger processed after retries",
-      [attempt_count: attempt_count] ++ position(consumed) ++ event_properties(event)
+      "Response trigger processed after retries",
+      dataset(options) ++
+        [attempt_count: attempt_count] ++ position(consumed) ++ event_properties(event)
     )
   end
 

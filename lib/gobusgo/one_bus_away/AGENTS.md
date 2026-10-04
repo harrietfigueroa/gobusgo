@@ -187,7 +187,15 @@ Reading a stored response back: `RawAgencyResponse.parse/1` returns the fetch ti
 
 Credentials: the URL is never stored. `RawAgencyResponse.build/1` raises when the destination or `meta` contains `key=`, and the recorder raises when the destination or the content contains the configured key. `body` is exempt from the `key=` check, because it holds text the agencies supply, such as a website link with a `key` parameter of its own.
 
-The recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
+`Gobusgo.OneBusAway.RawResponse` holds what the stored form of every dataset shares: the wrapper, the `meta` fields above, the hash, the name, and the checks of `parse/1`. A dataset's module supplies its prefix, the segments between the date and the name, and its own `meta` fields. `RawVehicleResponse.build/1` stores one `vehicles-for-agency` response the same way, with `agencyId` in `meta`, at:
+
+```
+raw/oba/vehicles-for-agency/dt=YYYY-MM-DD/agency=<agency>/<fetchedAt>_<requestId>_<dataHash12>.json.gz
+```
+
+`agency` is the agency identifier with every byte outside `A-Z`, `a-z`, `0-9`, `_`, and `-` written as `.` and two uppercase hexadecimal digits. `RawVehicleResponse.parse/1` returns the fetch in the form `VehicleBatch.Records.build/1` takes, and rejects, beside the shared rules, a `meta` without an agency and data `Vehicles.parse/1` rejects.
+
+The agency recorder logs one line per call: `info` `OneBusAway agency response recorded` with `destination`, `request_id`, `data_sha256`, and `content_bytes`; or `error` `OneBusAway agency response not recorded` with `stage` (`fetch` or `write`), `reason`, and `request_id`.
 
 ## Scheduled sources
 
@@ -196,8 +204,19 @@ The recorder logs one line per call: `info` `OneBusAway agency response recorded
 | Source | Scheduler name | Run | Interval | Deadline |
 | --- | --- | --- | --- | --- |
 | Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | 60 seconds | 45 seconds |
+| Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | 5 seconds | 4.5 seconds |
 
 A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the ticks it skipped during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped ticks are intended.
+
+`Gobusgo.OneBusAway.VehicleCycle.run/2` is one run of the vehicle source. It takes the agencies of the agency view's current fetch, at most 64, and calls `Gobusgo.OneBusAway.VehicleRecorder.record/2` for each in identifier order, one after another, each in a task under the ingestion task supervisor.
+
+- An agency gets at most 2 seconds, and its fetch is not retried: the next cycle is its retry. An agency whose fetch fails, raises, or runs past its deadline is one failed agency, and the cycle goes on to the next.
+- The cycle starts no agency once its budget of 4 seconds is spent; the agencies left are skipped and the next cycle fetches them. The budget ends before the run's deadline, so the scheduler does not kill a cycle that keeps to it.
+- `VehicleRecorder.record/2` fetches with `Vehicles.fetch_response/2`, stores with `RawVehicleResponse.build/1`, and publishes one "response stored" event with the `source` `/gobusgo/recorder/oba/vehicles-for-agency`. It returns `{:ok, recorded}` with `event_published`, `{:error, {:fetch, reason}}`, or `{:error, {:write, reason}}`, raises on a response that breaks the schema, and logs nothing.
+- The cycle returns `{:ok, counts}` with `agency_count`, `recorded_count`, `failed_count`, `skipped_count`, and `unannounced_count`, or `{:error, :nothing_recorded}` when there are agencies and none is recorded, which makes the scheduler back off. Before the agency view has a fetch there is no agency, which is `{:ok, counts}` with zeros.
+- It logs one line per run with those counts and `failures`, the failed agencies counted by cause: `info` `OneBusAway vehicle cycle finished`, `warning` `OneBusAway vehicle cycle finished degraded` when an agency failed, was skipped, or was stored without its event, and `error` `OneBusAway vehicle cycle failed` when none is recorded.
+
+Whether twelve fetches fit the 4-second budget against the live server is not measured; a cycle that does not fit logs the `warning` with its `skipped_count`.
 
 ## Published records
 
@@ -206,6 +225,7 @@ Every record goes through `Gobusgo.Publisher.publish/2`, which names no backend,
 | Record | Topic | Key | `type` | Built by |
 | --- | --- | --- | --- | --- |
 | Response stored | `oba.agencies-with-coverage.response-stored` | `oba/agencies-with-coverage` | `gobusgo.response.stored.v1` | `RawAgencyResponse.StoredEvent.record/1` |
+| Response stored | `oba.vehicles-for-agency.response-stored` | `oba/vehicles-for-agency/<agency id>` | `gobusgo.response.stored.v1` | `RawVehicleResponse.StoredEvent.record/1` |
 | Agency | `oba.agencies-with-coverage.state` | `agency/<agency id>` | `gobusgo.agency.processed.v1` | `AgencyBatch.Records.build/1` |
 | Manifest | `oba.agencies-with-coverage.state` | `manifest` | `gobusgo.agency.fetch.completed.v1` | `AgencyBatch.Records.build/1` |
 
@@ -213,9 +233,11 @@ Event attributes and `data`:
 
 | Record | `id` | `source` | `time` | `subject` | `data` |
 | --- | --- | --- | --- | --- | --- |
-| Response stored | A UUID version 7 | The producer's | The producer's | The stored destination | `dataset`, `destination`, `fetchedAt`, `dataSha256`, `requestId` |
+| Response stored | A UUID version 7 | The producer's | The producer's | The stored destination | `dataset`, `destination`, `fetchedAt`, `dataSha256`, `requestId`, and for vehicles `agencyId` |
 | Agency | `<requestId>/agency/<agency id>` | `/gobusgo/processor/oba/agencies-with-coverage` | The fetch time | The agency identifier | `agency` (`id`, `name`, `url`, `timezone`, `coverage` with `lat`, `lon`, `latSpan`, `lonSpan`), `fetchedAt`, `requestId` |
 | Manifest | `<requestId>/manifest` | `/gobusgo/processor/oba/agencies-with-coverage` | The fetch time | The stored destination | `agencyIds` (sorted), `dataSha256`, `destination`, `fetchedAt`, `requestId` |
+
+`Gobusgo.OneBusAway.StoredEvent` holds the "response stored" event the datasets share, and each dataset's module supplies its topic, dataset name, key, and own `data` fields. The agency events share one key, so they keep their order; a vehicle event's key names its agency, so one agency's events keep their order and the agencies spread over the partitions.
 
 The agency and manifest records are a pure function of the stored response, so a repeated run publishes the same bytes. The `agency/` prefix keeps an agency identifier from ever equaling the manifest key. The manifest completes a fetch and is the source of membership: an agency absent from `agencyIds` is gone.
 
@@ -231,13 +253,13 @@ A success is `{:ok, %{destination: ..., request_id: ..., fetched_at: ..., agency
 | `:parse` | `INVALID_JSON`, `SCHEMA_MISMATCH`, `HASH_MISMATCH`, or `DESTINATION_MISMATCH`, from the `RawAgencyResponse.parse/1` reason | `:permanent` |
 | `:publish_agencies`, `:publish_manifest` | `WRITE_FAILURE` | `:permanent` for `:record_too_large`; `:transient` for `:timeout`, `:unavailable`, and `:unknown_topic` |
 
-A `:permanent` failure repeats on every call. The error codes are the dead-letter `ERROR_CODE` values decided in GOB-48.
+A `:permanent` failure repeats on every call. The error codes are the dead-letter `ERROR_CODE` values decided in GOB-48. `Gobusgo.OneBusAway.BatchFailure` builds these failures for both processors.
 
 The processor logs `info` `Agency batch published` with `destination`, `request_id`, and `agency_count` when it publishes. A failure returns to the caller unlogged; the trigger logs the decision it takes.
 
-## Agency trigger
+## Response trigger
 
-`Gobusgo.OneBusAway.AgencyTrigger.handle/2` takes one consumed "response stored" record, with its topic, partition, offset, key, value, and headers, and returns once its outcome is final. `RawAgencyResponse.StoredEvent.decode/1` validates the value; an event that is not JSON, does not match the schema, or has another `type` is dead-lettered without an attempt (`INVALID_JSON`, `SCHEMA_MISMATCH`, `UNSUPPORTED_TYPE`). Otherwise each attempt runs `AgencyBatch.process/2` as a task with a 10-second deadline. `Gobusgo.OneBusAway.AgencyTrigger.Policy` is pure and decides what follows:
+`Gobusgo.OneBusAway.ResponseTrigger.handle/2` takes one consumed "response stored" record, with its topic, partition, offset, key, value, and headers, and returns once its outcome is final. It serves one dataset, named by two modules in its options: `:event`, with `dataset/0` and `decode/1`, and `:processor`, with `process/2`. The agency dataset is `RawAgencyResponse.StoredEvent` and `AgencyBatch`; the vehicle dataset is `RawVehicleResponse.StoredEvent` and `VehicleBatch`. The event module's `decode/1` validates the value; an event that is not JSON, does not match the schema, belongs to another dataset, or has another `type` is dead-lettered without an attempt (`INVALID_JSON`, `SCHEMA_MISMATCH`, `UNSUPPORTED_TYPE`). Otherwise each attempt runs the processor's `process/2` as a task with a 10-second deadline. `Gobusgo.OneBusAway.ResponseTrigger.Policy` is pure and decides what follows:
 
 | Attempt outcome | While attempts remain | After the third attempt |
 | --- | --- | --- |
@@ -249,9 +271,9 @@ The processor logs `info` `Agency batch published` with `destination`, `request_
 
 `Gobusgo.DeadLetter.record/1` builds the dead-letter record: the consumed key and value untouched, on the consumed topic's `.dead-letter` topic, with the consumed headers followed by `ERROR_CODE`, `ERROR_MESSAGE`, `RETRY_ATTEMPTS`, `EXHAUSTED_RETRY_CONDITION` (exhausted only), `ORIGINAL_TOPIC`, `ORIGINAL_PARTITION`, `ORIGINAL_OFFSET`, `CONSUMER_GROUP`, `FIRST_ATTEMPT_TIME`, and `LAST_ATTEMPT_TIME`. A dead-letter record that three publish tries do not store returns `{:error, {:dead_letter_unpublished, reason}}`.
 
-The trigger logs at most one line per record: `warning` `Agency trigger processed after retries`, `error` `Agency trigger dead-lettered`, or `error` `Agency trigger dead letter not published`, with `error_code`, `attempt_count`, `retries_exhausted`, `topic`, `partition`, `offset`, and, for a parsed event, `event_id`, `destination`, and `request_id`.
+The trigger logs at most one line per record: `warning` `Response trigger processed after retries`, `error` `Response trigger dead-lettered`, or `error` `Response trigger dead letter not published`, with `dataset`, `error_code`, `attempt_count`, `retries_exhausted`, `topic`, `partition`, `offset`, and, for a parsed event, `event_id`, `destination`, and `request_id`.
 
-`Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer` is the Broadway pipeline the application runs on `oba.agencies-with-coverage.response-stored` as the consumer group `gobusgo.agency-processor`, starting from the earliest record when the group has no offset. It acknowledges a record that is processed or dead-lettered. For a record whose dead-letter record is not published it kills its own processor, the only way to leave a Broadway Kafka message unacknowledged: the partition's committed offset stays before that record, and the record is delivered again when the group next assigns the partition.
+`Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer` is the Broadway pipeline the application runs once per dataset: on `oba.agencies-with-coverage.response-stored` as the consumer group `gobusgo.agency-processor`, and on `oba.vehicles-for-agency.response-stored` as `gobusgo.vehicle-processor`, each starting from the earliest record when the group has no offset. It acknowledges a record that is processed or dead-lettered. For a record whose dead-letter record is not published it kills its own processor, the only way to leave a Broadway Kafka message unacknowledged: the partition's committed offset stays before that record, and the record is delivered again when the group next assigns the partition.
 
 ## Agency view
 
@@ -268,13 +290,15 @@ The trigger logs at most one line per record: `warning` `Agency trigger processe
 
 Per `apply_records/2` call the view logs `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; `warning` `Agency view skipped invalid records` with `invalid_count`; and `warning` `Agency view switch not announced` with `reason` when the announcement could not be sent.
 
-In the test environment the configured publisher backend, `Gobusgo.Publisher.InProcess`, calls `apply_records/2` with the records published to `oba.agencies-with-coverage.state`. It calls `Gobusgo.OneBusAway.AgencyBatch.Consumer.consume/2` with the records published to `oba.agencies-with-coverage.response-stored`. The consumer decodes each value with `RawAgencyResponse.StoredEvent.decode/1` and calls `AgencyBatch.process/2` with the destination it names, in order, in the publishing process. A value that is not a "response stored" event is skipped and counted in one `warning` `Agency batch consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter, and logged once at `error` `Agency batch consumer failed` with `destination`, `stage`, `error_code`, and `class`.
+In the test environment the configured publisher backend, `Gobusgo.Publisher.InProcess`, calls each view's `apply_records/2` with the records published to its state topic, tombstones left out. It calls `Gobusgo.OneBusAway.ResponseConsumer.consume/3` with the records published to each dataset's "response stored" topic. The consumer takes the dataset's event and processor modules, decodes each value with the event module, and calls the processor with the destination it names, in order, in the publishing process. A value that is not a "response stored" event of the dataset is skipped and counted in one `warning` `Response consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter, and logged once at `error` `Response consumer failed` with `dataset`, `destination`, `stage`, `error_code`, and `class`.
 
 `AgencyRecorder.record/2` publishes one "response stored" event once the writer has stored the response, with the `source` `/gobusgo/recorder/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. A failed publish leaves the result `{:ok, recorded}` and logs `warning` `OneBusAway agency response recorded without its event` with the `reason` in place of the `info` line.
 
 ## Vehicle records and vehicle view
 
-No recorder or processor for `vehicles-for-agency` exists. The records and the view below are the contract those will publish to, and nothing publishes to it outside the tests. The requester above returns its vehicles in this contract's form.
+`Gobusgo.OneBusAway.VehicleBatch.process/2` takes the destination of one stored vehicle response, reads it through `Gobusgo.Reader`, validates it with `RawVehicleResponse.parse/1`, and publishes through `Gobusgo.Publisher`, in this order: the vehicle records, in calls of at most `Gobusgo.Publisher.record_count_max/0` records; the tombstones, in the same way; then the manifest, once every earlier call returned `:ok`. A success is `{:ok, %{destination: ..., agency_id: ..., request_id: ..., fetched_at: ..., vehicle_count: ..., tombstone_count: ...}}`, logged at `debug` as `Vehicle batch published`. A failure is the `BatchFailure` of the agency processor, with the stages `:read`, `:parse`, `:publish_vehicles`, `:publish_tombstones`, and `:publish_manifest`, and no manifest is published for it.
+
+A tombstone is the vehicle's key with an empty value and no headers, built by `VehicleBatch.Records.tombstones/1`; a compacted topic deletes the key for it. The processor publishes one for each vehicle `VehicleView.expired_vehicle_ids/2` names: absent from the fetch being processed, and last seen more than five minutes before it. Nothing is stored for this beside the state topic, whose vehicle records carry the fetch time the view reads as "last seen". A vehicle that returns is published again under its key, which supersedes the tombstone. The five minutes are a decision recorded in GOB-87 and are not measured against the live feed.
 
 The trip status element documents `position` as the real-time position when one is available and the scheduled position otherwise, `lastKnownLocation` as the last reported position, and `lastUpdateTime` and `lastLocationUpdateTime` as milliseconds since the Unix epoch with zero for "none received". Where each sits in the live response is in the table above.
 
@@ -307,13 +331,15 @@ The trip status element documents `position` as the real-time position when one 
 
 The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
 
-`Gobusgo.OneBusAway.VehicleView` holds the vehicles of each agency's latest complete fetch in memory, and the vehicle test page at `/vehicles` reads it. It is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.VehicleView` on `Gobusgo.PubSub`, and `Gobusgo.Publisher.InProcess` calls its `apply_records/2` with the records published to `oba.vehicles-for-agency.state`. `Gobusgo.OneBusAway.VehicleView.State` holds the rules and is pure.
+`Gobusgo.OneBusAway.VehicleView` holds the vehicles of each agency's latest complete fetch in memory, and the vehicle test page at `/vehicles` reads it. It is a process registered under a name and a table of the same name, started with the publish-subscribe server it announces on; the application starts one named `Gobusgo.OneBusAway.VehicleView` on `Gobusgo.PubSub`, and `Gobusgo.Kafka.TopicSubscriber`, or `Gobusgo.Publisher.InProcess` under test, calls its `apply_records/2` with the record values of `oba.vehicles-for-agency.state`, tombstones left out. `Gobusgo.OneBusAway.VehicleView.State` holds the rules and is pure.
 
 - A fetch belongs to one agency. It is complete when its manifest and every vehicle the manifest names have been applied, in either order. The view switches that agency to the fetch in one step and leaves every other agency's current fetch as it is.
 - A record is ignored when its fetch is its agency's current one or is older than it, and when its fetch time or agency differs from the ones its fetch is held under. A fetch with the same fetch time and another request identifier replaces the agency's current one.
 - At most 64 agencies have a current fetch, at most 32 incomplete fetches are held, the oldest forgotten first, and a fetch holds at most 5,000 vehicles. A switch forgets every held fetch of the same agency older than the new current one.
 - An `apply_records/2` call that switches at least one agency announces once, after the table holds the new fetches, as `{:vehicle_view_switched, view}` to every process that called `subscribe/1`.
 - `current/1` reads the table without calling the process and returns the current fetch of every agency, in agency identifier order, each with its own fetch time. It returns `[]` before a fetch is complete and while the view is not running.
+- The view keeps when each vehicle of each agency was last seen: the newest fetch time among the vehicle's records, whether or not their fetch became current, for at most 20,000 vehicles an agency. `expired_vehicle_ids/2` reads those times without calling the process. A switch forgets the vehicles that have expired at the new current fetch, so the processor names an expired vehicle for the fetches up to that switch and for none after, and a tombstone that a failed run did not publish is published by the next run.
+- With the view behind the topic, a vehicle is named as expired for more than one fetch, and each publishes its tombstone again. After a restart the view reads records the broker has not compacted away yet, so a vehicle tombstoned before the restart is tombstoned once more.
 - An agency that is no longer fetched keeps its last fetch. The view starts empty and holds nothing across a restart.
 
 Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `agency_count` and `vehicle_count`; `warning` `Vehicle view skipped invalid records` with `invalid_count`; and `warning` `Vehicle view switch not announced` with `reason`.

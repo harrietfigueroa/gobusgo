@@ -1,9 +1,9 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger.PolicyTest do
+defmodule Gobusgo.OneBusAway.ResponseTrigger.PolicyTest do
   # Verifies the retry and dead-letter rules as pure functions: each outcome
   # of an attempt is paired with the decision it must produce.
   use ExUnit.Case, async: true
 
-  alias Gobusgo.OneBusAway.AgencyTrigger.Policy
+  alias Gobusgo.OneBusAway.ResponseTrigger.Policy
 
   defp failure(class, error_code) do
     {:error, %{class: class, error_code: error_code, stage: :read, reason: :io_failure}}

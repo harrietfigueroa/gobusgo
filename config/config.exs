@@ -26,7 +26,23 @@ else
   config :gobusgo, Gobusgo.Publisher.InProcess,
     subscribers: %{
       "oba.agencies-with-coverage.response-stored" =>
-        {Gobusgo.OneBusAway.AgencyBatch.Consumer, :consume, [[]]},
+        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+         [
+           %{
+             event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+             processor: Gobusgo.OneBusAway.AgencyBatch
+           },
+           []
+         ]},
+      "oba.vehicles-for-agency.response-stored" =>
+        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+         [
+           %{
+             event: Gobusgo.OneBusAway.RawVehicleResponse.StoredEvent,
+             processor: Gobusgo.OneBusAway.VehicleBatch
+           },
+           []
+         ]},
       "oba.agencies-with-coverage.state" =>
         {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
       "oba.vehicles-for-agency.state" =>

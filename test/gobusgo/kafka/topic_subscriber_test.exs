@@ -80,6 +80,16 @@ defmodule Gobusgo.Kafka.TopicSubscriberTest do
       assert receive_values(1) == ["3"]
     end
 
+    test "hands over no value for a tombstone", %{client: client} do
+      topic = KafkaBroker.create_topic("subscriber")
+      publish(topic, [{"k", "1"}, {"k", ""}, {"k", "3"}], client)
+
+      start_subscriber(client: client, topic: topic)
+
+      assert receive_values(2) == ["1", "3"]
+      assert [%{value: "1"}, %{value: ""}, %{value: "3"}] = KafkaBroker.messages(topic)
+    end
+
     test "delivers at most value_count_max values per call", %{client: client} do
       topic = KafkaBroker.create_topic("subscriber")
       publish(topic, for(index <- 1..5, do: {"k", Integer.to_string(index)}), client)

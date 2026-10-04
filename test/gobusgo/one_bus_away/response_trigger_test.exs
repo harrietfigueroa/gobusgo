@@ -1,4 +1,4 @@
-defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
+defmodule Gobusgo.OneBusAway.ResponseTriggerTest do
   # Drives handle/2 with consumed records built by StoredEvent.record/1 and
   # with reader and publisher doubles defined here, so processing, retries,
   # and dead-lettering are observed through the reader and publisher
@@ -7,7 +7,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
 
   import ExUnit.CaptureLog
 
-  alias Gobusgo.OneBusAway.AgencyTrigger
+  alias Gobusgo.OneBusAway.ResponseTrigger
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
 
@@ -110,7 +110,9 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
 
     publish = Keyword.get(overrides, :publish, fn _records -> :ok end)
 
-    AgencyTrigger.handle(consumed,
+    ResponseTrigger.handle(consumed,
+      event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+      processor: Gobusgo.OneBusAway.AgencyBatch,
       consumer_group: @consumer_group,
       task_supervisor: context.task_supervisor,
       attempt_deadline_ms: Keyword.get(overrides, :attempt_deadline_ms, 1_000),
@@ -291,7 +293,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
 
       assert [entry] = event_entries(log)
       assert entry =~ "[error]"
-      assert entry =~ "Agency trigger dead-lettered"
+      assert entry =~ "Response trigger dead-lettered"
       assert entry =~ "error_code=READ_FAILURE"
       assert entry =~ "attempt_count=3"
       assert entry =~ "partition=7"
@@ -315,7 +317,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
 
       assert [entry] = event_entries(log)
       assert entry =~ "[warning]"
-      assert entry =~ "Agency trigger processed after retries"
+      assert entry =~ "Response trigger processed after retries"
       assert entry =~ "attempt_count=2"
     end
 
@@ -330,7 +332,7 @@ defmodule Gobusgo.OneBusAway.AgencyTriggerTest do
 
       assert [entry] = event_entries(log)
       assert entry =~ "[error]"
-      assert entry =~ "Agency trigger dead letter not published"
+      assert entry =~ "Response trigger dead letter not published"
       assert entry =~ "reason=:unavailable"
     end
   end
