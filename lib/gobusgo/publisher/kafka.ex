@@ -17,7 +17,9 @@ defmodule Gobusgo.Publisher.Kafka do
 
   A record's `:key` is the Kafka key and chooses the partition by brod's
   `:hash` partitioner, so records of one key stay on one partition in
-  publish order. `:headers` become Kafka headers. Every record is sent
+  publish order. `:headers` become Kafka headers. A tombstone, a record
+  with an empty value, is produced with a null value, which a compacted
+  topic deletes the key for. Every record is sent
   before the first acknowledgement is awaited, and the call returns once
   every partition leader has acknowledged with all in-sync replicas.
 

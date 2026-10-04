@@ -95,6 +95,56 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
     end
   end
 
+  describe "expired_vehicle_ids/2" do
+    @later %{
+      fetched_at: ~U[2026-10-02 03:20:01Z],
+      request_id: "0199c4a2-7e1b-7a3f-9d20-000000000002"
+    }
+
+    test "names the vehicles last seen before the grace period of a fetch without them",
+         %{view: view} do
+      :ok = VehicleView.apply_records(view, values(records(["1_a", "1_b"])))
+
+      fetch = %{agency_id: "1", fetched_at: @later.fetched_at, vehicle_ids: ["1_a"]}
+
+      assert VehicleView.expired_vehicle_ids(view, fetch) == ["1_b"]
+    end
+
+    test "names no vehicle within the grace period", %{view: view} do
+      :ok = VehicleView.apply_records(view, values(records(["1_a", "1_b"])))
+
+      fetch = %{agency_id: "1", fetched_at: ~U[2026-10-02 03:20:00Z], vehicle_ids: []}
+
+      assert VehicleView.expired_vehicle_ids(view, fetch) == []
+    end
+
+    test "names an expired vehicle once: the switch to the later fetch forgets it",
+         %{view: view} do
+      :ok = VehicleView.apply_records(view, values(records(["1_a", "1_b"])))
+      :ok = VehicleView.apply_records(view, values(records(["1_a"], @later)))
+
+      fetch = %{
+        agency_id: "1",
+        fetched_at: DateTime.add(@later.fetched_at, 5, :second),
+        vehicle_ids: ["1_a"]
+      }
+
+      assert VehicleView.expired_vehicle_ids(view, fetch) == []
+    end
+
+    test "is empty for an agency the view has seen no vehicle of", %{view: view} do
+      fetch = %{agency_id: "40", fetched_at: @later.fetched_at, vehicle_ids: []}
+
+      assert VehicleView.expired_vehicle_ids(view, fetch) == []
+    end
+
+    test "is empty for a view that is not running" do
+      fetch = %{agency_id: "1", fetched_at: @later.fetched_at, vehicle_ids: []}
+
+      assert VehicleView.expired_vehicle_ids(__MODULE__.NotStarted, fetch) == []
+    end
+  end
+
   describe "apply_records/2" do
     test "keeps a fetch invisible until its manifest is applied", %{view: view} do
       %{vehicles: vehicles, manifest: manifest} = records(["1_a", "1_b"])

@@ -8,7 +8,8 @@ defmodule Gobusgo.Kafka.TopicSubscriber do
   joins no consumer group and commits no offset, so each running instance
   reads the whole topic.
 
-  The values of one partition arrive in offset order, at most
+  A tombstone, a record without a value, is not handed over. The values of
+  one partition arrive in offset order, at most
   `:value_count_max` per call; the order across partitions is not defined.
   The subscriber is a `{module, function, arguments}` called with
   `arguments` followed by a list of values, and returns `:ok`.
@@ -56,7 +57,8 @@ defmodule Gobusgo.Kafka.TopicSubscriber do
       %{owner: owner, subscriber: {module, function, arguments}, value_count_max: count_max} =
         state
 
-      values = for message <- messages, do: elem(message, 3)
+      # brod hands over the null value of a tombstone as an empty binary.
+      values = for message <- messages, value = elem(message, 3), value != "", do: value
 
       values
       |> Enum.chunk_every(count_max)

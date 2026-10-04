@@ -396,7 +396,9 @@ defmodule Gobusgo.OneBusAway.AgencyBatchTest do
                    )
         end)
 
-      assert log == ""
+      # The capture also holds lines other tests log meanwhile, so the
+      # assertion is on the lines of this process.
+      refute log =~ "pid=#{:erlang.pid_to_list(self())} "
     end
   end
 end

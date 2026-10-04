@@ -1,4 +1,4 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer do
+defmodule Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer do
   @processor_count 4
   @demand_max 1
   @receive_interval_ms 1_000
@@ -9,7 +9,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer do
   @moduledoc """
   The Broadway pipeline that consumes "response stored" records from Kafka
   as one consumer group and hands each to
-  `Gobusgo.OneBusAway.AgencyTrigger.handle/2`.
+  `Gobusgo.OneBusAway.ResponseTrigger.handle/2`.
 
   Kafka delivers at least once. The records of one partition go to one of
   #{@processor_count} processors in offset order, and a processor asks for
@@ -31,16 +31,17 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer do
     * `:name` (required): the name the pipeline registers.
     * `:producer` (required): the Broadway producer as `{module, options}`;
       `producer/1` builds the Kafka one.
-    * `:consumer_group`, `:task_supervisor` (required), and
+    * `:event`, `:processor`, `:consumer_group`, `:task_supervisor`
+      (required), and
       `:attempt_deadline_ms`, `:retry_delay_ms_base`, `:read_options`,
       `:publish_options`: the options of
-      `Gobusgo.OneBusAway.AgencyTrigger.handle/2`.
+      `Gobusgo.OneBusAway.ResponseTrigger.handle/2`.
   """
 
   use Broadway
 
   alias Gobusgo.Assert
-  alias Gobusgo.OneBusAway.AgencyTrigger
+  alias Gobusgo.OneBusAway.ResponseTrigger
 
   @doc """
   The Broadway producer that consumes `topic` from the brokers at
@@ -104,7 +105,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer do
       headers: headers
     }
 
-    case AgencyTrigger.handle(consumed, handle_options) do
+    case ResponseTrigger.handle(consumed, handle_options) do
       :processed ->
         message
 

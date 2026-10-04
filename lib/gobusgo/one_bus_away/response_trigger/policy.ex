@@ -1,4 +1,4 @@
-defmodule Gobusgo.OneBusAway.AgencyTrigger.Policy do
+defmodule Gobusgo.OneBusAway.ResponseTrigger.Policy do
   @attempt_count_max 3
   @retry_delay_ms_base 500
 
@@ -21,12 +21,12 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.Policy do
 
   alias Gobusgo.Assert
   alias Gobusgo.DeadLetter
-  alias Gobusgo.OneBusAway.AgencyBatch
-  alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
+  alias Gobusgo.OneBusAway.BatchFailure
+  alias Gobusgo.OneBusAway.StoredEvent
 
   @type outcome ::
-          {:ok, AgencyBatch.result()}
-          | {:error, AgencyBatch.failure()}
+          {:ok, map()}
+          | {:error, BatchFailure.t()}
           | :deadline_exceeded
           | :crashed
 
@@ -83,7 +83,7 @@ defmodule Gobusgo.OneBusAway.AgencyTrigger.Policy do
     end
   end
 
-  @doc "The failure of an event that `StoredEvent.decode/1` rejects with `reason`."
+  @doc "The failure of an event that its dataset's event module rejects with `reason`."
   @spec rejection(StoredEvent.decode_error()) :: DeadLetter.failure()
   def rejection(reason) do
     {error_code, error_message} = Map.fetch!(@rejections, reason)

@@ -8,9 +8,10 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Config
   alias Gobusgo.Kafka
   alias Gobusgo.OneBusAway.AgencyBatch
-  alias Gobusgo.OneBusAway.AgencyTrigger.KafkaConsumer
+  alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
-  alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
+  alias Gobusgo.OneBusAway.RawAgencyResponse
+  alias Gobusgo.OneBusAway.RawVehicleResponse
   alias Gobusgo.OneBusAway.RequestGate
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.VehicleBatch
@@ -24,8 +25,26 @@ defmodule Gobusgo.Application do
   # 48 random bytes encode to the 64 characters a session secret needs.
   @generated_secret_byte_count 48
 
-  @agency_consumer_group "gobusgo.agency-processor"
   @trigger_task_count_max 8
+
+  # Each dataset's "response stored" events are processed by a consumer
+  # group of its own, with the attempts under a task supervisor of its own.
+  @triggers [
+    %{
+      consumer: Gobusgo.OneBusAway.AgencyTriggerConsumer,
+      tasks: Gobusgo.OneBusAway.AgencyTriggerTasks,
+      consumer_group: "gobusgo.agency-processor",
+      event: RawAgencyResponse.StoredEvent,
+      processor: AgencyBatch
+    },
+    %{
+      consumer: Gobusgo.OneBusAway.VehicleTriggerConsumer,
+      tasks: Gobusgo.OneBusAway.VehicleTriggerTasks,
+      consumer_group: "gobusgo.vehicle-processor",
+      event: RawVehicleResponse.StoredEvent,
+      processor: VehicleBatch
+    }
+  ]
 
   @impl Application
   def start(_type, _args) do
@@ -70,8 +89,6 @@ defmodule Gobusgo.Application do
     :ok = Kafka.Client.start(%{client: Kafka.Client, endpoints: endpoints})
 
     [
-      {Task.Supervisor,
-       name: Gobusgo.OneBusAway.AgencyTriggerTasks, max_children: @trigger_task_count_max},
       {Kafka.TopicSubscriber,
        name: Gobusgo.OneBusAway.AgencyViewSubscriber,
        client: Kafka.Client,
@@ -81,17 +98,31 @@ defmodule Gobusgo.Application do
        name: Gobusgo.OneBusAway.VehicleViewSubscriber,
        client: Kafka.Client,
        topic: VehicleBatch.Records.topic(),
-       subscriber: {VehicleView, :apply_records, [VehicleView]}},
-      {KafkaConsumer,
-       name: Gobusgo.OneBusAway.AgencyTriggerConsumer,
-       producer:
-         KafkaConsumer.producer(%{
-           endpoints: endpoints,
-           consumer_group: @agency_consumer_group,
-           topic: StoredEvent.topic()
-         }),
-       consumer_group: @agency_consumer_group,
-       task_supervisor: Gobusgo.OneBusAway.AgencyTriggerTasks}
+       subscriber: {VehicleView, :apply_records, [VehicleView]}}
+    ] ++ Enum.flat_map(@triggers, &trigger_children(&1, endpoints))
+  end
+
+  defp trigger_children(%{event: event, consumer_group: consumer_group} = trigger, endpoints) do
+    [
+      Supervisor.child_spec(
+        {Task.Supervisor, name: trigger.tasks, max_children: @trigger_task_count_max},
+        id: trigger.tasks
+      ),
+      Supervisor.child_spec(
+        {KafkaConsumer,
+         name: trigger.consumer,
+         event: event,
+         processor: trigger.processor,
+         producer:
+           KafkaConsumer.producer(%{
+             endpoints: endpoints,
+             consumer_group: consumer_group,
+             topic: event.topic()
+           }),
+         consumer_group: consumer_group,
+         task_supervisor: trigger.tasks},
+        id: trigger.consumer
+      )
     ]
   end
 
@@ -104,7 +135,9 @@ defmodule Gobusgo.Application do
   defp source_specs(true) do
     case Config.one_bus_away() do
       {:ok, settings} ->
-        Sources.specs(settings, [])
+        Sources.specs(settings,
+          vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
+        )
 
       {:error, {:missing, key}} ->
         Logger.warning("OneBusAway sources not scheduled", missing_setting: key)

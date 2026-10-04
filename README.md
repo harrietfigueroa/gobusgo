@@ -55,11 +55,13 @@ The local broker is defined in the [infrastructure repository](https://github.co
 | `oba.agencies-with-coverage.response-stored` | One "response stored" event per stored response | 7 days |
 | `oba.agencies-with-coverage.response-stored.dead-letter` | The events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
 | `oba.agencies-with-coverage.state` | One record per agency and one manifest per fetch | Compacted |
-| `oba.vehicles-for-agency.state` | One record per vehicle and one manifest per agency's fetch; nothing publishes to it yet | Compacted |
+| `oba.vehicles-for-agency.response-stored` | One "response stored" event per stored vehicle response, keyed by agency | 1 day |
+| `oba.vehicles-for-agency.response-stored.dead-letter` | The vehicle events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
+| `oba.vehicles-for-agency.state` | One record per vehicle and one manifest per agency's fetch; a vehicle absent from its agency's fetches for more than five minutes gets a tombstone | Compacted |
 
 The application starts whether or not the broker answers. While it is unreachable the HTTP server runs, the agency endpoints answer `503`, a recorded response stays stored with a `warning` that its event was not published, and the Kafka clients reconnect every 10 seconds, logging each failed attempt.
 
-The consumer group is `gobusgo.agency-processor`. An event that fails is retried in place, three attempts in all, and then goes to the dead-letter topic; read it with its headers:
+The consumer groups are `gobusgo.agency-processor` and `gobusgo.vehicle-processor`, one per event topic. An event that fails is retried in place, three attempts in all, and then goes to the dead-letter topic; read it with its headers:
 
 ```sh
 docker exec gobusgo-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic oba.agencies-with-coverage.response-stored.dead-letter --from-beginning --timeout-ms 10000 --formatter-property print.headers=true --formatter-property print.key=true
@@ -73,7 +75,7 @@ mix phx.server
 
 Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
-While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last fetch ended. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints.
+While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute and every agency's vehicles every five seconds, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
 
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
@@ -178,33 +180,9 @@ http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency
 
 http://127.0.0.1:4000/vehicles lists the vehicles of every agency's latest fetch: each vehicle's identifier, agency, and trip, the position the source estimates for it, the location it last reported and when, whether the source has real-time data for it, and when the fetch was made. A field the source did not supply reads "Not supplied", and a vehicle that has never reported its location reads "No location reported". It says "No vehicle data yet." until a fetch has been processed, and updates on its own.
 
-Nothing fetches vehicles yet, so the page stays empty until records are published by hand. In the `iex` shell of a running server:
+With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
-```elixir
-vehicle = %{
-  id: "1_4207",
-  active_trip_id: "1_15436438",
-  position: %{lat: 47.6616, lon: -122.3443},
-  orientation: 202.8,
-  last_known_location: %{lat: 47.6611, lon: -122.3439},
-  last_known_orientation: 230.3,
-  last_update_time_ms: System.os_time(:millisecond),
-  last_location_update_time_ms: System.os_time(:millisecond) - 20_000,
-  predicted: true
-}
-
-%{vehicles: vehicles, manifest: manifest} =
-  Gobusgo.OneBusAway.VehicleBatch.Records.build(%{
-    agency_id: "1",
-    destination: "raw/oba/vehicles-for-agency/sample.json",
-    fetched_at: DateTime.utc_now(:second),
-    data_sha256: String.duplicate("0", 64),
-    request_id: Gobusgo.RequestId.generate(),
-    vehicles: [vehicle]
-  })
-
-:ok = Gobusgo.Publisher.publish(vehicles ++ [manifest], [])
-```
+Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
 
 ## Running in Docker
 

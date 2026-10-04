@@ -190,7 +190,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
       {after_state, outcomes} = put_all(state, [vehicle("b", @first), manifest(["b"], @first)])
 
       assert outcomes == [:ignored, :ignored]
-      assert after_state == state
+      assert Map.take(after_state, [:current, :held]) == Map.take(state, [:current, :held])
     end
 
     test "ignores the records of the current fetch published again", %{state: state} do
@@ -257,6 +257,102 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
       beyond = %{@first | agency_id: "beyond", request_id: request_id(0)}
 
       assert State.put(state, manifest([], beyond)) == {state, :ignored}
+    end
+  end
+
+  describe "last_seen/1" do
+    test "holds the fetch time of each vehicle record, before its fetch is complete" do
+      {state, _outcomes} = put_all(State.new(), [vehicle("a", @first), vehicle("b", @first)])
+
+      assert State.last_seen(state) == %{
+               "1" => %{"a" => @first.fetched_at, "b" => @first.fetched_at}
+             }
+    end
+
+    test "keeps the newest fetch time of a vehicle, whatever the order of its records" do
+      {state, _outcomes} =
+        put_all(State.new(), [vehicle("a", @second), vehicle("a", @first), vehicle("b", @first)])
+
+      assert State.last_seen(state) == %{
+               "1" => %{"a" => @second.fetched_at, "b" => @first.fetched_at}
+             }
+    end
+
+    test "keeps a vehicle the newer current fetch does not name, within the grace period" do
+      {state, _outcomes} =
+        put_all(State.new(), [
+          vehicle("a", @first),
+          vehicle("b", @first),
+          manifest(["a", "b"], @first),
+          vehicle("a", @second),
+          manifest(["a"], @second)
+        ])
+
+      assert State.last_seen(state)["1"] == %{
+               "a" => @second.fetched_at,
+               "b" => @first.fetched_at
+             }
+    end
+
+    test "forgets a vehicle that has expired at the new current fetch" do
+      late = %{@second | fetched_at: DateTime.add(@first.fetched_at, 300_001, :millisecond)}
+
+      {state, _outcomes} =
+        put_all(State.new(), [
+          vehicle("a", @first),
+          vehicle("b", @first),
+          manifest(["a", "b"], @first),
+          vehicle("a", late),
+          manifest(["a"], late)
+        ])
+
+      assert State.last_seen(state)["1"] == %{"a" => late.fetched_at}
+    end
+
+    test "keeps the vehicles of other agencies when one agency switches" do
+      late = %{@second | fetched_at: DateTime.add(@first.fetched_at, 3_600, :second)}
+
+      {state, _outcomes} =
+        put_all(State.new(), [
+          vehicle("x", @other_agency),
+          vehicle("a", late),
+          manifest(["a"], late)
+        ])
+
+      assert State.last_seen(state)["40"] == %{"x" => @other_agency.fetched_at}
+    end
+  end
+
+  describe "expired_vehicle_ids/2" do
+    @seen_at ~U[2026-10-02 03:15:00Z]
+
+    defp expired(last_seen, after_ms, vehicle_ids) do
+      State.expired_vehicle_ids(last_seen, %{
+        fetched_at: DateTime.add(@seen_at, after_ms, :millisecond),
+        vehicle_ids: vehicle_ids
+      })
+    end
+
+    test "names no vehicle absent for exactly the grace period" do
+      assert expired(%{"a" => @seen_at}, State.tombstone_grace_ms(), []) == []
+    end
+
+    test "names a vehicle absent for longer than the grace period" do
+      assert expired(%{"a" => @seen_at}, State.tombstone_grace_ms() + 1, []) == ["a"]
+    end
+
+    test "names no vehicle the fetch holds, however long ago it was last seen" do
+      assert expired(%{"a" => @seen_at}, 3_600_000, ["a"]) == []
+    end
+
+    test "names the expired vehicles in identifier order" do
+      last_seen = %{"c" => @seen_at, "a" => @seen_at, "b" => @seen_at}
+
+      assert expired(last_seen, 3_600_000, ["b"]) == ["a", "c"]
+    end
+
+    test "gives a grace period of five minutes" do
+      assert State.tombstone_grace_ms() == 300_000
     end
   end
 

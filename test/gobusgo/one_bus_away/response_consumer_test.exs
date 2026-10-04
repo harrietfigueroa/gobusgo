@@ -1,4 +1,4 @@
-defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
+defmodule Gobusgo.OneBusAway.ResponseConsumerTest do
   # Hands consume/2 the values of "response stored" records, as a publisher
   # backend does, with reader and publisher doubles defined here. What was
   # processed is observed through the records the publisher double receives.
@@ -7,7 +7,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
   import ExUnit.CaptureLog
 
   alias Gobusgo.Assert.AssertionError
-  alias Gobusgo.OneBusAway.AgencyBatch.Consumer
+  alias Gobusgo.OneBusAway.ResponseConsumer
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent
   alias Gobusgo.Publisher
@@ -101,7 +101,11 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
   end
 
   defp consume(raws, values) do
-    Consumer.consume(
+    ResponseConsumer.consume(
+      %{
+        event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+        processor: Gobusgo.OneBusAway.AgencyBatch
+      },
       [
         read_options: [
           backend: StoredContent,
@@ -167,7 +171,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
           consume([raw], ["{not json", event(raw), "{}"])
         end)
 
-      assert log =~ "[warning] Agency batch consumer skipped invalid events"
+      assert log =~ "[warning] Response consumer skipped invalid events"
       assert log =~ "invalid_count=2"
     end
 
@@ -184,7 +188,7 @@ defmodule Gobusgo.OneBusAway.AgencyBatch.ConsumerTest do
 
       log = capture_log([metadata: :all], fn -> consume([], [event(raw)]) end)
 
-      assert log =~ "[error] Agency batch consumer failed"
+      assert log =~ "[error] Response consumer failed"
       assert log =~ "destination=#{raw.destination}"
       assert log =~ "stage=read"
       assert log =~ "error_code=READ_FAILURE"

@@ -306,4 +306,33 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       end
     end
   end
+
+  describe "tombstones/1" do
+    test "returns one empty-valued record per vehicle, under the vehicle's key" do
+      assert Records.tombstones(%{agency_id: "40", vehicle_ids: ["40_b", "40_a"]}) == [
+               %{
+                 topic: "oba.vehicles-for-agency.state",
+                 key: "vehicle/40/40_b",
+                 value: "",
+                 headers: []
+               },
+               %{
+                 topic: "oba.vehicles-for-agency.state",
+                 key: "vehicle/40/40_a",
+                 value: "",
+                 headers: []
+               }
+             ]
+    end
+
+    test "returns no record for no vehicle" do
+      assert Records.tombstones(%{agency_id: "40", vehicle_ids: []}) == []
+    end
+
+    test "raises for an empty vehicle identifier" do
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        Records.tombstones(%{agency_id: "40", vehicle_ids: [""]})
+      end
+    end
+  end
 end

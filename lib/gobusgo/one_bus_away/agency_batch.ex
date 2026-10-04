@@ -64,8 +64,8 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
 
   require Logger
 
-  alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.AgencyBatch.Records
+  alias Gobusgo.OneBusAway.BatchFailure
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.Publisher
   alias Gobusgo.Reader
@@ -87,15 +87,6 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
           reason:
             Reader.error_reason() | RawAgencyResponse.parse_error() | Publisher.error_reason()
         }
-
-  @read_error_code "READ_FAILURE"
-  @publish_error_code "WRITE_FAILURE"
-  @parse_error_codes %{
-    invalid_json: "INVALID_JSON",
-    schema_mismatch: "SCHEMA_MISMATCH",
-    hash_mismatch: "HASH_MISMATCH",
-    destination_mismatch: "DESTINATION_MISMATCH"
-  }
 
   @doc "Publishes the agencies and the manifest of the response stored at `destination`."
   @spec process(String.t(), Keyword.t()) :: {:ok, result()} | {:error, failure()}
@@ -131,40 +122,15 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
 
   defp read(destination, read_options) do
     case Reader.read(destination, read_options) do
-      {:ok, content} ->
-        {:ok, content}
-
-      {:error, reason} ->
-        {:error,
-         %{class: read_class(reason), error_code: @read_error_code, stage: :read, reason: reason}}
-    end
-  end
-
-  defp read_class(reason) do
-    case reason do
-      :not_found -> :permanent
-      :content_too_large -> :permanent
-      :content_corrupt -> :permanent
-      {:invalid_destination, _rule} -> :permanent
-      :permission_denied -> :transient
-      :io_failure -> :transient
-      other -> Assert.unreachable(other)
+      {:ok, content} -> {:ok, content}
+      {:error, reason} -> {:error, BatchFailure.read(reason)}
     end
   end
 
   defp parse(destination, content) do
     case RawAgencyResponse.parse(%{destination: destination, content: content}) do
-      {:ok, parsed} ->
-        {:ok, parsed}
-
-      {:error, reason} ->
-        {:error,
-         %{
-           class: :permanent,
-           error_code: Map.fetch!(@parse_error_codes, reason),
-           stage: :parse,
-           reason: reason
-         }}
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, reason} -> {:error, BatchFailure.parse(reason)}
     end
   end
 
@@ -172,27 +138,8 @@ defmodule Gobusgo.OneBusAway.AgencyBatch do
 
   defp publish(stage, records, publish_options) do
     case Publisher.publish(records, publish_options) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        {:error,
-         %{
-           class: publish_class(reason),
-           error_code: @publish_error_code,
-           stage: stage,
-           reason: reason
-         }}
-    end
-  end
-
-  defp publish_class(reason) do
-    case reason do
-      :record_too_large -> :permanent
-      :timeout -> :transient
-      :unavailable -> :transient
-      :unknown_topic -> :transient
-      other -> Assert.unreachable(other)
+      :ok -> :ok
+      {:error, reason} -> {:error, BatchFailure.publish(stage, reason)}
     end
   end
 end

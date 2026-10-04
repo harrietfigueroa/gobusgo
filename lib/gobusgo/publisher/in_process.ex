@@ -12,7 +12,8 @@ defmodule Gobusgo.Publisher.InProcess do
   `arguments` followed by a list of record values and expects `:ok`.
 
   Records are delivered in publish order, each run of records for one topic
-  in one call. Keys and headers are not delivered.
+  in one call. Keys and headers are not delivered, and neither is a
+  tombstone, which has no value: its topic still needs a subscriber.
 
   ## Outcomes
 
@@ -38,11 +39,13 @@ defmodule Gobusgo.Publisher.InProcess do
     |> Enum.chunk_by(& &1.topic)
     |> Enum.reduce_while(:ok, fn [%{topic: topic} | _rest] = run, :ok ->
       case subscribers do
-        %{^topic => subscriber} -> continue(deliver(subscriber, Enum.map(run, & &1.value)))
+        %{^topic => subscriber} -> continue(deliver(subscriber, values(run)))
         _other -> {:halt, {:error, :unknown_topic}}
       end
     end)
   end
+
+  defp values(run), do: for(%{value: value} <- run, value != "", do: value)
 
   defp continue(:ok), do: {:cont, :ok}
   defp continue({:error, reason}), do: {:halt, {:error, reason}}
@@ -52,6 +55,8 @@ defmodule Gobusgo.Publisher.InProcess do
     |> Application.fetch_env!(__MODULE__)
     |> Keyword.fetch!(:subscribers)
   end
+
+  defp deliver(_subscriber, []), do: :ok
 
   defp deliver({module, function, arguments}, values) do
     :ok = apply(module, function, arguments ++ [values])
