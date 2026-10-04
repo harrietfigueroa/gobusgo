@@ -12,6 +12,8 @@ const labelLanguage = "en"
 const fitPaddingPixels = 24
 const failureText = "The map could not be loaded."
 
+export const readyEventName = "basemap:ready"
+
 let maplibreLoading = null
 
 // Loads the library once for the page and registers the protocol that reads
@@ -59,7 +61,9 @@ function cornerBounds({south, west, north, east}) {
 
 // The hook of the element the map is drawn in. The element's data
 // attributes hold the basemap's sources and the bounds of the first view;
-// the server moves the view with the "basemap:fit" event.
+// the server moves the view with the "basemap:fit" event. A new map is
+// announced on the element as a bubbling "basemap:ready" DOM event whose
+// detail holds the map and the library.
 export const Basemap = {
   mounted() {
     const element = this.el
@@ -90,6 +94,11 @@ export const Basemap = {
         this.map.addControl(new maplibre.AttributionControl({compact: false}))
         this.map.addControl(new maplibre.NavigationControl({showCompass: false}))
         this.map.on("error", (event) => { console.error("basemap error", event.error) })
+
+        element.dispatchEvent(new CustomEvent(readyEventName, {
+          bubbles: true,
+          detail: {map: this.map, maplibre}
+        }))
       })
       .catch((error) => {
         // The page leaves this element's content alone, so the message stays.
