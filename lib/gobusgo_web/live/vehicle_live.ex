@@ -17,11 +17,24 @@ defmodule GobusgoWeb.VehicleLive do
   source did not supply reads "Not supplied", and a location update time of
   zero, the source's value for a vehicle that has never reported, reads "No
   location reported".
+
+  Above the table the page draws the basemap of the configured basemap
+  directory, read once when the page is mounted. The `agency` query
+  parameter chooses the agency whose coverage the map's view fits; without
+  it, and for an agency the basemap does not hold, the view fits the whole
+  archive. The map element carries only the basemap's sources and bounds,
+  from `GobusgoWeb.BasemapSources`, and the browser draws it; a change of
+  agency inside one archive moves the view with the `basemap:fit` event.
+  Before any extraction the page says that no basemap is available.
   """
 
   use Phoenix.LiveView
 
+  require Logger
+
+  alias Gobusgo.Basemap
   alias Gobusgo.OneBusAway.VehicleView
+  alias GobusgoWeb.BasemapSources
 
   @pubsub Gobusgo.PubSub
   @not_supplied "Not supplied"
@@ -34,7 +47,18 @@ defmodule GobusgoWeb.VehicleLive do
       :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
     end
 
-    {:ok, assign_fetches(socket)}
+    {:ok, socket |> assign(manifest: read_manifest(), basemap: nil) |> assign_fetches()}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_params(params, _uri, %{assigns: %{manifest: manifest, basemap: shown}} = socket) do
+    basemap =
+      case manifest do
+        nil -> nil
+        manifest -> BasemapSources.view(manifest, params["agency"])
+      end
+
+    {:noreply, socket |> assign(basemap: basemap) |> push_fit(shown, basemap)}
   end
 
   @impl Phoenix.LiveView
@@ -47,6 +71,46 @@ defmodule GobusgoWeb.VehicleLive do
     ~H"""
     <main class="mx-auto max-w-7xl p-8">
       <h1 class="text-2xl font-semibold">Vehicles</h1>
+
+      <section id="basemap-section" class="mt-4">
+        <p :if={@basemap == nil} id="no-basemap">No basemap yet.</p>
+
+        <div :if={@basemap != nil}>
+          <nav id="basemap-views" class="flex flex-wrap gap-x-3 text-sm">
+            <span>Map view:</span>
+            <.link
+              id="basemap-view-all"
+              patch="/vehicles"
+              class={view_class(@basemap.agency_id == nil)}
+              aria-current={aria_current(@basemap.agency_id == nil)}
+            >
+              Whole area
+            </.link>
+            <.link
+              :for={agency_id <- @basemap.agency_ids}
+              id={"basemap-view-#{agency_id}"}
+              patch={"/vehicles?" <> URI.encode_query(agency: agency_id)}
+              class={view_class(@basemap.agency_id == agency_id)}
+              aria-current={aria_current(@basemap.agency_id == agency_id)}
+            >
+              Agency {agency_id}
+            </.link>
+          </nav>
+
+          <div
+            id={"basemap-" <> Path.rootname(@basemap.archive)}
+            phx-hook="Basemap"
+            phx-update="ignore"
+            class="mt-2 h-96 w-full border border-slate-300"
+            data-archive-url={@basemap.sources.archive_url}
+            data-fonts-url={@basemap.sources.fonts_url}
+            data-sprites-url={@basemap.sources.sprites_url}
+            data-attribution={@basemap.sources.attribution}
+            data-bounds={JSON.encode!(@basemap.bounds)}
+          >
+          </div>
+        </div>
+      </section>
 
       <p :if={@fetches == []} id="no-data" class="mt-4">No vehicle data yet.</p>
 
@@ -99,6 +163,42 @@ defmodule GobusgoWeb.VehicleLive do
     </main>
     """
   end
+
+  # A directory with no manifest is the state before any extraction and
+  # shows no map. A manifest that cannot be used shows no map either, and is
+  # worth a look.
+  defp read_manifest do
+    case Basemap.read_manifest(GobusgoWeb.Endpoint.basemap_dir()) do
+      {:ok, manifest} ->
+        manifest
+
+      {:error, :not_found} ->
+        nil
+
+      {:error, reason} ->
+        Logger.warning("Basemap manifest not usable", reason: inspect(reason))
+        nil
+    end
+  end
+
+  # The map element is ignored on update, so a new view inside the archive
+  # the page already shows reaches the map as an event. A change of archive
+  # changes the element's id, which mounts a new map with its own bounds.
+  defp push_fit(socket, %{archive: archive, bounds: shown_bounds}, %{
+         archive: archive,
+         bounds: bounds
+       })
+       when bounds != shown_bounds do
+    push_event(socket, "basemap:fit", %{bounds: bounds})
+  end
+
+  defp push_fit(socket, _shown, _basemap), do: socket
+
+  defp view_class(true), do: "font-semibold underline"
+  defp view_class(false), do: "underline"
+
+  defp aria_current(true), do: "true"
+  defp aria_current(false), do: "false"
 
   defp assign_fetches(socket) do
     fetches = VehicleView.current(VehicleView)

@@ -180,6 +180,8 @@ http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency
 
 http://127.0.0.1:4000/vehicles lists the vehicles of every agency's latest fetch: each vehicle's identifier, agency, and trip, the position the source estimates for it, the location it last reported and when, whether the source has real-time data for it, and when the fetch was made. A field the source did not supply reads "Not supplied", and a vehicle that has never reported its location reads "No location reported". It says "No vehicle data yet." until a fetch has been processed, and updates on its own.
 
+Above the table the page draws the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. "Map view" fits the map to the whole archive or to one agency's coverage, and `/vehicles?agency=<agency id>` opens the page on an agency's view. The map shows the OpenStreetMap attribution and no vehicles yet. Before any extraction the page says "No basemap yet." A view wider than the archive shows a plain background beyond the tiles the archive holds.
+
 With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
 Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
@@ -392,6 +394,8 @@ mix gobusgo.vendor.update NAME --version COMMIT --repository OWNER/NAME --direct
 ```
 
 rewrites the lock file and downloads the files. The change to commit is the lock file's diff. An archive has no "latest": it moves only to the commit `--version` names, all 40 hexadecimal digits, which https://github.com/protomaps/basemaps-assets/commits/main lists for the basemap's. After an update, run `mix assets.build` and check the pages that use the entry.
+
+The packages are `maplibre-gl`, which draws the map; `pmtiles`, which reads tiles out of an archive with range requests, and `fflate`, which `pmtiles` imports; and `@protomaps/basemaps`, the basemap's style. `maplibre-gl` starts a worker from a file beside its own, so `mix assets.build` copies its three module files to `priv/static/assets/vendor/maplibre-gl/` as they are, and the page loads them from there; the other packages are bundled into `app.js`.
 
 The archive of `basemaps-assets` holds 252 symbolic links, every one in the font `Noto Sans Devanagari Regular v1` and pointing at the same glyph range of `Noto Sans Regular`. A symbolic link is not downloaded, so that font has only the four glyph ranges it holds as files.
 

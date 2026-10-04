@@ -5,9 +5,18 @@ kafka_enabled = config_env() != :test
 config :esbuild,
   version: "0.25.5",
   default: [
-    args: ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js),
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ],
+  # MapLibre's module files are copied as they are and served beside each
+  # other: the library starts its worker from the file next to its own, so
+  # it cannot be part of the bundle.
+  vendor: [
+    args:
+      ~w(vendor/maplibre-gl/dist/maplibre-gl.mjs vendor/maplibre-gl/dist/maplibre-gl-shared.mjs vendor/maplibre-gl/dist/maplibre-gl-worker.mjs --loader:.mjs=copy --outdir=../priv/static/assets/vendor/maplibre-gl),
+    cd: Path.expand("../assets", __DIR__)
   ]
 
 # Outside tests, records go to Kafka: the processor consumes "response
