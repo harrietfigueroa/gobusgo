@@ -30,5 +30,15 @@
         {"path": "dist/pmtiles.js", "sha256": "caf981bc46f6327ee7e65d5dc964d89d38a69f60edca2bd4c5c890c21b554c6c"}
       ]
     }
+  ],
+  "archives": [
+    {
+      "name": "basemaps-assets",
+      "repository": "protomaps/basemaps-assets",
+      "commit": "028c18f713baecad011301ff7a69acc39bcc2ae7",
+      "directories": ["fonts", "sprites/v4"],
+      "contentSha256": "3472c1f2963aad00695275632b5ed8869a01d10547a5fbbc26b651ffd9aa635d",
+      "fileCount": 793
+    }
   ]
 }

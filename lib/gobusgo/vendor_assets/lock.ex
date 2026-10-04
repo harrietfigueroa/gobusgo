@@ -1,4 +1,6 @@
 defmodule Gobusgo.VendorAssets.Lock do
+  @archive_count_max 8
+  @directory_count_max 8
   @file_count_max 32
   @package_count_max 32
 
@@ -20,6 +22,18 @@ defmodule Gobusgo.VendorAssets.Lock do
       inside the package and the lowercase hexadecimal `sha256` of its
       content
 
+  A lock also holds at most #{@archive_count_max} archives, each a
+  repository at a commit, with a name no package has:
+
+    * `name`: the name the archive's files are written under
+    * `repository`: the GitHub repository, `owner/name`
+    * `commit`: the pinned commit, 40 hexadecimal digits
+    * `directories`: at most #{@directory_count_max} directories taken out
+      of the repository
+    * `contentSha256`: the hash of the files taken, as
+      `Gobusgo.VendorAssets.Tarball.content_sha256/1` computes it
+    * `fileCount`: how many files that is
+
   `encode/1` writes the packages in name order and the files in path order,
   one value per line, so a change of version is a small diff.
   """
@@ -34,6 +48,8 @@ defmodule Gobusgo.VendorAssets.Lock do
   @version_pattern ~r/\A[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\z/
   @path_segment_pattern ~r/\A[A-Za-z0-9_-][A-Za-z0-9._-]*\z/
   @sha256_pattern ~r/\A[0-9a-f]{64}\z/
+  @repository_pattern ~r/\A[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+\z/
+  @commit_pattern ~r/\A[0-9a-f]{40}\z/
 
   @schema {:map,
            %{
@@ -46,6 +62,17 @@ defmodule Gobusgo.VendorAssets.Lock do
                    "tarball" => :string,
                    "integrity" => :string,
                    "files" => {:list, {:map, %{"path" => :string, "sha256" => :string}}}
+                 }}},
+             "archives" =>
+               {:list,
+                {:map,
+                 %{
+                   "name" => :string,
+                   "repository" => :string,
+                   "commit" => :string,
+                   "directories" => {:list, :string},
+                   "contentSha256" => :string,
+                   "fileCount" => :integer
                  }}}
            }}
 
@@ -57,18 +84,72 @@ defmodule Gobusgo.VendorAssets.Lock do
           integrity: String.t(),
           files: [file(), ...]
         }
-  @type t :: %{packages: [package()]}
-  @type field :: :name | :version | :tarball | :integrity | :files | :path | :sha256
+  @type archive :: %{
+          name: String.t(),
+          repository: String.t(),
+          commit: String.t(),
+          directories: [String.t(), ...],
+          content_sha256: String.t(),
+          file_count: pos_integer()
+        }
+  @type t :: %{packages: [package()], archives: [archive()]}
+  @type field ::
+          :name
+          | :version
+          | :tarball
+          | :integrity
+          | :files
+          | :path
+          | :sha256
+          | :repository
+          | :commit
+          | :directories
+          | :content_sha256
+          | :file_count
   @type decode_error ::
           :invalid_json
           | {:schema_mismatch, Schema.mismatch()}
           | {:package_count_exceeded, pos_integer()}
-          | {:duplicate_package, String.t()}
+          | {:archive_count_exceeded, pos_integer()}
+          | {:duplicate_name, String.t()}
           | {:invalid_package, String.t(), field()}
+          | {:invalid_archive, String.t(), field()}
 
-  @doc "A lock with no package."
+  @doc "A lock with no package and no archive."
   @spec empty() :: t()
-  def empty, do: %{packages: []}
+  def empty, do: %{packages: [], archives: []}
+
+  @doc "Returns whether `repository` is a GitHub repository written `owner/name`."
+  @spec valid_repository?(term()) :: boolean()
+  def valid_repository?(repository) do
+    is_binary(repository) and repository =~ @repository_pattern and
+      not String.contains?(repository, "..")
+  end
+
+  @doc "Returns whether `commit` is a commit: 40 lowercase hexadecimal digits."
+  @spec valid_commit?(term()) :: boolean()
+  def valid_commit?(commit), do: is_binary(commit) and commit =~ @commit_pattern
+
+  @doc """
+  Returns the field of `archive` that breaks the lock's rules, or `nil` when
+  the archive obeys them.
+  """
+  @spec invalid_archive_field(archive()) :: field() | nil
+  def invalid_archive_field(%{name: name, directories: directories} = archive) do
+    cond do
+      not valid_path?(name) -> :name
+      String.contains?(name, "/") -> :name
+      not valid_repository?(archive.repository) -> :repository
+      not valid_commit?(archive.commit) -> :commit
+      directories == [] -> :directories
+      length(directories) > @directory_count_max -> :directories
+      Enum.uniq(directories) != directories -> :directories
+      not Enum.all?(directories, &valid_path?/1) -> :directories
+      not (archive.content_sha256 =~ @sha256_pattern) -> :content_sha256
+      archive.file_count < 1 -> :file_count
+      true -> nil
+    end
+  end
 
   @doc "Returns whether `name` is a package name."
   @spec valid_name?(term()) :: boolean()
@@ -121,8 +202,11 @@ defmodule Gobusgo.VendorAssets.Lock do
     with {:ok, decoded} <- decode_json(content),
          nil <- Schema.mismatch(decoded, @schema),
          packages = Enum.map(decoded["packages"], &package/1),
-         :ok <- check_packages(packages) do
-      {:ok, %{packages: Enum.sort_by(packages, & &1.name)}}
+         archives = Enum.map(decoded["archives"], &archive/1),
+         :ok <- check_counts(packages, archives),
+         :ok <- check_entries(packages, archives) do
+      {:ok,
+       %{packages: Enum.sort_by(packages, & &1.name), archives: Enum.sort_by(archives, & &1.name)}}
     else
       %{path: _path} = mismatch -> {:error, {:schema_mismatch, mismatch}}
       {:error, reason} -> {:error, reason}
@@ -144,21 +228,42 @@ defmodule Gobusgo.VendorAssets.Lock do
   the lock's rules.
   """
   @spec put_package(t(), package()) :: t()
-  def put_package(%{packages: packages}, %{name: name} = package) do
+  def put_package(%{packages: packages} = lock, %{name: name} = package) do
     others = Enum.reject(packages, &(&1.name == name))
-    %{packages: Enum.sort_by([package | others], & &1.name)}
+    %{lock | packages: Enum.sort_by([package | others], & &1.name)}
+  end
+
+  @doc "Returns the archive named `name`, or `:error` when the lock has none."
+  @spec fetch_archive(t(), String.t()) :: {:ok, archive()} | :error
+  def fetch_archive(%{archives: archives}, name) when is_binary(name) do
+    case Enum.find(archives, &(&1.name == name)) do
+      nil -> :error
+      archive -> {:ok, archive}
+    end
+  end
+
+  @doc """
+  Returns `lock` with `archive` in place of the archive of the same name, or
+  added when the lock has none. The caller guarantees an archive that obeys
+  the lock's rules.
+  """
+  @spec put_archive(t(), archive()) :: t()
+  def put_archive(%{archives: archives} = lock, %{name: name} = archive) do
+    others = Enum.reject(archives, &(&1.name == name))
+    %{lock | archives: Enum.sort_by([archive | others], & &1.name)}
   end
 
   @doc "Returns the text of `lock`, which `decode/1` reads back."
   @spec encode(t()) :: binary()
-  def encode(%{packages: packages}) do
-    encoded = packages |> Enum.sort_by(& &1.name) |> Enum.map_join(",\n", &encode_package/1)
+  def encode(%{packages: packages, archives: archives}) do
+    encoded_packages = packages |> Enum.sort_by(& &1.name) |> Enum.map(&encode_package/1)
+    encoded_archives = archives |> Enum.sort_by(& &1.name) |> Enum.map(&encode_archive/1)
 
-    case encoded do
-      "" -> ~s({\n  "packages": []\n}\n)
-      encoded -> ~s({\n  "packages": [\n#{encoded}\n  ]\n}\n)
-    end
+    ~s({\n  "packages": #{encode_list(encoded_packages)},\n  "archives": #{encode_list(encoded_archives)}\n}\n)
   end
+
+  defp encode_list([]), do: "[]"
+  defp encode_list(encoded), do: "[\n" <> Enum.join(encoded, ",\n") <> "\n  ]"
 
   defp decode_json(content) do
     case JSON.decode(content) do
@@ -178,22 +283,52 @@ defmodule Gobusgo.VendorAssets.Lock do
     }
   end
 
-  defp check_packages(packages) do
+  defp archive(archive) do
+    %{
+      name: archive["name"],
+      repository: archive["repository"],
+      commit: archive["commit"],
+      directories: Enum.sort(archive["directories"]),
+      content_sha256: archive["contentSha256"],
+      file_count: archive["fileCount"]
+    }
+  end
+
+  defp check_counts(packages, archives) do
     package_count = length(packages)
-    names = Enum.map(packages, & &1.name)
+    archive_count = length(archives)
+    names = Enum.map(packages, & &1.name) ++ Enum.map(archives, & &1.name)
 
     cond do
       package_count > @package_count_max ->
         {:error, {:package_count_exceeded, package_count}}
 
+      archive_count > @archive_count_max ->
+        {:error, {:archive_count_exceeded, archive_count}}
+
       names != Enum.uniq(names) ->
-        {:error, {:duplicate_package, List.first(names -- Enum.uniq(names))}}
+        {:error, {:duplicate_name, List.first(names -- Enum.uniq(names))}}
 
       true ->
-        case Enum.find_value(packages, &invalid_package/1) do
-          nil -> :ok
-          invalid -> {:error, invalid}
-        end
+        :ok
+    end
+  end
+
+  defp check_entries(packages, archives) do
+    invalid =
+      Enum.find_value(packages, &invalid_package/1) ||
+        Enum.find_value(archives, &invalid_archive/1)
+
+    case invalid do
+      nil -> :ok
+      invalid -> {:error, invalid}
+    end
+  end
+
+  defp invalid_archive(%{name: name} = archive) do
+    case invalid_archive_field(archive) do
+      nil -> nil
+      field -> {:invalid_archive, name, field}
     end
   end
 
@@ -253,6 +388,21 @@ defmodule Gobusgo.VendorAssets.Lock do
           "files": [
     #{encoded_files}
           ]
+        }\
+    """
+  end
+
+  defp encode_archive(archive) do
+    encoded_directories = Enum.map_join(Enum.sort(archive.directories), ", ", &JSON.encode!/1)
+
+    """
+        {
+          "name": #{JSON.encode!(archive.name)},
+          "repository": #{JSON.encode!(archive.repository)},
+          "commit": #{JSON.encode!(archive.commit)},
+          "directories": [#{encoded_directories}],
+          "contentSha256": #{JSON.encode!(archive.content_sha256)},
+          "fileCount": #{archive.file_count}
         }\
     """
   end

@@ -8,6 +8,9 @@ defmodule GobusgoWeb.Endpoint do
   A request for `/health` is not logged. Built assets are served from
   `priv/static`.
 
+  The vendored archives of `priv/vendor` are served under `/vendor`, and a
+  cache may keep a file for an hour.
+
   The basemap directory is served under `/basemap`: every file whose name
   starts with `basemap-`, and `manifest.json`. A response carries
   `accept-ranges: bytes` and an `etag`, and a request with a `range` header
@@ -25,6 +28,8 @@ defmodule GobusgoWeb.Endpoint do
   @error_status_min 400
   @health_path "/health"
   @static_paths ["assets", "favicon.ico", "robots.txt"]
+  @vendor_path "/vendor"
+  @vendor_cache_seconds 3_600
   @basemap_path "/basemap"
   @basemap_archive_prefix "basemap-"
   @basemap_manifest_name "manifest.json"
@@ -52,6 +57,12 @@ defmodule GobusgoWeb.Endpoint do
   # deps/phoenix/lib/phoenix/endpoint.ex, __before_compile__/1 — checked 2026-10-02
   plug :problem_content_type
   plug Plug.Static, at: "/", from: :gobusgo, gzip: false, only: @static_paths
+
+  plug Plug.Static,
+    at: @vendor_path,
+    from: {:gobusgo, "priv/vendor"},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@vendor_cache_seconds}"
 
   plug Plug.Static,
     at: @basemap_path,

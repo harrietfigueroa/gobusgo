@@ -1,16 +1,17 @@
 defmodule Mix.Tasks.Gobusgo.Vendor.Fetch do
-  @shortdoc "Downloads the vendored front-end packages the lock file pins"
+  @shortdoc "Downloads the vendored front-end assets the lock file pins"
 
   @moduledoc """
-  Downloads the files of the vendored front-end packages at the versions
-  `assets/vendor.lock.json` pins, into `assets/vendor`, which git ignores.
+  Downloads the vendored front-end assets at the versions
+  `assets/vendor.lock.json` pins: the packages into `assets/vendor`, and the
+  archives into `priv/vendor`. Git ignores both directories.
 
       mix gobusgo.vendor.fetch
 
-  A package whose files are present with the pinned content is left as it
-  is. A tarball or a file that does not hash to the lock's value is refused,
-  and the task exits with a failure. `mix assets.setup` runs this task. It
-  takes no arguments and does not start the application.
+  An entry whose files are present with the pinned content is left as it
+  is. Content that does not hash to the lock's value is refused, and the
+  task exits with a failure. `mix assets.setup` runs this task. It takes no
+  arguments and does not start the application.
   """
 
   use Mix.Task
@@ -28,7 +29,7 @@ defmodule Mix.Tasks.Gobusgo.Vendor.Fetch do
         end
 
       {:error, reason} ->
-        Mix.raise("vendored packages not fetched: #{inspect(reason)}")
+        Mix.raise("vendored assets not fetched: #{inspect(reason)}")
     end
   end
 

@@ -26,8 +26,9 @@ gobusgo-*.tar
 *.pmtiles
 *.pmtiles.partial
 
-# Vendored front-end packages, downloaded by mix gobusgo.vendor.fetch
+# Vendored front-end assets, downloaded by mix gobusgo.vendor.fetch
 /assets/vendor/
+/priv/vendor/
 
 # Built assets
 /priv/static/assets/

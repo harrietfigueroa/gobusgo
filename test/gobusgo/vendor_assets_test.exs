@@ -65,12 +65,21 @@ defmodule Gobusgo.VendorAssetsTest do
   end
 
   defp paths(tmp_dir) do
-    %{lock_path: Path.join(tmp_dir, "vendor.lock.json"), vendor_dir: Path.join(tmp_dir, "vendor")}
+    %{
+      lock_path: Path.join(tmp_dir, "vendor.lock.json"),
+      vendor_dir: Path.join(tmp_dir, "vendor"),
+      static_dir: Path.join(tmp_dir, "static")
+    }
   end
 
   defp update(tmp_dir, request) do
     request = Map.merge(%{name: @name, version: :latest, files: nil}, request)
-    VendorAssets.update(Map.merge(paths(tmp_dir), request), @options)
+
+    tmp_dir
+    |> paths()
+    |> Map.delete(:static_dir)
+    |> Map.merge(request)
+    |> VendorAssets.update(@options)
   end
 
   defp fetch(tmp_dir), do: VendorAssets.fetch(paths(tmp_dir), @options)
@@ -93,6 +102,7 @@ defmodule Gobusgo.VendorAssetsTest do
       assert File.read!(vendored(tmp_dir)) == "new"
 
       assert read_lock(tmp_dir) == %{
+               archives: [],
                packages: [
                  %{
                    name: @name,
@@ -243,12 +253,241 @@ defmodule Gobusgo.VendorAssetsTest do
     end
   end
 
-  describe "package_names/1" do
-    test "returns the names in the lock", %{tmp_dir: tmp_dir} do
+  describe "entry_names/1" do
+    test "returns the names in the lock by kind", %{tmp_dir: tmp_dir} do
       stub_registry([{"4.5.0", %{@path => "new"}}], tmp_dir)
       {:ok, _added} = update(tmp_dir, %{files: [@path]})
 
-      assert VendorAssets.package_names(paths(tmp_dir).lock_path) == {:ok, [@name]}
+      assert VendorAssets.entry_names(paths(tmp_dir).lock_path) ==
+               {:ok, %{packages: [@name], archives: []}}
+    end
+  end
+
+  describe "update_archive/2 and fetch/2 for an archive" do
+    @archive "basemaps-assets"
+    @repository "protomaps/basemaps-assets"
+    @old_commit String.duplicate("a", 40)
+    @new_commit String.duplicate("b", 40)
+
+    # GitHub's archive host with the given commits of one repository, each a
+    # map of path to content. Reports each request.
+    defp stub_archives(commits, tmp_dir) do
+      recipient = self()
+
+      archives =
+        Map.new(commits, fn {commit, files} ->
+          {commit, VendorTarball.build_repository(files, tmp_dir)}
+        end)
+
+      Req.Test.stub(@stub_name, fn %{request_path: "/" <> path} = conn ->
+        send(recipient, {:archive_requested, path})
+
+        case String.split(path, "/tar.gz/") do
+          [@repository, commit] when is_map_key(archives, commit) ->
+            Plug.Conn.send_resp(conn, 200, Map.fetch!(archives, commit))
+
+          _other ->
+            Plug.Conn.send_resp(conn, 404, "404: Not Found")
+        end
+      end)
+    end
+
+    defp update_archive(tmp_dir, request) do
+      request =
+        Map.merge(
+          %{name: @archive, commit: @new_commit, repository: nil, directories: nil},
+          request
+        )
+
+      tmp_dir
+      |> paths()
+      |> Map.delete(:vendor_dir)
+      |> Map.merge(request)
+      |> VendorAssets.update_archive(@options)
+    end
+
+    defp served(tmp_dir, path), do: Path.join([paths(tmp_dir).static_dir, @archive, path])
+
+    defp add_archive(tmp_dir) do
+      stub_archives(
+        [
+          {@old_commit,
+           %{"fonts/a.pbf" => "old", "fonts/gone.pbf" => "gone", "README.md" => "r"}},
+          {@new_commit, %{"fonts/a.pbf" => "new", "sprites/v4/light.json" => "{}"}}
+        ],
+        tmp_dir
+      )
+
+      update_archive(tmp_dir, %{
+        commit: @old_commit,
+        repository: @repository,
+        directories: ["fonts"]
+      })
+    end
+
+    test "adds an archive at the commit with the named directories", %{tmp_dir: tmp_dir} do
+      assert add_archive(tmp_dir) ==
+               {:ok, %{name: @archive, version: @old_commit, previous_version: nil}}
+
+      assert File.read!(served(tmp_dir, "fonts/a.pbf")) == "old"
+      assert File.exists?(served(tmp_dir, "README.md")) == false
+
+      assert read_lock(tmp_dir).archives == [
+               %{
+                 name: @archive,
+                 repository: @repository,
+                 commit: @old_commit,
+                 directories: ["fonts"],
+                 content_sha256:
+                   Tarball.content_sha256(%{"fonts/a.pbf" => "old", "fonts/gone.pbf" => "gone"}),
+                 file_count: 2
+               }
+             ]
+    end
+
+    test "moves an archive to another commit, keeping its repository and directories",
+         %{tmp_dir: tmp_dir} do
+      {:ok, _added} = add_archive(tmp_dir)
+
+      assert update_archive(tmp_dir, %{}) ==
+               {:ok, %{name: @archive, version: @new_commit, previous_version: @old_commit}}
+
+      assert File.read!(served(tmp_dir, "fonts/a.pbf")) == "new"
+      assert File.exists?(served(tmp_dir, "fonts/gone.pbf")) == false
+
+      assert [%{commit: @new_commit, directories: ["fonts"], file_count: 1}] =
+               read_lock(tmp_dir).archives
+    end
+
+    test "moves an archive back to an older commit", %{tmp_dir: tmp_dir} do
+      {:ok, _added} = add_archive(tmp_dir)
+      {:ok, _moved} = update_archive(tmp_dir, %{})
+
+      assert update_archive(tmp_dir, %{commit: @old_commit}) ==
+               {:ok, %{name: @archive, version: @old_commit, previous_version: @new_commit}}
+
+      assert File.read!(served(tmp_dir, "fonts/a.pbf")) == "old"
+    end
+
+    test "keeps the packages of the lock", %{tmp_dir: tmp_dir} do
+      stub_registry([{"4.5.0", %{@path => "new"}}], tmp_dir)
+      {:ok, _package} = update(tmp_dir, %{files: [@path]})
+      {:ok, _added} = add_archive(tmp_dir)
+
+      assert VendorAssets.entry_names(paths(tmp_dir).lock_path) ==
+               {:ok, %{packages: [@name], archives: [@archive]}}
+    end
+
+    for {description, request, reason} <- [
+          {"an archive the lock does not hold, with no repository", %{},
+           {:unknown_package, "basemaps-assets"}},
+          {"a commit that is not 40 hexadecimal digits",
+           %{commit: "main", repository: "protomaps/basemaps-assets", directories: ["fonts"]},
+           {:invalid_commit, "main"}},
+          {"a malformed repository", %{repository: "protomaps", directories: ["fonts"]},
+           {:invalid_repository, "protomaps"}},
+          {"a directory that climbs",
+           %{repository: "protomaps/basemaps-assets", directories: ["../x"]},
+           {:invalid_directory, "../x"}},
+          {"a malformed name",
+           %{name: "a/b", repository: "protomaps/basemaps-assets", directories: ["fonts"]},
+           {:invalid_name, "a/b"}}
+        ] do
+      test "returns #{inspect(reason)} for #{description} and requests nothing", %{
+        tmp_dir: tmp_dir
+      } do
+        Req.Test.stub(@stub_name, fn _conn -> flunk("no request expected") end)
+
+        assert update_archive(tmp_dir, unquote(Macro.escape(request))) ==
+                 {:error, unquote(Macro.escape(reason))}
+      end
+    end
+
+    test "returns the name a package already has", %{tmp_dir: tmp_dir} do
+      stub_registry([{"4.5.0", %{@path => "new"}}], tmp_dir)
+      {:ok, _package} = update(tmp_dir, %{files: [@path]})
+
+      assert update_archive(tmp_dir, %{
+               name: @name,
+               repository: @repository,
+               directories: ["fonts"]
+             }) ==
+               {:error, {:name_taken, @name}}
+    end
+
+    test "returns the name an archive already has when a package is asked for", %{
+      tmp_dir: tmp_dir
+    } do
+      {:ok, _added} = add_archive(tmp_dir)
+
+      assert update(tmp_dir, %{name: @archive, files: [@path]}) ==
+               {:error, {:name_taken, @archive}}
+    end
+
+    test "returns GitHub's failure for a commit it does not have", %{tmp_dir: tmp_dir} do
+      {:ok, _added} = add_archive(tmp_dir)
+      lock = read_lock(tmp_dir)
+
+      assert update_archive(tmp_dir, %{commit: String.duplicate("c", 40)}) ==
+               {:error, {:github, @archive, :not_found}}
+
+      assert read_lock(tmp_dir) == lock
+    end
+
+    test "leaves the lock as it was when the commit lacks a directory", %{tmp_dir: tmp_dir} do
+      {:ok, _added} = add_archive(tmp_dir)
+
+      assert update_archive(tmp_dir, %{directories: ["icons"]}) ==
+               {:error, {:tarball, @archive, {:directory_missing, "icons"}}}
+
+      assert [%{commit: @old_commit}] = read_lock(tmp_dir).archives
+    end
+
+    test "fetch downloads nothing for an archive whose files are present", %{tmp_dir: tmp_dir} do
+      {:ok, _added} = add_archive(tmp_dir)
+      assert_received {:archive_requested, _path}
+
+      assert fetch(tmp_dir) == {:ok, [%{name: @archive, version: @old_commit, status: :present}]}
+      refute_received {:archive_requested, _path}
+    end
+
+    defp damage(:absent, tmp_dir), do: File.rm_rf!(paths(tmp_dir).static_dir)
+    defp damage(:changed, tmp_dir), do: File.write!(served(tmp_dir, "fonts/a.pbf"), "edited")
+    defp damage(:added, tmp_dir), do: File.write!(served(tmp_dir, "fonts/extra.pbf"), "extra")
+    defp damage(:removed, tmp_dir), do: File.rm!(served(tmp_dir, "fonts/gone.pbf"))
+
+    for {description, damage} <- [
+          {"are absent", :absent},
+          {"hold a changed file", :changed},
+          {"hold an added file", :added},
+          {"lack a file", :removed}
+        ] do
+      test "fetch downloads an archive whose files #{description}", %{tmp_dir: tmp_dir} do
+        {:ok, _added} = add_archive(tmp_dir)
+        damage(unquote(damage), tmp_dir)
+
+        assert fetch(tmp_dir) ==
+                 {:ok, [%{name: @archive, version: @old_commit, status: :downloaded}]}
+
+        assert File.read!(served(tmp_dir, "fonts/a.pbf")) == "old"
+        assert File.read!(served(tmp_dir, "fonts/gone.pbf")) == "gone"
+        assert File.exists?(served(tmp_dir, "fonts/extra.pbf")) == false
+      end
+    end
+
+    test "fetch refuses content that does not hash to the lock's content hash", %{
+      tmp_dir: tmp_dir
+    } do
+      {:ok, _added} = add_archive(tmp_dir)
+      File.rm_rf!(paths(tmp_dir).static_dir)
+
+      stub_archives(
+        [{@old_commit, %{"fonts/a.pbf" => "tampered", "fonts/gone.pbf" => "gone"}}],
+        tmp_dir
+      )
+
+      assert fetch(tmp_dir) == {:error, {:content_mismatch, @archive}}
+      assert File.exists?(served(tmp_dir, "fonts/a.pbf")) == false
     end
   end
 end

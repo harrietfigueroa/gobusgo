@@ -23,17 +23,26 @@ defmodule Gobusgo.VendorAssets.LockTest do
     files: [%{path: "dist/esm/index.js", sha256: @sha256}]
   }
 
-  defp text(packages), do: Lock.encode(%{packages: packages})
+  @archive %{
+    name: "basemaps-assets",
+    repository: "protomaps/basemaps-assets",
+    commit: String.duplicate("a", 40),
+    directories: ["fonts", "sprites/v4"],
+    content_sha256: @sha256,
+    file_count: 3
+  }
+
+  defp text(packages, archives \\ []), do: Lock.encode(%{packages: packages, archives: archives})
 
   describe "encode/1 and decode/1" do
     test "read back the lock that was written" do
-      lock = %{packages: [@scoped, @package]}
+      lock = %{packages: [@scoped, @package], archives: [@archive]}
 
       assert lock |> Lock.encode() |> Lock.decode() == {:ok, lock}
     end
 
     test "write one value per line, packages in name order" do
-      assert text([@package]) == """
+      assert text([@package], [@archive]) == """
              {
                "packages": [
                  {
@@ -45,6 +54,16 @@ defmodule Gobusgo.VendorAssets.LockTest do
                      {"path": "dist/pmtiles.js", "sha256": "#{@sha256}"}
                    ]
                  }
+               ],
+               "archives": [
+                 {
+                   "name": "basemaps-assets",
+                   "repository": "protomaps/basemaps-assets",
+                   "commit": "#{String.duplicate("a", 40)}",
+                   "directories": ["fonts", "sprites/v4"],
+                   "contentSha256": "#{@sha256}",
+                   "fileCount": 3
+                 }
                ]
              }
              """
@@ -54,7 +73,7 @@ defmodule Gobusgo.VendorAssets.LockTest do
     end
 
     test "write and read a lock with no package" do
-      assert Lock.encode(Lock.empty()) == ~s({\n  "packages": []\n}\n)
+      assert Lock.encode(Lock.empty()) == ~s({\n  "packages": [],\n  "archives": []\n}\n)
       assert Lock.decode(Lock.encode(Lock.empty())) == {:ok, Lock.empty()}
     end
   end
@@ -66,11 +85,43 @@ defmodule Gobusgo.VendorAssets.LockTest do
 
     test "returns the mismatch for JSON that is not a lock" do
       assert {:error, {:schema_mismatch, %{path: ["packages"]}}} =
-               Lock.decode(~s({"packages": 1}))
+               Lock.decode(~s({"packages": 1, "archives": []}))
     end
 
     test "returns the name a lock holds twice" do
-      assert Lock.decode(text([@package, @package])) == {:error, {:duplicate_package, "pmtiles"}}
+      assert Lock.decode(text([@package, @package])) == {:error, {:duplicate_name, "pmtiles"}}
+    end
+
+    test "returns the name a package and an archive share" do
+      assert Lock.decode(text([@package], [%{@archive | name: "pmtiles"}])) ==
+               {:error, {:duplicate_name, "pmtiles"}}
+    end
+
+    test "returns the count of more archives than the bound" do
+      archives = for index <- 1..9, do: %{@archive | name: "archive-#{index}"}
+
+      assert Lock.decode(text([], archives)) == {:error, {:archive_count_exceeded, 9}}
+    end
+
+    for {description, change, field} <- [
+          {"a name with a directory", %{name: "a/b"}, :name},
+          {"a name that climbs", %{name: ".."}, :name},
+          {"a repository without an owner", %{repository: "basemaps-assets"}, :repository},
+          {"a repository that climbs", %{repository: "protomaps/.."}, :repository},
+          {"a short commit", %{commit: "028c18f"}, :commit},
+          {"a commit that is a branch", %{commit: "main"}, :commit},
+          {"no directory", %{directories: []}, :directories},
+          {"a directory that climbs", %{directories: ["../fonts"]}, :directories},
+          {"a directory named twice", %{directories: ["fonts", "fonts"]}, :directories},
+          {"a short content hash", %{content_sha256: "abc"}, :content_sha256},
+          {"no file", %{file_count: 0}, :file_count}
+        ] do
+      test "returns #{field} as invalid for an archive with #{description}" do
+        archive = Map.merge(@archive, unquote(Macro.escape(change)))
+
+        assert Lock.decode(text([], [archive])) ==
+                 {:error, {:invalid_archive, archive.name, unquote(field)}}
+      end
     end
 
     test "returns the count of more packages than the bound" do
@@ -123,20 +174,41 @@ defmodule Gobusgo.VendorAssets.LockTest do
 
   describe "put_package/2 and fetch_package/2" do
     test "add a package the lock does not hold" do
-      lock = Lock.put_package(%{packages: [@package]}, @scoped)
+      lock = Lock.put_package(%{packages: [@package], archives: []}, @scoped)
 
       assert Enum.map(lock.packages, & &1.name) == ["@protomaps/basemaps", "pmtiles"]
       assert Lock.fetch_package(lock, "@protomaps/basemaps") == {:ok, @scoped}
     end
 
     test "replace the package of the same name" do
-      lock = Lock.put_package(%{packages: [@package]}, %{@package | version: "4.6.0"})
+      lock =
+        Lock.put_package(%{packages: [@package], archives: []}, %{@package | version: "4.6.0"})
 
       assert [%{version: "4.6.0"}] = lock.packages
     end
 
     test "return :error for a package the lock does not hold" do
-      assert Lock.fetch_package(%{packages: [@package]}, "maplibre-gl") == :error
+      assert Lock.fetch_package(%{packages: [@package], archives: []}, "maplibre-gl") == :error
+    end
+  end
+
+  describe "put_archive/2 and fetch_archive/2" do
+    test "add an archive and keep the packages" do
+      lock = Lock.put_archive(%{packages: [@package], archives: []}, @archive)
+
+      assert lock.packages == [@package]
+      assert Lock.fetch_archive(lock, "basemaps-assets") == {:ok, @archive}
+    end
+
+    test "replace the archive of the same name" do
+      commit = String.duplicate("b", 40)
+      lock = Lock.put_archive(%{packages: [], archives: [@archive]}, %{@archive | commit: commit})
+
+      assert [%{commit: ^commit}] = lock.archives
+    end
+
+    test "return :error for an archive the lock does not hold" do
+      assert Lock.fetch_archive(Lock.empty(), "basemaps-assets") == :error
     end
   end
 end
