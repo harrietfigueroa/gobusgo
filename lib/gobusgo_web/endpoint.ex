@@ -7,6 +7,17 @@ defmodule GobusgoWeb.Endpoint do
   A JSON response with an error status leaves as `application/problem+json`.
   A request for `/health` is not logged. Built assets are served from
   `priv/static`.
+
+  The vendored archives of `priv/vendor` are served under `/vendor`, and a
+  cache may keep a file for an hour.
+
+  The basemap directory is served under `/basemap`: every file whose name
+  starts with `basemap-`, and `manifest.json`. A response carries
+  `accept-ranges: bytes` and an `etag`, and a request with a `range` header
+  gets that part of the file as `206`, which is how a PMTiles reader takes
+  the tiles it needs out of an archive. A cache may keep an archive for an
+  hour and has to revalidate the manifest on every use, because the manifest
+  names the archives in use.
   """
 
   use Phoenix.Endpoint, otp_app: :gobusgo
@@ -17,6 +28,12 @@ defmodule GobusgoWeb.Endpoint do
   @error_status_min 400
   @health_path "/health"
   @static_paths ["assets", "favicon.ico", "robots.txt"]
+  @vendor_path "/vendor"
+  @vendor_cache_seconds 3_600
+  @basemap_path "/basemap"
+  @basemap_archive_prefix "basemap-"
+  @basemap_manifest_name "manifest.json"
+  @basemap_archive_cache_seconds 3_600
 
   # The salt separates the session's signing key from the other keys derived
   # from the secret; it is not itself a secret.
@@ -40,10 +57,38 @@ defmodule GobusgoWeb.Endpoint do
   # deps/phoenix/lib/phoenix/endpoint.ex, __before_compile__/1 — checked 2026-10-02
   plug :problem_content_type
   plug Plug.Static, at: "/", from: :gobusgo, gzip: false, only: @static_paths
+
+  plug Plug.Static,
+    at: @vendor_path,
+    from: {:gobusgo, "priv/vendor"},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@vendor_cache_seconds}"
+
+  plug Plug.Static,
+    at: @basemap_path,
+    from: {__MODULE__, :basemap_dir, []},
+    gzip: false,
+    only_matching: [@basemap_archive_prefix],
+    cache_control_for_etags: "public, max-age=#{@basemap_archive_cache_seconds}"
+
+  plug Plug.Static,
+    at: @basemap_path,
+    from: {__MODULE__, :basemap_dir, []},
+    gzip: false,
+    only: [@basemap_manifest_name],
+    cache_control_for_etags: "no-cache"
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
   plug Plug.Session, @session_options
   plug GobusgoWeb.Router
+
+  @doc "The directory the basemap files are served from."
+  @spec basemap_dir() :: String.t()
+  def basemap_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.basemap()
+    dir
+  end
 
   @doc "The level a request is logged at, or `false` for a request that is not logged."
   @spec log_level(Plug.Conn.t()) :: Logger.level() | false

@@ -51,7 +51,8 @@ defmodule Gobusgo.Application do
     with {:ok, %{ip: ip, port: port}} <- Config.http(),
          {:ok, configured_secret} <- Config.secret_key_base(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
-         {:ok, kafka} <- Config.kafka() do
+         {:ok, kafka} <- Config.kafka(),
+         {:ok, _basemap} <- Config.basemap() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.

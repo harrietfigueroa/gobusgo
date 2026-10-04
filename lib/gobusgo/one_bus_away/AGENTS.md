@@ -107,6 +107,22 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 `Gobusgo.OneBusAway.Agencies.parse/1` is the pure function from an envelope's `data` to the agencies. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:agency_count_exceeded, count}`, or `{:unreferenced_agency, id}`. The requester raises on those values; a reader of stored responses handles them.
 
+## Agency coverage
+
+`Gobusgo.OneBusAway.AgencyCoverage` is the pure geometry of the coverage entries. `bounds/1` turns one entry into `south`, `west`, `north`, and `east`: the center minus and plus half of each span. `extract_regions/2` takes agencies as `Agencies.parse/1` returns them and a buffer in meters, and returns each agency's own bounds for the initial map view, the regions for the basemap extracts, and the agencies it skipped with the reason. Nothing calls it yet.
+
+Shape of the live coverage, observed in the response stored on 2026-10-03 (12 agencies): every entry is a center and two spans, and the response carries no polygon or other geometry. The spans are the whole height and width of the box: King County Metro (`1`) comes out as 47.19 to 47.87 north and -122.51 to -121.79 east. Solid Ground EZ Loop (`6289`) has `lat`, `lon`, `latSpan`, and `lonSpan` all `0.0`, which is how the server reports an agency with no coverage. The other eleven boxes overlap into one region, 46.93 to 48.60 north and -123.01 to -121.60 east before the buffer.
+
+| Rule | Value | Meaning |
+| --- | --- | --- |
+| Missing coverage | All four numbers zero | `{:error, :coverage_missing}`; the agency is skipped |
+| Invalid coverage | A negative span, an edge beyond a pole, or an edge beyond the antimeridian | `{:error, {:coverage_invalid, field}}`; the agency is skipped |
+| Buffer | The caller's, at most 100,000 meters | Added on every side; a degree of latitude counts as 111,320 meters, and the east and west sides use the degrees of longitude that cover the buffer at the box's edge farthest from the equator |
+| Combining | Buffered boxes that overlap or touch | Replaced by the box that holds both, repeated until no two regions share an area |
+| Agency bound | 1,000 | The most agencies one call takes |
+
+A region is a box, so the box that holds two overlapping areas also holds ground neither covers. A coverage box across the antimeridian is invalid, because the bounds keep `west <= east`.
+
 ## Request gate
 
 `Gobusgo.OneBusAway.RequestGate` owns the request budget of the API key. The application starts one, registered under the module's name, and `Client.get/3` takes a permit from it before every attempt, a retry included, and releases the permit with the attempt's outcome; its `:gate` option names another gate, which the tests use. `Gobusgo.OneBusAway.RequestGate.State` holds the rules and is pure. The gate never sees the key.

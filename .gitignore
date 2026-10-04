@@ -22,6 +22,14 @@ gobusgo-*.tar
 /data/
 /tmp/
 
+# Basemap archives, wherever an extraction writes them
+*.pmtiles
+*.pmtiles.partial
+
+# Vendored front-end assets, downloaded by mix gobusgo.vendor.fetch
+/assets/vendor/
+/priv/vendor/
+
 # Built assets
 /priv/static/assets/
 /priv/static/cache_manifest.json

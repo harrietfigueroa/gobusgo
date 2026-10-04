@@ -25,7 +25,7 @@ mix assets.setup
 mix assets.build
 ```
 
-`mix assets.setup` downloads the esbuild and Tailwind binaries, and `mix assets.build` writes the JavaScript and CSS the pages load to `priv/static/assets/` (ignored by git).
+`mix assets.setup` downloads the esbuild and Tailwind binaries and the vendored JavaScript packages (see [Vendored front-end assets](#vendored-front-end-assets)), and `mix assets.build` writes the JavaScript and CSS the pages load to `priv/static/assets/` (ignored by git).
 
 ## Configuration
 
@@ -180,6 +180,8 @@ http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency
 
 http://127.0.0.1:4000/vehicles lists the vehicles of every agency's latest fetch: each vehicle's identifier, agency, and trip, the position the source estimates for it, the location it last reported and when, whether the source has real-time data for it, and when the fetch was made. A field the source did not supply reads "Not supplied", and a vehicle that has never reported its location reads "No location reported". It says "No vehicle data yet." until a fetch has been processed, and updates on its own.
 
+Above the table the page draws the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. "Map view" fits the map to the whole archive or to one agency's coverage, and `/vehicles?agency=<agency id>` opens the page on an agency's view. The map shows the OpenStreetMap attribution and no vehicles yet. Before any extraction the page says "No basemap yet." A view wider than the archive shows a plain background beyond the tiles the archive holds.
+
 With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
 Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
@@ -309,6 +311,49 @@ request = %{
 
 The module documentation lists every result and error value.
 
+## Basemap archives
+
+The map pages read a self-hosted basemap: regional [PMTiles](https://docs.protomaps.com/pmtiles/) archives cut from a [Protomaps daily build](https://docs.protomaps.com/basemaps/downloads), one archive per region of agency coverage. Agencies whose coverage overlaps share an archive, and every coverage area is widened by 5,000 meters first. A basemap is refreshed by running the task below again with a newer build; nothing in the application runs it, so it is independent of the vehicle fetches.
+
+`mise install` installs the `pmtiles` command at the version `mise.toml` pins. With a stored agency response under `data/` (see [Usage](#usage)), run:
+
+```sh
+mise exec -- mix gobusgo.basemap.extract \
+  --response "raw/oba/agencies-with-coverage/dt=2026-10-03/<name>.json.gz" \
+  --snapshot 20261004 \
+  --output-dir data/basemap
+```
+
+- `--response` is the logical destination of the stored `agencies-with-coverage` response whose agencies decide the regions.
+- `--snapshot` is the date of the build, `YYYYMMDD`. https://maps.protomaps.com/builds lists the builds; Protomaps keeps the builds of the past week and the latest build of each version.
+- `--output-dir` receives `basemap-<snapshot>-<number>.pmtiles` per region and `manifest.json`, which records the build, the zoom range, each archive's bounds, size, and agencies, each agency's own bounds and archive, and the agencies skipped for having no coverage. `data/` is ignored by git.
+
+The task downloads only the tiles inside each region, keeps every zoom of the build (0 to 15), and replaces an archive of the same name. `pmtiles show <archive>` prints an archive's header and `pmtiles verify <archive>` checks it.
+
+Measured on 2026-10-04 with build `20261004` (Protomaps basemap 4.15.2) and the agency response fetched at 2026-10-03T19:10:46Z: the eleven agencies with coverage fall in one region, 46.888 to 48.643 north and -123.083 to -121.533 east, and Solid Ground EZ Loop is skipped for having none.
+
+| Highest zoom | Archive size |
+| --- | --- |
+| 12 | 14 MB |
+| 13 | 34 MB |
+| 14 | 80 MB |
+| 15 (the one extracted) | 189 MB (188,695,817 bytes, 43,063 tile entries) |
+
+The sizes for zooms 12 to 14 come from `pmtiles extract --dry-run`. The basemap is an Open Database License produced work, so a page that shows it has to show the OpenStreetMap attribution.
+
+### Serving the archives
+
+The server serves the files of `<GOBUSGO_DATA_DIR>/basemap` (`data/basemap` by default, `/data/basemap` in the container) under `/basemap`: the archives and `manifest.json`. So an extraction with `--output-dir data/basemap` is served with no further step, and a refreshed basemap is published by extracting a newer build into that directory; `manifest.json` then names the new archives, and the old ones can be deleted.
+
+A PMTiles reader fetches parts of an archive with HTTP `Range` requests. To check that against a running server:
+
+```sh
+curl --silent --dump-header - --output /dev/null --range 0-16383 http://127.0.0.1:4000/basemap/basemap-20261004-01.pmtiles
+mise exec -- pmtiles show http://127.0.0.1:4000/basemap/basemap-20261004-01.pmtiles
+```
+
+The first answers `206 Partial Content` with `content-range: bytes 0-16383/<size>`, and the second prints the archive's header, read through range requests. A cache may keep an archive for an hour (`cache-control: public, max-age=3600`) and has to revalidate `manifest.json` on every use (`no-cache`); both carry an `etag`. The pages come from the same origin as the archives, so the server sets no CORS header.
+
 ## Development
 
 ```sh
@@ -324,6 +369,35 @@ mix test --include kafka
 ```
 
 `GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` names another broker for them. CI runs them against a Kafka service container in its `kafka` job.
+
+### Vendored front-end assets
+
+The repository has no Node toolchain. The assets the pages use from other projects are downloaded at pinned versions into directories git ignores, and `assets/vendor.lock.json`, which is checked in, pins them. It holds two kinds of entry:
+
+- A **package** is an npm package, pinned by version, with its tarball's address and SHA-512 and a SHA-256 for each file taken from it. The files are inputs of the asset build and go to `assets/vendor/`.
+- An **archive** is a GitHub repository, pinned by commit, with the directories taken from it and a hash of their content. The files are served as they are, under `/vendor`, and go to `priv/vendor/`. The one archive is `basemaps-assets`, the fonts and sprites of the basemap (14 MB, 793 files).
+
+```sh
+mix gobusgo.vendor.fetch
+```
+
+downloads what the lock file pins and is part of `mix assets.setup`, so a fresh checkout, CI, and the image build all get the same files. It leaves an entry alone when its files are present with the pinned content, and refuses content whose hash differs from the lock file. The files are fetched when the assets are built, never when the application starts.
+
+```sh
+mix gobusgo.vendor.update                          # every package to its latest version
+mix gobusgo.vendor.update pmtiles                  # one package to its latest version
+mix gobusgo.vendor.update pmtiles --version 4.4.0  # one package to a given version, older or newer
+mix gobusgo.vendor.update NAME --file PATH         # add a package, or change the files taken from one
+
+mix gobusgo.vendor.update basemaps-assets --version COMMIT   # the archive to a given commit, older or newer
+mix gobusgo.vendor.update NAME --version COMMIT --repository OWNER/NAME --directory DIRECTORY   # add an archive
+```
+
+rewrites the lock file and downloads the files. The change to commit is the lock file's diff. An archive has no "latest": it moves only to the commit `--version` names, all 40 hexadecimal digits, which https://github.com/protomaps/basemaps-assets/commits/main lists for the basemap's. After an update, run `mix assets.build` and check the pages that use the entry.
+
+The packages are `maplibre-gl`, which draws the map; `pmtiles`, which reads tiles out of an archive with range requests, and `fflate`, which `pmtiles` imports; and `@protomaps/basemaps`, the basemap's style. `maplibre-gl` starts a worker from a file beside its own, so `mix assets.build` copies its three module files to `priv/static/assets/vendor/maplibre-gl/` as they are, and the page loads them from there; the other packages are bundled into `app.js`.
+
+The archive of `basemaps-assets` holds 252 symbolic links, every one in the font `Noto Sans Devanagari Regular v1` and pointing at the same glyph range of `Noto Sans Regular`. A symbolic link is not downloaded, so that font has only the four glyph ranges it holds as files.
 
 ## Further reading
 
