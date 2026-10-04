@@ -26,6 +26,9 @@ gobusgo-*.tar
 *.pmtiles
 *.pmtiles.partial
 
+# Vendored front-end packages, downloaded by mix gobusgo.vendor.fetch
+/assets/vendor/
+
 # Built assets
 /priv/static/assets/
 /priv/static/cache_manifest.json

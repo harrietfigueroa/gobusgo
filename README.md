@@ -25,7 +25,7 @@ mix assets.setup
 mix assets.build
 ```
 
-`mix assets.setup` downloads the esbuild and Tailwind binaries, and `mix assets.build` writes the JavaScript and CSS the pages load to `priv/static/assets/` (ignored by git).
+`mix assets.setup` downloads the esbuild and Tailwind binaries and the vendored JavaScript packages (see [Vendored front-end packages](#vendored-front-end-packages)), and `mix assets.build` writes the JavaScript and CSS the pages load to `priv/static/assets/` (ignored by git).
 
 ## Configuration
 
@@ -367,6 +367,25 @@ mix test --include kafka
 ```
 
 `GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` names another broker for them. CI runs them against a Kafka service container in its `kafka` job.
+
+### Vendored front-end packages
+
+The repository has no Node toolchain. The JavaScript packages the pages use beyond Phoenix's own are downloaded from the npm registry as built files, into `assets/vendor/`, which git ignores. `assets/vendor.lock.json` is checked in and pins each package: its version, its tarball's address and SHA-512, and the files taken from it with a SHA-256 each.
+
+```sh
+mix gobusgo.vendor.fetch
+```
+
+downloads what the lock file pins and is part of `mix assets.setup`, so a fresh checkout, CI, and the image build all get the same files. It leaves a package alone when its files are present with the pinned content, and refuses a tarball or a file whose hash differs from the lock file. The files are fetched when the assets are built, never when the application starts.
+
+```sh
+mix gobusgo.vendor.update                          # every package to its latest version
+mix gobusgo.vendor.update pmtiles                  # one package to its latest version
+mix gobusgo.vendor.update pmtiles --version 4.4.0  # one package to a given version, older or newer
+mix gobusgo.vendor.update NAME --file PATH         # add a package, or change the files taken from one
+```
+
+rewrites the lock file and downloads the files. The change to commit is the lock file's diff. After an update, run `mix assets.build` and check the pages that use the package.
 
 ## Further reading
 

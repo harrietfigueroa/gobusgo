@@ -31,11 +31,16 @@ COPY config/config.exs config/config.exs
 RUN mix deps.compile
 
 # Downloads the esbuild and Tailwind binaries at the versions config.exs pins.
-RUN mix assets.setup
+RUN mix assets.tools
 
 COPY assets assets
 COPY lib lib
 RUN mix compile
+
+# Downloads the vendored front-end packages that assets/vendor.lock.json pins
+# and checks them against its hashes. The task is part of the application, so
+# it runs once the application is compiled.
+RUN mix gobusgo.vendor.fetch
 RUN mix assets.deploy
 
 COPY config/runtime.exs config/runtime.exs
