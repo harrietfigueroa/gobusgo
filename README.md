@@ -309,6 +309,36 @@ request = %{
 
 The module documentation lists every result and error value.
 
+## Basemap archives
+
+The map pages read a self-hosted basemap: regional [PMTiles](https://docs.protomaps.com/pmtiles/) archives cut from a [Protomaps daily build](https://docs.protomaps.com/basemaps/downloads), one archive per region of agency coverage. Agencies whose coverage overlaps share an archive, and every coverage area is widened by 5,000 meters first. A basemap is refreshed by running the task below again with a newer build; nothing in the application runs it, so it is independent of the vehicle fetches.
+
+`mise install` installs the `pmtiles` command at the version `mise.toml` pins. With a stored agency response under `data/` (see [Usage](#usage)), run:
+
+```sh
+mise exec -- mix gobusgo.basemap.extract \
+  --response "raw/oba/agencies-with-coverage/dt=2026-10-03/<name>.json.gz" \
+  --snapshot 20261004 \
+  --output-dir data/basemap
+```
+
+- `--response` is the logical destination of the stored `agencies-with-coverage` response whose agencies decide the regions.
+- `--snapshot` is the date of the build, `YYYYMMDD`. https://maps.protomaps.com/builds lists the builds; Protomaps keeps the builds of the past week and the latest build of each version.
+- `--output-dir` receives `basemap-<snapshot>-<number>.pmtiles` per region and `manifest.json`, which records the build, the zoom range, each archive's bounds, size, and agencies, each agency's own bounds and archive, and the agencies skipped for having no coverage. `data/` is ignored by git.
+
+The task downloads only the tiles inside each region, keeps every zoom of the build (0 to 15), and replaces an archive of the same name. `pmtiles show <archive>` prints an archive's header and `pmtiles verify <archive>` checks it.
+
+Measured on 2026-10-04 with build `20261004` (Protomaps basemap 4.15.2) and the agency response fetched at 2026-10-03T19:10:46Z: the eleven agencies with coverage fall in one region, 46.888 to 48.643 north and -123.083 to -121.533 east, and Solid Ground EZ Loop is skipped for having none.
+
+| Highest zoom | Archive size |
+| --- | --- |
+| 12 | 14 MB |
+| 13 | 34 MB |
+| 14 | 80 MB |
+| 15 (the one extracted) | 189 MB (188,695,817 bytes, 43,063 tile entries) |
+
+The sizes for zooms 12 to 14 come from `pmtiles extract --dry-run`. The basemap is an Open Database License produced work, so a page that shows it has to show the OpenStreetMap attribution.
+
 ## Development
 
 ```sh

@@ -22,6 +22,10 @@ gobusgo-*.tar
 /data/
 /tmp/
 
+# Basemap archives, wherever an extraction writes them
+*.pmtiles
+*.pmtiles.partial
+
 # Built assets
 /priv/static/assets/
 /priv/static/cache_manifest.json
