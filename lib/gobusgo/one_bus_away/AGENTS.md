@@ -125,7 +125,7 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 - State is in memory and per node: a restart begins open with a full bucket, and two running instances each spend a full budget.
 - Logs: `warning` `OneBusAway request gate paused` with `pause_ms` and `pause_count`, and `info` `OneBusAway request gate reopened`.
 
-The budget of ten requests per second is an assumption. OneBusAway documents neither a rate limit nor a 429 status nor `Retry-After` (https://developer.onebusaway.org/api/where — checked 2026-10-03); the gate treats a 429 as rate limiting on the project owner's statement that limits exist, and no 429 has been observed from the live server.
+The budget of ten requests per second is an assumption. OneBusAway documents neither a rate limit nor a 429 status nor `Retry-After` (https://developer.onebusaway.org/api/where — checked 2026-10-03); the gate treats a 429 as rate limiting on the project owner's statement that limits exist. The live server has answered with 429: on 2026-10-03, with agency discovery once a minute and twelve vehicle fetches every five seconds, two requests in 75 seconds got one. The pause each one caused and whether the response carried `Retry-After` were not recorded, so the limit itself is still unknown.
 
 A new source needs no change here: its requests reach the gate through the client. A deadline shorter than the time its requests spend waiting for permits ends in `:rate_limited`, so a source that issues many requests per run sizes its deadline to 100 ms per request, plus the time the requests themselves take while four are in flight.
 
