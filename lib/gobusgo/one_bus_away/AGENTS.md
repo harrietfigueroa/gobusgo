@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds a requester for the routes of each agency via `routes-for-agency`, which the application does not call. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds requesters for the routes of each agency via `routes-for-agency` and for the stops and paths of each route via `stops-for-route`, which the application does not call. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -101,7 +101,7 @@ Test requirements for the requester: a 200 fixture matching the example above; a
 
 ## Implementation
 
-`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. `Gobusgo.OneBusAway.Envelope.interpret/2` is the pure step every requester shares from an HTTP status and body to the decoded envelope or a documented failure. The client retries network faults and the statuses 408, 500, 502, 503, and 504 with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), and sets `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts and every wait at the request gate. The key is passed via `params:` and scrubbed from every returned value. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `:rate_limited`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
+`Gobusgo.OneBusAway.Agencies.fetch/2` is the agency discovery requester and `Gobusgo.OneBusAway.Client.get/3` is the only module that issues HTTP requests. `Gobusgo.OneBusAway.Envelope.interpret/2` is the pure step every requester shares from an HTTP status and body to the decoded envelope or a documented failure. The client retries network faults and the statuses 408, 500, 502, 503, and 504 with a capped, jittered `retry_delay` (a custom delay function replaces Req's `Retry-After` handling, which suits an API that documents none), and sets `redirect: false`, `decode_body: false`, explicit timeouts, and a total deadline enforced around all attempts and every wait at the request gate. The key is passed via `params:` and scrubbed from every returned value. The client's `:params` option carries a method's other query parameters, and a parameter named `key` among them raises. Returned errors: `{:transport, reason}`, `:deadline_exceeded`, `:rate_limited`, `{:http_status, status}`, `{:unexpected_redirect, status}`, `{:api_error, %{code: code, text: text}}`, `:invalid_json`. Schema violations, unreferenced agency ids, `limitExceeded: true`, and undocumented statuses raise `Gobusgo.Assert.AssertionError`.
 
 `Gobusgo.OneBusAway.Agencies.fetch_response/2` makes the same request and returns the agencies together with the whole decoded envelope, the HTTP status, the method, the host, and the fetch time. The key is replaced wherever the server echoes it in the envelope, and the host is the host name alone, so no returned value carries a credential or a URL. Its `:clock` option supplies the fetch time.
 
@@ -199,6 +199,44 @@ Shape of the live response, observed on 2026-10-05 across all 12 agencies (391 r
 - `references` held the agency asked for and nothing else. The requester does not read it.
 
 Test fixtures under `test/fixtures/one_bus_away/routes_for_agency*.json` are cut from the live Sound Transit response: a rail route, a bus route with no long name, and a light rail route.
+
+## Route paths: `stops-for-route`
+
+`GET /api/where/stops-for-route/<route id>.json?includePolylines=true&key=<key>` (https://developer.onebusaway.org/api/where/methods/stops-for-route — checked 2026-10-05). `includePolylines` defaults to `true` and the requester sends it all the same. The documented `time` parameter, which chooses the service date and defaults to today, is not sent. The route identifier is percent-encoded into the path.
+
+`Gobusgo.OneBusAway.RoutePaths.fetch_response/2` takes the route in its `:route_id` option and returns the route path together with the whole decoded envelope, the route, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A route the server does not know is `{:http_status, 404}`. Nothing calls it: it stores nothing, and no source schedules it. `Gobusgo.OneBusAway.RoutePaths.parse/2` is the pure function from `data` and the route asked for to the route path. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}` for a response about another route, `{:stop_count_exceeded, count}` above 1,000 stops, `{:stop_grouping_count_exceeded, count}` above 8, `{:stop_group_count_exceeded, count}` above 16, `{:polyline_count_exceeded, count}` above 1,000 for the route's and the groups' polylines together, `{:invalid_polyline, polyline}`, `{:duplicate_stop, id}`, `{:unlisted_stop, id}` for a group's stop the route does not list, or `{:unreferenced_stop, id}`. The requester raises on those values.
+
+A route path holds:
+
+| Field | Meaning |
+| --- | --- |
+| `route_id` | The route |
+| `stop_ids` | Every stop of the route, once |
+| `polylines` | The whole route, with a stretch that several groups share held once |
+| `stop_groupings` | Each with `type`, `ordered`, and `stop_groups` |
+| `stop_groups` | Each with `id`, `name`, `names`, `name_type`, its `stop_ids` in order, and its own `polylines` |
+| `stops` | The referenced stop of every identifier in `stop_ids`: `id`, `name`, `lat`, `lon`, `code`, `direction`, `location_type`, `parent`, `wheelchair_boarding`, `route_ids` |
+
+A polyline is `points`, `point_count`, and `levels`. `points` is in the encoded polyline format (https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-10-05) at five decimal places, and `point_count` is the source's `length`. The requester checks that `points` holds only the characters of that format and does not decode it. A field the source sends empty is `nil`.
+
+Shape of the live response, observed on 2026-10-05 for all 391 routes of the 12 agencies; `parse/2` accepts every one of them:
+
+- `data.entry` always held `routeId`, `stopIds`, `stopGroupings`, and `polylines`, and `routeId` was the route asked for.
+- Every route had one grouping, of `type` `direction` and `ordered` `true`. It held two groups for 335 routes, one for 51, and none for 5. A group's `id` was `0` or `1`, its name's `type` was `destination`, and its `subGroups` was always empty; the requester does not read `subGroups`.
+- A group's `names` held one name, equal to its `name`. One group, on route `1_7994`, had an empty `name` and `null` as its one name, which the requester returns as no names.
+- `entry.polylines` is disconnected pieces, 36 per route on average and 278 at most, many of them 2 to 6 points long. A group's `polylines` are its own path, in 1 piece for 304 groups and in 127 at most. One of a route's two groups has its pieces in `entry.polylines` as well and the other does not. The largest route held 522 polylines in all.
+- `length` was an integer, `levels` was always empty, and `points` held only characters of the encoding. `length` equaled the decoded point count in every polyline of the four routes decoded by hand; the requester does not check that.
+- Six routes had no polylines, all of Kitsap Transit (`20`), and five of them had no stops and no groups either.
+- No stop repeated in a route's `stopIds`, every stop of a group was in the route's `stopIds`, and every stop of a route had a reference. One stop of one route was in no group.
+- A referenced stop always carried `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `parent`, `wheelchairBoarding`, `routeIds`, and `staticRouteIds`. `name` and `code` were never empty, `direction` was empty for 1,385 of 19,074, `locationType` was always `0`, and `wheelchairBoarding` was `ACCESSIBLE`, `NOT_ACCESSIBLE`, or `UNKNOWN`. `staticRouteIds` is not read.
+- 535 referenced stops were in no route's `stopIds`: the parent stations that other stops name in `parent`. The requester leaves them out, so a stop's `parent` names a stop the route path does not hold.
+- The routes listed 18,539 stops, 12,913 of them distinct, and 182 at most for one route.
+- The responses were 794 to 77,685 bytes and 10.9 MB together, 1.9 MB compressed with gzip. The route polylines of all 391 routes hold 508,629 points in 1.4 MB of encoded text.
+- At one request every 1.5 seconds, beside the application's own vehicle cycle on the same key, 3 of the 391 requests got a 429 and succeeded on the next try.
+
+Not observed: nested `subGroups`, a non-empty `levels`, a grouping of another `type`, and a response with `includePolylines=false`, which on the one route tried kept every key and returned empty polyline lists.
+
+Test fixtures under `test/fixtures/one_bus_away/stops_for_route*.json` are cut from the live response for the West Seattle Water Taxi (`1_100336`), whole.
 
 ## Stored raw responses
 
@@ -421,7 +459,7 @@ Reconciliation logs one line per call: `info` `Reconciliation finished`, `warnin
 
 Not implemented here. Each link was checked 2026-10-01 from the method index.
 
-- Stops: [`stop`](https://developer.onebusaway.org/api/where/methods/stop), [`stops-for-location`](https://developer.onebusaway.org/api/where/methods/stops-for-location), [`stops-for-agency`](https://developer.onebusaway.org/api/where/methods/stops-for-agency), [`stops-for-route`](https://developer.onebusaway.org/api/where/methods/stops-for-route), [`schedule-for-stop`](https://developer.onebusaway.org/api/where/methods/schedule-for-stop)
+- Stops: [`stop`](https://developer.onebusaway.org/api/where/methods/stop), [`stops-for-location`](https://developer.onebusaway.org/api/where/methods/stops-for-location), [`stops-for-agency`](https://developer.onebusaway.org/api/where/methods/stops-for-agency), [`schedule-for-stop`](https://developer.onebusaway.org/api/where/methods/schedule-for-stop)
 - Routes: [`route`](https://developer.onebusaway.org/api/where/methods/route), [`routes-for-location`](https://developer.onebusaway.org/api/where/methods/routes-for-location)
 - Arrivals: [`arrivals-and-departures-for-stop`](https://developer.onebusaway.org/api/where/methods/arrivals-and-departures-for-stop), [`arrival-and-departure-for-stop`](https://developer.onebusaway.org/api/where/methods/arrival-and-departure-for-stop)
 
