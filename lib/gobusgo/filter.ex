@@ -11,7 +11,9 @@ defmodule Gobusgo.Filter do
 
   A kind of record names the fields it can be filtered by in a
   specification, and each field has a type. The one type is `:string`, whose
-  values match by equality.
+  values match by equality. The module that does so is an adapter of this
+  contract: it implements `spec/0` and `values/1`, which reads the value of
+  each field out of one record.
 
   A filter names some of those fields, each with the values it accepts. A
   record matches when every field the filter names holds one of that field's
@@ -59,6 +61,15 @@ defmodule Gobusgo.Filter do
   """
   @type violation :: %{field: String.t() | nil, reason: reason()}
 
+  @typedoc "One record's value for each field, `nil` or absent where it has none."
+  @type values :: %{String.t() => String.t() | nil}
+
+  @doc "Returns the fields this kind of record can be filtered by."
+  @callback spec() :: spec()
+
+  @doc "Returns the value `record` holds for each field of `spec/0`."
+  @callback values(record :: term()) :: values()
+
   @doc "Fields allowed in a specification and in a raw filter."
   @spec field_count_max() :: pos_integer()
   def field_count_max, do: @field_count_max
@@ -101,7 +112,7 @@ defmodule Gobusgo.Filter do
   maps a field's name to the record's value, `nil` or absent for a record
   that has none.
   """
-  @spec matches?(%{filter: t(), values: %{String.t() => String.t() | nil}}) :: boolean()
+  @spec matches?(%{filter: t(), values: values()}) :: boolean()
   def matches?(%{filter: filter, values: values}) when is_map(filter) and is_map(values) do
     Enum.all?(filter, fn {field, accepted} ->
       Assert.condition(accepted != [], "filter field #{inspect(field)} must accept a value")

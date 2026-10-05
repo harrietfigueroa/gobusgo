@@ -462,6 +462,10 @@ The source's update times are kept apart from `fetchedAt`, which is when Gobusgo
 
 Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `agency_count` and `vehicle_count`; `warning` `Vehicle view skipped invalid records` with `invalid_count`; and `warning` `Vehicle view switch not announced` with `reason`.
 
+## Vehicle filter
+
+`Gobusgo.OneBusAway.VehicleFilter` is the vehicle adapter of the filter contract in `Gobusgo.Filter`, and is pure. Its one field is `agency`, the identifier of the agency whose fetch holds the vehicle. `normalize/1` judges a raw filter under that field, and `filter_fetch/1` returns one agency's fetch with only the vehicles a filter keeps, so a fetch of an agency the filter leaves out comes back with its request identifier and fetch time and no vehicle. A further field is one entry in the specification and one in `values/1`. The decisions are recorded in GOB-113 and GOB-114.
+
 ## Route records and route views
 
 The two route datasets share their topics, because both describe a route (decided in GOB-96). Each has a recorder, a stored form, an event, a processor, and a records module of its own, shaped like the vehicle dataset's.
