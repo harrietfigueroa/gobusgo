@@ -3,7 +3,9 @@ import {readyEventName} from "./basemap"
 const sourceName = "vehicle-markers"
 const roundLayerName = "vehicle-markers-round"
 const pointedLayerName = "vehicle-markers-pointed"
-const layerNames = [roundLayerName, pointedLayerName]
+
+// The layers a vehicle's marker is drawn in, round or pointed.
+export const markerLayerNames = [roundLayerName, pointedLayerName]
 const routeLayerName = "vehicle-markers-route"
 const routeFont = ["Noto Sans Medium"]
 const routeTextSizePixels = 11
@@ -215,7 +217,7 @@ export const VehicleMarkers = {
       }
     })
 
-    for (const layerName of layerNames) {
+    for (const layerName of markerLayerNames) {
       map.on("click", layerName, (event) => {
         const [feature] = event.features
 
