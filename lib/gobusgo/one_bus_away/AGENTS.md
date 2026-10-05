@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds the two route datasets, the routes of each agency via `routes-for-agency` and the stops and paths of each route via `stops-for-route`, with their recorders, processors, and views; no source fetches them on a schedule. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds the two route datasets, the routes of each agency via `routes-for-agency` and the stops and paths of each route via `stops-for-route`, with their recorders, processors, and views; the route source fetches each once a day. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -185,7 +185,7 @@ Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are c
 
 `GET /api/where/routes-for-agency/<agency id>.json?key=<key>` (https://developer.onebusaway.org/api/where/methods/routes-for-agency — checked 2026-10-05). The agency identifier is the only documented parameter besides `key`, and the requester percent-encodes it into the path. The method documents no paging, so the requester asserts `data.limitExceeded` is `false`.
 
-`Gobusgo.OneBusAway.Routes.fetch_response/2` takes the agency in its `:agency_id` option and returns the routes together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. Its dataset's recorder calls it, and no source schedules it. `Gobusgo.OneBusAway.Routes.parse/2` is the pure function from `data` and the agency asked for to the routes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_count_exceeded, count}` above 1,000, `{:invalid_route, index}` for an empty identifier, a route of another agency, or a color that is not six hexadecimal digits, or `{:duplicate_route, id}`. The requester raises on those values.
+`Gobusgo.OneBusAway.Routes.fetch_response/2` takes the agency in its `:agency_id` option and returns the routes together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. Its dataset's recorder calls it, and the route cycle schedules it. `Gobusgo.OneBusAway.Routes.parse/2` is the pure function from `data` and the agency asked for to the routes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_count_exceeded, count}` above 1,000, `{:invalid_route, index}` for an empty identifier, a route of another agency, or a color that is not six hexadecimal digits, or `{:duplicate_route, id}`. The requester raises on those values.
 
 A route holds `id`, `agency_id`, `short_name`, `long_name`, `description`, `type`, `color`, `text_color`, and `url`. `id`, `agency_id`, and `type` are always present, and every other field is `nil` when the source sends an empty string. `nullSafeShortName` is not read: it repeats `shortName`, or the route's `id` when `shortName` is empty.
 
@@ -204,7 +204,7 @@ Test fixtures under `test/fixtures/one_bus_away/routes_for_agency*.json` are cut
 
 `GET /api/where/stops-for-route/<route id>.json?includePolylines=true&key=<key>` (https://developer.onebusaway.org/api/where/methods/stops-for-route — checked 2026-10-05). `includePolylines` defaults to `true` and the requester sends it all the same. The documented `time` parameter, which chooses the service date and defaults to today, is not sent. The route identifier is percent-encoded into the path.
 
-`Gobusgo.OneBusAway.RoutePaths.fetch_response/2` takes the route in its `:route_id` option and returns the route path together with the whole decoded envelope, the route, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A route the server does not know is `{:http_status, 404}`. Its dataset's recorder calls it, and no source schedules it. `Gobusgo.OneBusAway.RoutePaths.parse/2` is the pure function from `data` and the route asked for to the route path. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}` for a response about another route, `{:stop_count_exceeded, count}` above 1,000 stops, `{:stop_grouping_count_exceeded, count}` above 8, `{:stop_group_count_exceeded, count}` above 16, `{:polyline_count_exceeded, count}` above 1,000 for the route's and the groups' polylines together, `{:invalid_polyline, polyline}`, `{:duplicate_stop, id}`, `{:unlisted_stop, id}` for a group's stop the route does not list, or `{:unreferenced_stop, id}`. The requester raises on those values.
+`Gobusgo.OneBusAway.RoutePaths.fetch_response/2` takes the route in its `:route_id` option and returns the route path together with the whole decoded envelope, the route, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A route the server does not know is `{:http_status, 404}`. Its dataset's recorder calls it, and the route cycle schedules it. `Gobusgo.OneBusAway.RoutePaths.parse/2` is the pure function from `data` and the route asked for to the route path. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}` for a response about another route, `{:stop_count_exceeded, count}` above 1,000 stops, `{:stop_grouping_count_exceeded, count}` above 8, `{:stop_group_count_exceeded, count}` above 16, `{:polyline_count_exceeded, count}` above 1,000 for the route's and the groups' polylines together, `{:invalid_polyline, polyline}`, `{:duplicate_stop, id}`, `{:unlisted_stop, id}` for a group's stop the route does not list, or `{:unreferenced_stop, id}`. The requester raises on those values.
 
 A route path holds:
 
@@ -294,6 +294,7 @@ The agency recorder logs one line per call: `info` `OneBusAway agency response r
 | --- | --- | --- | --- | --- |
 | Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | 60 seconds | 45 seconds |
 | Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | 5 seconds | 4.5 seconds |
+| Routes | `Gobusgo.OneBusAway.RouteScheduler` | `RouteCycle.run/2` | 60 seconds | 55 seconds |
 
 A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the ticks it skipped during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped ticks are intended.
 
@@ -306,6 +307,18 @@ A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the sc
 - It logs one line per run with those counts and `failures`, the failed agencies counted by cause: `info` `OneBusAway vehicle cycle finished`, `warning` `OneBusAway vehicle cycle finished degraded` when an agency failed, was skipped, or was stored without its event, and `error` `OneBusAway vehicle cycle failed` when none is recorded.
 
 Whether twelve fetches fit the 4-second budget against the live server is not measured; a cycle that does not fit logs the `warning` with its `skipped_count`.
+
+`Gobusgo.OneBusAway.RouteCycle.run/2` is one run of the route source. The cadence, each item once every 24 hours at one request a second, is decided in GOB-92, and the way it runs in GOB-94.
+
+- An item is the routes of one agency or the stops and paths of one route. The agencies are those of the agency view's current fetch, at most 64, and the routes are those the route view holds for them, at most 5,000.
+- `Gobusgo.OneBusAway.RouteSchedule` is pure and says what is due. An identifier's slot is a minute of the UTC day, `:erlang.phash2(id, 1440)`, which is the same on every machine and release. An item is due when it has no fetch in its view, or when its fetch there was made before the latest time its slot came.
+- The run every minute is what the scheduler's rules ask for: a scheduler ticks when it starts and backs off after a failed run by skipping 1, 3, 7, then 15 ticks. A restart with fresh views fetches nothing, and a failed run is tried again within fifteen minutes.
+- A cycle records due agencies before due routes, each in identifier order, at most 45 items, and counts the rest as `deferred_count`. It starts one request a second and none with less than 250 ms of its 50-second budget left; the items the budget does not reach are `skipped_count`.
+- An item gets at most 10 seconds and is not retried: it is still due in the next cycle. An item whose fetch fails, raises, or runs past its deadline is one failed item, and the cycle goes on to the next.
+- The cycle returns `{:ok, counts}` with `due_count`, `recorded_count`, `failed_count`, `skipped_count`, `deferred_count`, and `unannounced_count`, or `{:error, :nothing_recorded}` when an item failed and none is recorded, which makes the scheduler back off.
+- It logs one line per run with those counts and `failures`: `debug` `OneBusAway route cycle found nothing due`, `info` `OneBusAway route cycle finished`, `warning` `OneBusAway route cycle finished degraded`, and `error` `OneBusAway route cycle failed`.
+
+With the 12 agencies and 391 routes of 2026-10-05, a first start records the 12 route lists in its first cycle and the 391 paths over the nine cycles after it, and from then on about one item every three and a half minutes. On the first day each item is fetched twice, at the fill and when its slot first comes. This is not measured against the live server.
 
 ## Published records
 
