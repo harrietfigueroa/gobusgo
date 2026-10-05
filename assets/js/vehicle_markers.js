@@ -4,6 +4,13 @@ const sourceName = "vehicle-markers"
 const roundLayerName = "vehicle-markers-round"
 const pointedLayerName = "vehicle-markers-pointed"
 const layerNames = [roundLayerName, pointedLayerName]
+const routeLayerName = "vehicle-markers-route"
+const routeFont = ["Noto Sans Medium"]
+const routeTextSizePixels = 11
+const routeTextOffsetEms = [0, 1]
+const routeTextColor = "#0f172a"
+const routeHaloColor = "#ffffff"
+const routeHaloWidthPixels = 1.5
 const pointedImagePrefix = "vehicle-marker-pointed-"
 const pointedImageSizePixels = 28
 const pointedImagePixelRatio = 2
@@ -13,11 +20,12 @@ const markerStrokeWidthPixels = 1.5
 const markerStrokeColor = "#ffffff"
 const statusColorFallback = "#000000"
 const positionNote = "Marker position: the source's estimate"
-const headingNotSupplied = "Not supplied"
+const notSupplied = "Not supplied"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
+const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 
 // Every agency's markers as one GeoJSON collection, a point per marker with
-// the texts its popup shows.
+// the texts its label and its popup show.
 function featureCollection(markersByAgency) {
   const features = []
 
@@ -29,6 +37,8 @@ function featureCollection(markersByAgency) {
         properties: {
           vehicleId: marker.vehicle_id,
           heading: marker.heading,
+          route: marker.route,
+          headsign: marker.headsign,
           status: marker.status,
           locationAge: marker.location_age,
           realTime: marker.real_time
@@ -82,7 +92,15 @@ function headingText(heading) {
   if (typeof heading === "number") {
     return `${heading}° clockwise from north`
   } else {
-    return headingNotSupplied
+    return notSupplied
+  }
+}
+
+function suppliedText(value) {
+  if (typeof value === "string") {
+    return value
+  } else {
+    return notSupplied
   }
 }
 
@@ -91,6 +109,8 @@ function headingText(heading) {
 function popupContent(properties, statusLabels) {
   const lines = [
     `Vehicle ${properties.vehicleId}`,
+    `Route: ${suppliedText(properties.route)}`,
+    `Headsign: ${suppliedText(properties.headsign)}`,
     statusLabels.get(properties.status),
     `Location reported: ${properties.locationAge}`,
     `Real-time data: ${properties.realTime}`,
@@ -170,6 +190,28 @@ export const VehicleMarkers = {
         "icon-rotate": ["get", "heading"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true
+      }
+    })
+
+    // A label is left out where it would cover another label, so a crowded
+    // street shows the routes of some of its vehicles.
+    map.addLayer({
+      id: routeLayerName,
+      type: "symbol",
+      source: sourceName,
+      filter: hasRoute,
+      layout: {
+        "text-field": ["get", "route"],
+        "text-font": routeFont,
+        "text-size": routeTextSizePixels,
+        "text-anchor": "top",
+        "text-offset": routeTextOffsetEms,
+        "text-allow-overlap": false
+      },
+      paint: {
+        "text-color": routeTextColor,
+        "text-halo-color": routeHaloColor,
+        "text-halo-width": routeHaloWidthPixels
       }
     })
 

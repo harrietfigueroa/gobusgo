@@ -16,6 +16,10 @@ defmodule GobusgoWeb.VehicleMarkersTest do
         "id" => "1_100",
         "agencyId" => "1",
         "activeTripId" => nil,
+        "routeId" => nil,
+        "routeShortName" => nil,
+        "routeLongName" => nil,
+        "tripHeadsign" => nil,
         "position" => @position,
         "orientation" => nil,
         "lastKnownLocation" => nil,
@@ -123,6 +127,44 @@ defmodule GobusgoWeb.VehicleMarkersTest do
 
     test "comes from the orientation of the estimated position, never the last reported one" do
       assert marker(%{"orientation" => 180, "lastKnownOrientation" => 90}).heading == 270
+    end
+  end
+
+  describe "agency_markers/1 route" do
+    for {name, short_name, long_name, route} <- [
+          {"the short name of a route that has both names", "44", "Ballard - Montlake", "44"},
+          {"the long name of a route with no short name", nil, "Seattle - Bainbridge Island",
+           "Seattle - Bainbridge Island"},
+          {"absent for a route with no name", nil, nil, nil}
+        ] do
+      test "is #{name}" do
+        fields = %{
+          "routeShortName" => unquote(short_name),
+          "routeLongName" => unquote(long_name)
+        }
+
+        assert marker(fields).route == unquote(route)
+      end
+    end
+
+    test "comes with the trip's headsign" do
+      assert marker(%{"tripHeadsign" => "University District"}).headsign == "University District"
+    end
+
+    test "comes with no headsign for a trip that has none" do
+      assert marker(%{"tripHeadsign" => nil}).headsign == nil
+    end
+  end
+
+  describe "route_name/1" do
+    test "is the short name before the long name" do
+      vehicle = vehicle(%{"routeShortName" => "44", "routeLongName" => "Ballard - Montlake"})
+
+      assert VehicleMarkers.route_name(vehicle) == "44"
+    end
+
+    test "is absent for a vehicle with no route" do
+      assert VehicleMarkers.route_name(vehicle(%{})) == nil
     end
   end
 

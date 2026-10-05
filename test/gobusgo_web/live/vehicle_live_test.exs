@@ -31,6 +31,10 @@ defmodule GobusgoWeb.VehicleLiveTest do
     %{
       id: id,
       active_trip_id: nil,
+      route_id: nil,
+      route_short_name: nil,
+      route_long_name: nil,
+      trip_headsign: nil,
       position: nil,
       orientation: nil,
       last_known_location: nil,
@@ -45,6 +49,10 @@ defmodule GobusgoWeb.VehicleLiveTest do
     %{
       bare(id)
       | active_trip_id: "1_15436438",
+        route_id: "1_100214",
+        route_short_name: "44",
+        route_long_name: "Ballard - Montlake",
+        trip_headsign: "University District",
         position: %{lat: 47.66, lon: -122.34},
         last_known_location: %{lat: 47.65, lon: -122.33},
         last_location_update_time_ms: DateTime.to_unix(~U[2026-10-02 03:14:30Z], :millisecond),
@@ -123,6 +131,32 @@ defmodule GobusgoWeb.VehicleLiveTest do
       assert cell(view, "vehicle-1-1_4207", "vehicle") =~ "1_4207"
       assert cell(view, "vehicle-1-1_4207", "agency") =~ ">1<"
       assert cell(view, "vehicle-1-1_4207", "trip") =~ "1_15436438"
+    end
+
+    test "shows the route and the headsign of a vehicle" do
+      apply_fetch([reporting("1_4207")])
+
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert cell(view, "vehicle-1-1_4207", "route") =~ ~r/>\s*44\s*</
+      assert cell(view, "vehicle-1-1_4207", "headsign") =~ "University District"
+    end
+
+    test "shows the long name of a route that has no short name" do
+      apply_fetch([%{reporting("1_4207") | route_short_name: nil}])
+
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert cell(view, "vehicle-1-1_4207", "route") =~ "Ballard - Montlake"
+    end
+
+    test "says that the route and the headsign were not supplied for a vehicle with no trip" do
+      apply_fetch([bare("1_4207")])
+
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert cell(view, "vehicle-1-1_4207", "route") =~ "Not supplied"
+      assert cell(view, "vehicle-1-1_4207", "headsign") =~ "Not supplied"
     end
 
     test "shows the estimated position apart from the last reported location" do
