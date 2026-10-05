@@ -519,12 +519,12 @@ A stop holds `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `p
 - A fetch replaces its route's current one by the rules of `FetchView.State`. A stop is held for as long as the current fetch of some route lists it, as a stop or as a parent stop, so a stop every route drops is removed and no tombstone exists.
 - A stop that several routes list has the values of the latest fetch that supplied it, with that fetch's `request_id` and `fetched_at`. When the route that supplied them drops the stop, the values stay until another route's fetch supplies it again.
 - The view takes `:route_count_max` and `:stop_count_max`. The fetch of a route beyond the first is ignored, and a fetch that would hold more stops than the second is refused whole and logged.
-- `current/1` returns every stop in identifier order, `stop/2` one stop, and `stop_count/1` their number. All three read the table and return nothing while the view is not running.
-- A call that holds or removes at least one stop announces `{:stop_view_switched, view}` once to the processes that called `subscribe/1`.
+- `current/1` returns every stop in identifier order, `stop/2` one stop, `stop_ids/1` the identifiers alone, and `stop_count/1` their number. All four read the table and return nothing while the view is not running.
+- A call that holds or removes at least one stop announces `{:stop_view_switched, view, change}` once to the processes that called `subscribe/1`. `change` holds `held_ids` and `removed_ids`, each identifier in one of them, so a subscriber reads the stops that changed and no others.
 
 `RoutePathBatch.process/2` publishes the stops record after the route path record, in the one publisher call, and returns the `stop_count` of the stops and parent stops together. A call that fails at `:publish_route_path` can leave either record published; the trigger's next attempt publishes both again, and each view ignores the fetch it already holds. The topic has to exist before the application runs: without it every route path event fails as `:unknown_topic` and is dead-lettered after its attempts, with its path record published.
 
-The application starts one view, registered as `Gobusgo.OneBusAway.StopView`, for at most 5,000 routes and 100,000 stops, and one `Gobusgo.Kafka.TopicSubscriber` that reads `oba.stops.state` into it; under test the in-process publisher hands the topic's records to the view. Nothing reads the view yet.
+The application starts one view, registered as `Gobusgo.OneBusAway.StopView`, for at most 5,000 routes and 100,000 stops, and one `Gobusgo.Kafka.TopicSubscriber` that reads `oba.stops.state` into it; under test the in-process publisher hands the topic's records to the view. The vehicle page reads it.
 
 Measured against the local broker on 2026-10-05: the processor published the records of the 391 stored responses in 4 seconds, and a view fed by a subscriber of `oba.stops.state` held 13,026 stops, 113 of them parent stops, in a table of 16.6 MB beside 4.1 MB of process memory.
 

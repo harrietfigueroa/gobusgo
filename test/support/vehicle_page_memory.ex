@@ -45,11 +45,16 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   @point_lat_step 100
   @point_lon_step 10
   @polyline_precision 100_000
+  # 391 routes of 33 stops are 12,903 stops; the routes of 2026-10-05 list
+  # 12,913 distinct ones.
+  @route_stop_count 33
+  @stop_step_degrees 0.001
 
   @moduledoc """
   What the memory measurements of the vehicle page share: synthetic fetches
   that fill a vehicle view, synthetic routes and paths that fill the two
-  route views, and readings of the memory a process and a table hold.
+  route views, synthetic stops that fill a stop view, and readings of the
+  memory a process and a table hold.
 
   A synthetic vehicle supplies every field, so a fetch of them is at least
   as large as a fetch of as many real vehicles. Fetches follow each other by
@@ -60,6 +65,7 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Publisher
@@ -169,6 +175,64 @@ defmodule Gobusgo.Test.VehiclePageMemory do
       end
 
     Enum.sum(route_counts)
+  end
+
+  @doc """
+  Applies to `stop_view` a fetch of the stops of every route `apply_routes/1`
+  applies, #{@route_stop_count} stops a route, each served by that route
+  alone and with every field supplied. Returns the count of stops applied.
+  """
+  @spec apply_stops(atom()) :: non_neg_integer()
+  def apply_stops(stop_view) when is_atom(stop_view) do
+    stop_counts =
+      for %{agency_id: agency_id, route_count: route_count} <- @route_profile,
+          index <- 0..(route_count - 1)//1 do
+        route_id = "#{agency_id}_#{index}"
+        context = %{agency_id: agency_id, sequence: 0, fetched_at: @first_fetched_at}
+
+        stops =
+          for stop_index <- 0..(@route_stop_count - 1), do: stop(route_id, index, stop_index)
+
+        record =
+          RoutePathBatch.StopRecords.build(%{
+            route_id: route_id,
+            destination: "raw/oba/routes/synthetic.json.gz",
+            fetched_at: @first_fetched_at,
+            data_sha256: String.duplicate("ab", 32),
+            request_id: request_id(context),
+            route_path: %{
+              route_id: route_id,
+              stop_ids: Enum.map(stops, & &1.id),
+              polylines: [],
+              stop_groupings: [],
+              stops: stops,
+              parent_stops: []
+            }
+          })
+
+        :ok = StopView.apply_records(stop_view, [record.value])
+        length(stops)
+      end
+
+    Enum.sum(stop_counts)
+  end
+
+  # Stops a step apart along the first line of the route's path.
+  defp stop(route_id, route_index, stop_index) do
+    %{
+      id: "#{route_id}_#{stop_index}",
+      name: "University Way NE & NE 45th St",
+      lat:
+        @grid_south_degrees + rem(route_index, @grid_column_count) * @grid_step_degrees +
+          stop_index * @stop_step_degrees,
+      lon: @grid_west_degrees + stop_index * @stop_step_degrees,
+      code: "#{route_index}#{stop_index}",
+      direction: "NW",
+      location_type: 0,
+      parent: nil,
+      wheelchair_boarding: "ACCESSIBLE",
+      route_ids: [route_id]
+    }
   end
 
   defp route(route_id, agency_id) do

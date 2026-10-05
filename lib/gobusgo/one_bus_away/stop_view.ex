@@ -7,14 +7,17 @@ defmodule Gobusgo.OneBusAway.StopView do
   A view is a process registered under a name and a table of the same name.
   `apply_records/2` hands it record values, each the stops of one route's
   fetch as `Gobusgo.OneBusAway.RoutePathBatch.StopRecords` builds it;
-  `current/1`, `stop/2`, and `stop_count/1` read the table and never wait on
-  the process. The table holds each stop as one entry, so a reader sees a
+  `current/1`, `stop/2`, `stop_ids/1`, and `stop_count/1` read the table and
+  never wait on the process. The table holds each stop as one entry, so a reader sees a
   whole stop. A reader of several stops during a call of `apply_records/2`
   can see some of a fetch's stops before the others.
 
   When a call of `apply_records/2` holds or removes at least one stop, the
   view announces it once to the processes that called `subscribe/1`, as
-  `{:stop_view_switched, view}`, after the table reflects the call.
+  `{:stop_view_switched, view, change}`, after the table reflects the call.
+  `change` is a `t:change/0`: the identifiers of the stops the call left
+  held with new values and of the stops it left removed, so a subscriber
+  that follows the view reads those stops and no others.
 
   A record of another type is passed over and not counted. Any other value
   that is not a record is skipped, and a fetch that would hold more stops
@@ -36,6 +39,13 @@ defmodule Gobusgo.OneBusAway.StopView do
   alias Gobusgo.Publisher
 
   @call_timeout_ms 5_000
+
+  @typedoc """
+  What one call of `apply_records/2` changed, each list in identifier order.
+  An identifier is in one list: a stop the call held and then removed is
+  removed, and one it removed and then held is held.
+  """
+  @type change :: %{held_ids: [String.t()], removed_ids: [String.t()]}
 
   @doc """
   Starts a view registered under `options[:name]`, holding the stops of at
@@ -77,7 +87,8 @@ defmodule Gobusgo.OneBusAway.StopView do
   @doc """
   Subscribes the calling process to the switches of `view` on `pubsub`, the
   server the view was started with. Each call of `apply_records/2` that
-  holds or removes a stop arrives as one `{:stop_view_switched, view}`.
+  holds or removes a stop arrives as one
+  `{:stop_view_switched, view, change}`.
   """
   @spec subscribe(%{view: atom(), pubsub: atom()}) :: :ok
   def subscribe(%{view: view, pubsub: pubsub}) when is_atom(view) and is_atom(pubsub) do
@@ -121,6 +132,18 @@ defmodule Gobusgo.OneBusAway.StopView do
     end
   end
 
+  @doc """
+  Returns the identifier of every stop `view` holds, in identifier order,
+  without reading the stops. Returns `[]` while the view is not running.
+  """
+  @spec stop_ids(atom()) :: [String.t()]
+  def stop_ids(view) when is_atom(view) do
+    case :ets.whereis(view) do
+      :undefined -> []
+      table -> table |> :ets.select([{{:"$1", :_}, [], [:"$1"]}]) |> Enum.sort()
+    end
+  end
+
   @doc "Returns the number of stops `view` holds, `0` while the view is not running."
   @spec stop_count(atom()) :: non_neg_integer()
   def stop_count(view) when is_atom(view) do
@@ -155,17 +178,20 @@ defmodule Gobusgo.OneBusAway.StopView do
 
   @impl GenServer
   def handle_call({:apply_records, values}, _from, %{name: name} = server) do
-    counts = %{switched: 0, changed: 0, invalid: 0, refused: 0}
+    counts = %{switched: 0, held: MapSet.new(), removed: MapSet.new(), invalid: 0, refused: 0}
     {state, counts} = Enum.reduce(values, {server.state, counts}, &apply_value(&1, &2, server))
 
-    if counts.changed >= 1 do
+    if MapSet.size(counts.held) + MapSet.size(counts.removed) >= 1 do
       Logger.debug("Stop view switched",
         view: inspect(name),
         route_count: counts.switched,
         stop_count: State.stop_count(state)
       )
 
-      announce(server)
+      announce(server, %{
+        held_ids: Enum.sort(counts.held),
+        removed_ids: Enum.sort(counts.removed)
+      })
     end
 
     if counts.invalid >= 1 do
@@ -193,8 +219,20 @@ defmodule Gobusgo.OneBusAway.StopView do
           {state, {:switched, %{held_stops: held_stops, removed_ids: removed_ids}}} ->
             true = :ets.insert(table, Enum.map(held_stops, &{&1.id, &1}))
             Enum.each(removed_ids, &:ets.delete(table, &1))
-            changed = length(held_stops) + length(removed_ids)
-            {state, %{counts | switched: counts.switched + 1, changed: counts.changed + changed}}
+            held_ids = MapSet.new(held_stops, & &1.id)
+            removed_ids = MapSet.new(removed_ids)
+
+            # A fetch removes the stops its route dropped and then holds the
+            # stops it lists, so within one fetch the two sets are disjoint.
+            counts = %{
+              counts
+              | switched: counts.switched + 1,
+                held: counts.held |> MapSet.difference(removed_ids) |> MapSet.union(held_ids),
+                removed:
+                  counts.removed |> MapSet.difference(held_ids) |> MapSet.union(removed_ids)
+            }
+
+            {state, counts}
 
           {state, :ignored} ->
             {state, counts}
@@ -211,8 +249,8 @@ defmodule Gobusgo.OneBusAway.StopView do
     end
   end
 
-  defp announce(%{name: name, pubsub: pubsub}) do
-    case Phoenix.PubSub.broadcast(pubsub, topic(name), {:stop_view_switched, name}) do
+  defp announce(%{name: name, pubsub: pubsub}, change) do
+    case Phoenix.PubSub.broadcast(pubsub, topic(name), {:stop_view_switched, name, change}) do
       :ok ->
         :ok
 

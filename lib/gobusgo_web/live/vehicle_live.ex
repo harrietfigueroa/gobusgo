@@ -63,6 +63,16 @@ defmodule GobusgoWeb.VehicleLive do
   routes and the routes that are gone: every line when the browser sends
   `route-lines:ready`, and afterwards the lines whose version changed. A
   change of the filter sends the lines it adds and the routes it removes.
+
+  The page sends the browser the stops of `Gobusgo.OneBusAway.StopView`
+  that a route whose line it draws serves, as markers from
+  `GobusgoWeb.StopMarkers`. They reach the browser as `stop-markers:stops`
+  events, each holding the markers of some stops, the stops that are gone,
+  and whether the browser first drops every stop it has: every stop, after
+  a reset, when the browser sends `stop-markers:ready`, and afterwards the
+  stops the view's announcement names. A change of the filter, and a route
+  whose line appears or goes, sends every stop again after a reset. The
+  page keeps no stop, only whether the browser has asked.
   """
 
   use Phoenix.LiveView
@@ -78,7 +88,9 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.AgencyOptions
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.FilterParams
+  alias Gobusgo.OneBusAway.StopView
   alias GobusgoWeb.RouteLines
+  alias GobusgoWeb.StopMarkers
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
@@ -95,6 +107,7 @@ defmodule GobusgoWeb.VehicleLive do
       :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
       :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
       :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
+      :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
     end
 
     {:ok,
@@ -105,7 +118,8 @@ defmodule GobusgoWeb.VehicleLive do
        filter_supplied: false,
        agencies: agencies(),
        shown_request_ids: %{},
-       shown_route_versions: %{}
+       shown_route_versions: %{},
+       stops_ready: false
      )}
   end
 
@@ -143,7 +157,25 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_info({:fetch_view_switched, view}, socket)
       when view in [@route_view, @route_path_view] do
-    {:noreply, push_route_changes(socket)}
+    shown = socket.assigns.shown_route_versions
+    socket = push_route_changes(socket)
+
+    # A stop follows the lines: a route whose line appears or goes changes
+    # which stops are drawn.
+    if same_routes?(shown, socket.assigns.shown_route_versions) do
+      {:noreply, socket}
+    else
+      {:noreply, push_every_stop(socket)}
+    end
+  end
+
+  def handle_info({:stop_view_switched, StopView, change}, socket) do
+    %{held_ids: held_ids, removed_ids: removed_ids} = change
+
+    case socket.assigns.stops_ready do
+      true -> {:noreply, push_stops(socket, %{ids: held_ids, removed: removed_ids, reset: false})}
+      false -> {:noreply, socket}
+    end
   end
 
   @impl Phoenix.LiveView
@@ -178,6 +210,10 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("vehicle-markers:ready", _params, socket) do
     {:noreply, push_agencies(socket, every_agency_id(socket))}
+  end
+
+  def handle_event("stop-markers:ready", _params, socket) do
+    {:noreply, socket |> assign(stops_ready: true) |> push_every_stop()}
   end
 
   @impl Phoenix.LiveView
@@ -376,7 +412,10 @@ defmodule GobusgoWeb.VehicleLive do
     if filter == shown_filter do
       socket
     else
-      socket |> push_agencies(every_agency_id(socket)) |> push_route_changes()
+      socket
+      |> push_agencies(every_agency_id(socket))
+      |> push_route_changes()
+      |> push_every_stop()
     end
   end
 
@@ -513,4 +552,64 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   defp lines_only(chunks), do: for(lines <- chunks, do: %{lines: lines, removed: []})
+
+  defp same_routes?(shown, versions) do
+    if map_size(shown) == map_size(versions) do
+      Enum.all?(shown, fn {route_id, _version} -> is_map_key(versions, route_id) end)
+    else
+      false
+    end
+  end
+
+  # Until the browser asks for the stops it has no map to draw them on.
+  defp push_every_stop(%{assigns: %{stops_ready: false}} = socket), do: socket
+
+  defp push_every_stop(socket) do
+    push_stops(socket, %{ids: StopView.stop_ids(StopView), removed: [], reset: true})
+  end
+
+  # Sends the markers of the stops of `ids` that a drawn route serves, a
+  # bounded count an event, with the reset and the stops that are gone in
+  # the first event. A stop of `ids` that is not drawn goes out as gone,
+  # which a browser that never had it passes over, and which a reset makes
+  # needless. Each stop is read here and kept nowhere.
+  defp push_stops(socket, %{ids: ids, removed: removed, reset: reset}) do
+    route_ids = MapSet.new(Map.keys(socket.assigns.shown_route_versions))
+    route_names = StopMarkers.route_names(FetchView.current(@route_view))
+
+    {markers, undrawn} =
+      Enum.reduce(ids, {[], []}, fn id, {markers, undrawn} ->
+        held_stop = StopView.stop(StopView, id)
+
+        if held_stop != nil and StopMarkers.drawn?(%{held_stop: held_stop, route_ids: route_ids}) do
+          marker = StopMarkers.marker(%{held_stop: held_stop, route_names: route_names})
+          {[marker | markers], undrawn}
+        else
+          {markers, [id | undrawn]}
+        end
+      end)
+
+    removed =
+      case reset do
+        true -> []
+        false -> Enum.sort(removed ++ undrawn)
+      end
+
+    events =
+      case {StopMarkers.chunks(Enum.reverse(markers)), removed, reset} do
+        {[], [], false} ->
+          []
+
+        {[], removed, reset} ->
+          [%{stops: [], removed: removed, reset: reset}]
+
+        {[first | rest], removed, reset} ->
+          [%{stops: first, removed: removed, reset: reset}] ++ stops_only(rest)
+      end
+
+    Enum.reduce(events, socket, &push_event(&2, "stop-markers:stops", &1))
+  end
+
+  defp stops_only(chunks),
+    do: for(stops <- chunks, do: %{stops: stops, removed: [], reset: false})
 end
