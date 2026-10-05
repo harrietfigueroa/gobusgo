@@ -55,11 +55,12 @@ export function decodePolyline(points) {
 }
 
 // Every route's line as one GeoJSON collection: a multi-line per route, of
-// the pieces that have at least two points, with the color it is drawn in.
+// the pieces that have at least two points, with the color it is drawn in
+// and the names the route goes by, each null where the route has none.
 function featureCollection(linesByRoute) {
   const features = []
 
-  for (const [routeId, {color, polylines}] of linesByRoute) {
+  for (const [routeId, {color, shortName, longName, agencyName, polylines}] of linesByRoute) {
     const pieces = polylines
       .map(decodePolyline)
       .filter((coordinates) => coordinates.length >= linePointCountMin)
@@ -68,7 +69,7 @@ function featureCollection(linesByRoute) {
       features.push({
         type: "Feature",
         geometry: {type: "MultiLineString", coordinates: pieces},
-        properties: {routeId, color}
+        properties: {routeId, color, shortName, longName, agencyName}
       })
     }
   }
@@ -111,8 +112,14 @@ export const RouteLines = {
         this.linesByRoute.delete(routeId)
       }
 
-      for (const {id, color, polylines} of lines) {
-        this.linesByRoute.set(id, {color, polylines})
+      for (const line of lines) {
+        this.linesByRoute.set(line.id, {
+          color: line.color,
+          shortName: line.short_name,
+          longName: line.long_name,
+          agencyName: line.agency_name,
+          polylines: line.polylines
+        })
       }
 
       this.scheduleDraw()

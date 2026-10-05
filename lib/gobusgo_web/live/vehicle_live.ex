@@ -58,7 +58,9 @@ defmodule GobusgoWeb.VehicleLive do
   path view. A second element that shows
   nothing mounts the hook that draws them. A connected page subscribes to
   both route views, and keeps the version of each line it has sent, the
-  route's color and its path's fetch time, and no polyline. The lines reach
+  route's color, its names, and its path's fetch time, and no polyline. A
+  line names its agency as the agency view does, so a switch of the agency
+  view sends the lines whose agency's name changed. The lines reach
   the browser as `route-lines:routes` events, each holding the lines of some
   routes and the routes that are gone: every line when the browser sends
   `route-lines:ready`, and afterwards the lines whose version changed. A
@@ -146,7 +148,7 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def handle_info({:agency_view_switched, AgencyView}, socket) do
-    {:noreply, assign(socket, agencies: agencies())}
+    {:noreply, socket |> assign(agencies: agencies()) |> push_route_changes()}
   end
 
   def handle_info(
@@ -434,7 +436,7 @@ defmodule GobusgoWeb.VehicleLive do
         {agency_id, request_id}
       end
 
-    assign(socket, shown_request_ids: request_ids, shown_route_versions: route_versions(filter))
+    assign(socket, shown_request_ids: request_ids, shown_route_versions: route_versions(socket))
   end
 
   # Every agency that has a fetch, then every agency the map shows.
@@ -507,7 +509,7 @@ defmodule GobusgoWeb.VehicleLive do
 
   # The version of every line to draw: the routes the filter keeps of each
   # agency it keeps, an agency's routes being one fetch of the route view.
-  defp route_versions(filter) do
+  defp route_versions(%{assigns: %{filter: filter, agencies: agencies}}) do
     route_fetches =
       for %{id: agency_id, route_ids: route_ids} = fetch <- FetchView.current(@route_view),
           keeps_agency?(filter, agency_id) do
@@ -525,12 +527,13 @@ defmodule GobusgoWeb.VehicleLive do
 
     RouteLines.versions(%{
       route_fetches: route_fetches,
-      path_fetch_times: FetchView.fetch_times(@route_path_view)
+      path_fetch_times: FetchView.fetch_times(@route_path_view),
+      agency_names: Map.new(agencies, &{&1.id, &1.name})
     })
   end
 
-  defp push_route_changes(%{assigns: %{filter: filter, shown_route_versions: shown}} = socket) do
-    versions = route_versions(filter)
+  defp push_route_changes(%{assigns: %{shown_route_versions: shown}} = socket) do
+    versions = route_versions(socket)
     push_route_lines(socket, versions, RouteLines.changes(shown, versions))
   end
 
@@ -542,8 +545,7 @@ defmodule GobusgoWeb.VehicleLive do
       for route_id <- changed,
           path_fetch = FetchView.current_fetch(@route_path_view, route_id),
           path_fetch != nil do
-        {color, _fetched_at} = Map.fetch!(versions, route_id)
-        RouteLines.line(%{color: color, path_fetch: path_fetch})
+        RouteLines.line(%{version: Map.fetch!(versions, route_id), path_fetch: path_fetch})
       end
 
     events =
