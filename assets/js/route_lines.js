@@ -1,4 +1,5 @@
 import {readyEventName} from "./basemap"
+import {attachRouteHover} from "./route_hover"
 
 const sourceName = "route-lines"
 const layerName = "route-lines"
@@ -99,10 +100,10 @@ export const RouteLines = {
     this.drawTimer = null
 
     this.onBasemapReady = (event) => {
-      const {map} = event.detail
+      const {map, maplibre} = event.detail
       this.map = null
       // The map takes sources and layers once its style has loaded.
-      map.once("load", () => { this.attach(map) })
+      map.once("load", () => { this.attach(map, maplibre) })
     }
 
     window.addEventListener(readyEventName, this.onBasemapReady)
@@ -128,7 +129,7 @@ export const RouteLines = {
     this.pushEvent("route-lines:ready", {})
   },
 
-  attach(map) {
+  attach(map, maplibre) {
     map.addSource(sourceName, {type: "geojson", data: featureCollection(this.linesByRoute)})
 
     map.addLayer({
@@ -143,6 +144,7 @@ export const RouteLines = {
       }
     }, firstSymbolLayerName(map))
 
+    attachRouteHover({map, maplibre, layerName})
     this.map = map
   },
 
