@@ -30,18 +30,18 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
      Map.merge(fetch, %{vehicle_ids: vehicle_ids, data_sha256: "hash", destination: "raw/file"})}
   end
 
+  # Applies the records in order. Returns the state, the name of each
+  # outcome, and the fetch each agency was last switched to.
   defp put_all(state, records) do
-    Enum.reduce(records, {state, []}, fn record, {state, outcomes} ->
-      {state, outcome} = State.put(state, record)
-      {state, outcomes ++ [outcome]}
-    end)
-  end
+    Enum.reduce(records, {state, [], %{}}, fn record, {state, names, fetches} ->
+      case State.put(state, record) do
+        {state, {:switched, fetch}} ->
+          {state, names ++ [:switched], Map.put(fetches, fetch.agency_id, fetch)}
 
-  defp current_ids(state, agency_id) do
-    case State.current(state) do
-      %{^agency_id => %{vehicle_ids: vehicle_ids}} -> vehicle_ids
-      _no_fetch -> nil
-    end
+        {state, name} ->
+          {state, names ++ [name], fetches}
+      end
+    end)
   end
 
   describe "current/1" do
@@ -52,14 +52,15 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
 
   describe "put/2 completing a fetch" do
     test "holds vehicle records until their manifest arrives" do
-      {state, outcomes} = put_all(State.new(), [vehicle("a", @first), vehicle("b", @first)])
+      {state, outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @first), vehicle("b", @first)])
 
       assert outcomes == [:held, :held]
       assert State.current(state) == %{}
     end
 
     test "switches the agency to a fetch when its manifest arrives after its vehicles" do
-      {state, outcomes} =
+      {_state, outcomes, fetches} =
         put_all(State.new(), [
           vehicle("b", @first),
           vehicle("a", @first),
@@ -68,7 +69,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
 
       assert outcomes == [:held, :held, :switched]
 
-      assert State.current(state) == %{
+      assert fetches == %{
                "1" => %{
                  agency_id: "1",
                  request_id: @first.request_id,
@@ -79,8 +80,24 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
              }
     end
 
+    test "keeps the request and the fetch time of the fetch it switched to, and no vehicle" do
+      {state, _outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @first), manifest(["a"], @first)])
+
+      assert State.current(state) == %{
+               "1" => %{request_id: @first.request_id, fetched_at: @first.fetched_at}
+             }
+    end
+
+    test "forgets the vehicles of a fetch once it has switched to it" do
+      {state, _outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @first), manifest(["a"], @first)])
+
+      assert state.held == %{}
+    end
+
     test "holds a manifest that arrives first and switches on its last vehicle" do
-      {state, outcomes} =
+      {_state, outcomes, fetches} =
         put_all(State.new(), [
           manifest(["a", "b"], @first),
           vehicle("a", @first),
@@ -88,27 +105,26 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
         ])
 
       assert outcomes == [:held, :held, :switched]
-      assert current_ids(state, "1") == ["a", "b"]
+      assert fetches["1"].vehicle_ids == ["a", "b"]
     end
 
     test "switches on the manifest alone for a fetch without vehicles" do
-      {state, outcome} = State.put(State.new(), manifest([], @first))
+      {_state, outcome} = State.put(State.new(), manifest([], @first))
 
-      assert outcome == :switched
-      assert current_ids(state, "1") == []
+      assert {:switched, %{agency_id: "1", vehicle_ids: [], vehicles: %{}}} = outcome
     end
 
     test "leaves a vehicle the manifest does not name out of the fetch" do
-      {state, _outcomes} =
+      {_state, _outcomes, fetches} =
         put_all(State.new(), [vehicle("a", @first), vehicle("z", @first), manifest(["a"], @first)])
 
-      assert Map.keys(State.current(state)["1"].vehicles) == ["a"]
+      assert Map.keys(fetches["1"].vehicles) == ["a"]
     end
   end
 
   describe "put/2 with a later fetch of the same agency" do
     setup do
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [
           vehicle("a", @first),
           vehicle("b", @first),
@@ -119,24 +135,27 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     end
 
     test "keeps the current fetch while the later one misses a vehicle", %{state: state} do
-      {state, outcomes} = put_all(state, [vehicle("a", @second), manifest(["a", "b"], @second)])
+      {state, outcomes, _fetches} =
+        put_all(state, [vehicle("a", @second), manifest(["a", "b"], @second)])
 
       assert outcomes == [:held, :held]
       assert State.current(state)["1"].request_id == @first.request_id
     end
 
     test "drops a vehicle the later fetch no longer names", %{state: state} do
-      {state, outcomes} = put_all(state, [vehicle("a", @second), manifest(["a"], @second)])
+      {state, outcomes, fetches} =
+        put_all(state, [vehicle("a", @second), manifest(["a"], @second)])
 
       assert outcomes == [:held, :switched]
       assert State.current(state)["1"].request_id == @second.request_id
-      assert current_ids(state, "1") == ["a"]
+      assert fetches["1"].vehicle_ids == ["a"]
     end
 
     test "switches to a fetch with the same fetch time and another request", %{state: state} do
       same_time = %{@second | fetched_at: @first.fetched_at}
 
-      {state, outcomes} = put_all(state, [vehicle("a", same_time), manifest(["a"], same_time)])
+      {state, outcomes, _fetches} =
+        put_all(state, [vehicle("a", same_time), manifest(["a"], same_time)])
 
       assert outcomes == [:held, :switched]
       assert State.current(state)["1"].request_id == same_time.request_id
@@ -145,20 +164,22 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
 
   describe "put/2 with fetches of two agencies" do
     setup do
-      {state, _outcomes} = put_all(State.new(), [vehicle("a", @second), manifest(["a"], @second)])
+      {state, _outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @second), manifest(["a"], @second)])
+
       %{state: state}
     end
 
     test "switches another agency to a fetch older than this agency's", %{state: state} do
-      {state, outcomes} =
+      {_state, outcomes, fetches} =
         put_all(state, [vehicle("x", @other_agency), manifest(["x"], @other_agency)])
 
       assert outcomes == [:held, :switched]
-      assert current_ids(state, "40") == ["x"]
+      assert fetches["40"].vehicle_ids == ["x"]
     end
 
     test "keeps this agency's fetch when another agency switches", %{state: state} do
-      {after_state, _outcomes} =
+      {after_state, _outcomes, _fetches} =
         put_all(state, [vehicle("x", @other_agency), manifest(["x"], @other_agency)])
 
       assert State.current(after_state)["1"] == State.current(state)["1"]
@@ -167,7 +188,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     test "keeps another agency's held fetch when this agency switches" do
       later = %{@second | request_id: "0199c4a2-7e1b-7a3f-9d20-000000000003"}
 
-      {state, outcomes} =
+      {_state, outcomes, fetches} =
         put_all(State.new(), [
           vehicle("x", @other_agency),
           vehicle("a", later),
@@ -176,25 +197,29 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
         ])
 
       assert outcomes == [:held, :held, :switched, :switched]
-      assert current_ids(state, "40") == ["x"]
+      assert fetches["40"].vehicle_ids == ["x"]
     end
   end
 
   describe "put/2 ignoring records" do
     setup do
-      {state, _outcomes} = put_all(State.new(), [vehicle("a", @second), manifest(["a"], @second)])
+      {state, _outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @second), manifest(["a"], @second)])
+
       %{state: state}
     end
 
     test "ignores the records of a fetch older than the agency's current one", %{state: state} do
-      {after_state, outcomes} = put_all(state, [vehicle("b", @first), manifest(["b"], @first)])
+      {after_state, outcomes, _fetches} =
+        put_all(state, [vehicle("b", @first), manifest(["b"], @first)])
 
       assert outcomes == [:ignored, :ignored]
       assert Map.take(after_state, [:current, :held]) == Map.take(state, [:current, :held])
     end
 
     test "ignores the records of the current fetch published again", %{state: state} do
-      {after_state, outcomes} = put_all(state, [vehicle("a", @second), manifest(["a"], @second)])
+      {after_state, outcomes, _fetches} =
+        put_all(state, [vehicle("a", @second), manifest(["a"], @second)])
 
       assert outcomes == [:ignored, :ignored]
       assert after_state == state
@@ -227,7 +252,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
           }
         end
 
-      {state, _outcomes} = put_all(State.new(), Enum.map(fetches, &vehicle("a", &1)))
+      {state, _outcomes, _fetches} = put_all(State.new(), Enum.map(fetches, &vehicle("a", &1)))
       oldest = hd(fetches)
 
       {state, outcome} = State.put(state, manifest(["a"], oldest))
@@ -237,7 +262,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     end
 
     test "forgets the agency's held fetches older than the one it switches to" do
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [
           vehicle("a", @first),
           vehicle("a", @second),
@@ -262,7 +287,8 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
 
   describe "last_seen/1" do
     test "holds the fetch time of each vehicle record, before its fetch is complete" do
-      {state, _outcomes} = put_all(State.new(), [vehicle("a", @first), vehicle("b", @first)])
+      {state, _outcomes, _fetches} =
+        put_all(State.new(), [vehicle("a", @first), vehicle("b", @first)])
 
       assert State.last_seen(state) == %{
                "1" => %{"a" => @first.fetched_at, "b" => @first.fetched_at}
@@ -270,7 +296,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     end
 
     test "keeps the newest fetch time of a vehicle, whatever the order of its records" do
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [vehicle("a", @second), vehicle("a", @first), vehicle("b", @first)])
 
       assert State.last_seen(state) == %{
@@ -279,7 +305,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     end
 
     test "keeps a vehicle the newer current fetch does not name, within the grace period" do
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [
           vehicle("a", @first),
           vehicle("b", @first),
@@ -297,7 +323,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     test "forgets a vehicle that has expired at the new current fetch" do
       late = %{@second | fetched_at: DateTime.add(@first.fetched_at, 300_001, :millisecond)}
 
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [
           vehicle("a", @first),
           vehicle("b", @first),
@@ -312,7 +338,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.StateTest do
     test "keeps the vehicles of other agencies when one agency switches" do
       late = %{@second | fetched_at: DateTime.add(@first.fetched_at, 3_600, :second)}
 
-      {state, _outcomes} =
+      {state, _outcomes, _fetches} =
         put_all(State.new(), [
           vehicle("x", @other_agency),
           vehicle("a", late),

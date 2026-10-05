@@ -4,6 +4,10 @@ defmodule Gobusgo.OneBusAway.VehicleView do
   readers. This module owns the process and the table; the rules that decide
   which fetch is current live in `Gobusgo.OneBusAway.VehicleView.State`.
 
+  The table is the only place that holds a current fetch: the process keeps
+  the vehicles of a fetch until it is complete and writes the complete fetch
+  to the table.
+
   A view is a process registered under a name and a table of the same name.
   `apply_records/2` hands it record values, the bytes
   `Gobusgo.OneBusAway.VehicleBatch.Records` builds; `current/1` reads the
@@ -175,20 +179,19 @@ defmodule Gobusgo.OneBusAway.VehicleView do
 
   @impl GenServer
   def handle_call({:apply_records, values}, _from, %{table: table, state: state} = server) do
-    counts = %{switched_agency_ids: [], seen_agency_ids: [], invalid: 0}
+    counts = %{switched_fetches: %{}, seen_agency_ids: [], invalid: 0}
     {state, counts} = Enum.reduce(values, {state, counts}, &apply_value/2)
-    switched_agency_ids = Enum.uniq(counts.switched_agency_ids)
-    seen_agency_ids = Enum.uniq(counts.seen_agency_ids ++ switched_agency_ids)
+    %{switched_fetches: switched_fetches} = counts
+    seen_agency_ids = Enum.uniq(counts.seen_agency_ids ++ Map.keys(switched_fetches))
     last_seen = state |> State.last_seen() |> Map.take(seen_agency_ids)
     true = :ets.insert(table, for({id, seen} <- last_seen, do: {{:last_seen, id}, seen}))
 
-    if switched_agency_ids != [] do
-      fetches = state |> State.current() |> Map.take(switched_agency_ids)
-      true = :ets.insert(table, for({id, fetch} <- fetches, do: {{:current, id}, fetch}))
+    if map_size(switched_fetches) >= 1 do
+      true = :ets.insert(table, for({id, fetch} <- switched_fetches, do: {{:current, id}, fetch}))
 
       Logger.info("Vehicle view switched",
-        agency_count: map_size(fetches),
-        vehicle_count: fetches |> Map.values() |> Enum.sum_by(&length(&1.vehicle_ids))
+        agency_count: map_size(switched_fetches),
+        vehicle_count: switched_fetches |> Map.values() |> Enum.sum_by(&length(&1.vehicle_ids))
       )
 
       announce(server)
@@ -219,8 +222,15 @@ defmodule Gobusgo.OneBusAway.VehicleView do
         counts = see(counts, kind, agency_id)
 
         case State.put(state, decoded) do
-          {state, :switched} ->
-            {state, %{counts | switched_agency_ids: [agency_id | counts.switched_agency_ids]}}
+          {state, {:switched, %{agency_id: fetch_agency_id} = fetch}} ->
+            Assert.condition(
+              fetch_agency_id == agency_id,
+              "fetch must be of the record's agency #{inspect(agency_id)}, got: #{inspect(fetch_agency_id)}"
+            )
+
+            # A later fetch of the agency in the same call replaces this one.
+            {state,
+             %{counts | switched_fetches: Map.put(counts.switched_fetches, agency_id, fetch)}}
 
           {state, _outcome} ->
             {state, counts}
