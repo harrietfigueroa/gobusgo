@@ -40,6 +40,20 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
   def normalize(raw) when is_map(raw), do: Filter.normalize(%{raw: raw, spec: @spec_fields})
 
   @doc """
+  Whether `filter` keeps any vehicle of a fetch of the agency `agency_id`,
+  whatever the fetch holds. A fetch of an agency it does not keep has no
+  vehicle to read.
+  """
+  @spec keeps_agency?(%{filter: Filter.t(), agency_id: String.t()}) :: boolean()
+  def keeps_agency?(%{filter: filter, agency_id: agency_id})
+      when is_map(filter) and is_binary(agency_id) do
+    Filter.matches?(%{
+      filter: Map.take(filter, [@agency_field]),
+      values: %{@agency_field => agency_id}
+    })
+  end
+
+  @doc """
   Returns `fetch`, one agency's fetch, with only the vehicles that match
   `filter`, in the fetch's vehicle order. A fetch none of whose vehicles
   match is returned with no vehicle. Raises

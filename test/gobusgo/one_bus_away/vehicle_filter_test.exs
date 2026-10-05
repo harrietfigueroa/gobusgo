@@ -86,6 +86,21 @@ defmodule Gobusgo.OneBusAway.VehicleFilterTest do
     end
   end
 
+  describe "keeps_agency?/1" do
+    for {description, filter, kept} <- [
+          {"the empty filter", %{}, true},
+          {"a filter that names the agency", %{"agency" => ["1", "40"]}, true},
+          {"a filter that names other agencies", %{"agency" => ["1"]}, false}
+        ] do
+      test "is #{kept} for #{description}" do
+        assert VehicleFilter.keeps_agency?(%{
+                 filter: unquote(Macro.escape(filter)),
+                 agency_id: "40"
+               }) == unquote(kept)
+      end
+    end
+  end
+
   test "is an adapter of the filter contract" do
     behaviours = VehicleFilter.module_info(:attributes)[:behaviour]
 

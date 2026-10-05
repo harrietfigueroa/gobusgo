@@ -464,7 +464,7 @@ Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `ag
 
 ## Vehicle filter
 
-`Gobusgo.OneBusAway.VehicleFilter` is the vehicle adapter of the filter contract in `Gobusgo.Filter`, and is pure. Its one field is `agency`, the identifier of the agency whose fetch holds the vehicle. `normalize/1` judges a raw filter under that field, and `filter_fetch/1` returns one agency's fetch with only the vehicles a filter keeps, so a fetch of an agency the filter leaves out comes back with its request identifier and fetch time and no vehicle. A further field is one entry in the specification and one in `values/1`. The decisions are recorded in GOB-113 and GOB-114.
+`Gobusgo.OneBusAway.VehicleFilter` is the vehicle adapter of the filter contract in `Gobusgo.Filter`, and is pure. Its one field is `agency`, the identifier of the agency whose fetch holds the vehicle. `normalize/1` judges a raw filter under that field, `keeps_agency?/1` says whether a filter keeps any vehicle of an agency, so a caller can leave the fetch of another agency unread, and `filter_fetch/1` returns one agency's fetch with only the vehicles a filter keeps, so a fetch of an agency the filter leaves out comes back with its request identifier and fetch time and no vehicle. A further field is one entry in the specification and one in `values/1`. The decisions are recorded in GOB-113 and GOB-114.
 
 ## Route records and route views
 
