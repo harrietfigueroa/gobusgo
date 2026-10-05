@@ -1,7 +1,8 @@
 defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
   # Mounts the vehicle page with Phoenix.LiveViewTest over a basemap manifest
-  # the test writes to its temporary directory and the application's two
-  # route views, filled with the record values their records modules build.
+  # the test writes to its temporary directory and the application's agency
+  # view and two route views, filled with the record values their records
+  # modules build.
   # All are global state, hence the non-async case. The browser draws the
   # lines, so these tests observe what the page hands it: the events that
   # carry the routes' lines, and the element the line hook mounts on.
@@ -10,6 +11,8 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Gobusgo.OneBusAway.AgencyBatch
+  alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
@@ -47,7 +50,7 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
   end
 
   defp restart_views do
-    for view <- [@route_view, @route_path_view] do
+    for view <- [AgencyView, @route_view, @route_path_view] do
       :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
       {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
     end
@@ -57,8 +60,37 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
     "0199c4a2-7e1b-7a3f-9d20-" <> String.pad_leading(Integer.to_string(sequence), 12, "0")
   end
 
-  # Publishes a fetch of the routes of `agency_id`, each `{id, color}`;
-  # `sequence` orders the fetches of a test.
+  # Publishes a fetch of agencies, each `{id, name}`; `sequence` orders the
+  # fetches of a test.
+  defp apply_agencies(agencies, sequence) do
+    %{agencies: records, manifest: manifest} =
+      AgencyBatch.Records.build(%{
+        destination: "raw/oba/agencies-with-coverage/dt=2026-10-05/file.json.gz",
+        fetched_at: DateTime.add(@fetched_at, sequence, :second),
+        data_sha256: String.duplicate("ab", 32),
+        request_id: request_id(sequence),
+        agencies:
+          for {id, name} <- agencies do
+            %{
+              id: id,
+              name: name,
+              url: "https://agency-#{id}.example.test",
+              timezone: "America/Los_Angeles",
+              coverage: %{lat: 47.5, lon: -122.25, lat_span: 0.5, lon_span: 0.75}
+            }
+          end
+      })
+
+    :ok = AgencyView.apply_records(AgencyView, Enum.map(records ++ [manifest], & &1.value))
+  end
+
+  # A route is `{id, color}`, or `{id, color, names}` for one that has a
+  # short name or a long name.
+  defp route_names({id, color}), do: {id, color, %{}}
+  defp route_names({id, color, names}), do: {id, color, names}
+
+  # Publishes a fetch of the routes of `agency_id`; `sequence` orders the
+  # fetches of a test.
   defp apply_routes(routes, %{agency_id: agency_id, sequence: sequence}) do
     record =
       RouteBatch.Records.build(%{
@@ -68,12 +100,12 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
         data_sha256: String.duplicate("ab", 32),
         request_id: request_id(sequence),
         routes:
-          for {id, color} <- routes do
+          for {id, color, names} <- Enum.map(routes, &route_names/1) do
             %{
               id: id,
               agency_id: agency_id,
-              short_name: nil,
-              long_name: nil,
+              short_name: Map.get(names, :short_name),
+              long_name: Map.get(names, :long_name),
               description: nil,
               type: 3,
               color: color,
@@ -141,10 +173,43 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
 
       assert_push_event(view, @event, %{lines: lines, removed: []})
 
-      assert lines == [
+      assert [
                %{id: "1_1", color: "#FDB71A", polylines: [@points]},
                %{id: "40_1", color: "#28813F", polylines: [@points, "}xmaHxf}iVchAo|FKW"]}
-             ]
+             ] = lines
+    end
+
+    test "is answered with each route's names and its agency's name" do
+      apply_agencies([{"40", "Sound Transit"}], 1)
+      names = %{short_name: "1 Line", long_name: "Lynnwood - Federal Way"}
+      apply_routes([{"40_1", "28813F", names}], %{agency_id: "40", sequence: 2})
+      apply_path([@points], %{route_id: "40_1", sequence: 3})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{lines: [line]})
+
+      assert line == %{
+               id: "40_1",
+               color: "#28813F",
+               short_name: "1 Line",
+               long_name: "Lynnwood - Federal Way",
+               agency_name: "Sound Transit",
+               polylines: [@points]
+             }
+    end
+
+    test "is answered with no name for a route that has none, of an agency the view lacks" do
+      apply_routes([{"40_1", nil}], %{agency_id: "40", sequence: 1})
+      apply_path([@points], %{route_id: "40_1", sequence: 2})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{
+        lines: [%{id: "40_1", short_name: nil, long_name: nil, agency_name: nil}]
+      })
     end
 
     test "is answered with the default color for a route that has none" do
@@ -223,9 +288,19 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
 
       assert_push_event(view, @event, %{lines: lines, removed: []})
 
-      assert lines == [
-               %{id: "40_2", color: RouteLines.default_color(), polylines: ["}xmaHxf}iVchAo|FKW"]}
-             ]
+      default_color = RouteLines.default_color()
+
+      assert [%{id: "40_2", color: ^default_color, polylines: ["}xmaHxf}iVchAo|FKW"]}] = lines
+    end
+
+    test "sends the line of a route of which only a name changed, and no other", %{view: view} do
+      apply_routes([{"40_1", "28813F"}, {"40_2", nil, %{short_name: "2 Line"}}], %{
+        agency_id: "40",
+        sequence: 4
+      })
+
+      assert_push_event(view, @event, %{lines: lines, removed: []})
+      assert [%{id: "40_2", short_name: "2 Line", polylines: [@points]}] = lines
     end
 
     test "sends the line of a route whose color changed", %{view: view} do
@@ -255,6 +330,33 @@ defmodule GobusgoWeb.VehicleLiveRouteLinesTest do
 
     test "sends nothing for a fetch that changes no line", %{view: view} do
       apply_routes([{"40_1", "28813F"}, {"40_2", nil}], %{agency_id: "40", sequence: 4})
+
+      refute_push_event(view, @event, _payload, @push_wait_ms)
+    end
+  end
+
+  describe "a switch of the agency view" do
+    setup do
+      apply_agencies([{"40", "Sound Transit"}, {"1", "Metro Transit"}], 1)
+      apply_routes([{"40_1", nil}], %{agency_id: "40", sequence: 2})
+      apply_routes([{"1_1", nil}], %{agency_id: "1", sequence: 3})
+      apply_path([@points], %{route_id: "40_1", sequence: 4})
+      apply_path([@points], %{route_id: "1_1", sequence: 5})
+      view = open_page()
+      ready(view)
+      assert_push_event(view, @event, %{lines: [_first, _second]})
+      %{view: view}
+    end
+
+    test "sends the lines of the agency whose name changed, and no other", %{view: view} do
+      apply_agencies([{"40", "Sound Transit Express"}, {"1", "Metro Transit"}], 6)
+
+      assert_push_event(view, @event, %{lines: lines, removed: []})
+      assert [%{id: "40_1", agency_name: "Sound Transit Express"}] = lines
+    end
+
+    test "sends nothing when no agency's name changed", %{view: view} do
+      apply_agencies([{"40", "Sound Transit"}, {"1", "Metro Transit"}], 6)
 
       refute_push_event(view, @event, _payload, @push_wait_ms)
     end
