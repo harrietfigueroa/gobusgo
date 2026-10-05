@@ -489,7 +489,7 @@ Both events go to `oba.routes.response-stored` and both records to `oba.routes.s
 - A fetch replaces its identifier's current one unless it is the same request or older. The fetch of an identifier beyond the view's bound is ignored.
 - `current/1` returns every fetch in identifier order, `current_fetch/2` one identifier's, and `fetch_times/1` the fetch time of each identifier without reading the fetches. All three read the table and return nothing while the view is not running.
 - A call that switches at least one identifier announces `{:fetch_view_switched, view}` once to the processes that called `subscribe/1`.
-- Each view has a `Gobusgo.Kafka.TopicSubscriber` of its own on `oba.routes.state`. Under test, `FetchView.apply_records_to_each/2` hands the topic's records to both views.
+- One `Gobusgo.Kafka.TopicSubscriber` reads `oba.routes.state` and hands each batch to both views through `FetchView.apply_records_to_each/2`, as the in-process publisher does under test. A subscriber per view on the one client left each view with the records of some partitions: 6 of 12 agencies and 261 of 391 paths against the local broker on 2026-10-05, and a route source that fetched the missing ones again on every run (GOB-143).
 
 The paths of a route whose agency no longer lists it stay in the path view and in the topic; nothing removes them.
 

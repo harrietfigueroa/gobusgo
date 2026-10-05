@@ -33,6 +33,51 @@ defmodule Gobusgo.Kafka.TopicSubscriberTest do
     end
   end
 
+  describe "child_specs/2" do
+    @first %{
+      name: FirstSubscriber,
+      topic: "first.state",
+      subscriber: {Recipient, :deliver, [nil]}
+    }
+    @second %{
+      name: SecondSubscriber,
+      topic: "second.state",
+      subscriber: {Recipient, :deliver, [nil]}
+    }
+
+    test "returns one child per subscriber, on the client, under the subscriber's name" do
+      assert [first, second] = TopicSubscriber.child_specs(SomeClient, [@first, @second])
+
+      assert first == %{
+               id: FirstSubscriber,
+               start:
+                 {TopicSubscriber, :start_link,
+                  [
+                    [
+                      name: FirstSubscriber,
+                      client: SomeClient,
+                      topic: "first.state",
+                      subscriber: {Recipient, :deliver, [nil]}
+                    ]
+                  ]}
+             }
+
+      assert second.id == SecondSubscriber
+    end
+
+    test "returns no child for no subscriber" do
+      assert TopicSubscriber.child_specs(SomeClient, []) == []
+    end
+
+    test "raises when two subscribers name one topic" do
+      twin = %{@second | topic: "first.state"}
+
+      assert_raise Gobusgo.Assert.AssertionError, ~r/first\.state/, fn ->
+        TopicSubscriber.child_specs(SomeClient, [@first, twin])
+      end
+    end
+  end
+
   describe "without a broker" do
     test "stays up, retries, and logs the first stop once while its client is not running" do
       log =

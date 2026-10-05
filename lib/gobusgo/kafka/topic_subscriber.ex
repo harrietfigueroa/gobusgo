@@ -8,6 +8,13 @@ defmodule Gobusgo.Kafka.TopicSubscriber do
   joins no consumer group and commits no offset, so each running instance
   reads the whole topic.
 
+  A client takes one subscriber per topic. A client has one consumer per
+  partition of a topic, and a subscriber stops them when it starts, so two
+  subscribers of one topic on one client take each other's partitions and
+  each is handed a part of the records. A topic several receivers read has
+  one subscriber whose function hands the values to each of them, and
+  `child_specs/2` refuses a topic named twice.
+
   A tombstone, a record without a value, is not handed over. The values of
   one partition arrive in offset order, at most
   `:value_count_max` per call; the order across partitions is not defined.
@@ -105,6 +112,31 @@ defmodule Gobusgo.Kafka.TopicSubscriber do
 
   def child_spec(options) do
     %{id: Keyword.fetch!(options, :name), start: {__MODULE__, :start_link, [options]}}
+  end
+
+  @doc """
+  Returns the child specification of one subscriber on `client` for each of
+  `subscribers`, each with its `:name`, its `:topic`, and its `:subscriber`
+  function. Raises `Gobusgo.Assert.AssertionError` when two of them name one
+  topic.
+  """
+  @spec child_specs(atom(), [%{name: atom(), topic: String.t(), subscriber: mfa_arguments}]) ::
+          [Supervisor.child_spec()]
+        when mfa_arguments: {module(), atom(), [term()]}
+  def child_specs(client, subscribers) when is_atom(client) and is_list(subscribers) do
+    repeated =
+      subscribers
+      |> Enum.frequencies_by(& &1.topic)
+      |> Enum.find_value(fn {topic, count} -> if count > 1, do: topic end)
+
+    Assert.condition(
+      repeated == nil,
+      "a topic takes one subscriber on a client, got several for: #{inspect(repeated)}"
+    )
+
+    for %{name: name, topic: topic, subscriber: subscriber} <- subscribers do
+      child_spec(name: name, client: client, topic: topic, subscriber: subscriber)
+    end
   end
 
   @impl GenServer

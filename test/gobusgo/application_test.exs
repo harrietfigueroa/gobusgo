@@ -3,6 +3,22 @@ defmodule Gobusgo.ApplicationTest do
   # supervisor starts are alive, in the order they depend on each other.
   use ExUnit.Case, async: true
 
+  test "one subscriber reads the route state topic and hands its records to both route views" do
+    subscribers = Gobusgo.Application.topic_subscribers()
+
+    assert [route_state] = Enum.filter(subscribers, &(&1.topic == "oba.routes.state"))
+
+    assert route_state.subscriber ==
+             {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
+              [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]}
+  end
+
+  test "no two topic subscribers read one topic" do
+    topics = Enum.map(Gobusgo.Application.topic_subscribers(), & &1.topic)
+
+    assert topics == Enum.uniq(topics)
+  end
+
   test "the supervision tree is running" do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
