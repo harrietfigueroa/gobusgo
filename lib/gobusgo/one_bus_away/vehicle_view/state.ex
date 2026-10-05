@@ -16,6 +16,11 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
   holds exactly the vehicles its manifest names, and a fetch of one agency
   leaves the current fetch of every other agency as it is.
 
+  The state keeps the vehicles of a fetch only until the fetch is complete.
+  `put/2` hands the complete fetch over with its outcome, and the state
+  keeps the request identifier and the fetch time of each agency's current
+  fetch, which is all its rules read.
+
   A record is ignored when its fetch is its agency's current one or is older
   than it, so records published again change nothing and an old fetch never
   replaces a newer one. A fetch with the same fetch time as the agency's
@@ -55,6 +60,9 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
           vehicles: %{String.t() => vehicle()}
         }
 
+  @typedoc "What the state keeps of an agency's current fetch."
+  @type header :: %{request_id: RequestId.t(), fetched_at: DateTime.t()}
+
   @type held :: %{
           agency_id: String.t(),
           fetched_at: DateTime.t(),
@@ -65,12 +73,18 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
   @type last_seen :: %{String.t() => DateTime.t()}
 
   @type t :: %{
-          current: %{String.t() => fetch()},
+          current: %{String.t() => header()},
           held: %{RequestId.t() => held()},
           last_seen: %{String.t() => last_seen()}
         }
 
-  @type outcome :: :held | :switched | :ignored
+  @typedoc """
+    * `:held` — the record's fetch is not complete yet.
+    * `{:switched, fetch}` — the record completed `fetch`, which is now its
+      agency's current fetch.
+    * `:ignored` — the record changed nothing.
+  """
+  @type outcome :: :held | {:switched, fetch()} | :ignored
 
   @doc "A view with no current fetch and nothing held."
   @spec new() :: t()
@@ -116,8 +130,11 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
   @spec held_fetch_count_max() :: pos_integer()
   def held_fetch_count_max, do: @held_fetch_count_max
 
-  @doc "The current fetch of every agency that has one, by agency identifier."
-  @spec current(t()) :: %{String.t() => fetch()}
+  @doc """
+  The request identifier and the fetch time of the current fetch of every
+  agency that has one, by agency identifier.
+  """
+  @spec current(t()) :: %{String.t() => header()}
   def current(%{current: current}), do: current
 
   @doc "Applies one decoded record and says what became of it."
@@ -209,7 +226,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
 
   defp settle(state, request_id, fetch) do
     if complete?(fetch) do
-      {switch(state, request_id, fetch), :switched}
+      switch(state, request_id, fetch)
     else
       held = state.held |> Map.put(request_id, fetch) |> bound()
       {%{state | held: held}, :held}
@@ -230,7 +247,7 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
       |> Map.get(agency_id, %{})
       |> Map.reject(fn {_id, seen_at} -> expired?(seen_at, fetch.fetched_at) end)
 
-    agency_current = %{
+    switched = %{
       agency_id: agency_id,
       request_id: request_id,
       fetched_at: fetch.fetched_at,
@@ -243,11 +260,14 @@ defmodule Gobusgo.OneBusAway.VehicleView.State do
       |> Map.delete(request_id)
       |> Map.reject(fn {_request_id, other} -> older_of_agency?(other, fetch) end)
 
-    %{
-      current: Map.put(current, agency_id, agency_current),
+    state = %{
+      current:
+        Map.put(current, agency_id, %{request_id: request_id, fetched_at: fetch.fetched_at}),
       held: held,
       last_seen: Map.put(last_seen, agency_id, agency_last_seen)
     }
+
+    {state, {:switched, switched}}
   end
 
   defp older_of_agency?(%{agency_id: agency_id} = other, %{agency_id: agency_id} = fetch) do
