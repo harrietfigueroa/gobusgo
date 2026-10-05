@@ -320,6 +320,16 @@ Whether twelve fetches fit the 4-second budget against the live server is not me
 
 With the 12 agencies and 391 routes of 2026-10-05, a first start records the 12 route lists in its first cycle and the 391 paths over the nine cycles after it, and from then on about one item every three and a half minutes. On the first day each item is fetched twice, at the fill and when its slot first comes. This is not measured against the live server.
 
+`Gobusgo.OneBusAway.RouteBackfill.run/2` fetches the same items once, due or not: the routes of every agency, then the stops and paths of every route those agencies list, read back from the responses it stored. `mix gobusgo.routes.backfill` calls it with a request gate and a Kafka client of its own, and does not start the application, so the task and a running application each pace their own requests against the one key.
+
+- One request starts every second, the request for the agencies and every repeated request included.
+- A request answered with 429, or one the request gate gives no permit, is tried again, three times in all. The server's documentation names no 429 (https://developer.onebusaway.org/api/where — checked 2026-10-05); the live server sends it.
+- A response that breaks the contract is one failed item with the cause `contract_violation`; the backfill goes on.
+- After ten failed items in a row the backfill stops and counts the items left as skipped.
+- `report/1` turns the summary into the lines the task prints.
+
+Run against the live server on 2026-10-05 for agency `23` with `--route-limit 2`: three responses recorded one second apart, three files stored, and three events on `oba.routes.response-stored`. The whole feed has not been backfilled with it.
+
 ## Published records
 
 Every record goes through `Gobusgo.Publisher.publish/2`, which names no backend, and holds one CloudEvent 1.0 in structured mode built by `Gobusgo.CloudEvent`: compact JSON with sorted keys, a `content-type` header of `application/cloudevents+json`, and the `partitionkey` attribute as the record key. The `type` carries the version as its suffix.

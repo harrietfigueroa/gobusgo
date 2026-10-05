@@ -314,6 +314,35 @@ request = %{
 
 The module documentation lists every result and error value.
 
+## Route backfill
+
+The route source fills the route views by itself within about ten minutes of a first start, and then refreshes each agency's routes and each route's paths once a day. `mix gobusgo.routes.backfill` fetches all of it once, on demand: to fill the views now, or to refill them after the route topics are reset.
+
+```sh
+set -a; source .env; set +a
+mise exec -- mix gobusgo.routes.backfill                               # every agency the server lists
+mise exec -- mix gobusgo.routes.backfill --agency 40 --agency 1        # the named agencies
+mise exec -- mix gobusgo.routes.backfill --agency 23 --route-limit 2   # at most two routes' paths
+```
+
+The task fetches each agency's routes and then each route's stops and paths, one request a second, stores every response under `GOBUSGO_DATA_DIR`, and publishes its "response stored" event to the broker of `GOBUSGO_KAFKA_BOOTSTRAP_SERVERS`. It does not start the application: a running application consumes the events and fills its views, so both have to use the same data directory. The 12 agencies and 391 routes of 2026-10-05 take about seven minutes.
+
+A request the server answers with 429 is tried again, three times in all. After ten failed requests in a row the task stops and counts the rest as skipped. It prints one summary and exits with a failure when it recorded nothing:
+
+```
+Route backfill finished
+  agencies:            1
+  routes:              2
+  recorded:            3
+  failed:              0
+  skipped:             0
+  stored, unannounced: 0
+  repeated requests:   0
+  failures by cause:   none
+```
+
+"Stored, unannounced" counts the responses that are stored and whose event the broker did not take; the route source fetches those again when they are due.
+
 ## Basemap archives
 
 The map pages read a self-hosted basemap: regional [PMTiles](https://docs.protomaps.com/pmtiles/) archives cut from a [Protomaps daily build](https://docs.protomaps.com/basemaps/downloads), one archive per region of agency coverage. Agencies whose coverage overlaps share an archive, and every coverage area is widened by 5,000 meters first. A basemap is refreshed by running the task below again with a newer build; nothing in the application runs it, so it is independent of the vehicle fetches.
