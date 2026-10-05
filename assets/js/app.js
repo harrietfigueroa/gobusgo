@@ -3,11 +3,12 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
 import {RouteLines} from "./route_lines"
+import {VehicleFilter} from "./vehicle_filter"
 import {VehicleMarkers} from "./vehicle_markers"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: {Basemap, RouteLines, VehicleMarkers},
+  hooks: {Basemap, RouteLines, VehicleFilter, VehicleMarkers},
   params: {_csrf_token: csrfToken}
 })
 
