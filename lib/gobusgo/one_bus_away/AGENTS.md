@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds the two route datasets, the routes of each agency via `routes-for-agency` and the stops and paths of each route via `stops-for-route`, with their recorders, processors, and views; the route source fetches each once a day. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds the two route datasets, the routes of each agency via `routes-for-agency` and the stops and paths of each route via `stops-for-route`, with their recorders, processors, and views; the route source fetches each once a day. The stops come out of the `stops-for-route` responses, into a record and a view of their own. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -484,7 +484,7 @@ The two route datasets share their topics, because both describe a route (decide
 
 Both events go to `oba.routes.response-stored` and both records to `oba.routes.state`. The identifier in a destination is escaped as the vehicle dataset escapes an agency.
 
-**One record per fetch.** A routes record holds `agencyId` and `routes`, every route of the agency in identifier order with the fields the requester returns. A route path record holds `routeId`, the route's `polylines`, and its `stopGroupings` with each group's name, stop identifiers, and polylines; the stops the response references are not published. Both hold `dataSha256`, `destination`, `fetchedAt`, and `requestId`. A fetch is whole in its one record, so there is no manifest and a view holds no partial fetch. An agency's newest record replaces its earlier ones in the compacted topic, so a route the agency drops leaves with them. The largest records on 2026-10-05 were 36 KB for an agency's routes and 55 KB for a route path, against the publisher's limit of 1 MB.
+**One record per fetch.** A routes record holds `agencyId` and `routes`, every route of the agency in identifier order with the fields the requester returns. A route path record holds `routeId`, the route's `polylines`, and its `stopGroupings` with each group's name, stop identifiers, and polylines; the stops the response references go into the stops record below. Both hold `dataSha256`, `destination`, `fetchedAt`, and `requestId`. A fetch is whole in its one record, so there is no manifest and a view holds no partial fetch. An agency's newest record replaces its earlier ones in the compacted topic, so a route the agency drops leaves with them. The largest records on 2026-10-05 were 36 KB for an agency's routes and 55 KB for a route path, against the publisher's limit of 1 MB.
 
 **One consumer for both datasets.** `Gobusgo.OneBusAway.RouteDatasets` is the event module and the processor module the response trigger and the in-process consumer take for the shared event topic. `decode/1` returns what the event module of either dataset decodes, and `process/2` hands a destination to the processor whose destinations start with its prefix; a destination of neither is a permanent `DESTINATION_MISMATCH`. Its `dataset/0` is `oba/routes`, the name in the trigger's log lines. The consumer group is `gobusgo.route-processor`, and a record it gives up on goes to `oba.routes.response-stored.dead-letter`.
 
@@ -522,7 +522,13 @@ A stop holds `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `p
 - `current/1` returns every stop in identifier order, `stop/2` one stop, and `stop_count/1` their number. All three read the table and return nothing while the view is not running.
 - A call that holds or removes at least one stop announces `{:stop_view_switched, view}` once to the processes that called `subscribe/1`.
 
-The route path processor does not publish the stops record, and the application does not start a stop view.
+`RoutePathBatch.process/2` publishes the stops record after the route path record, in the one publisher call, and returns the `stop_count` of the stops and parent stops together. A call that fails at `:publish_route_path` can leave either record published; the trigger's next attempt publishes both again, and each view ignores the fetch it already holds. The topic has to exist before the application runs: without it every route path event fails as `:unknown_topic` and is dead-lettered after its attempts, with its path record published.
+
+The application starts one view, registered as `Gobusgo.OneBusAway.StopView`, for at most 5,000 routes and 100,000 stops, and one `Gobusgo.Kafka.TopicSubscriber` that reads `oba.stops.state` into it; under test the in-process publisher hands the topic's records to the view. Nothing reads the view yet.
+
+Measured against the local broker on 2026-10-05: the processor published the records of the 391 stored responses in 4 seconds, and a view fed by a subscriber of `oba.stops.state` held 13,026 stops, 113 of them parent stops, in a table of 16.6 MB beside 4.1 MB of process memory.
+
+A route's stops record stays in the topic after its agency stops listing the route, as its path record does, so the stops only that route lists stay in the view.
 
 ## Reconciliation
 

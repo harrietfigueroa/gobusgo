@@ -67,7 +67,9 @@ else
         {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]},
       "oba.routes.state" =>
         {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
-         [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]}
+         [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]},
+      "oba.stops.state" =>
+        {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]}
     }
 end
 

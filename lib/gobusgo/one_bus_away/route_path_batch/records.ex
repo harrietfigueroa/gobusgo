@@ -34,7 +34,7 @@ defmodule Gobusgo.OneBusAway.RoutePathBatch.Records do
     * `data.fetchedAt`: the fetch time in UTC extended ISO 8601.
     * `data.requestId`: the request identifier of the fetch.
 
-  The stops the stored response references are not published.
+  The stops the stored response references are not in this record.
   """
 
   alias Gobusgo.Assert

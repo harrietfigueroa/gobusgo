@@ -18,6 +18,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteDatasets
   alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
@@ -37,6 +38,10 @@ defmodule Gobusgo.Application do
   @route_path_view Gobusgo.OneBusAway.RoutePathView
   @route_view_agency_count_max 64
   @route_path_view_route_count_max 5_000
+
+  # The stop view holds the stops of as many routes as the path view holds
+  # paths. The 391 routes of 2026-10-05 reference 13,026 stops.
+  @stop_view_stop_count_max 100_000
 
   # Each dataset's "response stored" events are processed by a consumer
   # group of its own, with the attempts under a task supervisor of its own.
@@ -89,7 +94,12 @@ defmodule Gobusgo.Application do
            name: @route_path_view,
            pubsub: Gobusgo.PubSub,
            records: RoutePathBatch.Records,
-           id_count_max: @route_path_view_route_count_max}
+           id_count_max: @route_path_view_route_count_max},
+          {StopView,
+           name: StopView,
+           pubsub: Gobusgo.PubSub,
+           route_count_max: @route_path_view_route_count_max,
+           stop_count_max: @stop_view_stop_count_max}
         ] ++
           kafka_children(kafka) ++
           [
@@ -149,6 +159,11 @@ defmodule Gobusgo.Application do
         name: Gobusgo.OneBusAway.RouteViewsSubscriber,
         topic: route_state_topic,
         subscriber: {FetchView, :apply_records_to_each, [[@route_view, @route_path_view]]}
+      },
+      %{
+        name: Gobusgo.OneBusAway.StopViewSubscriber,
+        topic: RoutePathBatch.StopRecords.topic(),
+        subscriber: {StopView, :apply_records, [StopView]}
       }
     ]
   end

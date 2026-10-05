@@ -13,6 +13,15 @@ defmodule Gobusgo.ApplicationTest do
               [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]}
   end
 
+  test "one subscriber reads the stop state topic and hands its records to the stop view" do
+    subscribers = Gobusgo.Application.topic_subscribers()
+
+    assert [stop_state] = Enum.filter(subscribers, &(&1.topic == "oba.stops.state"))
+
+    assert stop_state.subscriber ==
+             {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]}
+  end
+
   test "no two topic subscribers read one topic" do
     topics = Enum.map(Gobusgo.Application.topic_subscribers(), & &1.topic)
 
@@ -33,6 +42,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.VehicleView,
              Gobusgo.OneBusAway.RouteView,
              Gobusgo.OneBusAway.RoutePathView,
+             Gobusgo.OneBusAway.StopView,
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,
              Gobusgo.SchedulerSupervisor,
