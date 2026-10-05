@@ -16,8 +16,10 @@ defmodule GobusgoWeb.VehicleLive do
   On the map the browser draws one marker per vehicle that has a position,
   from `GobusgoWeb.VehicleMarkers`. An element that shows nothing mounts the
   hook that draws them and carries the definition of every status. A
-  connected page subscribes to the view before it reads, and reads again on
-  every announcement. The markers reach the browser as
+  connected page subscribes to the view before it reads, and on every
+  announcement reads the fetch of each agency whose request changed. It
+  keeps the request each agency's markers came from, and no vehicle. The
+  markers reach the browser as
   `vehicle-markers:agency` events, each holding every marker of one agency:
   all agencies when the browser sends `vehicle-markers:ready`, and
   afterwards the agencies whose fetch changed, so a vehicle that leaves an
@@ -28,6 +30,7 @@ defmodule GobusgoWeb.VehicleLive do
 
   require Logger
 
+  alias Gobusgo.Assert
   alias Gobusgo.Basemap
   alias Gobusgo.OneBusAway.VehicleView
   alias GobusgoWeb.BasemapSources
@@ -41,7 +44,12 @@ defmodule GobusgoWeb.VehicleLive do
       :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
     end
 
-    {:ok, socket |> assign(manifest: read_manifest(), basemap: nil) |> assign_fetches()}
+    {:ok,
+     assign(socket,
+       manifest: read_manifest(),
+       basemap: nil,
+       shown_request_ids: VehicleView.current_request_ids(VehicleView)
+     )}
   end
 
   @impl Phoenix.LiveView
@@ -56,14 +64,18 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:vehicle_view_switched, VehicleView}, %{assigns: %{fetches: shown}} = socket) do
-    socket = assign_fetches(socket)
-    {:noreply, push_marker_sets(socket, changed_marker_sets(shown, socket.assigns.fetches))}
+  def handle_info(
+        {:vehicle_view_switched, VehicleView},
+        %{assigns: %{shown_request_ids: shown_request_ids}} = socket
+      ) do
+    request_ids = VehicleView.current_request_ids(VehicleView)
+    {:noreply, push_agencies(socket, changed_agency_ids(shown_request_ids, request_ids))}
   end
 
   @impl Phoenix.LiveView
-  def handle_event("vehicle-markers:ready", _params, %{assigns: %{fetches: fetches}} = socket) do
-    {:noreply, push_marker_sets(socket, Enum.map(fetches, &VehicleMarkers.agency_markers/1))}
+  def handle_event("vehicle-markers:ready", _params, socket) do
+    agency_ids = VehicleView |> VehicleView.current_request_ids() |> Map.keys() |> Enum.sort()
+    {:noreply, push_agencies(socket, agency_ids)}
   end
 
   @impl Phoenix.LiveView
@@ -128,32 +140,49 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp push_fit(socket, _shown, _basemap), do: socket
 
-  defp assign_fetches(socket), do: assign(socket, fetches: VehicleView.current(VehicleView))
-
-  # The marker sets the map does not show yet: one for every agency whose
-  # fetch is another request than the one shown, and an empty one for every
-  # agency that has no fetch any more.
-  defp changed_marker_sets(shown_fetches, fetches) do
-    shown = Map.new(shown_fetches, &{&1.agency_id, &1.request_id})
-    current_ids = MapSet.new(fetches, & &1.agency_id)
-
+  # The agencies whose markers the map does not show yet: every agency
+  # whose current fetch is another request than the one shown, then every
+  # agency shown that has no fetch any more.
+  defp changed_agency_ids(shown_request_ids, request_ids) do
     changed =
-      for %{agency_id: agency_id, request_id: request_id} = fetch <- fetches,
-          Map.get(shown, agency_id) != request_id do
-        VehicleMarkers.agency_markers(fetch)
+      for {agency_id, request_id} <- request_ids,
+          Map.get(shown_request_ids, agency_id) != request_id do
+        agency_id
       end
 
     removed =
-      for %{agency_id: agency_id} <- shown_fetches, not MapSet.member?(current_ids, agency_id) do
-        %{agency_id: agency_id, markers: []}
+      for {agency_id, _request_id} <- shown_request_ids, not is_map_key(request_ids, agency_id) do
+        agency_id
       end
 
-    changed ++ removed
+    Enum.sort(changed) ++ Enum.sort(removed)
   end
 
-  defp push_marker_sets(socket, marker_sets) do
-    Enum.reduce(marker_sets, socket, fn %{agency_id: agency_id, markers: markers}, socket ->
-      push_event(socket, "vehicle-markers:agency", %{agency_id: agency_id, markers: markers})
+  # Sends the markers of each agency's current fetch, and no markers for an
+  # agency that has none. The fetch is read here and kept nowhere: the page
+  # remembers only the request each agency's markers came from.
+  defp push_agencies(socket, agency_ids) do
+    Enum.reduce(agency_ids, socket, fn agency_id, socket ->
+      case VehicleView.current_fetch(VehicleView, agency_id) do
+        nil ->
+          socket
+          |> push_markers(%{agency_id: agency_id, markers: []})
+          |> update(:shown_request_ids, &Map.delete(&1, agency_id))
+
+        %{agency_id: fetch_agency_id, request_id: request_id} = fetch ->
+          Assert.condition(
+            fetch_agency_id == agency_id,
+            "fetch must be of agency #{inspect(agency_id)}, got: #{inspect(fetch_agency_id)}"
+          )
+
+          socket
+          |> push_markers(VehicleMarkers.agency_markers(fetch))
+          |> update(:shown_request_ids, &Map.put(&1, agency_id, request_id))
+      end
     end)
+  end
+
+  defp push_markers(socket, %{agency_id: agency_id, markers: markers}) do
+    push_event(socket, "vehicle-markers:agency", %{agency_id: agency_id, markers: markers})
   end
 end

@@ -39,6 +39,7 @@ defmodule Gobusgo.OneBusAway.VehicleView do
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView.State
   alias Gobusgo.Publisher
+  alias Gobusgo.RequestId
 
   @call_timeout_ms 5_000
 
@@ -83,6 +84,46 @@ defmodule Gobusgo.OneBusAway.VehicleView do
         |> :ets.match_object({{:current, :_}, :_})
         |> Enum.sort_by(fn {{:current, agency_id}, _fetch} -> agency_id end)
         |> Enum.map(fn {_key, fetch} -> fetch end)
+    end
+  end
+
+  @doc """
+  Returns the request identifier of the current fetch of every agency of
+  `view` that has one, by agency identifier. It reads no vehicle, so it
+  costs the same however many vehicles the fetches hold. Returns `%{}`
+  before a fetch is complete and while the view is not running.
+  """
+  @spec current_request_ids(atom()) :: %{String.t() => RequestId.t()}
+  def current_request_ids(view) when is_atom(view) do
+    case :ets.whereis(view) do
+      :undefined ->
+        %{}
+
+      table ->
+        table
+        |> :ets.select([
+          {{{:current, :"$1"}, %{request_id: :"$2"}}, [], [{{:"$1", :"$2"}}]}
+        ])
+        |> Map.new()
+    end
+  end
+
+  @doc """
+  Returns the current fetch of the agency `agency_id` in `view`, in the form
+  `current/1` returns it, or `nil` for an agency that has none and while the
+  view is not running.
+  """
+  @spec current_fetch(atom(), String.t()) :: State.fetch() | nil
+  def current_fetch(view, agency_id) when is_atom(view) and is_binary(agency_id) do
+    case :ets.whereis(view) do
+      :undefined ->
+        nil
+
+      table ->
+        case :ets.lookup(table, {:current, agency_id}) do
+          [{_key, fetch}] -> fetch
+          [] -> nil
+        end
     end
   end
 
