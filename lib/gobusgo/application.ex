@@ -118,28 +118,39 @@ defmodule Gobusgo.Application do
   defp kafka_children(%{enabled: true, endpoints: endpoints}) do
     :ok = Kafka.Client.start(%{client: Kafka.Client, endpoints: endpoints})
 
+    Kafka.TopicSubscriber.child_specs(Kafka.Client, topic_subscribers()) ++
+      Enum.flat_map(@triggers, &trigger_children(&1, endpoints))
+  end
+
+  @doc false
+  # The subscriber of each state topic and the view its records go to. The
+  # two route datasets share a state topic, whose one subscriber hands each
+  # batch to both route views.
+  def topic_subscribers do
+    route_state_topic = RouteBatch.Records.topic()
+
+    Assert.condition(
+      RoutePathBatch.Records.topic() == route_state_topic,
+      "the two route datasets must share one state topic"
+    )
+
     [
-      {Kafka.TopicSubscriber,
-       name: Gobusgo.OneBusAway.AgencyViewSubscriber,
-       client: Kafka.Client,
-       topic: AgencyBatch.Records.topic(),
-       subscriber: {AgencyView, :apply_records, [AgencyView]}},
-      {Kafka.TopicSubscriber,
-       name: Gobusgo.OneBusAway.VehicleViewSubscriber,
-       client: Kafka.Client,
-       topic: VehicleBatch.Records.topic(),
-       subscriber: {VehicleView, :apply_records, [VehicleView]}},
-      {Kafka.TopicSubscriber,
-       name: Gobusgo.OneBusAway.RouteViewSubscriber,
-       client: Kafka.Client,
-       topic: RouteBatch.Records.topic(),
-       subscriber: {FetchView, :apply_records, [@route_view]}},
-      {Kafka.TopicSubscriber,
-       name: Gobusgo.OneBusAway.RoutePathViewSubscriber,
-       client: Kafka.Client,
-       topic: RoutePathBatch.Records.topic(),
-       subscriber: {FetchView, :apply_records, [@route_path_view]}}
-    ] ++ Enum.flat_map(@triggers, &trigger_children(&1, endpoints))
+      %{
+        name: Gobusgo.OneBusAway.AgencyViewSubscriber,
+        topic: AgencyBatch.Records.topic(),
+        subscriber: {AgencyView, :apply_records, [AgencyView]}
+      },
+      %{
+        name: Gobusgo.OneBusAway.VehicleViewSubscriber,
+        topic: VehicleBatch.Records.topic(),
+        subscriber: {VehicleView, :apply_records, [VehicleView]}
+      },
+      %{
+        name: Gobusgo.OneBusAway.RouteViewsSubscriber,
+        topic: route_state_topic,
+        subscriber: {FetchView, :apply_records_to_each, [[@route_view, @route_path_view]]}
+      }
+    ]
   end
 
   defp trigger_children(%{event: event, consumer_group: consumer_group} = trigger, endpoints) do
