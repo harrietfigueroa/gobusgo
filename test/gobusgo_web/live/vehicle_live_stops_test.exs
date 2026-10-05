@@ -4,8 +4,8 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
   # route views and stop view, filled with the record values their records
   # modules build. All are global state, hence the non-async case. The
   # browser draws the stops, so these tests observe what the page hands it:
-  # the events that carry the stops' markers. No element of the page sends
-  # the ready event yet, so the tests send it to the page itself.
+  # the events that carry the stops' markers, and the element the stop hook
+  # mounts on.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -163,13 +163,35 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
     view
   end
 
-  defp ready(view), do: render_hook(view, "stop-markers:ready")
+  defp ready(view), do: view |> element("#stop-markers") |> render_hook("stop-markers:ready")
 
   defp open_ready(path \\ "/vehicles") do
     view = open_page(path)
     ready(view)
     assert_push_event(view, @event, %{reset: true})
     view
+  end
+
+  describe "the page" do
+    test "holds the element the stop hook mounts on, shown as nothing" do
+      html = open_page() |> element("#stop-markers") |> render()
+
+      assert html =~ ~s(phx-hook="StopMarkers")
+      assert html =~ "hidden"
+    end
+
+    test "holds the stops' element before the vehicles', so the vehicles are drawn over the stops" do
+      html = render(open_page())
+      [before_vehicles, _after] = String.split(html, ~s(id="vehicle-markers"), parts: 2)
+
+      assert before_vehicles =~ ~s(id="stop-markers")
+    end
+
+    test "holds no stop element when there is no basemap", %{tmp_dir: tmp_dir} do
+      File.rm!(Path.join(tmp_dir, "manifest.json"))
+
+      refute open_page() |> has_element?("#stop-markers")
+    end
   end
 
   describe "the stops' ready event" do

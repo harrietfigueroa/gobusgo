@@ -72,7 +72,9 @@ defmodule GobusgoWeb.VehicleLive do
   a reset, when the browser sends `stop-markers:ready`, and afterwards the
   stops the view's announcement names. A change of the filter, and a route
   whose line appears or goes, sends every stop again after a reset. The
-  page keeps no stop, only whether the browser has asked.
+  page keeps no stop, only whether the browser has asked. A third element
+  that shows nothing mounts the hook that draws the stops, under the
+  vehicles and only when the map is zoomed in.
   """
 
   use Phoenix.LiveView
@@ -277,6 +279,11 @@ defmodule GobusgoWeb.VehicleLive do
         data-bounds={JSON.encode!(@basemap.bounds)}
       >
       </div>
+
+      <%!-- The stops' element stands before the vehicles': hooks mount in
+      document order and add their layers in that order, so the vehicles are
+      drawn over the stops. --%>
+      <div :if={@basemap != nil} id="stop-markers" phx-hook="StopMarkers" hidden></div>
 
       <div
         :if={@basemap != nil}

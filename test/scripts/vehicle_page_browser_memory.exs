@@ -5,8 +5,9 @@
 #
 # The script serves the application in the test environment, fills the
 # vehicle view with one fetch cycle of synthetic vehicles in the counts a
-# real cycle had and the two route views with synthetic routes and paths in
-# the counts of a real day, opens the page in a headless Chrome, and applies further
+# real cycle had, the two route views with synthetic routes and paths in
+# the counts of a real day, and the stop view with synthetic stops in about
+# the count of a real day, opens the page in a headless Chrome, and applies further
 # cycles at the source's pace while the page is open. It reads the page's
 # JavaScript heap, the heaps of the page's workers, and the count of DOM
 # nodes after the first draw and after the last cycle, each as found and
@@ -45,6 +46,8 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
         route_path_view: Gobusgo.OneBusAway.RoutePathView
       })
 
+    stop_count = VehiclePageMemory.apply_stops(Gobusgo.OneBusAway.StopView)
+
     profile_dir =
       Path.join(System.tmp_dir!(), "gobusgo-chrome-#{System.unique_integer([:positive])}")
 
@@ -71,7 +74,7 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
 
       IO.puts(
         "\nVehicle page browser memory: #{vehicle_count} vehicles, #{length(profile)} agencies," <>
-          " #{route_count} routes"
+          " #{route_count} routes, #{stop_count} stops"
       )
 
       print("After the first draw", first_draw)

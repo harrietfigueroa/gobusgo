@@ -128,8 +128,7 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
     {:ok, view, _html} = live(build_conn(), "/vehicles")
     view |> element("#vehicle-markers") |> render_hook("vehicle-markers:ready")
     view |> element("#route-lines") |> render_hook("route-lines:ready")
-    # No element of the page sends this event yet.
-    render_hook(view, "stop-markers:ready")
+    view |> element("#stop-markers") |> render_hook("stop-markers:ready")
     first_draw = measure(view)
 
     for sequence <- 1..@cycle_count do
