@@ -105,23 +105,25 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert bounds(view, @west_map) == @west_bounds
-      assert attribute(view, "#basemap-view-all", "aria-current") == "true"
     end
 
-    test "offers a view for every agency of the basemap" do
+    test "shows the map and the marker hook's element, and nothing else" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      for agency_id <- ["far", "near", "east"] do
-        assert attribute(view, "#basemap-view-#{agency_id}", "aria-current") == "false"
-      end
+      ids =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("main > *")
+        |> LazyHTML.attribute("id")
+
+      assert ids == ["basemap-basemap-20261004-01", "vehicle-markers"]
     end
 
     test "fits the coverage of the agency the address names" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
 
       assert bounds(view, @west_map) == @near_bounds
-      assert attribute(view, "#basemap-view-near", "aria-current") == "true"
-      assert attribute(view, "#basemap-view-all", "aria-current") == "false"
     end
 
     test "draws from the archive that holds the agency the address names" do
@@ -135,7 +137,6 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=6289")
 
       assert bounds(view, @west_map) == @west_bounds
-      assert attribute(view, "#basemap-view-all", "aria-current") == "true"
     end
 
     test "names nothing about vehicles on the map element" do
@@ -155,7 +156,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
     end
   end
 
-  describe "choosing a view on an open page" do
+  describe "a new address on an open page" do
     setup %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
     end
@@ -163,20 +164,17 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
     test "moves the map to an agency of the archive it shows" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      view |> element("#basemap-view-near") |> render_click()
+      render_patch(view, "/vehicles?agency=near")
 
       assert_push_event(view, "basemap:fit", %{
         bounds: %{south: 10.0, west: 10.5, north: 12.0, east: 12.5}
       })
-
-      assert attribute(view, "#basemap-view-near", "aria-current") == "true"
-      assert_patched(view, "/vehicles?agency=near")
     end
 
     test "moves the map back to the whole archive" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
 
-      view |> element("#basemap-view-all") |> render_click()
+      render_patch(view, "/vehicles")
 
       assert_push_event(view, "basemap:fit", %{
         bounds: %{south: 9.0, west: 9.0, north: 12.0, east: 12.5}
@@ -186,7 +184,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
     test "draws a new map for an agency of another archive" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      view |> element("#basemap-view-east") |> render_click()
+      render_patch(view, "/vehicles?agency=east")
 
       assert has_element?(view, @east_map)
       refute has_element?(view, @west_map)
@@ -196,7 +194,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
     test "sends no event for the view the map already shows" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
 
-      view |> element("#basemap-view-near") |> render_click()
+      render_patch(view, "/vehicles?agency=near")
 
       refute_push_event(view, "basemap:fit", %{}, 50)
     end

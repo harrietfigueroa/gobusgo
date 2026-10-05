@@ -130,7 +130,8 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
         " keeping #{retention.referenced_bytes} bytes alive"
     )
 
-    assert view |> element("#marker-count") |> render() =~
-             "#{vehicle_count} vehicles on the map."
+    assert VehicleView
+           |> VehicleView.current()
+           |> Enum.sum_by(&length(&1.vehicle_ids)) == vehicle_count
   end
 end

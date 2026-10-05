@@ -25,11 +25,8 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
   @bytes_per_kibibyte 1024
   @page_path "/vehicles"
 
-  @page_state """
-  JSON.stringify({
-    rowCount: document.querySelectorAll("tbody tr").length,
-    mapCanvasCount: document.querySelectorAll(".maplibregl-canvas").length
-  })
+  @map_canvas_count """
+  document.querySelectorAll(".maplibregl-canvas").length
   """
 
   def run([executable]) do
@@ -49,10 +46,10 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
     try do
       {session_id, browser} = open_page(browser, url)
       Process.sleep(@draw_wait_ms)
-      {state, browser} = page_state(browser, session_id)
+      {map_canvas_count, browser} = map_canvas_count(browser, session_id)
 
-      if state != %{"rowCount" => vehicle_count, "mapCanvasCount" => 1} do
-        raise "the page must show #{vehicle_count} rows and one map, got: #{inspect(state)}"
+      if map_canvas_count != 1 do
+        raise "the page must show one map, got: #{map_canvas_count}"
       end
 
       {first_draw, worker_session_ids, browser} = measure(browser, session_id, [])
@@ -113,14 +110,14 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
     {session_id, browser}
   end
 
-  defp page_state(browser, session_id) do
-    {%{"result" => %{"value" => state}}, browser} =
+  defp map_canvas_count(browser, session_id) do
+    {%{"result" => %{"value" => count}}, browser} =
       call(browser, session_id, "Runtime.evaluate", %{
-        expression: @page_state,
+        expression: @map_canvas_count,
         returnByValue: true
       })
 
-    {JSON.decode!(state), browser}
+    {count, browser}
   end
 
   # The page's reading as found, then after a collection in the page and in
