@@ -125,6 +125,13 @@ defmodule Gobusgo.OneBusAway.StopViewTest do
              }
     end
 
+    test "return the identifier of every stop in identifier order", %{view: view} do
+      :ok = StopView.apply_records(view, [value(%{stops: [stop("b"), stop("a")]})])
+
+      assert StopView.stop_ids(view) == ["a", "b"]
+      assert StopView.stop_ids(NoSuchStopView) == []
+    end
+
     test "return a parent stop like any stop", %{view: view} do
       fetch = %{stops: [stop("a", %{parent: "station"})], parent_stops: [stop("station")]}
 
@@ -208,34 +215,59 @@ defmodule Gobusgo.OneBusAway.StopViewTest do
     test "one arrives for a call that applies several fetches", %{view: view} do
       :ok = StopView.apply_records(view, [value(), value(%{route_id: "40_2"})])
 
-      assert_received {:stop_view_switched, ^view}
-      refute_received {:stop_view_switched, ^view}
+      assert_received {:stop_view_switched, ^view, _change}
+      refute_received {:stop_view_switched, ^view, _change}
     end
 
     test "arrives after the table holds the stops", %{view: view} do
       :ok = StopView.apply_records(view, [value()])
 
-      assert_received {:stop_view_switched, ^view}
+      assert_received {:stop_view_switched, ^view, _change}
       assert %{id: "a"} = StopView.stop(view, "a")
     end
 
     test "arrives for a call that only removes a stop", %{view: view} do
       :ok = StopView.apply_records(view, [value(%{stops: [stop("a")]})])
-      assert_received {:stop_view_switched, ^view}
+      assert_received {:stop_view_switched, ^view, _change}
 
       :ok = StopView.apply_records(view, [newer(%{stops: []})])
 
-      assert_received {:stop_view_switched, ^view}
+      assert_received {:stop_view_switched, ^view, _change}
       assert StopView.stop_count(view) == 0
+    end
+
+    test "names the stops the call held and the stops it removed", %{view: view} do
+      :ok = StopView.apply_records(view, [value(%{stops: [stop("b"), stop("a")]})])
+      assert_received {:stop_view_switched, ^view, %{held_ids: ["a", "b"], removed_ids: []}}
+
+      :ok = StopView.apply_records(view, [newer(%{stops: [stop("b"), stop("c")]})])
+
+      assert_received {:stop_view_switched, ^view, %{held_ids: ["b", "c"], removed_ids: ["a"]}}
+    end
+
+    test "names a stop once when one call holds it and then removes it", %{view: view} do
+      :ok = StopView.apply_records(view, [value(%{stops: [stop("a")]}), newer(%{stops: []})])
+
+      assert_received {:stop_view_switched, ^view, %{held_ids: [], removed_ids: ["a"]}}
+    end
+
+    test "names a stop once when one call removes it and then holds it", %{view: view} do
+      other = value(%{route_id: "40_2", fetched_at: ~U[2026-10-05 03:00:00Z], stops: [stop("a")]})
+      :ok = StopView.apply_records(view, [value(%{stops: [stop("a")]})])
+      assert_received {:stop_view_switched, ^view, _change}
+
+      :ok = StopView.apply_records(view, [newer(%{stops: []}), other])
+
+      assert_received {:stop_view_switched, ^view, %{held_ids: ["a"], removed_ids: []}}
     end
 
     test "none arrives for a call that changes nothing", %{view: view} do
       :ok = StopView.apply_records(view, [value()])
-      assert_received {:stop_view_switched, ^view}
+      assert_received {:stop_view_switched, ^view, _change}
 
       :ok = StopView.apply_records(view, [value(), "{"])
 
-      refute_received {:stop_view_switched, ^view}
+      refute_received {:stop_view_switched, ^view, _change}
     end
   end
 end

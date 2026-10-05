@@ -1,8 +1,9 @@
 defmodule GobusgoWeb.VehicleLiveMemoryTest do
   # Measures the memory the vehicle page holds on the server and prints it.
   # The test fills the application's vehicle view with one fetch cycle of
-  # synthetic vehicles in the counts a real cycle had and its two route views
-  # with synthetic routes and paths in the counts of a real day, mounts the
+  # synthetic vehicles in the counts a real cycle had, its two route views
+  # with synthetic routes and paths in the counts of a real day, and its stop
+  # view with synthetic stops in about the count of a real day, mounts the
   # page with
   # Phoenix.LiveViewTest over a basemap manifest in its temporary directory,
   # and applies further cycles while the page is open. It reads the page
@@ -15,6 +16,7 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Test.VehiclePageMemory
 
@@ -52,7 +54,7 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
   end
 
   defp restart_views do
-    for view <- [VehicleView, @route_view, @route_path_view] do
+    for view <- [VehicleView, @route_view, @route_path_view, StopView] do
       :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
       {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
     end
@@ -121,9 +123,12 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
         route_path_view: @route_path_view
       })
 
+    stop_count = VehiclePageMemory.apply_stops(StopView)
+
     {:ok, view, _html} = live(build_conn(), "/vehicles")
     view |> element("#vehicle-markers") |> render_hook("vehicle-markers:ready")
     view |> element("#route-lines") |> render_hook("route-lines:ready")
+    view |> element("#stop-markers") |> render_hook("stop-markers:ready")
     first_draw = measure(view)
 
     for sequence <- 1..@cycle_count do
@@ -136,11 +141,16 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
 
     IO.puts(
       "\nVehicle page memory: #{vehicle_count} vehicles, #{length(profile)} agencies," <>
-        " #{route_count} routes"
+        " #{route_count} routes, #{stop_count} stops"
     )
 
     print("After the first draw", first_draw)
     print("After #{@cycle_count} more fetch cycles", last_cycle)
+
+    IO.puts(
+      "Stop view: table #{kibibytes(VehiclePageMemory.table_memory_bytes(StopView))}," <>
+        " process #{kibibytes(VehiclePageMemory.process_memory(Process.whereis(StopView)).memory_bytes)}"
+    )
 
     IO.puts(
       "Vehicle identifiers in the view table: #{retention.identifier_bytes} bytes," <>
