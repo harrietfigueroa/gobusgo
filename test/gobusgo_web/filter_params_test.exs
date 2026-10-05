@@ -8,6 +8,33 @@ defmodule GobusgoWeb.FilterParamsTest do
 
   @spec_fields %{"agency" => :string, "route" => :string}
 
+  alias Gobusgo.Filter
+
+  describe "query/1" do
+    for {description, filter, query} <- [
+          {"the empty filter", %{}, ""},
+          {"one value", %{"agency" => ["40"]}, "agency=40"},
+          {"several values", %{"agency" => ["1", "40"]}, "agency=1,40"},
+          {"several fields, in field order", %{"route" => ["1_100"], "agency" => ["1"]},
+           "agency=1&route=1_100"},
+          {"a value with reserved characters", %{"agency" => ["a b&c"]}, "agency=a+b%26c"}
+        ] do
+      test "writes #{description}" do
+        assert FilterParams.query(unquote(Macro.escape(filter))) == unquote(query)
+      end
+    end
+
+    test "writes a filter that reads back as itself" do
+      filter = %{"agency" => ["1", "a b&c"], "route" => ["1_100"]}
+      params = filter |> FilterParams.query() |> URI.decode_query()
+
+      assert Filter.normalize(%{
+               raw: FilterParams.raw(%{params: params, spec: @spec_fields}),
+               spec: @spec_fields
+             }) == {:ok, filter}
+    end
+  end
+
   for {description, params, raw} <- [
         {"no parameter", %{}, %{}},
         {"one value", %{"agency" => "40"}, %{"agency" => ["40"]}},
