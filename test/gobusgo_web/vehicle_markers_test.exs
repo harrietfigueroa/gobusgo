@@ -100,6 +100,32 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     end
   end
 
+  describe "agency_markers/1 heading" do
+    for {name, orientation, heading} <- [
+          {"east", 0, 90},
+          {"north", 90, 0},
+          {"west", 180, 270},
+          {"south", 270, 180},
+          {"north-east as a fraction", 45.0, 45},
+          {"a fraction of a degree short of east", 359.6, 90},
+          {"a fraction of a degree west of north", 90.4, 0},
+          {"an angle of a full turn or more", 450, 0},
+          {"an angle below zero", -90, 180}
+        ] do
+      test "is #{heading} degrees clockwise from north for an orientation of #{name}" do
+        assert marker(%{"orientation" => unquote(orientation)}).heading == unquote(heading)
+      end
+    end
+
+    test "is absent for a vehicle with no orientation supplied" do
+      assert marker(%{"orientation" => nil}).heading == nil
+    end
+
+    test "comes from the orientation of the estimated position, never the last reported one" do
+      assert marker(%{"orientation" => 180, "lastKnownOrientation" => 90}).heading == 270
+    end
+  end
+
   describe "agency_markers/1" do
     test "places a marker at the estimated position, never the last reported location" do
       marker = marker(%{"lastKnownLocation" => %{"lat" => 47.0, "lon" => -122.0}})

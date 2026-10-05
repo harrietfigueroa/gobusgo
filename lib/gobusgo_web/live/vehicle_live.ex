@@ -30,8 +30,9 @@ defmodule GobusgoWeb.VehicleLive do
   On the map the page draws one marker per vehicle that has a position, from
   `GobusgoWeb.VehicleMarkers`. Beside the map it states that a marker stands
   at the source's estimated position, lists the statuses that say how far to
-  trust one, and counts the vehicles on the map and the ones with no
-  position. The markers reach the browser as `vehicle-markers:agency`
+  trust one, says what a pointed marker and a round marker mean, and counts
+  the vehicles on the map and the ones with no position. The markers reach
+  the browser as `vehicle-markers:agency`
   events, each holding every marker of one agency: all agencies when the
   browser sends `vehicle-markers:ready`, and afterwards the agencies whose
   fetch changed, so a vehicle that leaves an agency's fetch leaves the map.
@@ -134,6 +135,9 @@ defmodule GobusgoWeb.VehicleLive do
           >
             <p id="marker-position-note">
               Each marker stands at the source's estimated position, never the last reported location. Its color says how far to trust it.
+            </p>
+            <p id="marker-heading-note">
+              A pointed marker points the way the source says the vehicle is heading at that position. A round marker has no heading.
             </p>
             <ul id="marker-legend" class="mt-1 flex flex-wrap gap-x-4">
               <li

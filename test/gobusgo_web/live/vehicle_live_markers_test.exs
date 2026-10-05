@@ -130,6 +130,21 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
       })
     end
 
+    test "is answered with a marker's heading, clockwise from north" do
+      apply_fetch([vehicle("1_east", %{orientation: 0.0}), vehicle("1_none")], %{
+        agency_id: "1",
+        sequence: 0
+      })
+
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{
+        markers: [%{vehicle_id: "1_east", heading: 90}, %{vehicle_id: "1_none", heading: nil}]
+      })
+    end
+
     test "is answered with nothing before any fetch is complete" do
       view = open_page()
 
@@ -211,6 +226,14 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
       assert text(view, "#marker-position-note") =~
                "Each marker stands at the source&#39;s estimated position"
+    end
+
+    test "states what a pointed marker and a round marker mean" do
+      view = open_page()
+
+      note = text(view, "#marker-heading-note")
+      assert note =~ "A pointed marker points the way the source says the vehicle is heading"
+      assert note =~ "A round marker has no heading."
     end
 
     test "lists every status with its label and description" do

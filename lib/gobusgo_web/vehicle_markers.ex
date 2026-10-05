@@ -4,6 +4,12 @@ defmodule GobusgoWeb.VehicleMarkers do
   @ms_per_minute 60_000
   @seconds_per_minute 60
   @minutes_per_hour 60
+  @degrees_per_turn 360
+
+  # The source gives an orientation as an angle in degrees where 0 is east
+  # and 90 is north, so north is this many degrees.
+  # https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-10-04
+  @north_orientation_degrees 90
 
   @moduledoc """
   The markers a map page draws for the vehicles of one agency's fetch, and
@@ -25,6 +31,13 @@ defmodule GobusgoWeb.VehicleMarkers do
   The age of a report is the fetch time minus the report time, so a fetch's
   markers stay the same however long the fetch is shown. A vehicle with no
   position has no marker and is counted.
+
+  A marker's heading is the way the source says the vehicle is heading at
+  that position, from `orientation`, in whole degrees clockwise from north:
+  `0` is north and `90` is east. An orientation of `0` is east like any
+  other angle. A vehicle with no orientation supplied has no heading. The
+  last reported orientation is never read, because it goes with the last
+  reported location and no marker stands there.
   """
 
   alias Gobusgo.Assert
@@ -40,15 +53,18 @@ defmodule GobusgoWeb.VehicleMarkers do
         }
 
   @typedoc """
-  One vehicle on the map. `location_age` and `real_time` are the texts a
-  page shows for the age of the last report and for whether the source has
-  real-time data for the vehicle's trip.
+  One vehicle on the map. `heading` is in degrees clockwise from north, at
+  least 0 and below #{@degrees_per_turn}, or `nil` for a vehicle with no
+  heading. `location_age` and `real_time` are the texts a page shows for
+  the age of the last report and for whether the source has real-time data
+  for the vehicle's trip.
   """
   @type marker :: %{
           id: String.t(),
           vehicle_id: String.t(),
           lat: number(),
           lon: number(),
+          heading: non_neg_integer() | nil,
           status: status(),
           location_age: String.t(),
           real_time: String.t()
@@ -144,6 +160,7 @@ defmodule GobusgoWeb.VehicleMarkers do
       vehicle_id: vehicle_id,
       lat: lat,
       lon: lon,
+      heading: heading(vehicle["orientation"]),
       status: status(report),
       location_age: location_age(report),
       real_time: yes_no(vehicle["predicted"])
@@ -158,6 +175,24 @@ defmodule GobusgoWeb.VehicleMarkers do
   defp report(report_time_ms, fetched_at_ms) when is_integer(report_time_ms) do
     Assert.condition(report_time_ms > 0, "report time must be positive, got: #{report_time_ms}")
     {:age_ms, max(fetched_at_ms - report_time_ms, 0)}
+  end
+
+  defp heading(nil), do: nil
+
+  defp heading(orientation) when is_number(orientation) do
+    clockwise = @north_orientation_degrees - orientation
+    turn_count = Float.floor(clockwise / @degrees_per_turn)
+
+    # An angle that rounds up to a full turn is north.
+    heading = rem(round(clockwise - turn_count * @degrees_per_turn), @degrees_per_turn)
+    Assert.condition(heading >= 0, "heading must be at least 0, got: #{heading}")
+
+    Assert.condition(
+      heading < @degrees_per_turn,
+      "heading must be below #{@degrees_per_turn}, got: #{heading}"
+    )
+
+    heading
   end
 
   defp status(:not_supplied), do: :unknown
