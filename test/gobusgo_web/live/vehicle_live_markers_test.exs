@@ -4,7 +4,7 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
   # view, filled with the record values VehicleBatch.Records builds. Both are
   # global state, hence the non-async case. The browser draws the markers,
   # so these tests observe what the page hands it: the events that carry
-  # each agency's markers, and the legend and the counts beside the map.
+  # each agency's markers, and the element the marker hook mounts on.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -12,7 +12,6 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView
-  alias GobusgoWeb.VehicleMarkers
 
   @moduletag :tmp_dir
   @moduletag capture_log: true
@@ -230,47 +229,9 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
         markers: [%{status: :stale, location_age: "2 min 1 s ago"}]
       })
     end
-
-    test "counts the vehicles on the map anew", %{view: view} do
-      apply_fetch([vehicle("1_b")], %{agency_id: "1", sequence: 2})
-
-      assert_push_event(view, @event, %{agency_id: "1"})
-      assert text(view, "#marker-count") =~ "2 vehicles on the map."
-    end
   end
 
-  describe "beside the map" do
-    test "states that a marker stands at the estimated position" do
-      view = open_page()
-
-      assert text(view, "#marker-position-note") =~
-               "Each marker stands at the source&#39;s estimated position"
-    end
-
-    test "states what a pointed marker and a round marker mean" do
-      view = open_page()
-
-      note = text(view, "#marker-heading-note")
-      assert note =~ "A pointed marker points the way the source says the vehicle is heading"
-      assert note =~ "A round marker has no heading."
-    end
-
-    test "states that a marker is labeled with its route" do
-      view = open_page()
-
-      assert text(view, "#marker-route-note") =~ "labeled with the name of its route"
-    end
-
-    test "lists every status with its label and description" do
-      view = open_page()
-
-      for %{status: status, label: label, description: description} <- VehicleMarkers.statuses() do
-        item = text(view, "#marker-status-#{status}")
-        assert item =~ label
-        assert item =~ description
-      end
-    end
-
+  describe "the marker hook's element" do
     test "hands the browser the definition of every status" do
       view = open_page()
 
@@ -285,31 +246,28 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
                ~w(reported stale scheduled unknown)
     end
 
-    test "says that no vehicles are on the map before any fetch is complete" do
+    test "shows nothing" do
+      apply_fetch([vehicle("1_a")], %{agency_id: "1", sequence: 1})
       view = open_page()
 
-      assert text(view, "#marker-count") =~ "No vehicles on the map."
-      assert text(view, "#marker-position-missing") =~ "Every vehicle has a position."
+      element = view |> text("#vehicle-markers") |> LazyHTML.from_fragment()
+
+      assert LazyHTML.attribute(element, "hidden") == [""]
+      assert LazyHTML.text(element) == ""
     end
+  end
 
-    test "counts the vehicles on the map and the ones with no position" do
-      apply_fetch(
-        [vehicle("1_a"), vehicle("1_b", %{position: nil}), vehicle("1_c", %{position: nil})],
-        %{agency_id: "1", sequence: 1}
-      )
-
-      apply_fetch([vehicle("40_x")], %{agency_id: "40", sequence: 1})
+  describe "the page" do
+    test "names no vehicle" do
+      apply_fetch([vehicle("1_a")], %{agency_id: "1", sequence: 1})
       view = open_page()
 
-      assert text(view, "#marker-count") =~ "2 vehicles on the map."
-
-      assert text(view, "#marker-position-missing") =~
-               "2 vehicles have no position and are not on the map."
+      refute render(view) =~ "1_a"
     end
   end
 
   describe "without a basemap" do
-    test "shows no legend and no counts", %{tmp_dir: tmp_dir} do
+    test "mounts no marker hook", %{tmp_dir: tmp_dir} do
       File.rm!(Path.join(tmp_dir, "manifest.json"))
       apply_fetch([vehicle("1_a")], %{agency_id: "1", sequence: 1})
       view = open_page()
