@@ -1,7 +1,8 @@
 defmodule GobusgoWeb.VehicleLive do
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
-  fetch in `Gobusgo.OneBusAway.VehicleView`, and nothing else.
+  fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines of the routes the
+  two route views hold, and nothing else.
 
   The page draws the basemap of the configured basemap directory, read once
   when the page is mounted. The `agency` query parameter chooses the agency
@@ -24,6 +25,16 @@ defmodule GobusgoWeb.VehicleLive do
   all agencies when the browser sends `vehicle-markers:ready`, and
   afterwards the agencies whose fetch changed, so a vehicle that leaves an
   agency's fetch leaves the map.
+
+  Under the markers the browser draws one line per route, from
+  `GobusgoWeb.RouteLines`: every route an agency lists in the route view
+  that has a path in the route path view. A second element that shows
+  nothing mounts the hook that draws them. A connected page subscribes to
+  both route views, and keeps the version of each line it has sent, the
+  route's color and its path's fetch time, and no polyline. The lines reach
+  the browser as `route-lines:routes` events, each holding the lines of some
+  routes and the routes that are gone: every line when the browser sends
+  `route-lines:ready`, and afterwards the lines whose version changed.
   """
 
   use Phoenix.LiveView
@@ -32,23 +43,30 @@ defmodule GobusgoWeb.VehicleLive do
 
   alias Gobusgo.Assert
   alias Gobusgo.Basemap
+  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.VehicleView
   alias GobusgoWeb.BasemapSources
+  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
+  @route_view Gobusgo.OneBusAway.RouteView
+  @route_path_view Gobusgo.OneBusAway.RoutePathView
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     if connected?(socket) do
       :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
+      :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
+      :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
     end
 
     {:ok,
      assign(socket,
        manifest: read_manifest(),
        basemap: nil,
-       shown_request_ids: VehicleView.current_request_ids(VehicleView)
+       shown_request_ids: VehicleView.current_request_ids(VehicleView),
+       shown_route_versions: route_versions()
      )}
   end
 
@@ -72,7 +90,21 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply, push_agencies(socket, changed_agency_ids(shown_request_ids, request_ids))}
   end
 
+  def handle_info(
+        {:fetch_view_switched, view},
+        %{assigns: %{shown_route_versions: shown}} = socket
+      )
+      when view in [@route_view, @route_path_view] do
+    versions = route_versions()
+    {:noreply, push_route_lines(socket, versions, RouteLines.changes(shown, versions))}
+  end
+
   @impl Phoenix.LiveView
+  def handle_event("route-lines:ready", _params, socket) do
+    versions = route_versions()
+    {:noreply, push_route_lines(socket, versions, RouteLines.changes(%{}, versions))}
+  end
+
   def handle_event("vehicle-markers:ready", _params, socket) do
     agency_ids = VehicleView |> VehicleView.current_request_ids() |> Map.keys() |> Enum.sort()
     {:noreply, push_agencies(socket, agency_ids)}
@@ -106,6 +138,8 @@ defmodule GobusgoWeb.VehicleLive do
         hidden
       >
       </div>
+
+      <div :if={@basemap != nil} id="route-lines" phx-hook="RouteLines" hidden></div>
     </main>
     """
   end
@@ -185,4 +219,37 @@ defmodule GobusgoWeb.VehicleLive do
   defp push_markers(socket, %{agency_id: agency_id, markers: markers}) do
     push_event(socket, "vehicle-markers:agency", %{agency_id: agency_id, markers: markers})
   end
+
+  defp route_versions do
+    RouteLines.versions(%{
+      route_fetches: FetchView.current(@route_view),
+      path_fetch_times: FetchView.fetch_times(@route_path_view)
+    })
+  end
+
+  # Sends the lines of the changed routes, a bounded count an event, and the
+  # routes that are gone with the first event. Each path is read here and
+  # kept nowhere: the page remembers only the version of each line.
+  defp push_route_lines(socket, versions, %{changed: changed, removed: removed}) do
+    lines =
+      for route_id <- changed,
+          path_fetch = FetchView.current_fetch(@route_path_view, route_id),
+          path_fetch != nil do
+        {color, _fetched_at} = Map.fetch!(versions, route_id)
+        RouteLines.line(%{color: color, path_fetch: path_fetch})
+      end
+
+    events =
+      case {RouteLines.chunks(lines), removed} do
+        {[], []} -> []
+        {[], removed} -> [%{lines: [], removed: removed}]
+        {[first | rest], removed} -> [%{lines: first, removed: removed}] ++ lines_only(rest)
+      end
+
+    events
+    |> Enum.reduce(socket, &push_event(&2, "route-lines:routes", &1))
+    |> assign(shown_route_versions: versions)
+  end
+
+  defp lines_only(chunks), do: for(lines <- chunks, do: %{lines: lines, removed: []})
 end
