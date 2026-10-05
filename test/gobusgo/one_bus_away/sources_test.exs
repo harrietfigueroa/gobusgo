@@ -43,18 +43,31 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   defp specs(options) do
     Sources.specs(
       @settings,
-      Keyword.merge([vehicle_cycle_options: [task_supervisor: @tasks]], options)
+      Keyword.merge(
+        [
+          vehicle_cycle_options: [task_supervisor: @tasks],
+          route_cycle_options: [task_supervisor: @tasks]
+        ],
+        options
+      )
     )
   end
 
   defp agency_discovery(record_options) do
-    assert [spec, _vehicles] = specs(agency_record_options: record_options)
+    assert [spec, _vehicles, _routes] = specs(agency_record_options: record_options)
     spec
   end
 
   defp vehicles(cycle_options) do
-    assert [_agencies, spec] =
+    assert [_agencies, spec, _routes] =
              specs(vehicle_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
+
+    spec
+  end
+
+  defp routes(cycle_options) do
+    assert [_agencies, _vehicles, spec] =
+             specs(route_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
   end
@@ -130,6 +143,42 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       assert {:ok, %{agency_count: 2, recorded_count: 2}} = spec.run.()
       assert_received {:written, %{destination: _first}}
       assert_received {:written, %{destination: _second}}
+    end
+
+    test "holds the route source, every minute" do
+      assert %{name: Gobusgo.OneBusAway.RouteScheduler, interval_ms: 60_000} = routes([])
+    end
+
+    test "gives the route source a deadline inside its interval" do
+      spec = routes([])
+
+      assert spec.deadline_ms >= 1
+      assert spec.deadline_ms < spec.interval_ms
+    end
+
+    test "runs the route source by recording the routes of an agency that has none" do
+      Req.Test.stub(@stub_name, fn conn ->
+        body = File.read!(Path.join(@fixture_directory, "routes_for_agency.json"))
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      spec =
+        routes(
+          agency_ids: fn -> ["40"] end,
+          route_view: Module.concat(__MODULE__, NoRouteView),
+          route_path_view: Module.concat(__MODULE__, NoRoutePathView),
+          record_options: [
+            fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
+            write_options: [backend: RecordingBackend, recipient: self()],
+            publish_options: [backend: AcknowledgingPublisher]
+          ]
+        )
+
+      assert {:ok, %{due_count: 1, recorded_count: 1}} = spec.run.()
+      assert_received {:written, %{destination: "raw/oba/routes-for-agency/" <> _name}}
     end
   end
 end

@@ -176,7 +176,8 @@ defmodule Gobusgo.Application do
     case Config.one_bus_away() do
       {:ok, settings} ->
         Sources.specs(settings,
-          vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
+          vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
+          route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
         )
 
       {:error, {:missing, key}} ->
