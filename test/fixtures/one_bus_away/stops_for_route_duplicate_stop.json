@@ -1,0 +1,158 @@
+{
+  "code": 200,
+  "currentTime": 1791165589097,
+  "text": "OK",
+  "version": 2,
+  "data": {
+    "entry": {
+      "polylines": [
+        {
+          "length": 3,
+          "levels": "",
+          "points": "mbpaHphuiVJVbhAn|F"
+        }
+      ],
+      "routeId": "1_100336",
+      "stopGroupings": [
+        {
+          "ordered": true,
+          "stopGroups": [
+            {
+              "id": "1",
+              "name": {
+                "name": "Downtown Seattle Water Taxi",
+                "names": [
+                  "Downtown Seattle Water Taxi"
+                ],
+                "type": "destination"
+              },
+              "polylines": [
+                {
+                  "length": 3,
+                  "levels": "",
+                  "points": "}xmaHxf}iVchAo|FKW"
+                }
+              ],
+              "stopIds": [
+                "1_99997",
+                "1_1889"
+              ],
+              "subGroups": []
+            },
+            {
+              "id": "0",
+              "name": {
+                "name": "West Seattle Water Taxi",
+                "names": [
+                  "West Seattle Water Taxi"
+                ],
+                "type": "destination"
+              },
+              "polylines": [
+                {
+                  "length": 3,
+                  "levels": "",
+                  "points": "mbpaHphuiVJVbhAn|F"
+                }
+              ],
+              "stopIds": [
+                "1_1889",
+                "1_99997"
+              ],
+              "subGroups": []
+            }
+          ],
+          "type": "direction"
+        }
+      ],
+      "stopIds": [
+        "1_1889",
+        "1_99997",
+        "1_1889"
+      ]
+    },
+    "references": {
+      "agencies": [
+        {
+          "disclaimer": "",
+          "email": "",
+          "fareUrl": "https://kingcounty.gov/en/dept/metro/fares-and-payment/prices",
+          "id": "1",
+          "lang": "EN",
+          "name": "Metro Transit",
+          "phone": "206-553-3000",
+          "privateService": false,
+          "timezone": "America/Los_Angeles",
+          "url": "https://kingcounty.gov/en/dept/metro"
+        }
+      ],
+      "routes": [
+        {
+          "agencyId": "1",
+          "color": "4298CC",
+          "description": "Water Taxi: West Seattle - Downtown Seattle",
+          "id": "1_100336",
+          "longName": "",
+          "nullSafeShortName": "973",
+          "shortName": "973",
+          "textColor": "FFFFFF",
+          "type": 4,
+          "url": "https://kingcounty.gov/en/dept/metro/travel-options/water-taxi/west-seattle"
+        },
+        {
+          "agencyId": "1",
+          "color": "32CD32",
+          "description": "Water Taxi: Vashon Island - Downtown Seattle",
+          "id": "1_100337",
+          "longName": "",
+          "nullSafeShortName": "975",
+          "shortName": "975",
+          "textColor": "FFFFFF",
+          "type": 4,
+          "url": "https://kingcounty.gov/en/dept/metro/travel-options/water-taxi/vashon"
+        }
+      ],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [
+        {
+          "code": "1889",
+          "direction": "",
+          "id": "1_1889",
+          "lat": 47.601223,
+          "locationType": 0,
+          "lon": -122.338928,
+          "name": "Vashon Island Water Taxi & Colman Dock",
+          "parent": "",
+          "routeIds": [
+            "1_100336",
+            "1_100337"
+          ],
+          "staticRouteIds": [
+            "1_100336",
+            "1_100337"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "99997",
+          "direction": "",
+          "id": "1_99997",
+          "lat": 47.589374,
+          "locationType": 0,
+          "lon": -122.37944,
+          "name": "Water Taxi Route & Harbor Ave SW",
+          "parent": "",
+          "routeIds": [
+            "1_100336"
+          ],
+          "staticRouteIds": [
+            "1_100336"
+          ],
+          "wheelchairBoarding": "UNKNOWN"
+        }
+      ],
+      "trips": []
+    }
+  }
+}

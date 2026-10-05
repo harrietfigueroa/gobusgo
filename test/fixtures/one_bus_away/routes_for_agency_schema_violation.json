@@ -1,0 +1,67 @@
+{
+  "code": 200,
+  "currentTime": 1791163051555,
+  "text": "OK",
+  "version": 2,
+  "data": {
+    "limitExceeded": false,
+    "list": [
+      {
+        "agencyId": "40",
+        "color": "9AB6D3",
+        "description": "N Line runs between Everett Station and King Street Station weekdays",
+        "id": "40_SNDR_EV",
+        "longName": "Everett - Seattle",
+        "nullSafeShortName": "N Line",
+        "shortName": "N Line",
+        "textColor": "000000",
+        "url": "https://www.soundtransit.org/N"
+      },
+      {
+        "agencyId": "40",
+        "color": "2B376E",
+        "description": "Redmond - University District",
+        "id": "40_100511",
+        "longName": "",
+        "nullSafeShortName": "542",
+        "shortName": "542",
+        "textColor": "FFFFFF",
+        "type": 3,
+        "url": "https://www.soundtransit.org/542"
+      },
+      {
+        "agencyId": "40",
+        "color": "28813F",
+        "description": "1 Line runs between Lynnwood City Center Station and Federal Way Downtown Station seven days a week",
+        "id": "40_100479",
+        "longName": "Lynnwood - Federal Way",
+        "nullSafeShortName": "1 Line",
+        "shortName": "1 Line",
+        "textColor": "FFFFFF",
+        "type": 0,
+        "url": "https://www.soundtransit.org/1"
+      }
+    ],
+    "references": {
+      "agencies": [
+        {
+          "disclaimer": "",
+          "email": "main@soundtransit.org",
+          "fareUrl": "https://www.soundtransit.org/ride-with-us/how-to-pay/fares",
+          "id": "40",
+          "lang": "en",
+          "name": "Sound Transit",
+          "phone": "1-888-889-6368",
+          "privateService": false,
+          "timezone": "America/Los_Angeles",
+          "url": "https://www.soundtransit.org"
+        }
+      ],
+      "routes": [],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [],
+      "trips": []
+    }
+  }
+}

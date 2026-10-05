@@ -40,10 +40,11 @@ defmodule Gobusgo.OneBusAway.Client do
 
   @doc """
   Issues a GET for `path` on the configured server and returns the status and
-  body. Options: `:plug` (a Req plug, for tests), `:max_retries`,
-  `:retry_delay_ms_base`, `:deadline_ms`, the bound on all attempts and
-  every wait for a permit together, and `:gate`, the request gate, which is
-  `#{inspect(@gate_default)}` by default.
+  body. Options: `:params`, the query parameters sent beside the key, as a
+  keyword list that never names `key`; `:plug` (a Req plug, for tests),
+  `:max_retries`, `:retry_delay_ms_base`, `:deadline_ms`, the bound on all
+  attempts and every wait for a permit together, and `:gate`, the request
+  gate, which is `#{inspect(@gate_default)}` by default.
 
   The wait for a permit ends #{@gate_wait_margin_ms} ms before the deadline,
   the least time left in which a request is still worth starting.
@@ -53,6 +54,7 @@ defmodule Gobusgo.OneBusAway.Client do
       when is_binary(base_url) and is_binary(api_key) and is_binary(path) and is_list(options) do
     options =
       Keyword.validate!(options,
+        params: [],
         plug: nil,
         max_retries: @retries_default,
         retry_delay_ms_base: @retry_delay_ms_base_default,
@@ -60,6 +62,9 @@ defmodule Gobusgo.OneBusAway.Client do
         gate: @gate_default
       )
 
+    params = Keyword.fetch!(options, :params)
+    Assert.condition(Keyword.keyword?(params), "params must be a keyword list")
+    Assert.condition(not Keyword.has_key?(params, :key), "params must not name the key parameter")
     deadline_ms = Keyword.fetch!(options, :deadline_ms)
     Assert.condition(deadline_ms > 0, "deadline_ms must be positive, got #{deadline_ms}")
     permit_deadline_at_ms = now_ms() + deadline_ms - @gate_wait_margin_ms
@@ -116,7 +121,7 @@ defmodule Gobusgo.OneBusAway.Client do
       [
         base_url: base_url,
         url: path,
-        params: [key: api_key],
+        params: Keyword.fetch!(options, :params) ++ [key: api_key],
         headers: [accept: "application/json"],
         decode_body: false,
         redirect: false,
