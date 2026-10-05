@@ -59,6 +59,37 @@ defmodule Gobusgo.OneBusAway.ClientTest do
     {result, System.monotonic_time(:millisecond) - started_at_ms}
   end
 
+  describe "get/3 query parameters" do
+    defp stub_query(test_pid) do
+      Req.Test.stub(@stub_name, fn conn ->
+        send(test_pid, {:query, Plug.Conn.fetch_query_params(conn).query_params})
+        Plug.Conn.send_resp(conn, 200, "")
+      end)
+    end
+
+    test "sends the key alone when no parameters are given" do
+      stub_query(self())
+
+      assert {:ok, %{status: 200}} = get(start_gate([]))
+      assert_received {:query, query}
+      assert query == %{"key" => "test-key-3f9a1c07be52"}
+    end
+
+    test "sends the parameters it is given beside the key" do
+      stub_query(self())
+
+      assert {:ok, %{status: 200}} = get(start_gate([]), params: [includePolylines: "true"])
+      assert_received {:query, query}
+      assert query == %{"key" => "test-key-3f9a1c07be52", "includePolylines" => "true"}
+    end
+
+    test "raises for a parameter named key" do
+      assert_raise AssertionError, ~r/key/, fn ->
+        get(start_gate([]), params: [key: "another"])
+      end
+    end
+  end
+
   describe "get/3 permits" do
     test "takes a permit for every attempt, a retry included" do
       gate = start_gate(refill_interval_ms: 120)
