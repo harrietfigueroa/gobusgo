@@ -181,7 +181,7 @@ http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency
 
 ### Vehicle test page
 
-http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's latest fetch, and nothing else. Each vehicle that has a position is a marker at the position the source estimates for it, colored by how far to trust that position: reported at most two minutes before the fetch, stale, schedule only for a vehicle that has never reported, or report time not supplied. A marker points the way the vehicle is heading when the source supplies a heading, and is labeled with its route where the map has room. Clicking a marker opens a popup with the vehicle, its status, its route and headsign, and its heading. The map updates on its own.
+http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's latest fetch, and nothing else. Each vehicle that has a position is a marker at the position the source estimates for it, colored by how far to trust that position: reported at most two minutes before the fetch, stale, schedule only for a vehicle that has never reported, or report time not supplied. A marker points the way the vehicle is heading when the source supplies a heading, and is labeled with its route where the map has room. Clicking a marker opens a popup with the vehicle, its status, its route and headsign, and its heading. Under the markers the map draws the path of every route of every agency as a thin line in the route's color, or in gray for a route that has no color; a route appears once the server has fetched its path, within about ten minutes of a first start or after `mix gobusgo.routes.backfill`. The map updates on its own.
 
 The map is the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. It fits the whole archive, and `/vehicles?agency=<agency id>` fits one agency's coverage. The map shows the OpenStreetMap attribution. Before any extraction the page says "No basemap yet." and shows nothing else. A view wider than the archive shows a plain background beyond the tiles the archive holds.
 
@@ -404,7 +404,7 @@ mix test --include kafka
 
 ### Memory of the vehicle page
 
-Two measurements print the memory the page at `/vehicles` holds, with one fetch cycle of synthetic vehicles in the counts a real cycle had and twelve further cycles while the page is open. Each reading is given as found and again after a forced collection, so the difference is garbage that was still held.
+Two measurements print the memory the page at `/vehicles` holds, with one fetch cycle of synthetic vehicles in the counts a real cycle had, synthetic routes and paths in the counts of a real day, and twelve further cycles while the page is open. Each reading is given as found and again after a forced collection, so the difference is garbage that was still held.
 
 ```sh
 mix test --only memory

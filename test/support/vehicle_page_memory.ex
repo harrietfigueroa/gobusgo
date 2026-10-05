@@ -20,10 +20,36 @@ defmodule Gobusgo.Test.VehiclePageMemory do
     %{agency_id: "97", vehicle_count: 76}
   ]
 
+  # The routes each agency listed on 2026-10-05.
+  @route_profile [
+    %{agency_id: "1", route_count: 134},
+    %{agency_id: "19", route_count: 30},
+    %{agency_id: "20", route_count: 82},
+    %{agency_id: "23", route_count: 2},
+    %{agency_id: "29", route_count: 34},
+    %{agency_id: "3", route_count: 31},
+    %{agency_id: "40", route_count: 28},
+    %{agency_id: "51", route_count: 1},
+    %{agency_id: "6289", route_count: 0},
+    %{agency_id: "95", route_count: 38},
+    %{agency_id: "96", route_count: 1},
+    %{agency_id: "97", route_count: 10}
+  ]
+
+  # The 391 routes of 2026-10-05 held 508,629 points in 14,076 polylines
+  # and 1.4 MB of encoded text: 36 polylines a route and 36 points a
+  # polyline. A synthetic point takes three characters, against 2.8 for a
+  # real one.
+  @route_polyline_count 36
+  @polyline_point_count 36
+  @point_lat_step 100
+  @point_lon_step 10
+  @polyline_precision 100_000
+
   @moduledoc """
   What the memory measurements of the vehicle page share: synthetic fetches
-  that fill a vehicle view, and readings of the memory a process and a table
-  hold.
+  that fill a vehicle view, synthetic routes and paths that fill the two
+  route views, and readings of the memory a process and a table hold.
 
   A synthetic vehicle supplies every field, so a fetch of them is at least
   as large as a fetch of as many real vehicles. Fetches follow each other by
@@ -31,6 +57,9 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   at another position in each.
   """
 
+  alias Gobusgo.OneBusAway.FetchView
+  alias Gobusgo.OneBusAway.RouteBatch
+  alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Publisher
@@ -93,6 +122,109 @@ defmodule Gobusgo.Test.VehiclePageMemory do
     |> Enum.chunk_every(Publisher.record_count_max())
     |> Enum.each(fn values -> :ok = VehicleView.apply_records(view, values) end)
   end
+
+  @doc "Returns the route count of each agency, in agency identifier order."
+  @spec route_profile() :: [%{agency_id: String.t(), route_count: non_neg_integer()}]
+  def route_profile, do: @route_profile
+
+  @doc """
+  Applies to `views.route_view` a fetch of the routes of every agency of
+  `route_profile/0`, and to `views.route_path_view` a path for each of those
+  routes, each of #{@route_polyline_count} polylines of
+  #{@polyline_point_count} points. Returns the count of routes applied.
+  """
+  @spec apply_routes(%{route_view: atom(), route_path_view: atom()}) :: non_neg_integer()
+  def apply_routes(%{route_view: route_view, route_path_view: route_path_view})
+      when is_atom(route_view) and is_atom(route_path_view) do
+    fetch = %{
+      destination: "raw/oba/routes/synthetic.json.gz",
+      fetched_at: @first_fetched_at,
+      data_sha256: String.duplicate("ab", 32)
+    }
+
+    route_counts =
+      for %{agency_id: agency_id, route_count: route_count} <- @route_profile do
+        context = %{agency_id: agency_id, sequence: 0, fetched_at: @first_fetched_at}
+        route_ids = for index <- 0..(route_count - 1)//1, do: "#{agency_id}_#{index}"
+
+        routes =
+          fetch
+          |> Map.merge(%{agency_id: agency_id, request_id: request_id(context)})
+          |> Map.put(:routes, Enum.map(route_ids, &route(&1, agency_id)))
+          |> RouteBatch.Records.build()
+
+        :ok = FetchView.apply_records(route_view, [routes.value])
+
+        for {route_id, index} <- Enum.with_index(route_ids) do
+          path =
+            fetch
+            |> Map.merge(%{route_id: route_id, request_id: request_id(context)})
+            |> Map.put(:route_path, route_path(route_id, index))
+            |> RoutePathBatch.Records.build()
+
+          :ok = FetchView.apply_records(route_path_view, [path.value])
+        end
+
+        route_count
+      end
+
+    Enum.sum(route_counts)
+  end
+
+  defp route(route_id, agency_id) do
+    %{
+      id: route_id,
+      agency_id: agency_id,
+      short_name: "100",
+      long_name: "Downtown Seattle - University District",
+      description: "Downtown Seattle - University District",
+      type: 3,
+      color: "FDB71A",
+      text_color: "000000",
+      url: "https://agency.example.test/routes/100"
+    }
+  end
+
+  # Polylines that start a grid step apart and run north-east, so each
+  # route draws lines of its own on the map.
+  defp route_path(route_id, route_index) do
+    polylines =
+      for polyline_index <- 0..(@route_polyline_count - 1) do
+        lat = @grid_south_degrees + rem(route_index, @grid_column_count) * @grid_step_degrees
+        lon = @grid_west_degrees + polyline_index * @grid_step_degrees
+
+        first =
+          encode_value(round(lat * @polyline_precision)) <>
+            encode_value(round(lon * @polyline_precision))
+
+        step = encode_value(@point_lat_step) <> encode_value(@point_lon_step)
+
+        %{
+          points: first <> String.duplicate(step, @polyline_point_count - 1),
+          point_count: @polyline_point_count,
+          levels: nil
+        }
+      end
+
+    %{route_id: route_id, stop_ids: [], polylines: polylines, stop_groupings: [], stops: []}
+  end
+
+  # One value of the encoded polyline format: the sign in the lowest bit,
+  # then five-bit chunks, lowest first, each but the last marked as
+  # continued, each written as the character 63 above it.
+  # https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-10-05
+  defp encode_value(value) when is_integer(value) do
+    import Bitwise
+    shifted = if value < 0, do: bnot(value <<< 1), else: value <<< 1
+    encode_chunks(shifted, "")
+  end
+
+  defp encode_chunks(rest, encoded) when rest >= 0x20 do
+    import Bitwise
+    encode_chunks(rest >>> 5, encoded <> <<((rest &&& 0x1F) ||| 0x20) + 63>>)
+  end
+
+  defp encode_chunks(rest, encoded), do: encoded <> <<rest + 63>>
 
   @doc """
   Returns the memory of the process `pid`: all of it, its heaps, and the
