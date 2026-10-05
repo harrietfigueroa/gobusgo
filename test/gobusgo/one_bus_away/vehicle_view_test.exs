@@ -99,6 +99,64 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
     end
   end
 
+  describe "current_request_ids/1" do
+    test "is empty before a fetch is complete", %{view: view} do
+      assert VehicleView.current_request_ids(view) == %{}
+    end
+
+    test "is empty for a view that is not running" do
+      assert VehicleView.current_request_ids(Gobusgo.OneBusAway.VehicleViewTest.NotStarted) ==
+               %{}
+    end
+
+    test "names the request of every agency's current fetch", %{view: view} do
+      other_request_id = "0199c4a2-7e1b-7a3f-9d20-000000000040"
+      other = records(["40_x"], %{agency_id: "40", request_id: other_request_id})
+      :ok = VehicleView.apply_records(view, values(other))
+      :ok = VehicleView.apply_records(view, values(records(["1_a"])))
+
+      assert VehicleView.current_request_ids(view) ==
+               %{"1" => @request_id, "40" => other_request_id}
+    end
+
+    test "leaves out an agency whose fetch has no manifest yet", %{view: view} do
+      %{vehicles: vehicles} = records(["1_a"])
+      :ok = VehicleView.apply_records(view, Enum.map(vehicles, & &1.value))
+
+      assert VehicleView.current_request_ids(view) == %{}
+    end
+  end
+
+  describe "current_fetch/2" do
+    test "is nothing for an agency with no complete fetch", %{view: view} do
+      assert VehicleView.current_fetch(view, "1") == nil
+    end
+
+    test "is nothing for a view that is not running" do
+      assert VehicleView.current_fetch(Gobusgo.OneBusAway.VehicleViewTest.NotStarted, "1") ==
+               nil
+    end
+
+    test "is the agency's fetch as current/1 holds it", %{view: view} do
+      :ok = VehicleView.apply_records(view, values(records(["1_b", "1_a"])))
+
+      assert [VehicleView.current_fetch(view, "1")] == VehicleView.current(view)
+    end
+
+    test "is the fetch of the agency asked for among several", %{view: view} do
+      other =
+        records(["40_x"], %{
+          agency_id: "40",
+          request_id: "0199c4a2-7e1b-7a3f-9d20-000000000040"
+        })
+
+      :ok = VehicleView.apply_records(view, values(other))
+      :ok = VehicleView.apply_records(view, values(records(["1_a"])))
+
+      assert %{agency_id: "40", vehicle_ids: ["40_x"]} = VehicleView.current_fetch(view, "40")
+    end
+  end
+
   describe "expired_vehicle_ids/2" do
     @later %{
       fetched_at: ~U[2026-10-02 03:20:01Z],
