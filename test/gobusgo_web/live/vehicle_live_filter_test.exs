@@ -67,6 +67,10 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     "0199c4a2-7e1b-7a3f-9d20-" <> String.pad_leading(Integer.to_string(sequence), 12, "0")
   end
 
+  # A vehicle is its identifier, or `{identifier, route identifier}` for one
+  # on a route.
+  defp vehicle({id, route_id}), do: %{vehicle(id) | route_id: route_id}
+
   defp vehicle(id) do
     %{
       id: id,
@@ -87,7 +91,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
   # Publishes a fetch of `agency_id`; `sequence` orders the fetches of a
   # test, as the request identifier and as seconds after the first fetch.
-  defp apply_fetch(vehicle_ids, %{agency_id: agency_id, sequence: sequence}) do
+  defp apply_fetch(vehicles, %{agency_id: agency_id, sequence: sequence}) do
     %{vehicles: records, manifest: manifest} =
       Records.build(%{
         agency_id: agency_id,
@@ -95,7 +99,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
         fetched_at: DateTime.add(@fetched_at, sequence, :second),
         data_sha256: String.duplicate("ab", 32),
         request_id: request_id(sequence),
-        vehicles: Enum.map(vehicle_ids, &vehicle/1)
+        vehicles: Enum.map(vehicles, &vehicle/1)
       })
 
     :ok = VehicleView.apply_records(VehicleView, Enum.map(records ++ [manifest], & &1.value))
@@ -230,6 +234,26 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     view
   end
 
+  # Agency "1" with a vehicle on each of two routes and one on none, agency
+  # "40" with a vehicle on a route, and the page at `path` after its map
+  # asked for the markers.
+  defp open_on_routes_ready(path) do
+    apply_fetch([{"1_a", "1_100"}, {"1_b", "1_200"}, "1_c"], %{agency_id: "1", sequence: 1})
+    apply_fetch([{"40_x", "40_500"}], %{agency_id: "40", sequence: 2})
+    {:ok, view, _html} = live(build_conn(), path)
+    view |> element("#vehicle-markers") |> render_hook("vehicle-markers:ready")
+    view
+  end
+
+  # The hidden fields of the controls, each `{name, value}`.
+  defp hidden_fields(view) do
+    document = view |> element(@form) |> render() |> LazyHTML.from_fragment()
+
+    for input <- LazyHTML.query(document, "input[type=hidden]") do
+      {input |> LazyHTML.attribute("name") |> hd(), input |> LazyHTML.attribute("value") |> hd()}
+    end
+  end
+
   defp bounds(view) do
     [value] =
       view
@@ -281,18 +305,146 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
-  describe "a page opened at an address with a route parameter" do
-    test "sends every agency's markers, the parameter being no field of the page's filter" do
-      view = open_ready("/vehicles?route=1_100479")
+  describe "a page opened at an address with a route filter" do
+    test "sends the markers of the vehicles on the route, and none on another or on no route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+    end
+
+    test "sends the markers of the vehicles on every route the filter names" do
+      view = open_on_routes_ready("/vehicles?route=1_100,40_500")
 
       assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
       assert_push_event(view, @event, %{agency_id: "40", markers: [%{id: "40/40_x"}]})
     end
 
-    test "is not marked as supplying a filter" do
-      view = open_with_agencies("/vehicles?route=1_100479")
+    test "sends no marker of an agency none of whose vehicles are on the route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
 
-      assert supplied(view) == "false"
+      refute_push_event(view, @event, %{agency_id: "40", markers: [_marker | _rest]})
+    end
+
+    test "sends no marker for a route that no vehicle is on, and shows no notice" do
+      view = open_on_routes_ready("/vehicles?route=1_999")
+
+      refute_push_event(view, @event, %{markers: [_marker | _rest]})
+      refute has_element?(view, "#filter-refused")
+    end
+
+    test "is marked as supplying a filter" do
+      view = open_with_agencies("/vehicles?route=1_100")
+
+      assert supplied(view) == "true"
+    end
+
+    test "fits the map to the whole archive" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+
+      assert bounds(view) == @archive_bounds
+    end
+
+    test "shows the notice for more routes than the limit" do
+      routes = Enum.map_join(0..Filter.value_count_max(), ",", &"1_#{&1}")
+      view = open_on_routes_ready("/vehicles?route=" <> routes)
+
+      assert view |> element("#filter-refused") |> render() =~ "This filter is not valid."
+    end
+
+    test "sends no marker for more routes than the limit" do
+      routes = Enum.map_join(0..Filter.value_count_max(), ",", &"1_#{&1}")
+      view = open_on_routes_ready("/vehicles?route=" <> routes)
+
+      refute_push_event(view, @event, %{markers: [_marker | _rest]})
+    end
+  end
+
+  describe "a page opened at an address with a route and an agency filter" do
+    test "sends the markers of the named agency's vehicles on the route" do
+      view = open_on_routes_ready("/vehicles?agency=1&route=1_200")
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_b"}]})
+    end
+
+    test "sends no marker of a vehicle on the route whose agency the filter leaves out" do
+      view = open_on_routes_ready("/vehicles?agency=1&route=40_500")
+
+      refute_push_event(view, @event, %{markers: [_marker | _rest]})
+    end
+
+    test "fits the map to the coverage of the one agency the filter names" do
+      view = open_on_routes_ready("/vehicles?agency=1&route=1_200")
+
+      assert bounds(view) == @agency_bounds
+    end
+  end
+
+  describe "a new fetch under a route filter" do
+    test "sends the markers of its vehicles on the route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+
+      apply_fetch([{"1_a", "1_100"}, {"1_d", "1_100"}, {"1_b", "1_200"}], %{
+        agency_id: "1",
+        sequence: 3
+      })
+
+      assert_push_event(view, @event, %{
+        agency_id: "1",
+        markers: [%{id: "1/1_a"}, %{id: "1/1_d"}]
+      })
+    end
+
+    test "leaves out a vehicle that moved to another route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+
+      apply_fetch([{"1_a", "1_200"}], %{agency_id: "1", sequence: 3})
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: []})
+    end
+
+    test "takes in a vehicle that moved onto the route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+
+      apply_fetch([{"1_a", "1_100"}, {"1_b", "1_100"}], %{agency_id: "1", sequence: 3})
+
+      assert_push_event(view, @event, %{
+        agency_id: "1",
+        markers: [%{id: "1/1_a"}, %{id: "1/1_b"}]
+      })
+    end
+
+    test "leaves out a vehicle that lost its route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+
+      apply_fetch(["1_a"], %{agency_id: "1", sequence: 3})
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: []})
+    end
+  end
+
+  describe "a change of the address's route filter" do
+    test "sends the markers of the vehicles on the new route" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+
+      render_patch(view, "/vehicles?route=1_200")
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_b"}]})
+    end
+
+    test "sends every vehicle's marker when the filter is removed" do
+      view = open_on_routes_ready("/vehicles?route=1_100")
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+
+      render_patch(view, "/vehicles")
+
+      assert_push_event(view, @event, %{
+        agency_id: "1",
+        markers: [%{id: "1/1_a"}, %{id: "1/1_b"}, %{id: "1/1_c"}]
+      })
     end
   end
 
@@ -442,6 +594,63 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
+  describe "the route lines under a route filter" do
+    test "are the lines of the routes the filter names" do
+      view = open_lines_ready("/vehicles?route=40_500")
+
+      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}], removed: []})
+    end
+
+    test "hold no line of a route the filter leaves out" do
+      view = open_lines_ready("/vehicles?route=40_500")
+
+      refute_push_event(view, @lines_event, %{lines: [%{id: "1_100"} | _rest]})
+    end
+
+    test "are none for a route that no agency lists" do
+      view = open_lines_ready("/vehicles?route=1_999")
+
+      refute_push_event(view, @lines_event, %{})
+    end
+
+    test "are none for a route whose agency the filter leaves out" do
+      view = open_lines_ready("/vehicles?agency=1&route=40_500")
+
+      refute_push_event(view, @lines_event, %{})
+    end
+
+    test "hold the line of a named route of a named agency" do
+      view = open_lines_ready("/vehicles?agency=40&route=40_500")
+
+      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}], removed: []})
+    end
+
+    test "change with the filter: the added route's line, the dropped route removed" do
+      view = open_lines_ready("/vehicles?route=40_500")
+
+      render_patch(view, "/vehicles?route=1_100")
+
+      assert_push_event(view, @lines_event, %{lines: [%{id: "1_100"}], removed: ["40_500"]})
+    end
+
+    test "take in a named route that a new fetch of its agency lists" do
+      view = open_lines_ready("/vehicles?route=1_200")
+
+      apply_routes(["1_100", "1_200"], %{agency_id: "1", sequence: 3})
+
+      assert_push_event(view, @lines_event, %{lines: [%{id: "1_200"}], removed: []})
+    end
+
+    test "leave out the other routes of a new fetch" do
+      view = open_lines_ready("/vehicles?route=40_500")
+      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}]})
+
+      apply_routes(["1_100", "1_200"], %{agency_id: "1", sequence: 3})
+
+      refute_push_event(view, @lines_event, %{})
+    end
+  end
+
   describe "a page opened at an address without a filter" do
     test "shows no notice" do
       view = open_ready("/vehicles")
@@ -491,6 +700,26 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
+  describe "the filter controls under a route filter" do
+    test "hold the routes in a hidden field" do
+      view = open_with_agencies("/vehicles?route=40_500,1_100")
+
+      assert hidden_fields(view) == [{"route", "1_100,40_500"}]
+    end
+
+    test "hold no hidden field for a filter that names no route" do
+      view = open_with_agencies("/vehicles?agency=40")
+
+      assert hidden_fields(view) == []
+    end
+
+    test "hold no hidden field for a refused filter" do
+      view = open_with_agencies("/vehicles?route=1_100&agency[x]=1")
+
+      assert hidden_fields(view) == []
+    end
+  end
+
   describe "a change of the filter controls" do
     test "puts the checked agencies into the address" do
       view = open_with_agencies("/vehicles")
@@ -516,6 +745,63 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
       assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
       assert_push_event(view, @event, %{agency_id: "40", markers: []})
+    end
+
+    test "reduces the routes of the address's filter to those the checked agency lists" do
+      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
+      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
+      view = open_with_agencies("/vehicles?route=40_500,1_100")
+
+      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
+
+      assert_patch(view, "/vehicles?agency=40&route=40_500")
+    end
+
+    test "keeps the routes that any of the checked agencies lists" do
+      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
+      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
+      view = open_with_agencies("/vehicles?route=40_500,1_100")
+
+      view |> form(@form, %{"agency" => ["40", "1"]}) |> render_change()
+
+      assert_patch(view, "/vehicles?agency=1,40&route=1_100,40_500")
+    end
+
+    test "removes the routes when the checked agency lists none of them" do
+      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
+      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
+      view = open_with_agencies("/vehicles?route=1_100")
+
+      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
+
+      assert_patch(view, "/vehicles?agency=40")
+    end
+
+    test "removes a route that no fetch of the route view lists" do
+      view = open_with_agencies("/vehicles?route=40_500")
+
+      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
+
+      assert_patch(view, "/vehicles?agency=40")
+    end
+
+    test "has the browser store the filter with the reduced routes" do
+      apply_routes(["40_500"], %{agency_id: "40", sequence: 1})
+      view = open_with_agencies("/vehicles?route=40_500,1_100")
+
+      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
+
+      assert_push_event(view, @store_event, %{
+        filter: %{"agency" => ["40"], "route" => ["40_500"]}
+      })
+    end
+
+    test "keeps every route of the address's filter when nothing is checked" do
+      view = open_with_agencies("/vehicles?agency=40&route=40_500")
+
+      render_change(view, "vehicle-filter:change", %{"route" => "40_500"})
+
+      assert_patch(view, "/vehicles?route=40_500")
     end
 
     test "removes the filter from the address when nothing is checked" do
@@ -581,9 +867,19 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
       assert_reply(view, %{accepted: true})
     end
 
+    test "goes into the address with the routes it names" do
+      view = open_with_agencies("/vehicles")
+
+      view
+      |> element(@form)
+      |> render_hook("vehicle-filter:restore", %{"filter" => %{"route" => ["40_500"]}})
+
+      assert_patch(view, "/vehicles?route=40_500")
+      assert_reply(view, %{accepted: true})
+    end
+
     for {description, params} <- [
           {"a refused filter", %{"filter" => %{"color" => ["red"]}}},
-          {"a filter that names a route", %{"filter" => %{"route" => ["1_100479"]}}},
           {"a filter that is no map", %{"filter" => "agency=1"}},
           {"no filter", %{}}
         ] do

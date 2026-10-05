@@ -229,6 +229,30 @@ defmodule Gobusgo.OneBusAway.VehicleFilterTest do
     end
   end
 
+  describe "keeps_route?/1" do
+    for {description, filter, kept} <- [
+          {"the empty filter", %{}, true},
+          {"a filter that names the route", %{"route" => ["40_500", "40_532"]}, true},
+          {"a filter that names other routes", %{"route" => ["40_500"]}, false},
+          {"a filter that names the agency alone", %{"agency" => ["40"]}, true},
+          {"a filter that names another agency alone", %{"agency" => ["1"]}, false},
+          {"a filter that names the agency and the route",
+           %{"agency" => ["40"], "route" => ["40_532"]}, true},
+          {"a filter that names the route and another agency",
+           %{"agency" => ["1"], "route" => ["40_532"]}, false},
+          {"a filter that names the agency and other routes",
+           %{"agency" => ["40"], "route" => ["40_500"]}, false}
+        ] do
+      test "is #{kept} for #{description}" do
+        assert VehicleFilter.keeps_route?(%{
+                 filter: unquote(Macro.escape(filter)),
+                 agency_id: "40",
+                 route_id: "40_532"
+               }) == unquote(kept)
+      end
+    end
+  end
+
   test "is an adapter of the filter contract" do
     behaviours = VehicleFilter.module_info(:attributes)[:behaviour]
 
