@@ -370,6 +370,24 @@ mix test --include kafka
 
 `GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` names another broker for them. CI runs them against a Kafka service container in its `kafka` job.
 
+### Memory of the vehicle page
+
+Two measurements print the memory the page at `/vehicles` holds, with one fetch cycle of synthetic vehicles in the counts a real cycle had and twelve further cycles while the page is open. Each reading is given as found and again after a forced collection, so the difference is garbage that was still held.
+
+```sh
+mix test --only memory
+```
+
+prints the memory of the page process, of the vehicle view process, and of the view's table.
+
+```sh
+mix assets.build
+MIX_ENV=test GOBUSGO_DATA_DIR=<base directory with a basemap> \
+  mix run --no-start test/scripts/vehicle_page_browser_memory.exs <path of the Chrome executable>
+```
+
+prints the page's JavaScript heap, the heaps of its workers, and its count of DOM nodes in a headless Chrome. The map's memory on the graphics side is not read. A process's heap grows in steps, so the server readings move in steps too, and a reading as found depends on when the last collection ran.
+
 ### Vendored front-end assets
 
 The repository has no Node toolchain. The assets the pages use from other projects are downloaded at pinned versions into directories git ignores, and `assets/vendor.lock.json`, which is checked in, pins them. It holds two kinds of entry:
