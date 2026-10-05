@@ -5,9 +5,10 @@ defmodule GobusgoWeb.VehicleLive do
   two route views hold, and nothing else.
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
-  reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
-  parameter names the agencies whose vehicles and route lines the map
-  shows, and an address without it shows every agency's. A filter that is
+  reads and `Gobusgo.Filter` judges under the `agency` field of
+  `Gobusgo.OneBusAway.VehicleFilter`: the `agency` query parameter names
+  the agencies whose vehicles and route lines the map shows, and an
+  address without it shows every agency's. A filter that is
   refused shows no vehicle, no line, and a notice that links to the page
   without a filter.
 
@@ -64,6 +65,7 @@ defmodule GobusgoWeb.VehicleLive do
 
   alias Gobusgo.Assert
   alias Gobusgo.Basemap
+  alias Gobusgo.Filter
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.VehicleFilter
@@ -104,7 +106,7 @@ defmodule GobusgoWeb.VehicleLive do
   @impl Phoenix.LiveView
   def handle_params(params, _uri, socket) do
     %{manifest: manifest, basemap: shown, filter: shown_filter} = socket.assigns
-    raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
+    raw = FilterParams.raw(%{params: params, spec: filter_spec()})
     filter = filter(raw)
 
     basemap =
@@ -144,7 +146,7 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   def handle_event("vehicle-filter:change", params, socket) do
-    raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
+    raw = FilterParams.raw(%{params: params, spec: filter_spec()})
 
     case filter(raw) do
       :refused ->
@@ -273,11 +275,15 @@ defmodule GobusgoWeb.VehicleLive do
   # The filter a raw filter stands for, or `:refused` for one the contract
   # does not accept.
   defp filter(raw) do
-    case VehicleFilter.normalize(raw) do
+    case Filter.normalize(%{raw: raw, spec: filter_spec()}) do
       {:ok, filter} -> filter
       {:error, [_violation | _rest]} -> :refused
     end
   end
+
+  # The page filters by agency alone, so any other field of the vehicle
+  # filter is no parameter of its address and is refused in a stored filter.
+  defp filter_spec, do: Map.take(VehicleFilter.spec(), [@agency_field])
 
   # What the browser stored is a filter as the page sent it, and is judged
   # again as a raw filter, since a browser can hold anything.

@@ -281,6 +281,21 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
+  describe "a page opened at an address with a route parameter" do
+    test "sends every agency's markers, the parameter being no field of the page's filter" do
+      view = open_ready("/vehicles?route=1_100479")
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+      assert_push_event(view, @event, %{agency_id: "40", markers: [%{id: "40/40_x"}]})
+    end
+
+    test "is not marked as supplying a filter" do
+      view = open_with_agencies("/vehicles?route=1_100479")
+
+      assert supplied(view) == "false"
+    end
+  end
+
   describe "a new fetch under an agency filter" do
     test "sends the markers of an agency the filter names" do
       view = open_ready("/vehicles?agency=40")
@@ -568,6 +583,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
     for {description, params} <- [
           {"a refused filter", %{"filter" => %{"color" => ["red"]}}},
+          {"a filter that names a route", %{"filter" => %{"route" => ["1_100479"]}}},
           {"a filter that is no map", %{"filter" => "agency=1"}},
           {"no filter", %{}}
         ] do
