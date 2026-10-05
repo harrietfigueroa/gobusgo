@@ -114,7 +114,8 @@ defmodule Gobusgo.OneBusAway.RoutePathsTest do
                    wheelchair_boarding: "UNKNOWN",
                    route_ids: ["1_100336"]
                  }
-               ]
+               ],
+               parent_stops: []
              }
     end
 
@@ -300,7 +301,8 @@ defmodule Gobusgo.OneBusAway.RoutePathsTest do
                   stop_ids: [],
                   polylines: [],
                   stop_groupings: [%{type: "direction", ordered: true, stop_groups: []}],
-                  stops: []
+                  stops: [],
+                  parent_stops: []
                 }}
     end
 
@@ -338,6 +340,49 @@ defmodule Gobusgo.OneBusAway.RoutePathsTest do
 
       assert {:ok, %{stops: stops}} = parse(data)
       assert Enum.map(stops, & &1.id) == ["1_1889", "1_99997"]
+    end
+
+    test "returns the referenced stop a stop names as its parent, once" do
+      [first, _second] = data()["references"]["stops"]
+      station = %{first | "id" => "1_station", "name" => "Colman Dock Station"}
+
+      data =
+        data()
+        |> put_in(["references", "stops", Access.at(0), "parent"], "1_station")
+        |> put_in(["references", "stops", Access.at(1), "parent"], "1_station")
+        |> update_in(["references", "stops"], &(&1 ++ [station]))
+
+      assert {:ok, %{stops: stops, parent_stops: [parent_stop]}} = parse(data)
+      assert Enum.map(stops, & &1.id) == ["1_1889", "1_99997"]
+      assert %{id: "1_station", name: "Colman Dock Station", parent: nil} = parent_stop
+    end
+
+    test "returns parent stops in identifier order" do
+      [first, _second] = data()["references"]["stops"]
+
+      data =
+        data()
+        |> put_in(["references", "stops", Access.at(0), "parent"], "1_b")
+        |> put_in(["references", "stops", Access.at(1), "parent"], "1_a")
+        |> update_in(
+          ["references", "stops"],
+          &(&1 ++ [%{first | "id" => "1_b"}, %{first | "id" => "1_a"}])
+        )
+
+      assert {:ok, %{parent_stops: parent_stops}} = parse(data)
+      assert Enum.map(parent_stops, & &1.id) == ["1_a", "1_b"]
+    end
+
+    test "returns no parent stop for a parent the response does not reference" do
+      data = put_in(data(), ["references", "stops", Access.at(0), "parent"], "1_station")
+
+      assert {:ok, %{parent_stops: []}} = parse(data)
+    end
+
+    test "returns a parent the route also lists as a stop alone" do
+      data = put_in(data(), ["references", "stops", Access.at(0), "parent"], "1_99997")
+
+      assert {:ok, %{stops: [_first, %{id: "1_99997"}], parent_stops: []}} = parse(data)
     end
 
     test "accepts a group with sub-groups and leaves them out" do

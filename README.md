@@ -58,6 +58,7 @@ The local broker is defined in the [infrastructure repository](https://github.co
 | `oba.routes.response-stored` | One "response stored" event per stored response of an agency's routes or of a route's stops and paths, keyed by dataset and identifier | 7 days |
 | `oba.routes.response-stored.dead-letter` | The route events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
 | `oba.routes.state` | One record per agency holding its routes, and one record per route holding its paths | Compacted |
+| `oba.stops.state` | One record per route holding the stops it lists and the parent stops those name | Compacted |
 | `oba.vehicles-for-agency.response-stored` | One "response stored" event per stored vehicle response, keyed by agency | 1 day |
 | `oba.vehicles-for-agency.response-stored.dead-letter` | The vehicle events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
 | `oba.vehicles-for-agency.state` | One record per vehicle and one manifest per agency's fetch; a vehicle absent from its agency's fetches for more than five minutes gets a tombstone | Compacted |

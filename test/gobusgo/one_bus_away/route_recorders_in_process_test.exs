@@ -2,7 +2,7 @@ defmodule Gobusgo.OneBusAway.RouteRecordersInProcessTest do
   # Runs both route recorders through the in-process publisher wired the way
   # the application wires it: each "response stored" event goes to the one
   # consumer of the shared topic, and the consumer's records go to both
-  # views. Req.Test stubs serve the JSON fixtures, the local file backends
+  # route views and, for a route's stops, to the stop view. Req.Test stubs serve the JSON fixtures, the local file backends
   # store and read under a temporary directory, and the views are started
   # for the test. What a recorded response leads to is read from its view.
   use ExUnit.Case, async: true
@@ -14,6 +14,7 @@ defmodule Gobusgo.OneBusAway.RouteRecordersInProcessTest do
   alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.RoutePathRecorder
   alias Gobusgo.OneBusAway.RouteRecorder
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.Publisher.InProcess
 
   @moduletag :tmp_dir
@@ -56,8 +57,15 @@ defmodule Gobusgo.OneBusAway.RouteRecordersInProcessTest do
       )
     end
 
+    stop_view = Module.concat(__MODULE__, "StopView#{context.line}")
+
+    start_supervised!(
+      {StopView, name: stop_view, pubsub: Gobusgo.PubSub, route_count_max: 8, stop_count_max: 8}
+    )
+
     state_subscribers = %{
-      "oba.routes.state" => {FetchView, :apply_records_to_each, [[route_view, route_path_view]]}
+      "oba.routes.state" => {FetchView, :apply_records_to_each, [[route_view, route_path_view]]},
+      "oba.stops.state" => {StopView, :apply_records, [stop_view]}
     }
 
     process_options = [
@@ -82,7 +90,12 @@ defmodule Gobusgo.OneBusAway.RouteRecordersInProcessTest do
       publish_options: [backend: InProcess, subscribers: event_subscribers]
     ]
 
-    %{options: options, route_view: route_view, route_path_view: route_path_view}
+    %{
+      options: options,
+      route_view: route_view,
+      route_path_view: route_path_view,
+      stop_view: stop_view
+    }
   end
 
   test "a recorded routes response becomes the agency's fetch in the route view", context do
@@ -108,6 +121,29 @@ defmodule Gobusgo.OneBusAway.RouteRecordersInProcessTest do
              FetchView.current_fetch(context.route_path_view, "1_100336")
 
     assert FetchView.current(context.route_view) == []
+  end
+
+  test "a recorded route path response puts the route's stops into the stop view", context do
+    options = Keyword.put(context.options, :route_id, "1_100336")
+
+    assert {:ok, %{request_id: request_id, event_published: true}} =
+             RoutePathRecorder.record(@settings, options)
+
+    assert [
+             %{id: "1_1889", request_id: ^request_id, fetched_at: ~U[2026-10-05 01:17:31Z]},
+             %{id: "1_99997", request_id: ^request_id}
+           ] = StopView.current(context.stop_view)
+
+    assert %{stop: %{"name" => "Water Taxi Route & Harbor Ave SW"}} =
+             StopView.stop(context.stop_view, "1_99997")
+  end
+
+  test "a recorded routes response puts no stop into the stop view", context do
+    options = Keyword.put(context.options, :agency_id, "40")
+
+    assert {:ok, %{event_published: true}} = RouteRecorder.record(@settings, options)
+
+    assert StopView.current(context.stop_view) == []
   end
 
   test "a recorded response is stored when no subscriber takes its event", context do

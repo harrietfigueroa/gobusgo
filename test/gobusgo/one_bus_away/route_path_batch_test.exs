@@ -10,6 +10,7 @@ defmodule Gobusgo.OneBusAway.RoutePathBatchTest do
   import ExUnit.CaptureLog
 
   alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.OneBusAway.RoutePathBatch.StopRecords
   alias Gobusgo.OneBusAway.RawRoutePathResponse
 
   @moduletag capture_log: true
@@ -71,13 +72,29 @@ defmodule Gobusgo.OneBusAway.RoutePathBatchTest do
   end
 
   describe "process/2 success" do
-    test "publishes one record for the stored response" do
+    test "publishes the route path record, then the stops record, in one call" do
       %{destination: destination, content: content} = stored()
 
       assert {:ok, _result} = process(destination, content)
 
       assert_received {:published,
-                       [%{topic: "oba.routes.state", key: "stops-for-route/1_100336"}]}
+                       [
+                         %{topic: "oba.routes.state", key: "stops-for-route/1_100336"},
+                         %{topic: "oba.stops.state", key: "stops-for-route/1_100336"}
+                       ]}
+    end
+
+    test "publishes the stops the stored response references" do
+      %{destination: destination, content: content} = stored()
+
+      {:ok, _result} = process(destination, content)
+
+      assert_received {:published, [_route_path, %{value: value}]}
+
+      assert {:ok, %{id: "1_100336", request_id: @request_id, stops: stops}} =
+               StopRecords.decode(value)
+
+      assert Enum.map(stops, & &1["id"]) == ["1_1889", "1_99997"]
     end
 
     test "returns the fetch and what it holds" do
@@ -90,7 +107,8 @@ defmodule Gobusgo.OneBusAway.RoutePathBatchTest do
                   route_id: "1_100336",
                   request_id: @request_id,
                   fetched_at: @fetched_at,
-                  polyline_count: 1
+                  polyline_count: 1,
+                  stop_count: 2
                 }}
     end
 
@@ -100,8 +118,8 @@ defmodule Gobusgo.OneBusAway.RoutePathBatchTest do
       {:ok, _first} = process(destination, content)
       {:ok, _second} = process(destination, content)
 
-      assert_received {:published, [record]}
-      assert_received {:published, [^record]}
+      assert_received {:published, records}
+      assert_received {:published, ^records}
     end
 
     test "logs the publication once at debug" do
