@@ -240,7 +240,7 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/kafka/` holds the shared brod client and the topic subscriber that feeds a view from a topic. Read `lib/gobusgo/kafka/AGENTS.md` before changing it.
 - `config/config.exs` selects the writer, reader, and publisher backends, turns Kafka on outside the test environment, names the in-process publisher's subscribers for tests, schedules the sources everywhere except under test, and configures the HTTP endpoint; a production build also serves HTTP on start, reads the digested asset names, and logs from `info` upward. `config/runtime.exs` reads the environment variables and gives the file backends one base directory from `GOBUSGO_DATA_DIR`.
 - `Dockerfile` and `.dockerignore` build the local development image: a release, run by a non-root user, with the base directory at `/data`. `mix.exs` defines the release.
-- `test/` mirrors `lib/`; `test/support/` holds the helpers of the tests tagged `kafka`.
+- `test/` mirrors `lib/`; `test/support/` holds the helpers of the tests tagged `kafka`, the synthetic fetches and memory readings of the vehicle page measurements, and the headless Chrome those drive; `test/scripts/` holds the measurement that needs a browser.
 
 ## Toolchain and commands
 
@@ -253,6 +253,8 @@ mix test
 ```
 
 `mix test` excludes the tests tagged `kafka`, which need a broker; run `mix test --include kafka` with the local broker running whenever a change touches Kafka code. CI runs them in its `kafka` job.
+
+`mix test` also excludes the tests tagged `memory`, which print a measurement and assert little. `mix test --only memory` prints the memory the vehicle page holds on the server, and `MIX_ENV=test GOBUSGO_DATA_DIR=<base directory with a basemap> mix run --no-start test/scripts/vehicle_page_browser_memory.exs <path of the Chrome executable>` prints what it holds in a headless Chrome, after `mix assets.build`. Run both before and after a change meant to move those numbers; CI runs neither.
 
 `mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, Plug, BroadwayKafka, and brod, with esbuild and Tailwind to build assets, LazyHTML for LiveView tests, and Quokka to rewrite code during `mix format`; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
 
