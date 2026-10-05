@@ -10,6 +10,19 @@ defmodule GobusgoWeb.FilterParamsTest do
 
   alias Gobusgo.Filter
 
+  describe "param/1" do
+    test "joins a field's values into one parameter value" do
+      assert FilterParams.param(["1_100", "40_500"]) == "1_100,40_500"
+    end
+
+    test "writes a value that reads back as the field's values" do
+      params = %{"route" => FilterParams.param(["1_100", "40_500"])}
+
+      assert FilterParams.raw(%{params: params, spec: @spec_fields}) ==
+               %{"route" => ["1_100", "40_500"]}
+    end
+  end
+
   describe "query/1" do
     for {description, filter, query} <- [
           {"the empty filter", %{}, ""},

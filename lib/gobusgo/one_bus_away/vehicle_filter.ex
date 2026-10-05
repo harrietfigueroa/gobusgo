@@ -64,6 +64,20 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
   end
 
   @doc """
+  Whether `filter` keeps a vehicle of the agency `agency_id` on the route
+  `route_id`, and so the route as that agency lists it.
+  """
+  @spec keeps_route?(%{filter: Filter.t(), agency_id: String.t(), route_id: String.t()}) ::
+          boolean()
+  def keeps_route?(%{filter: filter, agency_id: agency_id, route_id: route_id})
+      when is_map(filter) and is_binary(agency_id) and is_binary(route_id) do
+    Filter.matches?(%{
+      filter: filter,
+      values: %{@agency_field => agency_id, @route_field => route_id}
+    })
+  end
+
+  @doc """
   Returns `fetch`, one agency's fetch, with only the vehicles that match
   `filter`, in the fetch's vehicle order. A fetch none of whose vehicles
   match is returned with no vehicle. Raises
