@@ -61,6 +61,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                %{
                  id: "40_41605",
                  active_trip_id: "40_1655020",
+                 route_id: "40_574",
+                 route_short_name: "574",
+                 route_long_name: "Lakewood - Federal Way",
+                 trip_headsign: "Federal Way Downtown Station",
                  position: %{lat: 47.316389, lon: -122.304008},
                  orientation: 176.51420881742143,
                  last_known_location: %{lat: 47.3177375793457, lon: -122.2967300415039},
@@ -72,6 +76,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52043:12345",
                  active_trip_id: "40_16687274__H:121:0:Weekday:1:26SEP:52043:12345",
+                 route_id: nil,
+                 route_short_name: nil,
+                 route_long_name: nil,
+                 trip_headsign: nil,
                  position: %{lat: 47.815963, lon: -122.296309},
                  orientation: 359.4195995112881,
                  last_known_location: nil,
@@ -83,6 +91,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                %{
                  id: "40_9636",
                  active_trip_id: nil,
+                 route_id: nil,
+                 route_short_name: nil,
+                 route_long_name: nil,
+                 trip_headsign: nil,
                  position: nil,
                  orientation: nil,
                  last_known_location: %{lat: 47.613616943359375, lon: -122.20159912109375},
@@ -94,6 +106,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52006:12345",
                  active_trip_id: nil,
+                 route_id: nil,
+                 route_short_name: nil,
+                 route_long_name: nil,
+                 trip_headsign: nil,
                  position: nil,
                  orientation: nil,
                  last_known_location: nil,
@@ -245,6 +261,72 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
           end
 
         refute rendered =~ @api_key
+      end
+    end
+  end
+
+  describe "parse/1 route" do
+    # Each case changes the references of the fixture, whose first vehicle
+    # serves the trip `40_1655020` of the route `40_574`.
+    defp first_vehicle(change_references) do
+      data = Map.update!(data("vehicles_for_agency"), "references", change_references)
+      assert {:ok, [vehicle | _rest]} = Vehicles.parse(data)
+      vehicle
+    end
+
+    defp change_route(references, change) do
+      Map.update!(references, "routes", fn [route] -> [change.(route)] end)
+    end
+
+    defp change_trip(references, change) do
+      Map.update!(references, "trips", fn [trip] -> [change.(trip)] end)
+    end
+
+    test "is absent, with the headsign kept, when the references lack the trip's route" do
+      vehicle = first_vehicle(&Map.put(&1, "routes", []))
+
+      assert %{
+               route_id: "40_574",
+               route_short_name: nil,
+               route_long_name: nil,
+               trip_headsign: "Federal Way Downtown Station"
+             } = vehicle
+    end
+
+    test "has no short name when the route's short name is empty" do
+      vehicle = first_vehicle(&change_route(&1, fn route -> Map.put(route, "shortName", "") end))
+
+      assert %{route_short_name: nil, route_long_name: "Lakewood - Federal Way"} = vehicle
+    end
+
+    test "has no long name when the route's long name is empty" do
+      vehicle = first_vehicle(&change_route(&1, fn route -> Map.put(route, "longName", "") end))
+
+      assert %{route_short_name: "574", route_long_name: nil} = vehicle
+    end
+
+    test "has no headsign when the trip's headsign is empty" do
+      vehicle = first_vehicle(&change_trip(&1, fn trip -> Map.put(trip, "tripHeadsign", "") end))
+
+      assert %{route_id: "40_574", trip_headsign: nil} = vehicle
+    end
+
+    for {name, change} <- [
+          {"the references are missing", quote(do: &Map.delete(&1, "references"))},
+          {"the references name no trips",
+           quote(do: &Map.update!(&1, "references", fn r -> Map.delete(r, "trips") end))},
+          {"a trip names no route",
+           quote(
+             do:
+               &put_in(&1, ["references", "trips"], [
+                 %{"id" => "40_1655020", "tripHeadsign" => ""}
+               ])
+           )}
+        ] do
+      test "returns a schema mismatch when #{name}" do
+        data = unquote(change).(data("vehicles_for_agency"))
+
+        assert {:error, {:schema_mismatch, _mismatch}} = Vehicles.parse(data)
       end
     end
   end

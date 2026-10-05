@@ -24,6 +24,10 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
     %{
       id: id,
       active_trip_id: nil,
+      route_id: nil,
+      route_short_name: nil,
+      route_long_name: nil,
+      trip_headsign: nil,
       position: %{lat: 47.66, lon: -122.34},
       orientation: nil,
       last_known_location: nil,

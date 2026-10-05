@@ -38,6 +38,10 @@ defmodule GobusgoWeb.VehicleMarkers do
   other angle. A vehicle with no orientation supplied has no heading. The
   last reported orientation is never read, because it goes with the last
   reported location and no marker stands there.
+
+  A marker's route is the name `route_name/1` gives its vehicle, and its
+  headsign is the destination the vehicle's trip shows to riders. Either is
+  `nil` when the vehicle has none.
   """
 
   alias Gobusgo.Assert
@@ -65,6 +69,8 @@ defmodule GobusgoWeb.VehicleMarkers do
           lat: number(),
           lon: number(),
           heading: non_neg_integer() | nil,
+          route: String.t() | nil,
+          headsign: String.t() | nil,
           status: status(),
           location_age: String.t(),
           real_time: String.t()
@@ -147,6 +153,19 @@ defmodule GobusgoWeb.VehicleMarkers do
     %{agency_id: agency_id, markers: markers, position_missing_count: position_missing_count}
   end
 
+  @doc """
+  Returns the name a page shows for the route of `vehicle`, a vehicle of a
+  fetch: the route's short name, the long name of a route that has no short
+  name, or `nil` for a vehicle with neither.
+  """
+  @spec route_name(State.vehicle()) :: String.t() | nil
+  def route_name(%{"routeShortName" => short_name, "routeLongName" => long_name}) do
+    case short_name do
+      nil -> long_name
+      short_name when is_binary(short_name) -> short_name
+    end
+  end
+
   defp marker(%{"position" => nil}, _context), do: nil
 
   defp marker(%{"id" => vehicle_id, "position" => %{"lat" => lat, "lon" => lon}} = vehicle, %{
@@ -161,6 +180,8 @@ defmodule GobusgoWeb.VehicleMarkers do
       lat: lat,
       lon: lon,
       heading: heading(vehicle["orientation"]),
+      route: route_name(vehicle),
+      headsign: vehicle["tripHeadsign"],
       status: status(report),
       location_age: location_age(report),
       real_time: yes_no(vehicle["predicted"])

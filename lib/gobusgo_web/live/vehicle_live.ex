@@ -16,7 +16,9 @@ defmodule GobusgoWeb.VehicleLive do
   shown beside it, apart from the time the fetch was made. A field the
   source did not supply reads "Not supplied", and a location update time of
   zero, the source's value for a vehicle that has never reported, reads "No
-  location reported".
+  location reported". The table names each vehicle's route, by the name
+  `GobusgoWeb.VehicleMarkers.route_name/1` gives it, and its trip's
+  headsign.
 
   Above the table the page draws the basemap of the configured basemap
   directory, read once when the page is mounted. The `agency` query
@@ -30,9 +32,9 @@ defmodule GobusgoWeb.VehicleLive do
   On the map the page draws one marker per vehicle that has a position, from
   `GobusgoWeb.VehicleMarkers`. Beside the map it states that a marker stands
   at the source's estimated position, lists the statuses that say how far to
-  trust one, says what a pointed marker and a round marker mean, and counts
-  the vehicles on the map and the ones with no position. The markers reach
-  the browser as `vehicle-markers:agency`
+  trust one, says what a pointed marker, a round marker, and a marker's
+  label mean, and counts the vehicles on the map and the ones with no
+  position. The markers reach the browser as `vehicle-markers:agency`
   events, each holding every marker of one agency: all agencies when the
   browser sends `vehicle-markers:ready`, and afterwards the agencies whose
   fetch changed, so a vehicle that leaves an agency's fetch leaves the map.
@@ -139,6 +141,9 @@ defmodule GobusgoWeb.VehicleLive do
             <p id="marker-heading-note">
               A pointed marker points the way the source says the vehicle is heading at that position. A round marker has no heading.
             </p>
+            <p id="marker-route-note">
+              A marker is labeled with the name of its route where the map has room for the label.
+            </p>
             <ul id="marker-legend" class="mt-1 flex flex-wrap gap-x-4">
               <li
                 :for={definition <- VehicleMarkers.statuses()}
@@ -175,6 +180,8 @@ defmodule GobusgoWeb.VehicleLive do
             <tr>
               <th class="py-2 pr-4">Vehicle</th>
               <th class="py-2 pr-4">Agency</th>
+              <th class="py-2 pr-4">Route</th>
+              <th class="py-2 pr-4">Headsign</th>
               <th class="py-2 pr-4">Trip</th>
               <th class="py-2 pr-4">Estimated position (latitude, longitude)</th>
               <th class="py-2 pr-4">Last reported location (latitude, longitude)</th>
@@ -191,6 +198,10 @@ defmodule GobusgoWeb.VehicleLive do
             >
               <td data-column="vehicle" class="py-2 pr-4">{row.vehicle["id"]}</td>
               <td data-column="agency" class="py-2 pr-4">{row.agency_id}</td>
+              <td data-column="route" class="py-2 pr-4">
+                {text(VehicleMarkers.route_name(row.vehicle))}
+              </td>
+              <td data-column="headsign" class="py-2 pr-4">{text(row.vehicle["tripHeadsign"])}</td>
               <td data-column="trip" class="py-2 pr-4">{text(row.vehicle["activeTripId"])}</td>
               <td data-column="estimated-position" class="py-2 pr-4">
                 {coordinates(row.vehicle["position"])}

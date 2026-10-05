@@ -37,6 +37,11 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     * `id`: the vehicle identifier.
     * `agencyId`: the agency the fetch asked for.
     * `activeTripId`: the trip the vehicle serves.
+    * `routeId`: the route of that trip.
+    * `routeShortName`: the short name of that route, such as a route
+      number.
+    * `routeLongName`: the long name of that route.
+    * `tripHeadsign`: the destination the trip shows to riders.
     * `position`: `lat` and `lon` of where the source places the vehicle
       now. The source extrapolates it or takes it from the schedule when it
       has no fresh report, so it is an estimate and never a report.
@@ -89,6 +94,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   @type vehicle :: %{
           id: String.t(),
           active_trip_id: String.t() | nil,
+          route_id: String.t() | nil,
+          route_short_name: String.t() | nil,
+          route_long_name: String.t() | nil,
+          trip_headsign: String.t() | nil,
           position: coordinates() | nil,
           orientation: number() | nil,
           last_known_location: coordinates() | nil,
@@ -139,6 +148,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   @coordinate_fields ["lat", "lon"]
   @coordinates_fields ["position", "lastKnownLocation"]
   @time_fields ["lastUpdateTimeMs", "lastLocationUpdateTimeMs"]
+  @route_fields ["routeId", "routeShortName", "routeLongName", "tripHeadsign"]
 
   @coordinates_schema {:nullable, {:map, %{"lat" => :number, "lon" => :number}}}
 
@@ -147,6 +157,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
                      "id" => :string,
                      "agencyId" => :string,
                      "activeTripId" => {:nullable, :string},
+                     "routeId" => {:optional, {:nullable, :string}},
+                     "routeShortName" => {:optional, {:nullable, :string}},
+                     "routeLongName" => {:optional, {:nullable, :string}},
+                     "tripHeadsign" => {:optional, {:nullable, :string}},
                      "position" => @coordinates_schema,
                      "orientation" => {:nullable, :number},
                      "lastKnownLocation" => @coordinates_schema,
@@ -314,8 +328,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   defp time?(nil), do: true
   defp time?(time_ms) when is_integer(time_ms), do: time_ms >= 0
 
+  # A record that lacks the route keys decodes with each of them `nil`, so a
+  # decoded vehicle holds every field whatever the record holds.
   defp known_fields(vehicle) do
-    vehicle = Map.take(vehicle, @vehicle_fields)
+    vehicle = Map.merge(Map.from_keys(@route_fields, nil), Map.take(vehicle, @vehicle_fields))
 
     Enum.reduce(@coordinates_fields, vehicle, fn field, vehicle ->
       Map.update!(vehicle, field, &known_coordinates/1)
@@ -330,6 +346,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
       "id" => id,
       "agencyId" => agency_id,
       "activeTripId" => vehicle.active_trip_id,
+      "routeId" => vehicle.route_id,
+      "routeShortName" => vehicle.route_short_name,
+      "routeLongName" => vehicle.route_long_name,
+      "tripHeadsign" => vehicle.trip_headsign,
       "position" => coordinates(vehicle.position),
       "orientation" => vehicle.orientation,
       "lastKnownLocation" => coordinates(vehicle.last_known_location),

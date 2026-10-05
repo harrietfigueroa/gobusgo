@@ -56,6 +56,10 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
       %{
         id: id,
         active_trip_id: nil,
+        route_id: nil,
+        route_short_name: nil,
+        route_long_name: nil,
+        trip_headsign: nil,
         position: %{lat: 47.66, lon: -122.34},
         orientation: nil,
         last_known_location: nil,
@@ -142,6 +146,21 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
       assert_push_event(view, @event, %{
         markers: [%{vehicle_id: "1_east", heading: 90}, %{vehicle_id: "1_none", heading: nil}]
+      })
+    end
+
+    test "is answered with a marker's route and headsign" do
+      on_route = vehicle("1_a", %{route_short_name: "44", trip_headsign: "University District"})
+      apply_fetch([on_route, vehicle("1_b")], %{agency_id: "1", sequence: 0})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{
+        markers: [
+          %{vehicle_id: "1_a", route: "44", headsign: "University District"},
+          %{vehicle_id: "1_b", route: nil, headsign: nil}
+        ]
       })
     end
 
@@ -234,6 +253,12 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
       note = text(view, "#marker-heading-note")
       assert note =~ "A pointed marker points the way the source says the vehicle is heading"
       assert note =~ "A round marker has no heading."
+    end
+
+    test "states that a marker is labeled with its route" do
+      view = open_page()
+
+      assert text(view, "#marker-route-note") =~ "labeled with the name of its route"
     end
 
     test "lists every status with its label and description" do

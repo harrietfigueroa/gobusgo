@@ -64,7 +64,11 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
       envelope: %{
         "code" => 200,
         "currentTime" => 1_710_953_797_130,
-        "data" => %{"limitExceeded" => false, "list" => list},
+        "data" => %{
+          "limitExceeded" => false,
+          "list" => list,
+          "references" => %{"routes" => [], "trips" => []}
+        },
         "text" => "OK",
         "version" => 2
       },

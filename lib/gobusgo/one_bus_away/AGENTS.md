@@ -170,6 +170,15 @@ Orientation values, observed on 2026-10-05 in the newest stored response of each
 - The convention holds in the feed: of 524 moving vehicles with another `orientation`, 417 moved within 45 degrees of it over a minute.
 - `lastKnownOrientation` was `0` for 575 of the 632 vehicles that had reported a location, and for all 185 that had not, so it does not tell a heading for most vehicles.
 
+Route data in the response's `references`, observed on 2026-10-05 in 1,570 stored responses of all 12 agencies. `Vehicles.parse/1` requires this shape and returns a schema mismatch for anything else.
+
+- `references` was always an object whose `trips` and `routes` were lists, both empty for an agency with no vehicle on a trip.
+- The trip of every `activeTripId` was in `trips`, and the route of every such trip was in `routes` (105,680 of 105,680 vehicles with a trip status).
+- A trip's `id`, `routeId`, and `tripHeadsign` and a route's `id`, `shortName`, and `longName` were always strings. `shortName` was empty for 4,132 of 46,696 routes, all of them Washington State Ferries routes (agency `95`), which carry a `longName` such as `Seattle - Bainbridge Island`. `longName` was empty for about half of the routes.
+- A route also carries `agencyId`, `color`, `textColor`, `description`, `type`, and `url`, and a trip a `shapeId`; none of these is read. The points of a shape come from another method that the application does not call.
+
+The published vehicle takes `routeId` and `tripHeadsign` from the trip of its `activeTripId` and `routeShortName` and `routeLongName` from that trip's route. Each is `null` for a vehicle without a trip status, for a trip or a route the references lack, and for a name that is empty.
+
 Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are cut from the live Sound Transit response, one vehicle for each combination of trip and reported location.
 
 ## Stored raw responses
@@ -344,6 +353,10 @@ The trip status element documents `position` as the real-time position when one 
 | `id` | The vehicle identifier |
 | `agencyId` | The agency the fetch asked for |
 | `activeTripId` | The trip the vehicle serves |
+| `routeId` | The route of that trip |
+| `routeShortName` | The short name of that route, such as a route number |
+| `routeLongName` | The long name of that route |
+| `tripHeadsign` | The destination the trip shows to riders |
 | `position` | `lat` and `lon` of where the source places the vehicle now: an estimate, extrapolated or taken from the schedule when no fresh report exists |
 | `orientation` | The direction that goes with `position`, in degrees |
 | `lastKnownLocation` | `lat` and `lon` of the last location the vehicle reported |
