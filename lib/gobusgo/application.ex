@@ -10,9 +10,13 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.AgencyBatch
   alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawVehicleResponse
   alias Gobusgo.OneBusAway.RequestGate
+  alias Gobusgo.OneBusAway.RouteBatch
+  alias Gobusgo.OneBusAway.RouteDatasets
+  alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
@@ -27,8 +31,16 @@ defmodule Gobusgo.Application do
 
   @trigger_task_count_max 8
 
+  # The two route views are fetch views under these names: the routes of
+  # each agency, and the paths of each route.
+  @route_view Gobusgo.OneBusAway.RouteView
+  @route_path_view Gobusgo.OneBusAway.RoutePathView
+  @route_view_agency_count_max 64
+  @route_path_view_route_count_max 5_000
+
   # Each dataset's "response stored" events are processed by a consumer
   # group of its own, with the attempts under a task supervisor of its own.
+  # The two route datasets share a topic, so one consumer group serves both.
   @triggers [
     %{
       consumer: Gobusgo.OneBusAway.AgencyTriggerConsumer,
@@ -43,6 +55,13 @@ defmodule Gobusgo.Application do
       consumer_group: "gobusgo.vehicle-processor",
       event: RawVehicleResponse.StoredEvent,
       processor: VehicleBatch
+    },
+    %{
+      consumer: Gobusgo.OneBusAway.RouteTriggerConsumer,
+      tasks: Gobusgo.OneBusAway.RouteTriggerTasks,
+      consumer_group: "gobusgo.route-processor",
+      event: RouteDatasets,
+      processor: RouteDatasets
     }
   ]
 
@@ -60,7 +79,17 @@ defmodule Gobusgo.Application do
         [
           {Phoenix.PubSub, name: Gobusgo.PubSub},
           {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
-          {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub}
+          {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub},
+          {FetchView,
+           name: @route_view,
+           pubsub: Gobusgo.PubSub,
+           records: RouteBatch.Records,
+           id_count_max: @route_view_agency_count_max},
+          {FetchView,
+           name: @route_path_view,
+           pubsub: Gobusgo.PubSub,
+           records: RoutePathBatch.Records,
+           id_count_max: @route_path_view_route_count_max}
         ] ++
           kafka_children(kafka) ++
           [
@@ -99,7 +128,17 @@ defmodule Gobusgo.Application do
        name: Gobusgo.OneBusAway.VehicleViewSubscriber,
        client: Kafka.Client,
        topic: VehicleBatch.Records.topic(),
-       subscriber: {VehicleView, :apply_records, [VehicleView]}}
+       subscriber: {VehicleView, :apply_records, [VehicleView]}},
+      {Kafka.TopicSubscriber,
+       name: Gobusgo.OneBusAway.RouteViewSubscriber,
+       client: Kafka.Client,
+       topic: RouteBatch.Records.topic(),
+       subscriber: {FetchView, :apply_records, [@route_view]}},
+      {Kafka.TopicSubscriber,
+       name: Gobusgo.OneBusAway.RoutePathViewSubscriber,
+       client: Kafka.Client,
+       topic: RoutePathBatch.Records.topic(),
+       subscriber: {FetchView, :apply_records, [@route_path_view]}}
     ] ++ Enum.flat_map(@triggers, &trigger_children(&1, endpoints))
   end
 
@@ -137,7 +176,8 @@ defmodule Gobusgo.Application do
     case Config.one_bus_away() do
       {:ok, settings} ->
         Sources.specs(settings,
-          vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
+          vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
+          route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
         )
 
       {:error, {:missing, key}} ->

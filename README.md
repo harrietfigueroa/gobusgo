@@ -55,6 +55,9 @@ The local broker is defined in the [infrastructure repository](https://github.co
 | `oba.agencies-with-coverage.response-stored` | One "response stored" event per stored response | 7 days |
 | `oba.agencies-with-coverage.response-stored.dead-letter` | The events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
 | `oba.agencies-with-coverage.state` | One record per agency and one manifest per fetch | Compacted |
+| `oba.routes.response-stored` | One "response stored" event per stored response of an agency's routes or of a route's stops and paths, keyed by dataset and identifier | 7 days |
+| `oba.routes.response-stored.dead-letter` | The route events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
+| `oba.routes.state` | One record per agency holding its routes, and one record per route holding its paths | Compacted |
 | `oba.vehicles-for-agency.response-stored` | One "response stored" event per stored vehicle response, keyed by agency | 1 day |
 | `oba.vehicles-for-agency.response-stored.dead-letter` | The vehicle events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
 | `oba.vehicles-for-agency.state` | One record per vehicle and one manifest per agency's fetch; a vehicle absent from its agency's fetches for more than five minutes gets a tombstone | Compacted |
@@ -75,7 +78,7 @@ mix phx.server
 
 Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
-While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute and every agency's vehicles every five seconds, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
+While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every five seconds, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
 
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
