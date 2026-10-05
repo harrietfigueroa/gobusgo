@@ -143,7 +143,9 @@ defmodule Gobusgo.OneBusAway.RouteDatasetsTest do
 
     test "publishes a route's paths for a stored route path response" do
       assert {:ok, %{route_id: "1_100336"}} = process(stored_route_path())
-      assert_received {:published, [%{key: "stops-for-route/1_100336"}]}
+
+      assert_received {:published,
+                       [%{topic: "oba.routes.state", key: "stops-for-route/1_100336"} | _stops]}
     end
 
     test "returns a permanent failure for a destination of neither dataset" do
