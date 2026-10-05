@@ -216,6 +216,7 @@ A route path holds:
 | `stop_groupings` | Each with `type`, `ordered`, and `stop_groups` |
 | `stop_groups` | Each with `id`, `name`, `names`, `name_type`, its `stop_ids` in order, and its own `polylines` |
 | `stops` | The referenced stop of every identifier in `stop_ids`: `id`, `name`, `lat`, `lon`, `code`, `direction`, `location_type`, `parent`, `wheelchair_boarding`, `route_ids` |
+| `parent_stops` | The referenced stop, outside `stop_ids`, of every identifier a stop names as `parent`, once and in identifier order, with the fields of a stop |
 
 A polyline is `points`, `point_count`, and `levels`. `points` is in the encoded polyline format (https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-10-05) at five decimal places, and `point_count` is the source's `length`. The requester checks that `points` holds only the characters of that format and does not decode it. A field the source sends empty is `nil`.
 
@@ -229,7 +230,7 @@ Shape of the live response, observed on 2026-10-05 for all 391 routes of the 12 
 - Six routes had no polylines, all of Kitsap Transit (`20`), and five of them had no stops and no groups either.
 - No stop repeated in a route's `stopIds`, every stop of a group was in the route's `stopIds`, and every stop of a route had a reference. One stop of one route was in no group.
 - A referenced stop always carried `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `parent`, `wheelchairBoarding`, `routeIds`, and `staticRouteIds`. `name` and `code` were never empty, `direction` was empty for 1,385 of 19,074, `locationType` was always `0`, and `wheelchairBoarding` was `ACCESSIBLE`, `NOT_ACCESSIBLE`, or `UNKNOWN`. `staticRouteIds` is not read.
-- 535 referenced stops were in no route's `stopIds`: the parent stations that other stops name in `parent`. The requester leaves them out, so a stop's `parent` names a stop the route path does not hold.
+- 535 referenced stops were in no route's `stopIds`: the parent stations that other stops name in `parent`. Each response referenced exactly the stops its route lists and the parents those stops name, 27 parents at most for one route, and no parent named a parent. The requester returns them as `parent_stops`; a `parent` the response does not reference names a stop the route path does not hold.
 - The routes listed 18,539 stops, 12,913 of them distinct, and 182 at most for one route.
 - The responses were 794 to 77,685 bytes and 10.9 MB together, 1.9 MB compressed with gzip. The route polylines of all 391 routes hold 508,629 points in 1.4 MB of encoded text.
 - At one request every 1.5 seconds, beside the application's own vehicle cycle on the same key, 3 of the 391 requests got a 429 and succeeded on the next try.
@@ -496,6 +497,32 @@ Both events go to `oba.routes.response-stored` and both records to `oba.routes.s
 - One `Gobusgo.Kafka.TopicSubscriber` reads `oba.routes.state` and hands each batch to both views through `FetchView.apply_records_to_each/2`, as the in-process publisher does under test. A subscriber per view on the one client left each view with the records of some partitions: 6 of 12 agencies and 261 of 391 paths against the local broker on 2026-10-05, and a route source that fetched the missing ones again on every run (GOB-143).
 
 The paths of a route whose agency no longer lists it stay in the path view and in the topic; nothing removes them.
+
+## Stop records and stop view
+
+Stops have no request of their own: they are the stops a `stops-for-route` response references, which is every stop some route serves (decided in GOB-93 and GOB-97). Against `stop-ids-for-agency` on 2026-10-05, the 391 stored responses held 13,026 of the 13,167 stops of the 12 agencies; the 141 left serve no route, 134 of them entrances of Sound Transit stations.
+
+`Gobusgo.OneBusAway.RoutePathBatch.StopRecords` is the published form of the stops in one fetch of a route's stops and paths, and is pure. `build/1` takes what `RawRoutePathResponse.parse/1` returns, the same input as the route path record.
+
+| | Stops |
+| --- | --- |
+| Topic | `oba.stops.state` |
+| Key | `stops-for-route/<route id>` |
+| `type` | `gobusgo.route.stops.processed.v1` |
+| `id` | `<requestId>/route-stops/<route id>`, another than the route path record's under the one `source` |
+| `data` | `routeId`, `stops`, `parentStops`, `dataSha256`, `destination`, `fetchedAt`, `requestId` |
+
+A stop holds `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `parent`, `wheelchairBoarding`, and `routeIds`, with `null` for a `code`, `direction`, or `parent` the source sends empty. `decode/1` rejects a record in which a stop identifier is empty or appears twice in `stops` and `parentStops` together. The stops of the largest route on 2026-10-05 were 43 KB of JSON.
+
+`Gobusgo.OneBusAway.StopView` holds the stops in memory, one entry per stop, and `Gobusgo.OneBusAway.StopView.State` holds its rules and is pure.
+
+- A fetch replaces its route's current one by the rules of `FetchView.State`. A stop is held for as long as the current fetch of some route lists it, as a stop or as a parent stop, so a stop every route drops is removed and no tombstone exists.
+- A stop that several routes list has the values of the latest fetch that supplied it, with that fetch's `request_id` and `fetched_at`. When the route that supplied them drops the stop, the values stay until another route's fetch supplies it again.
+- The view takes `:route_count_max` and `:stop_count_max`. The fetch of a route beyond the first is ignored, and a fetch that would hold more stops than the second is refused whole and logged.
+- `current/1` returns every stop in identifier order, `stop/2` one stop, and `stop_count/1` their number. All three read the table and return nothing while the view is not running.
+- A call that holds or removes at least one stop announces `{:stop_view_switched, view}` once to the processes that called `subscribe/1`.
+
+The route path processor does not publish the stops record, and the application does not start a stop view.
 
 ## Reconciliation
 

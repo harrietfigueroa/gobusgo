@@ -109,14 +109,18 @@ defmodule Gobusgo.OneBusAway.RoutePaths do
   route once, and each stop group lists a part of them. `polylines` is the
   whole route with a stretch that several groups share held once, and each
   group's polylines are that group's own path. `stops` holds the stop of
-  every identifier in `stop_ids`.
+  every identifier in `stop_ids`. `parent_stops` holds, once and in
+  identifier order, each stop outside `stop_ids` that a stop names as its
+  `parent` and the response references, so a `parent` can also name a stop
+  that neither list holds.
   """
   @type route_path :: %{
           route_id: String.t(),
           stop_ids: [String.t()],
           polylines: [polyline()],
           stop_groupings: [stop_grouping()],
-          stops: [stop()]
+          stops: [stop()],
+          parent_stops: [stop()]
         }
 
   @type response :: %{
@@ -331,20 +335,34 @@ defmodule Gobusgo.OneBusAway.RoutePaths do
     polylines ++ Enum.flat_map(stop_groups(route_path), & &1.polylines)
   end
 
-  defp route_path(entry, stops) do
-    stops_by_id = Map.new(stops, &{&1["id"], &1})
+  defp route_path(entry, references) do
+    references_by_id = Map.new(references, &{&1["id"], &1})
+    stops = referenced_stops(Enum.uniq(entry["stopIds"]), references_by_id)
 
     %{
       route_id: entry["routeId"],
       stop_ids: entry["stopIds"],
       polylines: Enum.map(entry["polylines"], &polyline/1),
       stop_groupings: Enum.map(entry["stopGroupings"], &stop_grouping/1),
-      stops:
-        entry["stopIds"]
-        |> Enum.uniq()
-        |> Enum.flat_map(&List.wrap(stops_by_id[&1]))
-        |> Enum.map(&stop/1)
+      stops: stops,
+      parent_stops: referenced_stops(parent_ids(stops, entry["stopIds"]), references_by_id)
     }
+  end
+
+  defp referenced_stops(ids, references_by_id) do
+    ids
+    |> Enum.flat_map(&List.wrap(references_by_id[&1]))
+    |> Enum.map(&stop/1)
+  end
+
+  defp parent_ids(stops, stop_ids) do
+    listed = MapSet.new(stop_ids)
+
+    stops
+    |> Enum.flat_map(&List.wrap(&1.parent))
+    |> Enum.reject(&MapSet.member?(listed, &1))
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp polyline(%{"points" => points, "length" => point_count, "levels" => levels}) do
