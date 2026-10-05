@@ -1,0 +1,96 @@
+defmodule Gobusgo.OneBusAway.FetchView.StateTest do
+  # Verifies the rules of a fetch view as pure functions: each case puts
+  # fetches into a state and reads the outcome and the current headers.
+  use ExUnit.Case, async: true
+
+  alias Gobusgo.Assert.AssertionError
+  alias Gobusgo.OneBusAway.FetchView.State
+
+  @first_request_id "0199c4a2-7e1b-7a3f-9d20-000000000001"
+  @second_request_id "0199c4a2-7e1b-7a3f-9d20-000000000002"
+  @earlier ~U[2026-10-05 01:00:00Z]
+  @later ~U[2026-10-05 02:00:00Z]
+
+  defp fetch(overrides) do
+    Map.merge(%{id: "40", request_id: @first_request_id, fetched_at: @earlier}, overrides)
+  end
+
+  defp put_all(fetches, id_count_max \\ 8) do
+    Enum.reduce(fetches, {State.new(id_count_max), []}, fn fetch, {state, outcomes} ->
+      {state, outcome} = State.put(state, fetch)
+      {state, outcomes ++ [outcome]}
+    end)
+  end
+
+  test "a new view has no current fetch" do
+    assert State.current(State.new(8)) == %{}
+  end
+
+  test "the first fetch of an identifier becomes its current fetch" do
+    {state, outcomes} = put_all([fetch(%{})])
+
+    assert outcomes == [:switched]
+
+    assert State.current(state) == %{
+             "40" => %{request_id: @first_request_id, fetched_at: @earlier}
+           }
+  end
+
+  test "a newer fetch replaces the current one" do
+    {state, outcomes} =
+      put_all([fetch(%{}), fetch(%{request_id: @second_request_id, fetched_at: @later})])
+
+    assert outcomes == [:switched, :switched]
+    assert %{"40" => %{request_id: @second_request_id, fetched_at: @later}} = State.current(state)
+  end
+
+  test "an older fetch is ignored" do
+    {state, outcomes} =
+      put_all([
+        fetch(%{request_id: @second_request_id, fetched_at: @later}),
+        fetch(%{})
+      ])
+
+    assert outcomes == [:switched, :ignored]
+    assert %{"40" => %{request_id: @second_request_id}} = State.current(state)
+  end
+
+  test "the current fetch put again is ignored" do
+    {_state, outcomes} = put_all([fetch(%{}), fetch(%{})])
+
+    assert outcomes == [:switched, :ignored]
+  end
+
+  test "a fetch made at the same time under another request replaces the current one" do
+    {state, outcomes} = put_all([fetch(%{}), fetch(%{request_id: @second_request_id})])
+
+    assert outcomes == [:switched, :switched]
+    assert %{"40" => %{request_id: @second_request_id}} = State.current(state)
+  end
+
+  test "the fetch of one identifier leaves another's as it is" do
+    {state, outcomes} =
+      put_all([fetch(%{}), fetch(%{id: "1", request_id: @second_request_id, fetched_at: @later})])
+
+    assert outcomes == [:switched, :switched]
+    assert %{"40" => %{request_id: @first_request_id}, "1" => %{}} = State.current(state)
+  end
+
+  test "the fetch of an identifier beyond the bound is ignored" do
+    {state, outcomes} = put_all([fetch(%{id: "1"}), fetch(%{id: "2"}), fetch(%{id: "3"})], 2)
+
+    assert outcomes == [:switched, :switched, :ignored]
+    assert state |> State.current() |> Map.keys() == ["1", "2"]
+  end
+
+  test "an identifier within the bound still takes a newer fetch when the view is full" do
+    {_state, outcomes} =
+      put_all([fetch(%{id: "1"}), fetch(%{id: "1", request_id: @second_request_id})], 1)
+
+    assert outcomes == [:switched, :switched]
+  end
+
+  test "raises for a bound below one" do
+    assert_raise AssertionError, ~r/id_count_max/, fn -> State.new(0) end
+  end
+end

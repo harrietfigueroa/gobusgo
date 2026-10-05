@@ -15,6 +15,8 @@ defmodule Gobusgo.ApplicationTest do
              Phoenix.PubSub.Supervisor,
              Gobusgo.OneBusAway.AgencyView,
              Gobusgo.OneBusAway.VehicleView,
+             Gobusgo.OneBusAway.RouteView,
+             Gobusgo.OneBusAway.RoutePathView,
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,
              Gobusgo.SchedulerSupervisor,

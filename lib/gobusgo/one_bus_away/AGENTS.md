@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds requesters for the routes of each agency via `routes-for-agency` and for the stops and paths of each route via `stops-for-route`, which the application does not call. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds the two route datasets, the routes of each agency via `routes-for-agency` and the stops and paths of each route via `stops-for-route`, with their recorders, processors, and views; no source fetches them on a schedule. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -185,7 +185,7 @@ Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are c
 
 `GET /api/where/routes-for-agency/<agency id>.json?key=<key>` (https://developer.onebusaway.org/api/where/methods/routes-for-agency — checked 2026-10-05). The agency identifier is the only documented parameter besides `key`, and the requester percent-encodes it into the path. The method documents no paging, so the requester asserts `data.limitExceeded` is `false`.
 
-`Gobusgo.OneBusAway.Routes.fetch_response/2` takes the agency in its `:agency_id` option and returns the routes together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. Nothing calls it: it stores nothing, and no source schedules it. `Gobusgo.OneBusAway.Routes.parse/2` is the pure function from `data` and the agency asked for to the routes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_count_exceeded, count}` above 1,000, `{:invalid_route, index}` for an empty identifier, a route of another agency, or a color that is not six hexadecimal digits, or `{:duplicate_route, id}`. The requester raises on those values.
+`Gobusgo.OneBusAway.Routes.fetch_response/2` takes the agency in its `:agency_id` option and returns the routes together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. Its dataset's recorder calls it, and no source schedules it. `Gobusgo.OneBusAway.Routes.parse/2` is the pure function from `data` and the agency asked for to the routes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_count_exceeded, count}` above 1,000, `{:invalid_route, index}` for an empty identifier, a route of another agency, or a color that is not six hexadecimal digits, or `{:duplicate_route, id}`. The requester raises on those values.
 
 A route holds `id`, `agency_id`, `short_name`, `long_name`, `description`, `type`, `color`, `text_color`, and `url`. `id`, `agency_id`, and `type` are always present, and every other field is `nil` when the source sends an empty string. `nullSafeShortName` is not read: it repeats `shortName`, or the route's `id` when `shortName` is empty.
 
@@ -204,7 +204,7 @@ Test fixtures under `test/fixtures/one_bus_away/routes_for_agency*.json` are cut
 
 `GET /api/where/stops-for-route/<route id>.json?includePolylines=true&key=<key>` (https://developer.onebusaway.org/api/where/methods/stops-for-route — checked 2026-10-05). `includePolylines` defaults to `true` and the requester sends it all the same. The documented `time` parameter, which chooses the service date and defaults to today, is not sent. The route identifier is percent-encoded into the path.
 
-`Gobusgo.OneBusAway.RoutePaths.fetch_response/2` takes the route in its `:route_id` option and returns the route path together with the whole decoded envelope, the route, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A route the server does not know is `{:http_status, 404}`. Nothing calls it: it stores nothing, and no source schedules it. `Gobusgo.OneBusAway.RoutePaths.parse/2` is the pure function from `data` and the route asked for to the route path. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}` for a response about another route, `{:stop_count_exceeded, count}` above 1,000 stops, `{:stop_grouping_count_exceeded, count}` above 8, `{:stop_group_count_exceeded, count}` above 16, `{:polyline_count_exceeded, count}` above 1,000 for the route's and the groups' polylines together, `{:invalid_polyline, polyline}`, `{:duplicate_stop, id}`, `{:unlisted_stop, id}` for a group's stop the route does not list, or `{:unreferenced_stop, id}`. The requester raises on those values.
+`Gobusgo.OneBusAway.RoutePaths.fetch_response/2` takes the route in its `:route_id` option and returns the route path together with the whole decoded envelope, the route, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A route the server does not know is `{:http_status, 404}`. Its dataset's recorder calls it, and no source schedules it. `Gobusgo.OneBusAway.RoutePaths.parse/2` is the pure function from `data` and the route asked for to the route path. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}` for a response about another route, `{:stop_count_exceeded, count}` above 1,000 stops, `{:stop_grouping_count_exceeded, count}` above 8, `{:stop_group_count_exceeded, count}` above 16, `{:polyline_count_exceeded, count}` above 1,000 for the route's and the groups' polylines together, `{:invalid_polyline, polyline}`, `{:duplicate_stop, id}`, `{:unlisted_stop, id}` for a group's stop the route does not list, or `{:unreferenced_stop, id}`. The requester raises on those values.
 
 A route path holds:
 
@@ -438,6 +438,37 @@ The source's update times are kept apart from `fetchedAt`, which is when Gobusgo
 - An agency that is no longer fetched keeps its last fetch. The view starts empty and holds nothing across a restart.
 
 Per `apply_records/2` call the view logs `info` `Vehicle view switched` with `agency_count` and `vehicle_count`; `warning` `Vehicle view skipped invalid records` with `invalid_count`; and `warning` `Vehicle view switch not announced` with `reason`.
+
+## Route records and route views
+
+The two route datasets share their topics, because both describe a route (decided in GOB-96). Each has a recorder, a stored form, an event, a processor, and a records module of its own, shaped like the vehicle dataset's.
+
+| | Routes | Route paths |
+| --- | --- | --- |
+| Requester | `Routes` | `RoutePaths` |
+| Recorder | `RouteRecorder.record/2`, `:agency_id` | `RoutePathRecorder.record/2`, `:route_id` |
+| Stored form | `RawRouteResponse` | `RawRoutePathResponse` |
+| Destination | `raw/oba/routes-for-agency/dt=<date>/agency=<agency>/` | `raw/oba/stops-for-route/dt=<date>/route=<route>/` |
+| `meta` field | `agencyId` | `routeId` |
+| Event | `RawRouteResponse.StoredEvent`, dataset `oba/routes-for-agency`, key `oba/routes-for-agency/<agency id>` | `RawRoutePathResponse.StoredEvent`, dataset `oba/stops-for-route`, key `oba/stops-for-route/<route id>` |
+| Processor | `RouteBatch.process/2` | `RoutePathBatch.process/2` |
+| Record | `RouteBatch.Records`, key `routes-for-agency/<agency id>`, `type` `gobusgo.agency.routes.processed.v1` | `RoutePathBatch.Records`, key `stops-for-route/<route id>`, `type` `gobusgo.route.path.processed.v1` |
+
+Both events go to `oba.routes.response-stored` and both records to `oba.routes.state`. The identifier in a destination is escaped as the vehicle dataset escapes an agency.
+
+**One record per fetch.** A routes record holds `agencyId` and `routes`, every route of the agency in identifier order with the fields the requester returns. A route path record holds `routeId`, the route's `polylines`, and its `stopGroupings` with each group's name, stop identifiers, and polylines; the stops the response references are not published. Both hold `dataSha256`, `destination`, `fetchedAt`, and `requestId`. A fetch is whole in its one record, so there is no manifest and a view holds no partial fetch. An agency's newest record replaces its earlier ones in the compacted topic, so a route the agency drops leaves with them. The largest records on 2026-10-05 were 36 KB for an agency's routes and 55 KB for a route path, against the publisher's limit of 1 MB.
+
+**One consumer for both datasets.** `Gobusgo.OneBusAway.RouteDatasets` is the event module and the processor module the response trigger and the in-process consumer take for the shared event topic. `decode/1` returns what the event module of either dataset decodes, and `process/2` hands a destination to the processor whose destinations start with its prefix; a destination of neither is a permanent `DESTINATION_MISMATCH`. Its `dataset/0` is `oba/routes`, the name in the trigger's log lines. The consumer group is `gobusgo.route-processor`, and a record it gives up on goes to `oba.routes.response-stored.dead-letter`.
+
+**Views.** `Gobusgo.OneBusAway.FetchView` holds the latest fetch of each identifier of one dataset, and `Gobusgo.OneBusAway.FetchView.State` holds its rules and is pure. The application starts two, registered as `Gobusgo.OneBusAway.RouteView` (at most 64 agencies) and `Gobusgo.OneBusAway.RoutePathView` (at most 5,000 routes); those two names are processes and tables, and no module has them.
+
+- A view takes its dataset's records module in `:records`. That module's `decode/1` returns the fetch with its `:id`, `:request_id`, and `:fetched_at`, and `{:error, :unsupported_type}` for the other dataset's record, which the view passes over without counting it.
+- A fetch replaces its identifier's current one unless it is the same request or older. The fetch of an identifier beyond the view's bound is ignored.
+- `current/1` returns every fetch in identifier order, `current_fetch/2` one identifier's, and `fetch_times/1` the fetch time of each identifier without reading the fetches. All three read the table and return nothing while the view is not running.
+- A call that switches at least one identifier announces `{:fetch_view_switched, view}` once to the processes that called `subscribe/1`.
+- Each view has a `Gobusgo.Kafka.TopicSubscriber` of its own on `oba.routes.state`. Under test, `FetchView.apply_records_to_each/2` hands the topic's records to both views.
+
+The paths of a route whose agency no longer lists it stay in the path view and in the topic; nothing removes them.
 
 ## Reconciliation
 

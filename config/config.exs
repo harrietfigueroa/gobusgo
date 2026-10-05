@@ -52,10 +52,22 @@ else
            },
            []
          ]},
+      "oba.routes.response-stored" =>
+        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+         [
+           %{
+             event: Gobusgo.OneBusAway.RouteDatasets,
+             processor: Gobusgo.OneBusAway.RouteDatasets
+           },
+           []
+         ]},
       "oba.agencies-with-coverage.state" =>
         {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
       "oba.vehicles-for-agency.state" =>
-        {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]}
+        {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]},
+      "oba.routes.state" =>
+        {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
+         [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]}
     }
 end
 
