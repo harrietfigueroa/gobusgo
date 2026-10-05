@@ -229,6 +229,7 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/basemap/` plans and runs the extraction of the regional basemap archives: `ExtractPlan` is pure, and `Extractor` reads a stored agency response and runs the `pmtiles` command. `lib/mix/tasks/gobusgo.basemap.extract.ex` is the Mix task that calls it.
 - `lib/gobusgo/request_id.ex` builds the UUID version 7 request identifiers.
 - `lib/gobusgo/schema.ex` checks decoded data against a schema and returns the first mismatch as a value; `lib/gobusgo/assert.ex` raises on it.
+- `lib/gobusgo/filter.ex` is the filter contract every kind of record shares: it normalizes a raw filter, as a transport decodes it, against the fields a kind of record names, returns every violation as a value, and decides whether a record's field values match a filter. It is pure, and nothing calls it yet.
 - `lib/gobusgo/canonical_json.ex` encodes compact JSON with sorted keys, the encoding of every stored file's content and every published event.
 - `lib/gobusgo/cloud_event.ex` encodes a CloudEvent 1.0 in structured mode and turns it into a publisher record.
 - `lib/gobusgo/destination.ex` owns the logical destination and prefix rules that the writer and the reader share.
