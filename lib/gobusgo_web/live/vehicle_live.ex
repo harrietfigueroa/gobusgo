@@ -6,15 +6,21 @@ defmodule GobusgoWeb.VehicleLive do
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
   reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
-  parameter names the agencies whose vehicles and route lines the map
-  shows, and an address without it shows every agency's. A filter that is
+  parameter names the agencies and the `route` query parameter the routes
+  whose vehicles and route lines the map shows. The two apply together,
+  and an address with neither shows every vehicle and line. A vehicle with
+  no route is shown under no filter that names a route. A filter that is
   refused shows no vehicle, no line, and a notice that links to the page
   without a filter.
 
   Over the map's corner the page offers the filter as a form: one checkbox
   per agency of `Gobusgo.OneBusAway.AgencyView`, from
-  `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. A
-  change of the form goes through the same contract and, when accepted,
+  `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. The
+  form has no control for routes and holds the routes of the address's
+  filter in a hidden field. A change of the form goes through the same
+  contract, and one that names agencies keeps only the routes that one of
+  those agencies lists in the route view, and no route field when it lists
+  none of them. When accepted, the filter goes
   into the address, and the page has the browser store the filter with the
   `vehicle-filter:store` event. A refused change changes nothing. The
   browser offers its stored filter with the `vehicle-filter:restore` event,
@@ -47,8 +53,9 @@ defmodule GobusgoWeb.VehicleLive do
   again, an agency the filter no longer keeps with no marker.
 
   Under the markers the browser draws one line per route, from
-  `GobusgoWeb.RouteLines`: every route that an agency the filter keeps
-  lists in the route view and that has a path in the route path view. A second element that shows
+  `GobusgoWeb.RouteLines`: every route the filter keeps that an agency the
+  filter keeps lists in the route view and that has a path in the route
+  path view. A second element that shows
   nothing mounts the hook that draws them. A connected page subscribes to
   both route views, and keeps the version of each line it has sent, the
   route's color and its path's fetch time, and no polyline. The lines reach
@@ -77,6 +84,7 @@ defmodule GobusgoWeb.VehicleLive do
   @pubsub Gobusgo.PubSub
   @path "/vehicles"
   @agency_field "agency"
+  @route_field "route"
   @route_view Gobusgo.OneBusAway.RouteView
   @route_path_view Gobusgo.OneBusAway.RoutePathView
 
@@ -151,6 +159,8 @@ defmodule GobusgoWeb.VehicleLive do
         {:noreply, socket}
 
       filter ->
+        filter = listed_routes_filter(filter)
+
         {:noreply,
          socket
          |> push_event("vehicle-filter:store", %{filter: filter})
@@ -187,6 +197,12 @@ defmodule GobusgoWeb.VehicleLive do
           data-supplied={to_string(@filter_supplied)}
           class="rounded bg-white px-3 py-2 text-sm shadow"
         >
+          <input
+            :for={{field, value} <- hidden_fields(@filter)}
+            type="hidden"
+            name={field}
+            value={value}
+          />
           <details>
             <summary class="cursor-pointer font-medium">Agencies</summary>
             <div class="mt-2 flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
@@ -314,6 +330,33 @@ defmodule GobusgoWeb.VehicleLive do
     AgencyOptions.options(%{agencies: agencies, selected_ids: selected_ids})
   end
 
+  # The fields of the filter the form has no control for, each with its
+  # values as one parameter value.
+  defp hidden_fields(%{@route_field => route_ids}),
+    do: [{@route_field, FilterParams.param(route_ids)}]
+
+  defp hidden_fields(_filter), do: []
+
+  # A filter of the form that names agencies keeps the routes one of them
+  # lists in the route view. A filter left with no route names none, since
+  # a field of a filter accepts at least one value.
+  defp listed_routes_filter(%{@agency_field => agency_ids, @route_field => route_ids} = filter) do
+    listed_ids =
+      for %{id: agency_id, route_ids: listed_ids} <- FetchView.current(@route_view),
+          agency_id in agency_ids,
+          route_id <- listed_ids,
+          into: MapSet.new() do
+        route_id
+      end
+
+    case Enum.filter(route_ids, &MapSet.member?(listed_ids, &1)) do
+      [] -> Map.delete(filter, @route_field)
+      kept_ids -> Map.put(filter, @route_field, kept_ids)
+    end
+  end
+
+  defp listed_routes_filter(filter), do: filter
+
   defp fit_agency_id(%{@agency_field => [agency_id]}), do: agency_id
   defp fit_agency_id(_filter), do: nil
 
@@ -416,13 +459,22 @@ defmodule GobusgoWeb.VehicleLive do
     push_event(socket, "vehicle-markers:agency", %{agency_id: agency_id, markers: markers})
   end
 
-  # The version of every line to draw: the routes of each agency the
-  # filter keeps, an agency's routes being one fetch of the route view.
+  # The version of every line to draw: the routes the filter keeps of each
+  # agency it keeps, an agency's routes being one fetch of the route view.
   defp route_versions(filter) do
     route_fetches =
-      for %{id: agency_id} = fetch <- FetchView.current(@route_view),
+      for %{id: agency_id, route_ids: route_ids} = fetch <- FetchView.current(@route_view),
           keeps_agency?(filter, agency_id) do
-        fetch
+        kept_ids =
+          Enum.filter(route_ids, fn route_id ->
+            VehicleFilter.keeps_route?(%{
+              filter: filter,
+              agency_id: agency_id,
+              route_id: route_id
+            })
+          end)
+
+        %{fetch | route_ids: kept_ids}
       end
 
     RouteLines.versions(%{

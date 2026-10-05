@@ -1,14 +1,16 @@
 defmodule Gobusgo.OneBusAway.VehicleFilter do
   @agency_field "agency"
+  @route_field "route"
 
   @moduledoc """
   The vehicle adapter of the filter contract in `Gobusgo.Filter`: the fields
   a vehicle can be filtered by, and the vehicles of a fetch that a filter
   keeps. Everything here is pure.
 
-  The one field is `#{@agency_field}`, the identifier of the agency whose
-  fetch holds the vehicle. Every vehicle of a fetch has it, so a filter
-  keeps either all of a fetch's vehicles or none.
+  The fields are `#{@agency_field}`, the identifier of the agency whose
+  fetch holds the vehicle, and `#{@route_field}`, the identifier of the
+  route of the vehicle's trip. Every vehicle of a fetch has the agency. A
+  vehicle with no route matches no filter that names a route.
   """
 
   @behaviour Gobusgo.Filter
@@ -17,7 +19,7 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
   alias Gobusgo.Filter
   alias Gobusgo.OneBusAway.VehicleView.State
 
-  @spec_fields %{@agency_field => :string}
+  @spec_fields %{@agency_field => :string, @route_field => :string}
 
   @typedoc "One vehicle of a fetch, with the agency the fetch is of."
   @type vehicle_record :: %{agency_id: String.t(), vehicle: State.vehicle()}
@@ -29,7 +31,14 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
   @spec values(vehicle_record()) :: Filter.values()
   def values(%{agency_id: agency_id, vehicle: vehicle})
       when is_binary(agency_id) and is_map(vehicle) do
-    %{@agency_field => agency_id}
+    route_id = Map.get(vehicle, "routeId")
+
+    Assert.condition(
+      is_nil(route_id) or is_binary(route_id),
+      "vehicle route must be a string or nil, got: #{inspect(route_id)}"
+    )
+
+    %{@agency_field => agency_id, @route_field => route_id}
   end
 
   @doc """
@@ -40,9 +49,10 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
   def normalize(raw) when is_map(raw), do: Filter.normalize(%{raw: raw, spec: @spec_fields})
 
   @doc """
-  Whether `filter` keeps any vehicle of a fetch of the agency `agency_id`,
-  whatever the fetch holds. A fetch of an agency it does not keep has no
-  vehicle to read.
+  Whether `filter` can keep a vehicle of a fetch of the agency `agency_id`,
+  judged by the agency alone. A fetch of an agency it does not keep has no
+  vehicle to read; which vehicles of a kept agency's fetch it keeps is
+  `filter_fetch/1`'s to say.
   """
   @spec keeps_agency?(%{filter: Filter.t(), agency_id: String.t()}) :: boolean()
   def keeps_agency?(%{filter: filter, agency_id: agency_id})
@@ -50,6 +60,20 @@ defmodule Gobusgo.OneBusAway.VehicleFilter do
     Filter.matches?(%{
       filter: Map.take(filter, [@agency_field]),
       values: %{@agency_field => agency_id}
+    })
+  end
+
+  @doc """
+  Whether `filter` keeps a vehicle of the agency `agency_id` on the route
+  `route_id`, and so the route as that agency lists it.
+  """
+  @spec keeps_route?(%{filter: Filter.t(), agency_id: String.t(), route_id: String.t()}) ::
+          boolean()
+  def keeps_route?(%{filter: filter, agency_id: agency_id, route_id: route_id})
+      when is_map(filter) and is_binary(agency_id) and is_binary(route_id) do
+    Filter.matches?(%{
+      filter: filter,
+      values: %{@agency_field => agency_id, @route_field => route_id}
     })
   end
 
