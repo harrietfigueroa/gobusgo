@@ -32,6 +32,10 @@ defmodule Gobusgo.OneBusAway.VehicleViewInProcessTest do
           %{
             id: "1_4207",
             active_trip_id: nil,
+            route_id: nil,
+            route_short_name: nil,
+            route_long_name: nil,
+            trip_headsign: nil,
             position: nil,
             orientation: nil,
             last_known_location: nil,

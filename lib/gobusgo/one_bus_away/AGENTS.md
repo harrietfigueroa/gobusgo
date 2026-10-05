@@ -163,6 +163,22 @@ Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096
 
 The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, and `predicted` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `references` and `outOfRange` are kept in the envelope and not read.
 
+Orientation values, observed on 2026-10-05 in the newest stored response of each of the 12 agencies (1,635 vehicles, 817 with a trip status). The documentation gives `orientation` as degrees with 0 east, 90 north, 180 west, and 270 south (trip status element, checked 2026-10-04).
+
+- `orientation` was a number at least 0 and below 360 in every trip status, so a vehicle with a `position` always had one. 661 values had a fraction and 156 were whole.
+- An `orientation` of `0` is a heading of east, not a missing value: the whole values were `0` (36), `90` (47), `180` (25), and `270` (51), the four directions of a street grid at similar counts. Of the 16 vehicles at `0` that moved more than 40 meters in a minute, 10 moved within 30 degrees of east.
+- The convention holds in the feed: of 524 moving vehicles with another `orientation`, 417 moved within 45 degrees of it over a minute.
+- `lastKnownOrientation` was `0` for 575 of the 632 vehicles that had reported a location, and for all 185 that had not, so it does not tell a heading for most vehicles.
+
+Route data in the response's `references`, observed on 2026-10-05 in 1,570 stored responses of all 12 agencies. `Vehicles.parse/1` requires this shape and returns a schema mismatch for anything else.
+
+- `references` was always an object whose `trips` and `routes` were lists, both empty for an agency with no vehicle on a trip.
+- The trip of every `activeTripId` was in `trips`, and the route of every such trip was in `routes` (105,680 of 105,680 vehicles with a trip status).
+- A trip's `id`, `routeId`, and `tripHeadsign` and a route's `id`, `shortName`, and `longName` were always strings. `shortName` was empty for 4,132 of 46,696 routes, all of them Washington State Ferries routes (agency `95`), which carry a `longName` such as `Seattle - Bainbridge Island`. `longName` was empty for about half of the routes.
+- A route also carries `agencyId`, `color`, `textColor`, `description`, `type`, and `url`, and a trip a `shapeId`; none of these is read. The points of a shape come from another method that the application does not call.
+
+The published vehicle takes `routeId` and `tripHeadsign` from the trip of its `activeTripId` and `routeShortName` and `routeLongName` from that trip's route. Each is `null` for a vehicle without a trip status, for a trip or a route the references lack, and for a name that is empty.
+
 Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are cut from the live Sound Transit response, one vehicle for each combination of trip and reported location.
 
 ## Stored raw responses
@@ -337,6 +353,10 @@ The trip status element documents `position` as the real-time position when one 
 | `id` | The vehicle identifier |
 | `agencyId` | The agency the fetch asked for |
 | `activeTripId` | The trip the vehicle serves |
+| `routeId` | The route of that trip |
+| `routeShortName` | The short name of that route, such as a route number |
+| `routeLongName` | The long name of that route |
+| `tripHeadsign` | The destination the trip shows to riders |
 | `position` | `lat` and `lon` of where the source places the vehicle now: an estimate, extrapolated or taken from the schedule when no fresh report exists |
 | `orientation` | The direction that goes with `position`, in degrees |
 | `lastKnownLocation` | `lat` and `lon` of the last location the vehicle reported |

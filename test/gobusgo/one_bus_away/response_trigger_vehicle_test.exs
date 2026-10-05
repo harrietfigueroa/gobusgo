@@ -55,7 +55,8 @@ defmodule Gobusgo.OneBusAway.ResponseTriggerVehicleTest do
           "limitExceeded" => false,
           "list" => [
             %{"vehicleId" => "40_a", "lastUpdateTime" => 0, "lastLocationUpdateTime" => 0}
-          ]
+          ],
+          "references" => %{"routes" => [], "trips" => []}
         },
         "text" => "OK",
         "version" => 2

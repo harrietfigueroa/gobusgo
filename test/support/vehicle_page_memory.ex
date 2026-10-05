@@ -43,6 +43,8 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   @grid_west_degrees -122.7
   @degrees_per_turn 360
   @trip_number_first 600_000_000
+  @route_number_first 100
+  @route_count 50
   @random_bit_count 80
 
   @type fetch :: %{
@@ -159,10 +161,15 @@ defmodule Gobusgo.Test.VehiclePageMemory do
     lat = @grid_south_degrees + row_index * @grid_step_degrees
     lon = @grid_west_degrees + column_index * @grid_step_degrees
     orientation = rem(index + sequence, @degrees_per_turn) * 1.0
+    route_number = @route_number_first + rem(index, @route_count)
 
     %{
       id: "#{agency_id}_#{index}",
       active_trip_id: "#{agency_id}_#{@trip_number_first + index}",
+      route_id: "#{agency_id}_#{route_number}",
+      route_short_name: "#{route_number}",
+      route_long_name: "Downtown Seattle - University District",
+      trip_headsign: "University District",
       position: %{lat: lat + sequence * @sequence_step_degrees, lon: lon},
       orientation: orientation,
       last_known_location: %{lat: lat, lon: lon},

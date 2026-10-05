@@ -1,15 +1,31 @@
 import {readyEventName} from "./basemap"
 
 const sourceName = "vehicle-markers"
-const layerName = "vehicle-markers"
+const roundLayerName = "vehicle-markers-round"
+const pointedLayerName = "vehicle-markers-pointed"
+const layerNames = [roundLayerName, pointedLayerName]
+const routeLayerName = "vehicle-markers-route"
+const routeFont = ["Noto Sans Medium"]
+const routeTextSizePixels = 11
+const routeTextOffsetEms = [0, 1]
+const routeTextColor = "#0f172a"
+const routeHaloColor = "#ffffff"
+const routeHaloWidthPixels = 1.5
+const pointedImagePrefix = "vehicle-marker-pointed-"
+const pointedImageSizePixels = 28
+const pointedImagePixelRatio = 2
+const pointedTipInsetPixels = 2
 const markerRadiusPixels = 6
 const markerStrokeWidthPixels = 1.5
 const markerStrokeColor = "#ffffff"
 const statusColorFallback = "#000000"
 const positionNote = "Marker position: the source's estimate"
+const notSupplied = "Not supplied"
+const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
+const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 
 // Every agency's markers as one GeoJSON collection, a point per marker with
-// the texts its popup shows.
+// the texts its label and its popup show.
 function featureCollection(markersByAgency) {
   const features = []
 
@@ -20,6 +36,9 @@ function featureCollection(markersByAgency) {
         geometry: {type: "Point", coordinates: [marker.lon, marker.lat]},
         properties: {
           vehicleId: marker.vehicle_id,
+          heading: marker.heading,
+          route: marker.route,
+          headsign: marker.headsign,
           status: marker.status,
           locationAge: marker.location_age,
           realTime: marker.real_time
@@ -37,14 +56,65 @@ function statusColor(statuses) {
   return ["match", ["get", "status"], ...cases, statusColorFallback]
 }
 
+// The image of a pointed marker in one color: the round marker's circle,
+// centered in the image, drawn out to a tip that points up, which is north
+// for a heading of zero.
+function pointedImage(color) {
+  const size = pointedImageSizePixels * pointedImagePixelRatio
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size
+
+  const context = canvas.getContext("2d")
+  const center = pointedImageSizePixels / 2
+  const tipDistance = center - pointedTipInsetPixels
+  // The angle at the circle's center between the tip and each point where
+  // a line from the tip touches the circle.
+  const tangentAngle = Math.acos(markerRadiusPixels / tipDistance)
+  const up = -Math.PI / 2
+
+  context.scale(pointedImagePixelRatio, pointedImagePixelRatio)
+  context.beginPath()
+  context.moveTo(center, center - tipDistance)
+  context.arc(center, center, markerRadiusPixels, up + tangentAngle, up - tangentAngle)
+  context.closePath()
+  context.fillStyle = color
+  context.fill()
+  context.lineJoin = "round"
+  context.lineWidth = markerStrokeWidthPixels
+  context.strokeStyle = markerStrokeColor
+  context.stroke()
+
+  return context.getImageData(0, 0, size, size)
+}
+
+function headingText(heading) {
+  if (typeof heading === "number") {
+    return `${heading}° clockwise from north`
+  } else {
+    return notSupplied
+  }
+}
+
+function suppliedText(value) {
+  if (typeof value === "string") {
+    return value
+  } else {
+    return notSupplied
+  }
+}
+
 // A popup's content is built as text nodes: the vehicle identifier comes
 // from outside the application and is never parsed as HTML.
 function popupContent(properties, statusLabels) {
   const lines = [
     `Vehicle ${properties.vehicleId}`,
+    `Route: ${suppliedText(properties.route)}`,
+    `Headsign: ${suppliedText(properties.headsign)}`,
     statusLabels.get(properties.status),
     `Location reported: ${properties.locationAge}`,
     `Real-time data: ${properties.realTime}`,
+    `Heading: ${headingText(properties.heading)}`,
     positionNote
   ]
   const content = document.createElement("div")
@@ -89,10 +159,17 @@ export const VehicleMarkers = {
   attach(map, maplibre) {
     map.addSource(sourceName, {type: "geojson", data: featureCollection(this.markersByAgency)})
 
+    for (const {status, color} of this.statuses) {
+      map.addImage(pointedImagePrefix + status, pointedImage(color), {
+        pixelRatio: pointedImagePixelRatio
+      })
+    }
+
     map.addLayer({
-      id: layerName,
+      id: roundLayerName,
       type: "circle",
       source: sourceName,
+      filter: ["!", hasHeading],
       paint: {
         "circle-radius": markerRadiusPixels,
         "circle-color": statusColor(this.statuses),
@@ -101,17 +178,57 @@ export const VehicleMarkers = {
       }
     })
 
-    map.on("click", layerName, (event) => {
-      const [feature] = event.features
-
-      new maplibre.Popup()
-        .setLngLat(feature.geometry.coordinates)
-        .setDOMContent(popupContent(feature.properties, this.statusLabels))
-        .addTo(map)
+    // The image turns with the map, so a heading stays a compass direction
+    // on a map that is turned.
+    map.addLayer({
+      id: pointedLayerName,
+      type: "symbol",
+      source: sourceName,
+      filter: hasHeading,
+      layout: {
+        "icon-image": ["concat", pointedImagePrefix, ["get", "status"]],
+        "icon-rotate": ["get", "heading"],
+        "icon-rotation-alignment": "map",
+        "icon-allow-overlap": true
+      }
     })
 
-    map.on("mouseenter", layerName, () => { map.getCanvas().style.cursor = "pointer" })
-    map.on("mouseleave", layerName, () => { map.getCanvas().style.cursor = "" })
+    // A label is left out where it would cover another label, so a crowded
+    // street shows the routes of some of its vehicles.
+    map.addLayer({
+      id: routeLayerName,
+      type: "symbol",
+      source: sourceName,
+      filter: hasRoute,
+      layout: {
+        "text-field": ["get", "route"],
+        "text-font": routeFont,
+        "text-size": routeTextSizePixels,
+        "text-anchor": "top",
+        "text-offset": routeTextOffsetEms,
+        "text-allow-overlap": false
+      },
+      paint: {
+        "text-color": routeTextColor,
+        "text-halo-color": routeHaloColor,
+        "text-halo-width": routeHaloWidthPixels
+      }
+    })
+
+    for (const layerName of layerNames) {
+      map.on("click", layerName, (event) => {
+        const [feature] = event.features
+
+        new maplibre.Popup()
+          .setLngLat(feature.geometry.coordinates)
+          .setDOMContent(popupContent(feature.properties, this.statusLabels))
+          .addTo(map)
+      })
+
+      map.on("mouseenter", layerName, () => { map.getCanvas().style.cursor = "pointer" })
+      map.on("mouseleave", layerName, () => { map.getCanvas().style.cursor = "" })
+    }
+
     this.map = map
   },
 

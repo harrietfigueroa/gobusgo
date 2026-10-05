@@ -19,6 +19,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
     %{
       id: id,
       active_trip_id: "1_15436438",
+      route_id: "1_100214",
+      route_short_name: "44",
+      route_long_name: "Ballard - Montlake",
+      trip_headsign: "University District",
       position: %{lat: 47.66, lon: -122.34},
       orientation: 202.5,
       last_known_location: %{lat: 47.65, lon: -122.33},
@@ -33,6 +37,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
     %{
       id: id,
       active_trip_id: nil,
+      route_id: nil,
+      route_short_name: nil,
+      route_long_name: nil,
+      trip_headsign: nil,
       position: nil,
       orientation: nil,
       last_known_location: nil,
@@ -85,6 +93,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                    "id" => "1_4207",
                    "agencyId" => "1",
                    "activeTripId" => "1_15436438",
+                   "routeId" => "1_100214",
+                   "routeShortName" => "44",
+                   "routeLongName" => "Ballard - Montlake",
+                   "tripHeadsign" => "University District",
                    "position" => %{"lat" => 47.66, "lon" => -122.34},
                    "orientation" => 202.5,
                    "lastKnownLocation" => %{"lat" => 47.65, "lon" => -122.33},
@@ -106,6 +118,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                "id" => "1_4207",
                "agencyId" => "1",
                "activeTripId" => nil,
+               "routeId" => nil,
+               "routeShortName" => nil,
+               "routeLongName" => nil,
+               "tripHeadsign" => nil,
                "position" => nil,
                "orientation" => nil,
                "lastKnownLocation" => nil,
@@ -199,6 +215,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                      "id" => "1_4207",
                      "agencyId" => "1",
                      "activeTripId" => "1_15436438",
+                     "routeId" => "1_100214",
+                     "routeShortName" => "44",
+                     "routeLongName" => "Ballard - Montlake",
+                     "tripHeadsign" => "University District",
                      "position" => %{"lat" => 47.66, "lon" => -122.34},
                      "orientation" => 202.5,
                      "lastKnownLocation" => %{"lat" => 47.65, "lon" => -122.33},
@@ -218,6 +238,21 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       assert vehicle["lastKnownLocation"] == nil
       assert vehicle["lastLocationUpdateTimeMs"] == nil
       assert vehicle["predicted"] == nil
+    end
+
+    test "returns null for the route fields of a vehicle record that lacks their keys" do
+      %{vehicles: [record]} = Records.build(fetch([reported("1_4207")]))
+      route_fields = ~w(routeId routeShortName routeLongName tripHeadsign)
+
+      value =
+        record.value
+        |> JSON.decode!()
+        |> update_in(["data", "vehicle"], &Map.drop(&1, route_fields))
+        |> JSON.encode!()
+
+      assert {:ok, {:vehicle, %{vehicle: vehicle}}} = Records.decode(value)
+      assert Map.take(vehicle, route_fields) == Map.new(route_fields, &{&1, nil})
+      assert vehicle["activeTripId"] == "1_15436438"
     end
 
     test "returns the membership and the provenance of a manifest record" do

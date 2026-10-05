@@ -83,10 +83,35 @@ defmodule Gobusgo.OneBusAway.Vehicles do
                          }}}
                    }}
 
+  # The Puget Sound server sends the trip of every `activeTripId` and the
+  # route of every such trip in `references`, each name a string that is
+  # empty when the route or the trip has none (observed in 1,570 stored
+  # responses of all 12 agencies, 2026-10-05).
+  @references_schema {:map,
+                      %{
+                        "trips" =>
+                          {:list,
+                           {:map,
+                            %{
+                              "id" => :string,
+                              "routeId" => :string,
+                              "tripHeadsign" => :string
+                            }}},
+                        "routes" =>
+                          {:list,
+                           {:map,
+                            %{
+                              "id" => :string,
+                              "shortName" => :string,
+                              "longName" => :string
+                            }}}
+                      }}
+
   @data_schema {:map,
                 %{
                   "limitExceeded" => {:literal, false},
-                  "list" => {:list, @vehicle_schema}
+                  "list" => {:list, @vehicle_schema},
+                  "references" => @references_schema
                 }}
 
   @doc """
@@ -130,29 +155,32 @@ defmodule Gobusgo.OneBusAway.Vehicles do
   @doc """
   Returns the vehicles in `data`, the `data` member of a decoded envelope, in
   response order, or the first way `data` breaks the contract the live server
-  keeps. A field the vehicle lacks is `nil`. Pure.
+  keeps. A field the vehicle lacks is `nil`. The route and the headsign of a
+  vehicle come from the trip and the route that `data`'s references hold for
+  its active trip; one the references lack, and a name that is empty, is
+  `nil`. Pure.
   """
   @spec parse(term()) :: {:ok, [Records.vehicle()]} | {:error, parse_error()}
   def parse(data) do
     case Schema.mismatch(data, @data_schema) do
-      nil -> parse_list(data["list"])
+      nil -> parse_list(data)
       mismatch -> {:error, {:schema_mismatch, mismatch}}
     end
   end
 
-  defp parse_list(list) do
+  defp parse_list(%{"list" => list, "references" => references}) do
     count = length(list)
 
     if count <= @vehicle_count_max do
-      check_vehicles(list)
+      check_vehicles(list, references)
     else
       {:error, {:vehicle_count_exceeded, count}}
     end
   end
 
-  defp check_vehicles(list) do
+  defp check_vehicles(list, references) do
     case Enum.find_index(list, &(not valid_vehicle?(&1))) do
-      nil -> check_identifiers(list)
+      nil -> check_identifiers(list, references)
       index -> {:error, {:invalid_vehicle, index}}
     end
   end
@@ -167,28 +195,48 @@ defmodule Gobusgo.OneBusAway.Vehicles do
     end
   end
 
-  defp check_identifiers(list) do
+  defp check_identifiers(list, references) do
     duplicate =
       list
       |> Enum.frequencies_by(& &1["vehicleId"])
       |> Enum.find(fn {_id, count} -> count > 1 end)
 
     case duplicate do
-      nil -> {:ok, Enum.map(list, &vehicle/1)}
+      nil -> {:ok, vehicles(list, references)}
       {id, _count} -> {:error, {:duplicate_vehicle, id}}
     end
   end
+
+  defp vehicles(list, %{"trips" => trips, "routes" => routes}) do
+    references = %{
+      trips: Map.new(trips, &{&1["id"], &1}),
+      routes: Map.new(routes, &{&1["id"], &1})
+    }
+
+    Enum.map(list, &vehicle(&1, references))
+  end
+
+  defp name(nil), do: nil
+  defp name(""), do: nil
+  defp name(name) when is_binary(name), do: name
 
   # `location` is the last location the vehicle reported: the Puget Sound
   # server sends the value of `tripStatus.lastKnownLocation` in it whenever
   # both are present, and sends it for vehicles without a trip as well
   # (observed 2026-10-02).
-  defp vehicle(%{"vehicleId" => id} = vehicle) do
+  defp vehicle(%{"vehicleId" => id} = vehicle, %{trips: trips, routes: routes}) do
     trip_status = vehicle["tripStatus"]
+    active_trip_id = trip_status_field(trip_status, "activeTripId")
+    trip = Map.get(trips, active_trip_id, %{})
+    route = Map.get(routes, trip["routeId"], %{})
 
     %{
       id: id,
-      active_trip_id: trip_status_field(trip_status, "activeTripId"),
+      active_trip_id: active_trip_id,
+      route_id: trip["routeId"],
+      route_short_name: name(route["shortName"]),
+      route_long_name: name(route["longName"]),
+      trip_headsign: name(trip["tripHeadsign"]),
       position: coordinates(trip_status_field(trip_status, "position")),
       orientation: trip_status_field(trip_status, "orientation"),
       last_known_location: coordinates(vehicle["location"]),

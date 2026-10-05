@@ -8,11 +8,38 @@
     "outOfRange": false,
     "references": {
       "agencies": [],
-      "routes": [],
+      "routes": [
+        {
+          "agencyId": "40",
+          "color": "2b376e",
+          "description": "",
+          "id": "40_574",
+          "longName": "Lakewood - Federal Way",
+          "nullSafeShortName": "574",
+          "shortName": "574",
+          "textColor": "ffffff",
+          "type": 3,
+          "url": "https://www.soundtransit.org/574"
+        }
+      ],
       "situations": [],
       "stopTimes": [],
       "stops": [],
-      "trips": []
+      "trips": [
+        {
+          "blockId": "40_17039",
+          "directionId": "1",
+          "id": "40_1655020",
+          "peakOffpeak": 0,
+          "routeId": "40_574",
+          "routeShortName": "",
+          "serviceId": "3_5",
+          "shapeId": "3_shp-574-02",
+          "timeZone": "",
+          "tripHeadsign": "Federal Way Downtown Station",
+          "tripShortName": ""
+        }
+      ]
     },
     "list": [
       {
