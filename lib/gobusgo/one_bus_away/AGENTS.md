@@ -1,6 +1,6 @@
 # OneBusAway integration (Puget Sound / Sound Transit)
 
-OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. Stop, route, and arrival methods are listed below for future work and are out of scope until implemented.
+OneBusAway (OBA) is an open-source transit API. Gobusgo reads the Puget Sound deployment, which serves Sound Transit and the other regional agencies, through agency discovery via `agencies-with-coverage` and the active vehicles of each agency via `vehicles-for-agency`. It also holds a requester for the routes of each agency via `routes-for-agency`, which the application does not call. The stop and arrival methods and the other route methods are listed below for future work and are out of scope until implemented.
 
 ## Documentation sources
 
@@ -180,6 +180,25 @@ Route data in the response's `references`, observed on 2026-10-05 in 1,570 store
 The published vehicle takes `routeId` and `tripHeadsign` from the trip of its `activeTripId` and `routeShortName` and `routeLongName` from that trip's route. Each is `null` for a vehicle without a trip status, for a trip or a route the references lack, and for a name that is empty.
 
 Test fixtures under `test/fixtures/one_bus_away/vehicles_for_agency*.json` are cut from the live Sound Transit response, one vehicle for each combination of trip and reported location.
+
+## Routes: `routes-for-agency`
+
+`GET /api/where/routes-for-agency/<agency id>.json?key=<key>` (https://developer.onebusaway.org/api/where/methods/routes-for-agency — checked 2026-10-05). The agency identifier is the only documented parameter besides `key`, and the requester percent-encodes it into the path. The method documents no paging, so the requester asserts `data.limitExceeded` is `false`.
+
+`Gobusgo.OneBusAway.Routes.fetch_response/2` takes the agency in its `:agency_id` option and returns the routes together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. Nothing calls it: it stores nothing, and no source schedules it. `Gobusgo.OneBusAway.Routes.parse/2` is the pure function from `data` and the agency asked for to the routes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_count_exceeded, count}` above 1,000, `{:invalid_route, index}` for an empty identifier, a route of another agency, or a color that is not six hexadecimal digits, or `{:duplicate_route, id}`. The requester raises on those values.
+
+A route holds `id`, `agency_id`, `short_name`, `long_name`, `description`, `type`, `color`, `text_color`, and `url`. `id`, `agency_id`, and `type` are always present, and every other field is `nil` when the source sends an empty string. `nullSafeShortName` is not read: it repeats `shortName`, or the route's `id` when `shortName` is empty.
+
+Shape of the live response, observed on 2026-10-05 across all 12 agencies (391 routes, the largest list King County Metro's 134, none for Solid Ground EZ Loop, `limitExceeded` `false` throughout):
+
+- Every route carried every field, `type` as an integer and the others as strings, with an empty string where the agency supplies nothing. The route element's documentation requires only `id`, `type`, and `agencyId` (https://developer.onebusaway.org/api/where/elements/route — checked 2026-10-05).
+- Every route's `agencyId` was the agency asked for, and no identifier repeated.
+- `color` and `textColor` were six hexadecimal digits or empty. 59 routes had an empty `color`: all 38 of Washington State Ferries (`95`), 20 of King County Metro (`1`), and the one of agency `96`. GTFS, which the fields come from, reads an empty color as white and an empty text color as black (https://gtfs.org/documentation/schedule/reference/ — checked 2026-10-05).
+- `shortName` was empty for 39 routes and `longName` for 134, never both. `description` was empty for 243 and `url` for 77; every other `url` was an `http` or `https` address.
+- `type` was `3` (bus) for 334 routes, `4` (ferry) for 48, `0` (light rail) for 5, and `2` (rail) for 4.
+- `references` held the agency asked for and nothing else. The requester does not read it.
+
+Test fixtures under `test/fixtures/one_bus_away/routes_for_agency*.json` are cut from the live Sound Transit response: a rail route, a bus route with no long name, and a light rail route.
 
 ## Stored raw responses
 
@@ -403,7 +422,7 @@ Reconciliation logs one line per call: `info` `Reconciliation finished`, `warnin
 Not implemented here. Each link was checked 2026-10-01 from the method index.
 
 - Stops: [`stop`](https://developer.onebusaway.org/api/where/methods/stop), [`stops-for-location`](https://developer.onebusaway.org/api/where/methods/stops-for-location), [`stops-for-agency`](https://developer.onebusaway.org/api/where/methods/stops-for-agency), [`stops-for-route`](https://developer.onebusaway.org/api/where/methods/stops-for-route), [`schedule-for-stop`](https://developer.onebusaway.org/api/where/methods/schedule-for-stop)
-- Routes: [`route`](https://developer.onebusaway.org/api/where/methods/route), [`routes-for-agency`](https://developer.onebusaway.org/api/where/methods/routes-for-agency), [`routes-for-location`](https://developer.onebusaway.org/api/where/methods/routes-for-location)
+- Routes: [`route`](https://developer.onebusaway.org/api/where/methods/route), [`routes-for-location`](https://developer.onebusaway.org/api/where/methods/routes-for-location)
 - Arrivals: [`arrivals-and-departures-for-stop`](https://developer.onebusaway.org/api/where/methods/arrivals-and-departures-for-stop), [`arrival-and-departure-for-stop`](https://developer.onebusaway.org/api/where/methods/arrival-and-departure-for-stop)
 
 List-returning methods must follow the bounded-read contract (explicit bound, lazy async iterator). Check each method's page for its paging and `limitExceeded` behavior before implementing.
