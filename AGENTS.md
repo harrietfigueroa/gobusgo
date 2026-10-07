@@ -339,12 +339,11 @@ Implemented: output goes through the generic writer with a local file backend. `
 Intended, with no process or service in the repository yet. The decisions are recorded in Linear; GOB-19 holds the trigger definition and names the issues that hold the rest.
 
 - **Storage.** Raw responses are the only files. Kafka is the data store for processed data: the state topic the processor publishes to is compacted, and the manifest record completes the fetch.
-- **Environments.** Local development uses a local Kafka. Production uses production services. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
+- **Environments.** Local development uses a local Kafka. Production uses a self-hosted Apache Kafka broker, a single node on an EC2 instance of its own that several application instances share (decided in GOB-119), and production services otherwise. Keep the two distinct: configuration selects the target, and local runs never touch production endpoints.
 
 ## Open decisions
 
 - Which coding agents the team uses, and therefore whether `AGENTS.md` stays the only guidance file or gains agent-specific files.
-- The production Kafka service on AWS, and how much of the event format carries over to it.
 - The reverse-DNS prefix for the CloudEvents `type` attribute.
 - Which aggregates the REST API serves, and therefore which datasets need a history topic.
 - The OneBusAway rate limit; ten requests per second is an assumption.
