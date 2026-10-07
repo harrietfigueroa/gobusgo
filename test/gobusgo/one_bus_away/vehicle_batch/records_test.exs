@@ -29,7 +29,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       last_known_orientation: 230.25,
       last_update_time_ms: 1_289_590_007_894,
       last_location_update_time_ms: 1_289_590_005_000,
-      predicted: true
+      predicted: true,
+      schedule_deviation_seconds: -95,
+      next_stop_id: "1_29247",
+      next_stop_time_offset_seconds: 140
     }
   end
 
@@ -47,7 +50,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       last_known_orientation: nil,
       last_update_time_ms: nil,
       last_location_update_time_ms: nil,
-      predicted: nil
+      predicted: nil,
+      schedule_deviation_seconds: nil,
+      next_stop_id: nil,
+      next_stop_time_offset_seconds: nil
     }
   end
 
@@ -103,7 +109,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                    "lastKnownOrientation" => 230.25,
                    "lastUpdateTimeMs" => 1_289_590_007_894,
                    "lastLocationUpdateTimeMs" => 1_289_590_005_000,
-                   "predicted" => true
+                   "predicted" => true,
+                   "scheduleDeviationSeconds" => -95,
+                   "nextStopId" => "1_29247",
+                   "nextStopTimeOffsetSeconds" => 140
                  },
                  "fetchedAt" => "2026-10-02T03:15:00Z",
                  "requestId" => @request_id
@@ -128,7 +137,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                "lastKnownOrientation" => nil,
                "lastUpdateTimeMs" => nil,
                "lastLocationUpdateTimeMs" => nil,
-               "predicted" => nil
+               "predicted" => nil,
+               "scheduleDeviationSeconds" => nil,
+               "nextStopId" => nil,
+               "nextStopTimeOffsetSeconds" => nil
              }
     end
 
@@ -225,7 +237,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                      "lastKnownOrientation" => 230.25,
                      "lastUpdateTimeMs" => 1_289_590_007_894,
                      "lastLocationUpdateTimeMs" => 1_289_590_005_000,
-                     "predicted" => true
+                     "predicted" => true,
+                     "scheduleDeviationSeconds" => -95,
+                     "nextStopId" => "1_29247",
+                     "nextStopTimeOffsetSeconds" => 140
                    }
                  }}}
     end
@@ -252,6 +267,21 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
 
       assert {:ok, {:vehicle, %{vehicle: vehicle}}} = Records.decode(value)
       assert Map.take(vehicle, route_fields) == Map.new(route_fields, &{&1, nil})
+      assert vehicle["activeTripId"] == "1_15436438"
+    end
+
+    test "returns null for the trip time fields of a vehicle record that lacks their keys" do
+      %{vehicles: [record]} = Records.build(fetch([reported("1_4207")]))
+      trip_time_fields = ~w(scheduleDeviationSeconds nextStopId nextStopTimeOffsetSeconds)
+
+      value =
+        record.value
+        |> JSON.decode!()
+        |> update_in(["data", "vehicle"], &Map.drop(&1, trip_time_fields))
+        |> JSON.encode!()
+
+      assert {:ok, {:vehicle, %{vehicle: vehicle}}} = Records.decode(value)
+      assert Map.take(vehicle, trip_time_fields) == Map.new(trip_time_fields, &{&1, nil})
       assert vehicle["activeTripId"] == "1_15436438"
     end
 
@@ -315,6 +345,13 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
            quote(do: &put_in(&1, ["data", "vehicle", "lastLocationUpdateTimeMs"], -1))},
           {"a negative update time",
            quote(do: &put_in(&1, ["data", "vehicle", "lastUpdateTimeMs"], -1))},
+          {"a schedule deviation that is not an integer",
+           quote(do: &put_in(&1, ["data", "vehicle", "scheduleDeviationSeconds"], 12.5))},
+          {"a next stop that is not a string",
+           quote(do: &put_in(&1, ["data", "vehicle", "nextStopId"], 29_247))},
+          {"an empty next stop", quote(do: &put_in(&1, ["data", "vehicle", "nextStopId"], ""))},
+          {"a next stop time offset that is not an integer",
+           quote(do: &put_in(&1, ["data", "vehicle", "nextStopTimeOffsetSeconds"], "soon"))},
           {"a predicted flag that is not a boolean",
            quote(do: &put_in(&1, ["data", "vehicle", "predicted"], "yes"))},
           {"a fetch time that is not a time",

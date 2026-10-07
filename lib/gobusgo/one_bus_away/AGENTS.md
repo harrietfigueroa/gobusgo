@@ -11,7 +11,7 @@ All links checked 2026-10-01.
 - `agencies-with-coverage`: https://developer.onebusaway.org/api/where/methods/agencies-with-coverage
 - API key process: https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd
 - `vehicles-for-agency`: https://developer.onebusaway.org/api/where/methods/vehicles-for-agency — checked 2026-10-02
-- Trip status element: https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-10-02
+- Trip status element: https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-10-06
 
 ## Server and credentials
 
@@ -161,7 +161,7 @@ Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096
 | `activeTripId`, `position`, `orientation`, `lastKnownOrientation`, `predicted`, `lastUpdateTime`, `lastLocationUpdateTime`, `serviceDate`, `scheduleDeviation`, stop and distance fields | In `tripStatus` | Always within a trip status |
 | `lastKnownLocation` | In `tripStatus` | Exactly when the vehicle carries `location`, with the same value |
 
-The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, and `predicted` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `references` and `outOfRange` are kept in the envelope and not read.
+The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, `predicted`, `scheduleDeviation`, `nextStop`, and `nextStopTimeOffset` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `references` and `outOfRange` are kept in the envelope and not read.
 
 Orientation values, observed on 2026-10-05 in the newest stored response of each of the 12 agencies (1,635 vehicles, 817 with a trip status). The documentation gives `orientation` as degrees with 0 east, 90 north, 180 west, and 270 south (trip status element, checked 2026-10-04).
 
@@ -403,6 +403,15 @@ The trigger logs at most one line per record: `warning` `Response trigger proces
 
 Per `apply_records/2` call the view logs `info` `Agency view switched` with `request_id`, `fetched_at`, and `agency_count`; `warning` `Agency view skipped invalid records` with `invalid_count`; and `warning` `Agency view switch not announced` with `reason` when the announcement could not be sent.
 
+Schedule deviation and next stop, observed on 2026-10-06 in the newest stored response of each of the 12 agencies (2,448 vehicles, 1,189 with a trip status; three agencies had no vehicle), with the types checked in 1,440 stored responses of 2026-10-04 to 2026-10-06 (119,746 trip statuses). The documentation gives `scheduleDeviation` as "the deviation from the schedule in seconds, where positive number indicates the trip is running late and negative indicates the trips is running early", listed "if real-time arrival info is available", and `nextStop` and `nextStopTimeOffset` as the counterparts of `closestStop` and `closestStopTimeOffset` that always name the next stop, the offset being seconds from the vehicle's position to the stop among the trip's stop times, positive for a stop that is coming up (trip status element, checked 2026-10-06).
+
+- Every trip status held all three: `scheduleDeviation` and `nextStopTimeOffset` as integers and `nextStop` as a non-empty string. The requester's schema requires those types, and reads an empty `nextStop` as none.
+- `nextStop` was a stop of the response's own `references` in every trip status. Whether the stop view holds it was not checked.
+- `scheduleDeviation` ran from -1,355 to 2,130 seconds, with the middle value 14 and nine in ten between -120 and 429.
+- `nextStopTimeOffset` was zero or more in every trip status, up to 3,597 seconds, with the middle value 57. `closestStopTimeOffset` was negative for a stop already passed; `closestStop` was the same stop as `nextStop` in 629 trip statuses.
+- A vehicle that has reported no location has both fields as well: of 256 such trip statuses, 207 had a `scheduleDeviation` of `0` and 49 another value, so the field is present whether or not the vehicle reports, and `0` does not tell a punctual vehicle from one with only schedule data. Of the 933 that had reported a location, 174 had `0`.
+- `status` was `SCHEDULED` and `phase` `in_progress` in every trip status, so neither tells those vehicles apart.
+
 In the test environment the configured publisher backend, `Gobusgo.Publisher.InProcess`, calls each view's `apply_records/2` with the records published to its state topic, tombstones left out. It calls `Gobusgo.OneBusAway.ResponseConsumer.consume/3` with the records published to each dataset's "response stored" topic. The consumer takes the dataset's event and processor modules, decodes each value with the event module, and calls the processor with the destination it names, in order, in the publishing process. A value that is not a "response stored" event of the dataset is skipped and counted in one `warning` `Response consumer skipped invalid events`; a stored response that fails to process is left failed, with no retry and no dead letter, and logged once at `error` `Response consumer failed` with `dataset`, `destination`, `stage`, `error_code`, and `class`.
 
 `AgencyRecorder.record/2` publishes one "response stored" event once the writer has stored the response, with the `source` `/gobusgo/recorder/oba/agencies-with-coverage`, a new UUID version 7 as `id`, and the fetch time as `time`. A failed publish leaves the result `{:ok, recorded}` and logs `warning` `OneBusAway agency response recorded without its event` with the `reason` in place of the `info` line.
@@ -445,6 +454,11 @@ The trip status element documents `position` as the real-time position when one 
 | `lastUpdateTimeMs` | When the source last heard from the vehicle, milliseconds since the Unix epoch; `0` is the source's "never" |
 | `lastLocationUpdateTimeMs` | When the vehicle last reported a location, milliseconds since the Unix epoch; `0` is the source's "never" and is kept apart from `null` |
 | `predicted` | Whether the source has real-time data for the vehicle's trip; `true` also when the vehicle has reported no location |
+| `scheduleDeviationSeconds` | How far the vehicle is from its trip's schedule, in whole seconds; positive is late, negative early |
+| `nextStopId` | The stop the vehicle reaches next on its trip |
+| `nextStopTimeOffsetSeconds` | The time from the vehicle's position to that stop among the trip's stop times, in whole seconds, as of the fetch |
+
+The state topic also holds vehicle records that lack the keys of the last three fields, or of those and the four route fields; `Records.decode/1` returns each missing key as `null`, so a view holds every field for every vehicle.
 
 The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
 

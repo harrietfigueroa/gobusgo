@@ -20,7 +20,9 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
     %{view: view}
   end
 
-  defp vehicle(id) do
+  defp vehicle(%{id: _id} = vehicle), do: vehicle
+
+  defp vehicle(id) when is_binary(id) do
     %{
       id: id,
       active_trip_id: nil,
@@ -34,11 +36,14 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
       last_known_orientation: nil,
       last_update_time_ms: nil,
       last_location_update_time_ms: 0,
-      predicted: false
+      predicted: false,
+      schedule_deviation_seconds: nil,
+      next_stop_id: nil,
+      next_stop_time_offset_seconds: nil
     }
   end
 
-  defp records(ids, overrides \\ %{}) do
+  defp records(vehicles, overrides \\ %{}) do
     Records.build(
       Map.merge(
         %{
@@ -47,7 +52,7 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
           fetched_at: ~U[2026-10-02 03:15:00Z],
           data_sha256: String.duplicate("ab", 32),
           request_id: @request_id,
-          vehicles: Enum.map(ids, &vehicle/1)
+          vehicles: Enum.map(vehicles, &vehicle/1)
         },
         overrides
       )
@@ -82,6 +87,32 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
                  }
                }
              ] = VehicleView.current(view)
+    end
+
+    test "holds a vehicle record that lacks the trip time keys beside one that has them",
+         %{view: view} do
+      trip_time_fields = ~w(scheduleDeviationSeconds nextStopId nextStopTimeOffsetSeconds)
+      late = %{vehicle("1_b") | schedule_deviation_seconds: 120, next_stop_id: "1_29247"}
+      %{vehicles: [lacking, supplied], manifest: manifest} = records(["1_a", late])
+
+      lacking_value =
+        lacking.value
+        |> JSON.decode!()
+        |> update_in(["data", "vehicle"], &Map.drop(&1, trip_time_fields))
+        |> JSON.encode!()
+
+      :ok = VehicleView.apply_records(view, [lacking_value, supplied.value, manifest.value])
+
+      assert [%{vehicles: %{"1_a" => lacking_vehicle, "1_b" => supplied_vehicle}}] =
+               VehicleView.current(view)
+
+      assert Map.take(lacking_vehicle, trip_time_fields) == Map.new(trip_time_fields, &{&1, nil})
+
+      assert Map.take(supplied_vehicle, trip_time_fields) == %{
+               "scheduleDeviationSeconds" => 120,
+               "nextStopId" => "1_29247",
+               "nextStopTimeOffsetSeconds" => nil
+             }
     end
 
     test "holds the current fetch of every agency, in agency identifier order", %{view: view} do

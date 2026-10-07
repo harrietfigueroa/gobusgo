@@ -352,7 +352,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - The route path of a route the paths view holds and no agency lists any more is never fetched again and never removed. Its stops record stays as well, so the stop view keeps the stops only that route lists.
 - Whether the stops no route serves are ingested, through `stop-ids-for-agency` and `stop` (GOB-69, GOB-70); most are entrances of Sound Transit stations.
 - The vehicle cadence, five seconds for every agency until GOB-91 decides, and the five-minute grace period before an absent vehicle's tombstone, which is not measured against the live feed.
-- Which further vehicle fields are published: the route's color, type, and address, the line a route follows, trip progress, service date, closest and next stops, schedule deviation, occupancy, journey phase, and service-alert identifiers are left out.
+- Which further vehicle fields are published: the route's color, type, and address, the line a route follows, trip progress, service date, the closest stop, occupancy, journey phase, and service-alert identifiers are left out.
 - The public host name of a production deployment, which the LiveView socket's origin check needs.
 
 Do not resolve an open decision in code without confirming it with the user, then update this list.
