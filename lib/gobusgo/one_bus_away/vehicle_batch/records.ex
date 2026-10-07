@@ -60,6 +60,13 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     * `predicted`: whether the source has real-time data for the vehicle's
       trip. It is `true` for a vehicle that has reported no location too,
       so it says nothing about `lastKnownLocation`.
+    * `scheduleDeviationSeconds`: how far the vehicle is from its trip's
+      schedule, in whole seconds. A positive value is late and a negative
+      one early.
+    * `nextStopId`: the stop the vehicle reaches next on its trip.
+    * `nextStopTimeOffsetSeconds`: the time from the vehicle's position to
+      that stop among the trip's stop times, in whole seconds, as of the
+      fetch.
 
   ## Manifest record
 
@@ -104,7 +111,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
           last_known_orientation: number() | nil,
           last_update_time_ms: non_neg_integer() | nil,
           last_location_update_time_ms: non_neg_integer() | nil,
-          predicted: boolean() | nil
+          predicted: boolean() | nil,
+          schedule_deviation_seconds: integer() | nil,
+          next_stop_id: String.t() | nil,
+          next_stop_time_offset_seconds: integer() | nil
         }
 
   @type fetch :: %{
@@ -149,6 +159,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   @coordinates_fields ["position", "lastKnownLocation"]
   @time_fields ["lastUpdateTimeMs", "lastLocationUpdateTimeMs"]
   @route_fields ["routeId", "routeShortName", "routeLongName", "tripHeadsign"]
+  @trip_time_fields ["scheduleDeviationSeconds", "nextStopId", "nextStopTimeOffsetSeconds"]
+  @optional_fields @route_fields ++ @trip_time_fields
 
   @coordinates_schema {:nullable, {:map, %{"lat" => :number, "lon" => :number}}}
 
@@ -167,7 +179,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
                      "lastKnownOrientation" => {:nullable, :number},
                      "lastUpdateTimeMs" => {:nullable, :integer},
                      "lastLocationUpdateTimeMs" => {:nullable, :integer},
-                     "predicted" => {:nullable, :boolean}
+                     "predicted" => {:nullable, :boolean},
+                     "scheduleDeviationSeconds" => {:optional, {:nullable, :integer}},
+                     "nextStopId" => {:optional, {:nullable, :string}},
+                     "nextStopTimeOffsetSeconds" => {:optional, {:nullable, :integer}}
                    }}
 
   @vehicle_fields @vehicle_schema |> elem(1) |> Map.keys()
@@ -315,10 +330,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     end
   end
 
-  # The rules the schema cannot express: the identifiers are non-empty and a
-  # supplied time is zero or later.
+  # The rules the schema cannot express: the identifiers are non-empty, a
+  # supplied time is zero or later, and a supplied next stop is non-empty.
   defp valid_vehicle?(%{"id" => id, "agencyId" => agency_id} = vehicle) do
-    if id != "" and agency_id != "" do
+    if id != "" and agency_id != "" and vehicle["nextStopId"] != "" do
       Enum.all?(@time_fields, &time?(vehicle[&1]))
     else
       false
@@ -328,10 +343,11 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   defp time?(nil), do: true
   defp time?(time_ms) when is_integer(time_ms), do: time_ms >= 0
 
-  # A record that lacks the route keys decodes with each of them `nil`, so a
-  # decoded vehicle holds every field whatever the record holds.
+  # A record that lacks the route keys or the trip time keys decodes with
+  # each of them `nil`, so a decoded vehicle holds every field whatever the
+  # record holds.
   defp known_fields(vehicle) do
-    vehicle = Map.merge(Map.from_keys(@route_fields, nil), Map.take(vehicle, @vehicle_fields))
+    vehicle = Map.merge(Map.from_keys(@optional_fields, nil), Map.take(vehicle, @vehicle_fields))
 
     Enum.reduce(@coordinates_fields, vehicle, fn field, vehicle ->
       Map.update!(vehicle, field, &known_coordinates/1)
@@ -356,14 +372,17 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
       "lastKnownOrientation" => vehicle.last_known_orientation,
       "lastUpdateTimeMs" => vehicle.last_update_time_ms,
       "lastLocationUpdateTimeMs" => vehicle.last_location_update_time_ms,
-      "predicted" => vehicle.predicted
+      "predicted" => vehicle.predicted,
+      "scheduleDeviationSeconds" => vehicle.schedule_deviation_seconds,
+      "nextStopId" => vehicle.next_stop_id,
+      "nextStopTimeOffsetSeconds" => vehicle.next_stop_time_offset_seconds
     }
 
     Assert.schema(vehicle_data, @vehicle_schema)
 
     Assert.condition(
       valid_vehicle?(vehicle_data),
-      "vehicle must hold an identifier and no time before zero"
+      "vehicle must hold an identifier, no time before zero, and no empty next stop"
     )
 
     record(context, %{

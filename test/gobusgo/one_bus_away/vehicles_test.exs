@@ -71,7 +71,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  last_known_orientation: 338.1999969482422,
                  last_update_time_ms: 1_790_985_888_000,
                  last_location_update_time_ms: 1_790_985_895_000,
-                 predicted: true
+                 predicted: true,
+                 schedule_deviation_seconds: 666,
+                 next_stop_id: "3_2442",
+                 next_stop_time_offset_seconds: 378
                },
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52043:12345",
@@ -86,7 +89,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  last_known_orientation: 0,
                  last_update_time_ms: 1_790_985_877_000,
                  last_location_update_time_ms: 0,
-                 predicted: true
+                 predicted: true,
+                 schedule_deviation_seconds: 0,
+                 next_stop_id: "29_2543",
+                 next_stop_time_offset_seconds: 923
                },
                %{
                  id: "40_9636",
@@ -101,7 +107,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  last_known_orientation: nil,
                  last_update_time_ms: 1_790_970_852_000,
                  last_location_update_time_ms: 1_790_970_852_000,
-                 predicted: nil
+                 predicted: nil,
+                 schedule_deviation_seconds: nil,
+                 next_stop_id: nil,
+                 next_stop_time_offset_seconds: nil
                },
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52006:12345",
@@ -116,7 +125,10 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  last_known_orientation: nil,
                  last_update_time_ms: 1_790_984_286_000,
                  last_location_update_time_ms: 0,
-                 predicted: nil
+                 predicted: nil,
+                 schedule_deviation_seconds: nil,
+                 next_stop_id: nil,
+                 next_stop_time_offset_seconds: nil
                }
              ]
     end
@@ -377,6 +389,40 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
 
         assert Vehicles.parse(Map.put(data, "list", list)) == {:error, {:invalid_vehicle, 0}}
       end
+    end
+
+    test "has no next stop when the trip status names an empty one" do
+      data = data("vehicles_for_agency")
+      list = List.update_at(data["list"], 0, &put_in(&1, ["tripStatus", "nextStop"], ""))
+
+      assert {:ok, [vehicle | _rest]} = Vehicles.parse(Map.put(data, "list", list))
+      assert %{next_stop_id: nil, next_stop_time_offset_seconds: 378} = vehicle
+    end
+
+    for {name, field, value} <- [
+          {"a schedule deviation with a fraction", "scheduleDeviation", 12.5},
+          {"a next stop that is not a string", "nextStop", 2442},
+          {"a next stop time offset that is not a number", "nextStopTimeOffset", "soon"}
+        ] do
+      test "returns a schema mismatch for #{name}" do
+        data = data("vehicles_for_agency")
+        path = ["tripStatus", unquote(field)]
+        list = List.update_at(data["list"], 0, &put_in(&1, path, unquote(value)))
+
+        assert {:error, {:schema_mismatch, %{path: ["list", 0 | ^path]}}} =
+                 Vehicles.parse(Map.put(data, "list", list))
+      end
+    end
+
+    test "returns a schema mismatch for a trip status without a schedule deviation" do
+      data = data("vehicles_for_agency")
+      path = ["tripStatus", "scheduleDeviation"]
+      list = List.update_at(data["list"], 0, &(pop_in(&1, path) |> elem(1)))
+
+      assert Vehicles.parse(Map.put(data, "list", list)) ==
+               {:error,
+                {:schema_mismatch,
+                 %{path: ["list", 0, "tripStatus", "scheduleDeviation"], expected: :required}}}
     end
 
     test "returns a schema mismatch for a trip status without a position" do

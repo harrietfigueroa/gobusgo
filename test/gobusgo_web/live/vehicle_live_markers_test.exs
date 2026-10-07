@@ -65,7 +65,10 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
         last_known_orientation: nil,
         last_update_time_ms: nil,
         last_location_update_time_ms: DateTime.to_unix(@fetched_at, :millisecond),
-        predicted: true
+        predicted: true,
+        schedule_deviation_seconds: nil,
+        next_stop_id: nil,
+        next_stop_time_offset_seconds: nil
       },
       fields
     )

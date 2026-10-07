@@ -64,7 +64,9 @@ defmodule Gobusgo.OneBusAway.Vehicles do
   # The Puget Sound server sends `tripStatus` only for a vehicle serving a
   # trip, and `location` only once the vehicle has reported one; both are
   # absent keys otherwise, never null (observed in every agency's live
-  # response, 2026-10-02).
+  # response, 2026-10-02). Every trip status holds `scheduleDeviation` and
+  # `nextStopTimeOffset` as whole seconds and `nextStop` as a stop identifier
+  # (observed in the newest stored response of every agency, 2026-10-06).
   @vehicle_schema {:map,
                    %{
                      "vehicleId" => :string,
@@ -79,7 +81,10 @@ defmodule Gobusgo.OneBusAway.Vehicles do
                            "position" => @coordinates_schema,
                            "orientation" => :number,
                            "lastKnownOrientation" => :number,
-                           "predicted" => :boolean
+                           "predicted" => :boolean,
+                           "scheduleDeviation" => :integer,
+                           "nextStop" => :string,
+                           "nextStopTimeOffset" => :integer
                          }}}
                    }}
 
@@ -155,7 +160,8 @@ defmodule Gobusgo.OneBusAway.Vehicles do
   @doc """
   Returns the vehicles in `data`, the `data` member of a decoded envelope, in
   response order, or the first way `data` breaks the contract the live server
-  keeps. A field the vehicle lacks is `nil`. The route and the headsign of a
+  keeps. A field the vehicle lacks is `nil`, as is a next stop the trip status
+  names with an empty identifier. The route and the headsign of a
   vehicle come from the trip and the route that `data`'s references hold for
   its active trip; one the references lack, and a name that is empty, is
   `nil`. Pure.
@@ -243,7 +249,10 @@ defmodule Gobusgo.OneBusAway.Vehicles do
       last_known_orientation: trip_status_field(trip_status, "lastKnownOrientation"),
       last_update_time_ms: vehicle["lastUpdateTime"],
       last_location_update_time_ms: vehicle["lastLocationUpdateTime"],
-      predicted: trip_status_field(trip_status, "predicted")
+      predicted: trip_status_field(trip_status, "predicted"),
+      schedule_deviation_seconds: trip_status_field(trip_status, "scheduleDeviation"),
+      next_stop_id: name(trip_status_field(trip_status, "nextStop")),
+      next_stop_time_offset_seconds: trip_status_field(trip_status, "nextStopTimeOffset")
     }
   end
 

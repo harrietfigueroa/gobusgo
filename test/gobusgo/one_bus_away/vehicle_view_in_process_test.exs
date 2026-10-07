@@ -42,7 +42,10 @@ defmodule Gobusgo.OneBusAway.VehicleViewInProcessTest do
             last_known_orientation: nil,
             last_update_time_ms: nil,
             last_location_update_time_ms: nil,
-            predicted: nil
+            predicted: nil,
+            schedule_deviation_seconds: nil,
+            next_stop_id: nil,
+            next_stop_time_offset_seconds: nil
           }
         ]
       })
