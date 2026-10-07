@@ -93,4 +93,64 @@ defmodule Gobusgo.OneBusAway.FetchView.StateTest do
   test "raises for a bound below one" do
     assert_raise AssertionError, ~r/id_count_max/, fn -> State.new(0) end
   end
+
+  describe "a view whose fetches expire" do
+    @age_ms_max 60_000
+
+    defp expiring(fetches) do
+      state = State.new_expiring(%{id_count_max: 2, fetch_age_ms_max: @age_ms_max})
+
+      Enum.reduce(fetches, state, fn fetch, state ->
+        {state, _outcome} = State.put(state, fetch)
+        state
+      end)
+    end
+
+    test "keeps a fetch that is as old as the bound" do
+      state = expiring([fetch(%{})])
+
+      assert {state, []} = State.expire(state, DateTime.add(@earlier, @age_ms_max, :millisecond))
+      assert Map.keys(State.current(state)) == ["40"]
+    end
+
+    test "removes the fetches older than the bound and names them, sorted" do
+      state = expiring([fetch(%{id: "b"}), fetch(%{id: "a"})])
+      now = DateTime.add(@earlier, @age_ms_max + 1, :millisecond)
+
+      assert {state, ["a", "b"]} = State.expire(state, now)
+      assert State.current(state) == %{}
+    end
+
+    test "keeps the fetches the bound has not reached" do
+      state = expiring([fetch(%{id: "old"}), fetch(%{id: "new", fetched_at: @later})])
+
+      assert {state, ["old"]} = State.expire(state, DateTime.add(@later, 1, :second))
+      assert Map.keys(State.current(state)) == ["new"]
+    end
+
+    test "ignores a fetch that had expired at the last expiry" do
+      {state, []} = State.expire(expiring([]), @later)
+
+      assert State.put(state, fetch(%{})) == {state, :ignored}
+    end
+
+    test "takes a fetch into the place an expired one left" do
+      state = expiring([fetch(%{id: "a"}), fetch(%{id: "b"})])
+      {state, ["a", "b"]} = State.expire(state, @later)
+
+      assert {_state, :switched} = State.put(state, fetch(%{id: "c", fetched_at: @later}))
+    end
+
+    test "raises for an age bound that is not positive" do
+      assert_raise AssertionError, ~r/fetch_age_ms_max/, fn ->
+        State.new_expiring(%{id_count_max: 2, fetch_age_ms_max: 0})
+      end
+    end
+  end
+
+  test "a view whose fetches do not expire removes none" do
+    {state, [:switched]} = put_all([fetch(%{})])
+
+    assert State.expire(state, DateTime.add(@later, 365, :day)) == {state, []}
+  end
 end

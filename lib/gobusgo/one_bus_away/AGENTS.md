@@ -245,7 +245,7 @@ Test fixtures under `test/fixtures/one_bus_away/stops_for_route*.json` are cut f
 
 `GET /api/where/arrivals-and-departures-for-stop/<stop id>.json?key=<key>`. The stop identifier is percent-encoded into the path. The method documents `minutesBefore`, default 5, and `minutesAfter`, default 35; the requester sends neither, so a response covers the default window. The method is unpaginated and its `data` holds one `entry` and no `limitExceeded`.
 
-`Gobusgo.OneBusAway.Arrivals.fetch_response/2` takes the stop in its `:stop_id` option and returns the arrivals together with the whole decoded envelope, the stop, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A stop the server does not know is `{:http_status, 404}`, with the envelope `{"code": 404, "text": "resource not found"}` (observed 2026-10-06). Nothing calls the requester yet: GOB-158 holds the design of the flow it is the first piece of. `Gobusgo.OneBusAway.Arrivals.parse/2` is the pure function from `data` and the stop asked for to the arrivals. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:stop_mismatch, stop_id}` for a response about another stop, `{:arrival_count_exceeded, count}` above 500, or `{:invalid_arrival, index}` for an arrival at another stop, with an empty trip or route identifier, with a service date or a scheduled time of zero or less, or with a stop sequence before zero. The requester raises on those values.
+`Gobusgo.OneBusAway.Arrivals.fetch_response/2` takes the stop in its `:stop_id` option and returns the arrivals together with the whole decoded envelope, the stop, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A stop the server does not know is `{:http_status, 404}`, with the envelope `{"code": 404, "text": "resource not found"}` (observed 2026-10-06). `Gobusgo.OneBusAway.ArrivalRecorder` calls it, the arrival cycle schedules the recorder, and GOB-158 holds the design of the flow. `Gobusgo.OneBusAway.Arrivals.parse/2` is the pure function from `data` and the stop asked for to the arrivals. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:stop_mismatch, stop_id}` for a response about another stop, `{:arrival_count_exceeded, count}` above 500, or `{:invalid_arrival, index}` for an arrival at another stop, with an empty trip or route identifier, with a service date or a scheduled time of zero or less, or with a stop sequence before zero. The requester raises on those values.
 
 An arrival holds the trip, the service date, the stop sequence, the route with its short and long names, the headsign, whether riders can arrive and depart on it, the scheduled and predicted arrival and departure times in milliseconds since the Unix epoch, `predicted`, the vehicle, and the vehicle's schedule deviation. A name the source sends empty is `nil`.
 
@@ -331,6 +331,7 @@ The agency recorder logs one line per call: `info` `OneBusAway agency response r
 | Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | 60 seconds | 45 seconds |
 | Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | 5 seconds | 4.5 seconds |
 | Routes | `Gobusgo.OneBusAway.RouteScheduler` | `RouteCycle.run/2` | 60 seconds | 55 seconds |
+| Arrivals | `Gobusgo.OneBusAway.ArrivalScheduler` | `ArrivalCycle.run/2` | 5 seconds | 4.5 seconds |
 
 A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the intervals that elapsed during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped intervals are intended.
 
@@ -578,6 +579,36 @@ The application starts one view, registered as `Gobusgo.OneBusAway.StopView`, fo
 Measured against the local broker on 2026-10-05: the processor published the records of the 391 stored responses in 4 seconds, and a view fed by a subscriber of `oba.stops.state` held 13,026 stops, 113 of them parent stops, in a table of 16.6 MB beside 4.1 MB of process memory.
 
 A route's stops record stays in the topic after its agency stops listing the route, as its path record does, so the stops only that route lists stay in the view.
+
+## Open stops and the arrival cycle
+
+No scheduler can fetch the arrivals of every stop, so the arrival source fetches only the stops that are open, at its own pace: what riders look at decides which stops a cycle may fetch, and the cycle decides how many (decided in GOB-158).
+
+`Gobusgo.OneBusAway.OpenStops` holds the stops that processes of this node have open. The application starts one, registered under the module's name. A process calls `open/2` when it shows a stop and `close/2` when it stops; the registry monitors each process that has a stop open, so a process that exits closes its stops. `stop_ids/1` returns the stops at least one process has open. `Gobusgo.OneBusAway.OpenStops.State` holds the rules and is pure.
+
+- At most 2,000 stops are open and one process has at most 4 open. An opening beyond either bound returns `{:error, :stop_count_exceeded}` or `{:error, :opener_stop_count_exceeded}`.
+- State is in memory and per node: a restart begins with no stop open, and with several instances each knows only its own pages' stops.
+- Opening and closing log nothing, since a stop a process opens is what one rider looks at.
+
+`Gobusgo.OneBusAway.ArrivalSchedule.due/1` is the pure function from the open stops, the fetch time each has in the arrivals view, and the time it is to the stops that are due: the stops with no fetch first, in identifier order, then the stops whose fetch is at least five minutes old, the oldest first.
+
+`Gobusgo.OneBusAway.ArrivalCycle.run/2` is one run of the arrival source. It records the due stops through `Gobusgo.OneBusAway.ArrivalRecorder.record/2`, each in a task under the ingestion task supervisor, with the route cycle's rules for pace, budget, deadline, and failure.
+
+- The source runs a cycle every five seconds and a cycle takes one due stop, so the source makes at most one request every five seconds and counts the other due stops as `deferred_count`. With every open stop due again after five minutes, that pace keeps 60 open stops fresh; beyond that each stop is refreshed less often.
+- A cycle reads at most 2,000 open stops.
+- It returns `{:ok, counts}` with `open_count`, `due_count`, `recorded_count`, `failed_count`, `skipped_count`, `deferred_count`, and `unannounced_count`, or `{:error, :nothing_recorded}` when stops are due and none is recorded.
+- It logs one line per run with those counts and `failures`, and no stop identifier: `debug` `OneBusAway arrival cycle found nothing due`, `info` `OneBusAway arrival cycle finished`, `warning` `OneBusAway arrival cycle finished degraded`, and `error` `OneBusAway arrival cycle failed`.
+
+## Arrival records and arrivals view
+
+The arrivals at a stop go through the flow of the other datasets, one fetch whole in one record like a route path. The arrival source fetches the stops that processes have open, and no page opens one yet (GOB-160), so outside tests the view stays empty.
+
+- **Stored form.** `Gobusgo.OneBusAway.ArrivalRecorder.record/2` stores one stop's response under `raw/oba/arrivals-and-departures-for-stop/dt=<date>/stop=<stop>/`, the stop written like a route in a route path's destination, with `stopId` in `meta`. `Gobusgo.OneBusAway.RawArrivalResponse` holds the stored form.
+- **Event.** The recorder publishes the "response stored" event to `oba.arrivals.response-stored` under the key `oba/arrivals-and-departures-for-stop/<stop id>`, with `data.stopId`. The consumer group `gobusgo.arrival-processor` consumes the topic through the response trigger.
+- **Record.** `Gobusgo.OneBusAway.ArrivalBatch.process/2` publishes one record to `oba.arrivals.state` under the key `arrivals/<stop id>`, of the type `gobusgo.stop.arrivals.processed.v1`, with the `source` `/gobusgo/processor/oba/arrivals-and-departures-for-stop`. `data` holds `stopId`, `arrivals`, `dataSha256`, `destination`, `fetchedAt`, and `requestId`. Each arrival holds the fields of the requester's arrival in camel case, times with an `Ms` suffix, every key present and a missing value `null`. A failed call fails at the stage `:publish_arrivals`.
+- **View.** `Gobusgo.OneBusAway.ArrivalView` is a `Gobusgo.OneBusAway.FetchView` over `ArrivalBatch.Records`: the newest fetch per stop, read with `current_fetch/2` and announced as `{:fetch_view_switched, Gobusgo.OneBusAway.ArrivalView}`. It holds at most 2,000 stops.
+- **Expiry.** The view is the one fetch view started with `:fetch_age_ms_max`, 40 minutes: a response covers the 35 minutes after its fetch. Each `apply_records/2` call first removes the fetches older than that by the view's clock and announces the removal, and a record of a fetch that old is ignored, so a rebuild from the topic holds only the fetches still of use. A view that receives no records keeps what it holds, so a reader judges a fetch by its `fetched_at`.
+- **No tombstone.** A stop nobody opens again keeps its last record in the compacted topic, at most one per stop, and the view ignores it once it has expired.
 
 ## Reconciliation
 

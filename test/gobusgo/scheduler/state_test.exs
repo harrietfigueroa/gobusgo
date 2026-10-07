@@ -147,17 +147,19 @@ defmodule Gobusgo.Scheduler.StateTest do
   describe "cadence" do
     # Simulates each source's scheduler over ten runs that succeed, with the
     # interval read from the source's spec, and compares the times the runs
-    # start at with multiples of the interval the source has always had.
+    # start at with multiples of the interval listed for the source.
     for {name, interval_ms} <- [
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
           {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
-          {Gobusgo.OneBusAway.RouteScheduler, 60_000}
+          {Gobusgo.OneBusAway.RouteScheduler, 60_000},
+          {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do
       test "#{inspect(name)} starts a run every #{interval_ms} ms" do
         specs =
           Sources.specs(%{base_url: "https://oba.example.test", api_key: "test-key"},
             vehicle_cycle_options: [],
-            route_cycle_options: []
+            route_cycle_options: [],
+            arrival_cycle_options: []
           )
 
         spec = Enum.find(specs, &(&1.name == unquote(name)))

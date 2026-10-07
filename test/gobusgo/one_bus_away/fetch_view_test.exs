@@ -198,4 +198,56 @@ defmodule Gobusgo.OneBusAway.FetchViewTest do
       refute_received {:fetch_view_switched, ^view}
     end
   end
+
+  describe "a view whose fetches expire" do
+    # The view reads the time from an agent the test sets, so a fetch ages
+    # without the test waiting.
+    setup context do
+      clock = start_supervised!({Agent, fn -> ~U[2026-10-05 01:00:30Z] end})
+      view = Module.concat(__MODULE__, "ExpiringView#{context.line}")
+
+      start_supervised!(
+        {FetchView,
+         name: view,
+         pubsub: Gobusgo.PubSub,
+         records: Lines,
+         id_count_max: 2,
+         fetch_age_ms_max: 60_000,
+         clock: fn -> Agent.get(clock, & &1) end},
+        id: view
+      )
+
+      %{view: view, clock: clock}
+    end
+
+    test "drops a fetch older than the bound at the next call and announces it",
+         %{view: view, clock: clock} do
+      :ok = FetchView.apply_records(view, [value()])
+      :ok = FetchView.subscribe(%{view: view, pubsub: Gobusgo.PubSub})
+      Agent.update(clock, fn _time -> ~U[2026-10-05 01:01:01Z] end)
+
+      :ok = FetchView.apply_records(view, [])
+
+      assert FetchView.current(view) == []
+      assert FetchView.fetch_times(view) == %{}
+      assert_receive {:fetch_view_switched, ^view}
+    end
+
+    test "keeps a fetch the bound has not reached", %{view: view, clock: clock} do
+      :ok = FetchView.apply_records(view, [value()])
+      Agent.update(clock, fn _time -> ~U[2026-10-05 01:01:00Z] end)
+
+      :ok = FetchView.apply_records(view, [])
+
+      assert [%{id: "40"}] = FetchView.current(view)
+    end
+
+    test "ignores the record of a fetch older than the bound", %{view: view, clock: clock} do
+      Agent.update(clock, fn _time -> ~U[2026-10-05 02:00:00Z] end)
+
+      :ok = FetchView.apply_records(view, [value()])
+
+      assert FetchView.current(view) == []
+    end
+  end
 end
