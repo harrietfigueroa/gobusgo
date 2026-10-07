@@ -2,11 +2,17 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   # Reads the source specs as values, and calls each source's run with a
   # Req.Test stub serving a JSON fixture and writer and publisher doubles
   # defined here, so the run is observed through the writer contract with no
-  # network access, no storage, and no subscriber.
+  # network access, no storage, and no subscriber. The vehicle source's
+  # signals come from a demand registry of the test's own, on a clock the
+  # test advances.
   use ExUnit.Case, async: true
 
+  alias Gobusgo.Assert.AssertionError
   alias Gobusgo.Cadence
+  alias Gobusgo.Demand
+  alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
 
   @moduletag capture_log: true
@@ -32,6 +38,8 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   @stub_name Sources
   @gate Module.concat(__MODULE__, Gate)
   @tasks Module.concat(__MODULE__, Tasks)
+  @demand Module.concat(__MODULE__, Demand)
+  @clock_key {__MODULE__, :clock}
   @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
 
   # The requests go through a gate of their own that refills at once, so
@@ -39,7 +47,66 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   setup do
     start_supervised!({Gobusgo.OneBusAway.RequestGate, name: @gate, refill_interval_ms: 1})
     start_supervised!({Task.Supervisor, name: @tasks})
+    clock = :atomics.new(1, signed: true)
+
+    start_supervised!(
+      {Demand,
+       name: @demand,
+       datasets: DemandKey.datasets(),
+       monotonic_time_ms: fn -> :atomics.get(clock, 1) end}
+    )
+
+    Process.put(@clock_key, clock)
     :ok
+  end
+
+  defp advance_clock(duration_ms), do: :atomics.add(Process.get(@clock_key), 1, duration_ms)
+
+  # The interval the vehicle source's policy decides from what its signals
+  # function reads now.
+  defp vehicle_interval_ms do
+    %{cadence: cadence} = vehicles([])
+    Cadence.interval_ms(cadence.policy, cadence.signals.())
+  end
+
+  # A process that views vehicles until the test ends it.
+  defp start_viewer do
+    test = self()
+
+    viewer =
+      spawn(fn ->
+        send(test, {:viewing, self(), Demand.register(@demand, DemandKey.vehicles())})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:viewing, ^viewer, :ok}
+    viewer
+  end
+
+  # Ends the viewer and reads the registry until it holds one viewer fewer:
+  # the registry learns of the exit in its own time, and reads its clock
+  # then.
+  defp end_viewer(viewer) do
+    viewer_count = Demand.holder_count(@demand, DemandKey.vehicles())
+    reference = Process.monitor(viewer)
+    Process.exit(viewer, :kill)
+    assert_receive {:DOWN, ^reference, :process, ^viewer, :killed}
+    await_viewer_count(viewer_count - 1, 500)
+  end
+
+  defp await_viewer_count(expected, reads_left) do
+    case Demand.holder_count(@demand, DemandKey.vehicles()) do
+      ^expected ->
+        :ok
+
+      count when reads_left > 1 ->
+        assert count > expected
+        Process.sleep(1)
+        await_viewer_count(expected, reads_left - 1)
+
+      count ->
+        flunk("expected #{expected} viewers, got: #{count}")
+    end
   end
 
   defp specs(options) do
@@ -47,6 +114,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       @settings,
       Keyword.merge(
         [
+          demand: @demand,
           vehicle_cycle_options: [task_supervisor: @tasks],
           route_cycle_options: [task_supervisor: @tasks],
           arrival_cycle_options: [task_supervisor: @tasks]
@@ -82,20 +150,53 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     spec
   end
 
+  describe "assert_tombstone_grace/1" do
+    # Each row is the longest interval between two vehicle fetches against
+    # a grace period of 300,000 ms, which has to span four of them.
+    for {label, interval_ms_max, accepted?} <- [
+          {"a quarter of the grace period", 75_000, true},
+          {"one millisecond over a quarter of the grace period", 75_001, false},
+          {"the grace period itself", 300_000, false}
+        ] do
+      test "#{if accepted?, do: "accepts", else: "refuses"} a longest interval of #{label}" do
+        relation = %{interval_ms_max: unquote(interval_ms_max), tombstone_grace_ms: 300_000}
+
+        if unquote(accepted?) do
+          assert Sources.assert_tombstone_grace(relation) == :ok
+        else
+          assert_raise AssertionError, ~r/grace/, fn ->
+            Sources.assert_tombstone_grace(relation)
+          end
+        end
+      end
+    end
+
+    test "accepts the vehicle source's longest interval under the vehicle view's grace period" do
+      %{cadence: %{policy: {:steps, %{interval_ms_max: interval_ms_max}}}} = vehicles([])
+
+      assert Sources.assert_tombstone_grace(%{
+               interval_ms_max: interval_ms_max,
+               tombstone_grace_ms: VehicleView.State.tombstone_grace_ms()
+             }) == :ok
+    end
+  end
+
   describe "specs/2" do
     test "names a cadence for every source, and an interval for none" do
       for spec <- specs([]) do
-        assert %{cadence: %{policy: {:fixed, _interval_ms}, signals: signals}} = spec
+        assert %{cadence: %{policy: {kind, _detail}, signals: signals}} = spec
+        assert kind in [:fixed, :steps]
         assert is_function(signals, 0)
         refute is_map_key(spec, :interval_ms)
       end
     end
 
     # Each row is a source and the interval it runs at, which its policy
-    # has to decide from the signals its own function returns.
+    # has to decide from the signals its own function returns. Nobody views
+    # vehicles here.
     for {name, interval_ms} <- [
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
-          {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
+          {Gobusgo.OneBusAway.VehicleScheduler, 60_000},
           {Gobusgo.OneBusAway.RouteScheduler, 60_000},
           {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do
@@ -150,9 +251,58 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       assert_received {:written, %{destination: ^destination}}
     end
 
-    test "holds the vehicle source, every five seconds" do
-      assert %{name: Gobusgo.OneBusAway.VehicleScheduler, cadence: %{policy: {:fixed, 5_000}}} =
-               vehicles([])
+    test "holds the vehicle source, between every five seconds and every minute" do
+      assert %{
+               name: Gobusgo.OneBusAway.VehicleScheduler,
+               cadence: %{policy: {:steps, %{interval_ms_min: 5_000, interval_ms_max: 60_000}}}
+             } = vehicles([])
+    end
+
+    test "runs the vehicle source every minute while nobody has viewed vehicles" do
+      assert vehicle_interval_ms() == 60_000
+    end
+
+    for viewer_count <- [1, 2, 25] do
+      test "runs the vehicle source every five seconds with #{viewer_count} viewers" do
+        for _viewer <- 1..unquote(viewer_count), do: start_viewer()
+
+        assert vehicle_interval_ms() == 5_000
+      end
+    end
+
+    # Each row is the time since the last viewer left, around the hold of
+    # 60,000 ms: just inside it, exactly at it, and just past it.
+    for {label, absence_ms, interval_ms} <- [
+          {"one millisecond inside the hold", 59_999, 5_000},
+          {"exactly at the hold", 60_000, 60_000},
+          {"one millisecond past the hold", 60_001, 60_000}
+        ] do
+      test "runs the vehicle source every #{interval_ms} ms #{label} after the last viewer left" do
+        viewer = start_viewer()
+        end_viewer(viewer)
+
+        advance_clock(unquote(absence_ms))
+
+        assert vehicle_interval_ms() == unquote(interval_ms)
+      end
+    end
+
+    test "runs the vehicle source every five seconds again when a viewer comes back" do
+      viewer = start_viewer()
+      end_viewer(viewer)
+      advance_clock(60_000)
+      assert vehicle_interval_ms() == 60_000
+
+      start_viewer()
+
+      assert vehicle_interval_ms() == 5_000
+    end
+
+    test "has the vehicle source's signals read fail while the registry is down" do
+      %{cadence: cadence} = vehicles([])
+      stop_supervised!(Demand)
+
+      assert catch_exit(cadence.signals.())
     end
 
     test "gives the vehicle source a deadline inside its interval" do

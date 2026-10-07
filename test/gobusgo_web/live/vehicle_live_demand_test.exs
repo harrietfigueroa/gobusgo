@@ -16,12 +16,18 @@ defmodule GobusgoWeb.VehicleLiveDemandTest do
 
   @endpoint GobusgoWeb.Endpoint
   @path "/vehicles"
+  @count_check_interval_ms 20
+  @count_check_count_max 250
+  @registry_down_ms 1_000
 
   setup do
     restart_registry()
     on_exit(&restart_registry/0)
   end
 
+  # Stops the registry and starts another under its supervisor, which is
+  # what a page sees of a registry that crashes, and counts for nothing in
+  # the supervisor's bound on restarts.
   defp restart_registry do
     # Ignored: the child is already stopped where a test has stopped it.
     _result = Supervisor.terminate_child(Gobusgo.Supervisor, Demand)
@@ -29,6 +35,24 @@ defmodule GobusgoWeb.VehicleLiveDemandTest do
   end
 
   defp viewer_count, do: Demand.holder_count(Demand, DemandKey.vehicles())
+
+  # Reads the count until it is `expected`, for the page registers in its
+  # own time after the registry is back, and gives up after
+  # @count_check_count_max reads.
+  defp await_viewer_count(expected, checks_left \\ @count_check_count_max) do
+    case viewer_count() do
+      ^expected ->
+        :ok
+
+      count when checks_left > 1 ->
+        assert is_integer(count)
+        Process.sleep(@count_check_interval_ms)
+        await_viewer_count(expected, checks_left - 1)
+
+      count ->
+        flunk("expected #{expected} viewers, got: #{count}")
+    end
+  end
 
   # Ends the page's process with `exit_reason` and waits until it is gone.
   # The test traps exits because the test's connection to the page is linked
@@ -68,6 +92,65 @@ defmodule GobusgoWeb.VehicleLiveDemandTest do
       end_page(leaving, unquote(exit_reason))
 
       assert viewer_count() == 1
+    end
+  end
+
+  describe "a registry that restarts" do
+    test "counts the page that was connected before, which stays mounted" do
+      {:ok, view, _html} = live(build_conn(), @path)
+      assert viewer_count() == 1
+
+      restart_registry()
+
+      assert await_viewer_count(1) == :ok
+      assert render(view) =~ "No basemap"
+    end
+
+    test "counts every page that was connected before" do
+      {:ok, _first, _html} = live(build_conn(), @path)
+      {:ok, _second, _html} = live(build_conn(), @path)
+
+      restart_registry()
+
+      assert await_viewer_count(2) == :ok
+    end
+
+    test "counts a page once however often the registry restarts" do
+      {:ok, _view, _html} = live(build_conn(), @path)
+
+      restart_registry()
+      assert await_viewer_count(1) == :ok
+      restart_registry()
+
+      assert await_viewer_count(1) == :ok
+    end
+  end
+
+  describe "a registry that is down when the page connects" do
+    test "leaves the page mounted, and counts it once the registry is back" do
+      :ok = Supervisor.terminate_child(Gobusgo.Supervisor, Demand)
+      {:ok, view, _html} = live(build_conn(), @path)
+      assert render(view) =~ "No basemap"
+
+      {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, Demand)
+
+      assert await_viewer_count(1) == :ok
+    end
+
+    # The registry stays down for @registry_down_ms, twice as long as the
+    # page keeps trying.
+    test "is logged as a warning once the page has stopped trying" do
+      :ok = Supervisor.terminate_child(Gobusgo.Supervisor, Demand)
+
+      log =
+        ExUnit.CaptureLog.capture_log([metadata: :all], fn ->
+          {:ok, view, _html} = live(build_conn(), @path)
+          Process.sleep(@registry_down_ms)
+          render(view)
+        end)
+
+      assert log =~ "[warning] Vehicle page not counted as a viewer"
+      assert log =~ "refusal=registry_unavailable"
     end
   end
 

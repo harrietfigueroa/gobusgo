@@ -48,7 +48,10 @@ defmodule Gobusgo.Scheduler do
   `Scheduled run overran its interval` once per run, with the count of
   intervals that elapsed during the run as `skipped_interval_count`, and
   `warning` `Scheduler signals read failed` for the first failed read after
-  a start or after a read that worked.
+  a start or after a read that worked, and `info`
+  `Scheduler interval changed` for a read that decides another interval
+  than the scheduler had, with `interval_ms_before` and `interval_ms_after`.
+  A read that decides the interval the scheduler has logs nothing.
 
   When it stops, the scheduler waits for the run in flight, then kills it.
   State is in memory and a restart begins with nothing counted.
@@ -323,6 +326,7 @@ defmodule Gobusgo.Scheduler do
           "an interval must be at least #{@evaluation_period_ms}, got: #{interval_ms}"
         )
 
+        log_interval_change(spec, %{before: server.interval_ms, after: interval_ms})
         %{server | interval_ms: interval_ms, signals_failure_count: 0}
 
       {:error, reason} ->
@@ -337,6 +341,16 @@ defmodule Gobusgo.Scheduler do
 
         %{server | signals_failure_count: server.signals_failure_count + 1}
     end
+  end
+
+  defp log_interval_change(_spec, %{before: interval_ms, after: interval_ms}), do: :ok
+
+  defp log_interval_change(spec, %{before: interval_ms_before, after: interval_ms_after}) do
+    Logger.info("Scheduler interval changed",
+      source: inspect(spec.name),
+      interval_ms_before: interval_ms_before,
+      interval_ms_after: interval_ms_after
+    )
   end
 
   # The function runs in a process that is neither linked nor a task, so

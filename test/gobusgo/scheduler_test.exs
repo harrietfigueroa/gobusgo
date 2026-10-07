@@ -494,6 +494,136 @@ defmodule Gobusgo.SchedulerTest do
     end
   end
 
+  describe "a source whose interval varies" do
+    # The source runs every @interval_ms_idle with no viewer and every
+    # @interval_ms_active with one, and the test sets the count of viewers
+    # its signals function returns.
+    @interval_ms_active 100_000
+    @interval_ms_idle 3_600_000
+
+    defp varying_cadence(viewer_count) do
+      %{
+        policy:
+          {:steps,
+           %{
+             interval_ms_min: @interval_ms_active,
+             interval_ms_max: @interval_ms_idle,
+             steps: [
+               %{viewer_count_min: 0, interval_ms: @interval_ms_idle},
+               %{viewer_count_min: 1, interval_ms: @interval_ms_active}
+             ],
+             hold_ms: 0
+           }},
+        signals: fn ->
+          case :atomics.get(viewer_count, 1) do
+            -1 -> raise "signals failed"
+            count -> %{viewer_count: count, viewer_absence_ms: nil}
+          end
+        end
+      }
+    end
+
+    defp start_varying_scheduler(context) do
+      viewer_count = :atomics.new(1, signed: true)
+      start_scheduler(context, %{spec: %{cadence: varying_cadence(viewer_count)}})
+      viewer_count
+    end
+
+    test "runs at the interval its signals decide", context do
+      start_varying_scheduler(context)
+      await_run_start()
+
+      assert %{interval_ms: @interval_ms_idle} = Scheduler.status(context.name)
+    end
+
+    test "does not start a run at the shorter interval while its signals decide the longer",
+         context do
+      start_varying_scheduler(context)
+      run = await_run_start()
+      end_run(run, {:return, {:ok, :recorded}})
+
+      tick_after(context, @interval_ms_active)
+
+      assert %{phase: :idle} = Scheduler.status(context.name)
+      refute_received {:run_started, _run}
+    end
+
+    # The active interval has elapsed since the last run while the source is
+    # idle. The test then changes the signals and sends no tick, so the run
+    # can only come from the scheduler's own timer, and waits one evaluation
+    # period for it.
+    test "starts a run within one evaluation period of its signals shortening the interval",
+         context do
+      viewer_count = start_varying_scheduler(context)
+      run = await_run_start()
+      end_run(run, {:return, {:ok, :recorded}})
+      tick_after(context, @interval_ms_active)
+      assert %{phase: :idle, interval_ms: @interval_ms_idle} = Scheduler.status(context.name)
+
+      :atomics.put(viewer_count, 1, 1)
+
+      period_ms = Scheduler.evaluation_period_ms()
+      assert_receive {:run_started, next_run}, period_ms + @receive_timeout_ms
+      assert next_run != run
+      assert %{interval_ms: @interval_ms_active} = Scheduler.status(context.name)
+    end
+
+    test "keeps the longer interval it had when a signals read then fails", context do
+      viewer_count = start_varying_scheduler(context)
+      await_run_start()
+      assert %{interval_ms: @interval_ms_idle} = Scheduler.status(context.name)
+
+      :atomics.put(viewer_count, 1, -1)
+      tick_after(context, 1)
+
+      assert %{interval_ms: @interval_ms_idle, signals_failure_count: 1} =
+               Scheduler.status(context.name)
+    end
+
+    # The scheduler starts at the active interval, its first read decides
+    # the idle one, and three ticks later a viewer brings the active one
+    # back, so the interval changes twice over eight reads.
+    test "logs one info line per change of the interval, and none per tick", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          viewer_count = start_varying_scheduler(context)
+          await_run_start()
+          for _tick <- 1..3, do: tick_after(context, 1)
+          :atomics.put(viewer_count, 1, 1)
+          for _tick <- 1..4, do: tick_after(context, 1)
+          Scheduler.status(context.name)
+        end)
+
+      assert length(String.split(log, "Scheduler interval changed")) == 3
+    end
+
+    test "logs a change with the source and the interval before and after it", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          start_varying_scheduler(context)
+          await_run_start()
+          Scheduler.status(context.name)
+        end)
+
+      assert log =~ "[info] Scheduler interval changed"
+      assert log =~ "source=#{inspect(context.name)}"
+      assert log =~ "interval_ms_before=#{@interval_ms_active}"
+      assert log =~ "interval_ms_after=#{@interval_ms_idle}"
+    end
+
+    test "logs no change for a source whose interval stays as it is", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          start_scheduler(context)
+          await_run_start()
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+        end)
+
+      refute log =~ "Scheduler interval changed"
+    end
+  end
+
   describe "signals that are not a map" do
     test "stop the scheduler, as the programmer error they are", context do
       Process.flag(:trap_exit, true)

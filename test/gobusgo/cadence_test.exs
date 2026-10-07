@@ -150,4 +150,167 @@ defmodule Gobusgo.CadenceTest do
       end
     end
   end
+
+  # The step policy the vehicle source's shape has: 60 s with no viewer,
+  # 5 s with one or more, held for 60 s after the last one leaves.
+  @steps %{
+    interval_ms_min: 5_000,
+    interval_ms_max: 60_000,
+    steps: [
+      %{viewer_count_min: 0, interval_ms: 60_000},
+      %{viewer_count_min: 1, interval_ms: 5_000}
+    ],
+    hold_ms: 60_000
+  }
+
+  defp steps(overrides \\ %{}), do: {:steps, Map.merge(@steps, overrides)}
+
+  describe "a steps policy" do
+    # Each row is a count of viewers with nobody having left, and the
+    # interval of the step the count reaches.
+    for {viewer_count, interval_ms} <- [{0, 60_000}, {1, 5_000}, {2, 5_000}, {10_000, 5_000}] do
+      test "decides #{interval_ms} ms for #{viewer_count} viewers" do
+        signals = %{viewer_count: unquote(viewer_count), viewer_absence_ms: nil}
+
+        assert Cadence.interval_ms(steps(), signals) == unquote(interval_ms)
+      end
+    end
+
+    # Each row is how long ago the last viewer left, around the hold of
+    # 60,000 ms: just inside it, exactly at it, and just past it.
+    for {label, viewer_absence_ms, interval_ms} <- [
+          {"the moment the last viewer leaves", 0, 5_000},
+          {"one millisecond inside the hold", 59_999, 5_000},
+          {"exactly at the hold", 60_000, 60_000},
+          {"one millisecond past the hold", 60_001, 60_000}
+        ] do
+      test "decides #{interval_ms} ms with no viewer #{label}" do
+        signals = %{viewer_count: 0, viewer_absence_ms: unquote(viewer_absence_ms)}
+
+        assert Cadence.interval_ms(steps(), signals) == unquote(interval_ms)
+      end
+    end
+
+    test "decides the first step's interval at once under a hold of zero" do
+      signals = %{viewer_count: 0, viewer_absence_ms: 0}
+
+      assert Cadence.interval_ms(steps(%{hold_ms: 0}), signals) == 60_000
+    end
+
+    # Each row is a count of viewers and the step of a three-step table it
+    # reaches: the last one whose least count is at most the count.
+    for {viewer_count, interval_ms} <- [{0, 60_000}, {1, 15_000}, {9, 15_000}, {10, 5_000}] do
+      test "decides #{interval_ms} ms for #{viewer_count} viewers under three steps" do
+        policy =
+          steps(%{
+            steps: [
+              %{viewer_count_min: 0, interval_ms: 60_000},
+              %{viewer_count_min: 1, interval_ms: 15_000},
+              %{viewer_count_min: 10, interval_ms: 5_000}
+            ]
+          })
+
+        signals = %{viewer_count: unquote(viewer_count), viewer_absence_ms: nil}
+
+        assert Cadence.interval_ms(policy, signals) == unquote(interval_ms)
+      end
+    end
+
+    test "has its shortest interval as the shortest it can decide" do
+      assert Cadence.interval_ms_min(steps()) == 5_000
+    end
+
+    for signals <- [
+          %{},
+          %{viewer_count: 1},
+          %{viewer_absence_ms: nil},
+          %{viewer_count: -1, viewer_absence_ms: nil},
+          %{viewer_count: 1.0, viewer_absence_ms: nil},
+          %{viewer_count: nil, viewer_absence_ms: nil},
+          %{viewer_count: 0, viewer_absence_ms: -1},
+          %{viewer_count: 0, viewer_absence_ms: 1.5}
+        ] do
+      test "refuses the signals #{inspect(signals)}" do
+        assert_raise AssertionError, fn ->
+          Cadence.interval_ms(steps(), unquote(Macro.escape(signals)))
+        end
+      end
+    end
+
+    test "is accepted by assert_policy/1" do
+      assert Cadence.assert_policy(steps()) == :ok
+    end
+
+    test "is accepted with as many steps as the bound allows" do
+      steps =
+        for index <- 0..(Cadence.step_count_max() - 1) do
+          %{viewer_count_min: index, interval_ms: 60_000 - index}
+        end
+
+      assert Cadence.assert_policy(steps(%{steps: steps})) == :ok
+    end
+
+    test "is refused with one step more than the bound allows" do
+      steps =
+        for index <- 0..Cadence.step_count_max() do
+          %{viewer_count_min: index, interval_ms: 60_000 - index}
+        end
+
+      assert_raise AssertionError, ~r/steps/, fn ->
+        Cadence.assert_policy(steps(%{steps: steps}))
+      end
+    end
+
+    # Each row replaces one field of a policy that is otherwise accepted.
+    for {label, overrides} <- [
+          {"a shortest interval over the longest", %{interval_ms_min: 60_001}},
+          {"a shortest interval of zero", %{interval_ms_min: 0}},
+          {"a hold under zero", %{hold_ms: -1}},
+          {"a hold that is not an integer", %{hold_ms: 60_000.0}},
+          {"no step", %{steps: []}},
+          {"steps that are not a list", %{steps: %{0 => 60_000}}},
+          {"no step for a count of zero", %{steps: [%{viewer_count_min: 1, interval_ms: 5_000}]}},
+          {"steps out of order",
+           %{
+             steps: [
+               %{viewer_count_min: 0, interval_ms: 60_000},
+               %{viewer_count_min: 2, interval_ms: 5_000},
+               %{viewer_count_min: 1, interval_ms: 5_000}
+             ]
+           }},
+          {"two steps for one count",
+           %{
+             steps: [
+               %{viewer_count_min: 0, interval_ms: 60_000},
+               %{viewer_count_min: 0, interval_ms: 5_000}
+             ]
+           }},
+          {"a step interval under the shortest",
+           %{
+             steps: [
+               %{viewer_count_min: 0, interval_ms: 60_000},
+               %{viewer_count_min: 1, interval_ms: 4_999}
+             ]
+           }},
+          {"a step interval over the longest",
+           %{steps: [%{viewer_count_min: 0, interval_ms: 60_001}]}},
+          {"a step count that is not an integer",
+           %{steps: [%{viewer_count_min: 0.0, interval_ms: 60_000}]}},
+          {"a step without an interval", %{steps: [%{viewer_count_min: 0}]}}
+        ] do
+      test "is refused with #{label}" do
+        policy = steps(unquote(Macro.escape(overrides)))
+
+        assert_raise AssertionError, fn -> Cadence.assert_policy(policy) end
+      end
+    end
+
+    for field <- [:interval_ms_min, :interval_ms_max, :steps, :hold_ms] do
+      test "is refused without #{field}" do
+        policy = {:steps, Map.delete(@steps, unquote(field))}
+
+        assert_raise AssertionError, fn -> Cadence.assert_policy(policy) end
+      end
+    end
+  end
 end

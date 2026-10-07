@@ -1,4 +1,7 @@
 defmodule GobusgoWeb.VehicleLive do
+  @viewer_registration_retry_ms 100
+  @viewer_registration_attempt_count_max 5
+
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
   fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines of the routes the
@@ -81,9 +84,15 @@ defmodule GobusgoWeb.VehicleLive do
   A connected page registers the vehicles key of
   `Gobusgo.OneBusAway.DemandKey` in `Gobusgo.Demand`, so it counts as one
   viewer of vehicles until its process exits; the static render registers
-  nothing. A registration the registry refuses leaves the page as it is and
-  uncounted, and the page logs `Vehicle page not counted as a viewer` at
-  `warning` with the refusal.
+  nothing. The page monitors the registry and registers again when the
+  registry it registered with goes down, so a registry that restarts counts
+  the page again. While the registry does not answer, the page makes at
+  most #{@viewer_registration_attempt_count_max} attempts in a row,
+  #{@viewer_registration_retry_ms} ms apart. A registration
+  the registry refuses, or the last of those attempts failing, leaves the
+  page as it is and uncounted, and the page logs
+  `Vehicle page not counted as a viewer` at `warning` with the refusal,
+  `registry_unavailable` for a registry that did not answer.
   """
 
   use Phoenix.LiveView
@@ -115,26 +124,31 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      :ok = AgencyView.subscribe(%{view: AgencyView, pubsub: @pubsub})
-      :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
-      :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
-      :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
-      :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
-      register_viewer()
-    end
+    socket =
+      assign(socket,
+        manifest: read_manifest(),
+        basemap: nil,
+        filter: nil,
+        filter_supplied: false,
+        agencies: agencies(),
+        shown_request_ids: %{},
+        shown_route_versions: %{},
+        stops_ready: false,
+        viewer_monitor: nil
+      )
 
-    {:ok,
-     assign(socket,
-       manifest: read_manifest(),
-       basemap: nil,
-       filter: nil,
-       filter_supplied: false,
-       agencies: agencies(),
-       shown_request_ids: %{},
-       shown_route_versions: %{},
-       stops_ready: false
-     )}
+    case connected?(socket) do
+      true ->
+        :ok = AgencyView.subscribe(%{view: AgencyView, pubsub: @pubsub})
+        :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
+        :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
+        :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
+        :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
+        {:ok, register_viewer(socket, 1)}
+
+      false ->
+        {:ok, socket}
+    end
   end
 
   @impl Phoenix.LiveView
@@ -190,6 +204,17 @@ defmodule GobusgoWeb.VehicleLive do
       true -> {:noreply, push_stops(socket, %{ids: held_ids, removed: removed_ids, reset: false})}
       false -> {:noreply, socket}
     end
+  end
+
+  def handle_info(
+        {:DOWN, monitor, :process, _registry, _reason},
+        %{assigns: %{viewer_monitor: monitor}} = socket
+      ) do
+    {:noreply, register_viewer(assign(socket, viewer_monitor: nil), 1)}
+  end
+
+  def handle_info({:register_viewer, attempt_count}, socket) do
+    {:noreply, register_viewer(socket, attempt_count)}
   end
 
   @impl Phoenix.LiveView
@@ -311,14 +336,48 @@ defmodule GobusgoWeb.VehicleLive do
     """
   end
 
-  defp register_viewer do
-    case Demand.register(Demand, DemandKey.vehicles()) do
+  # Makes the attempt numbered `attempt_count` of a row of attempts to
+  # register the page. The page watches the registry it registers with, a
+  # registry that refuses it included, so a later registry gets the page's
+  # registration too.
+  defp register_viewer(socket, attempt_count) do
+    Assert.condition(socket.assigns.viewer_monitor == nil, "the registry must not be watched yet")
+    Assert.condition(attempt_count >= 1, "attempt_count must be positive, got: #{attempt_count}")
+
+    Assert.condition(
+      attempt_count <= @viewer_registration_attempt_count_max,
+      "attempt_count must be at most #{@viewer_registration_attempt_count_max}, got: #{attempt_count}"
+    )
+
+    monitor = Process.monitor(Demand)
+
+    case viewer_registration() do
       :ok ->
-        :ok
+        assign(socket, viewer_monitor: monitor)
 
       {:error, refusal} ->
         Logger.warning("Vehicle page not counted as a viewer", refusal: refusal)
+        assign(socket, viewer_monitor: monitor)
+
+      :registry_unavailable ->
+        Process.demonitor(monitor, [:flush])
+
+        if attempt_count < @viewer_registration_attempt_count_max do
+          retry = {:register_viewer, attempt_count + 1}
+          Process.send_after(self(), retry, @viewer_registration_retry_ms)
+        else
+          Logger.warning("Vehicle page not counted as a viewer", refusal: :registry_unavailable)
+        end
+
+        socket
     end
+  end
+
+  # A registry that is down or does not answer in time exits the call.
+  defp viewer_registration do
+    Demand.register(Demand, DemandKey.vehicles())
+  catch
+    :exit, _reason -> :registry_unavailable
   end
 
   # A directory with no manifest is the state before any extraction and

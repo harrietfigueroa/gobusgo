@@ -232,6 +232,7 @@ defmodule Gobusgo.Application do
     case Config.one_bus_away() do
       {:ok, settings} ->
         Sources.specs(settings,
+          demand: Demand,
           vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
           route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
           arrival_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
