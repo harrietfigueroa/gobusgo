@@ -1,0 +1,25 @@
+{
+  "code": 200,
+  "currentTime": 1791339592985,
+  "data": {
+    "entry": {
+      "arrivalsAndDepartures": [],
+      "nearbyStopIds": [
+        "1_1559",
+        "1_1558"
+      ],
+      "situationIds": [],
+      "stopId": "95_7"
+    },
+    "references": {
+      "agencies": [],
+      "routes": [],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [],
+      "trips": []
+    }
+  },
+  "text": "OK",
+  "version": 2
+}

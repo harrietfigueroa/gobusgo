@@ -12,6 +12,8 @@ All links checked 2026-10-01.
 - API key process: https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd
 - `vehicles-for-agency`: https://developer.onebusaway.org/api/where/methods/vehicles-for-agency — checked 2026-10-02
 - Trip status element: https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-10-06
+- `arrivals-and-departures-for-stop`: https://developer.onebusaway.org/api/where/methods/arrivals-and-departures-for-stop — checked 2026-10-06
+- Arrival and departure element: https://developer.onebusaway.org/api/where/elements/arrival-and-departure — checked 2026-10-06
 
 ## Server and credentials
 
@@ -238,6 +240,39 @@ Shape of the live response, observed on 2026-10-05 for all 391 routes of the 12 
 Not observed: nested `subGroups`, a non-empty `levels`, a grouping of another `type`, and a response with `includePolylines=false`, which on the one route tried kept every key and returned empty polyline lists.
 
 Test fixtures under `test/fixtures/one_bus_away/stops_for_route*.json` are cut from the live response for the West Seattle Water Taxi (`1_100336`), whole.
+
+## Arrivals: `arrivals-and-departures-for-stop`
+
+`GET /api/where/arrivals-and-departures-for-stop/<stop id>.json?key=<key>`. The stop identifier is percent-encoded into the path. The method documents `minutesBefore`, default 5, and `minutesAfter`, default 35; the requester sends neither, so a response covers the default window. The method is unpaginated and its `data` holds one `entry` and no `limitExceeded`.
+
+`Gobusgo.OneBusAway.Arrivals.fetch_response/2` takes the stop in its `:stop_id` option and returns the arrivals together with the whole decoded envelope, the stop, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. A stop the server does not know is `{:http_status, 404}`, with the envelope `{"code": 404, "text": "resource not found"}` (observed 2026-10-06). Nothing calls the requester yet: GOB-158 holds the design of the flow it is the first piece of. `Gobusgo.OneBusAway.Arrivals.parse/2` is the pure function from `data` and the stop asked for to the arrivals. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:stop_mismatch, stop_id}` for a response about another stop, `{:arrival_count_exceeded, count}` above 500, or `{:invalid_arrival, index}` for an arrival at another stop, with an empty trip or route identifier, with a service date or a scheduled time of zero or less, or with a stop sequence before zero. The requester raises on those values.
+
+An arrival holds the trip, the service date, the stop sequence, the route with its short and long names, the headsign, whether riders can arrive and depart on it, the scheduled and predicted arrival and departure times in milliseconds since the Unix epoch, `predicted`, the vehicle, and the vehicle's schedule deviation. A name the source sends empty is `nil`.
+
+- **A predicted time is `nil` unless it can be shown.** The documentation gives a predicted time as "zero if no real-time available" and `predicted` as "true if we have real-time arrival info available for this trip". The requester reads a time as none when `predicted` is `false`, when the time is `0`, and when it is more than two hours from its scheduled time. The arrival time and the departure time are judged apart, and `predicted` is passed on as sent.
+- **The vehicle's schedule deviation is `nil` unless the vehicle serves the arrival's trip.** Each arrival carries the `tripStatus` of its vehicle, which describes the vehicle's active trip: an earlier trip of the block until the vehicle starts this one. The deviation is read only when `tripStatus.activeTripId` is the arrival's `tripId`.
+- **Nothing identifies an arrival within a response.** The source lists a trip twice when it matches two vehicles to it, with the same trip, service date, and stop sequence.
+
+Shape of the live response, observed on 2026-10-06 about 19:15 Pacific in 224 responses for 99 stops of nine agencies (489 arrivals; GOB-158's comments hold the whole test):
+
+| Observation | Count |
+| --- | --- |
+| Every key the schema names present with its type, each name a string | 489 of 489 |
+| `tripStatus` present, a map with `activeTripId` and an integer `scheduleDeviation`; an absent key otherwise | 485 of 489 |
+| `predicted` `false`, always with both predicted times `0` and an empty `vehicleId` | 56 |
+| `predicted` `true` with a predicted time more than two hours from the schedule: agency `95` about 19.4 hours early, agency `19` near the epoch | 29 arrival times, 97 departure times |
+| `routeLongName` empty; `routeShortName` and `tripHeadsign` never were | 91 |
+| `arrivalEnabled` `false`, a trip's first stop | 61 |
+| `departureEnabled` `false`, a trip's last stop | 63 |
+| A trip listed twice in one response, the vehicle and its distance differing | 23 pairs in 18 responses |
+| `frequency` and the four `Interval` fields `null` | 489 of 489 |
+
+- A response held 2 arrivals at the middle and 25 at most; it was 5.7 KB at the middle and 77 KB at most, most of it the `tripStatus` of each arrival, and took 0.14 s at the middle.
+- For an upcoming arrival whose vehicle serves its trip, the predicted time was the scheduled time plus `tripStatus.scheduleDeviation` to the second for agencies `1`, `19`, `40`, `95`, and `97` (141 of 148). Agencies `3`, `20`, and `29` have predictions per stop, a middle difference of 77, 10, and 6 seconds.
+- A scheduled time was never `0`, and an arrival's `stopId` was always the stop asked for.
+- The response's `references`, `nearbyStopIds`, and `situationIds` are kept in the envelope and not read.
+
+Test fixtures under `test/fixtures/one_bus_away/arrivals_and_departures_for_stop*.json` are cut from the live response for the Seattle ferry terminal (`95_7`), whole: four arrivals, of which one has a usable predicted arrival, two have a predicted time about 19.7 hours early, and two have `predicted` `false`.
 
 ## Stored raw responses
 
@@ -566,7 +601,7 @@ Not implemented here. Each link was checked 2026-10-01 from the method index.
 
 - Stops: [`stop`](https://developer.onebusaway.org/api/where/methods/stop), [`stops-for-location`](https://developer.onebusaway.org/api/where/methods/stops-for-location), [`stops-for-agency`](https://developer.onebusaway.org/api/where/methods/stops-for-agency), [`schedule-for-stop`](https://developer.onebusaway.org/api/where/methods/schedule-for-stop)
 - Routes: [`route`](https://developer.onebusaway.org/api/where/methods/route), [`routes-for-location`](https://developer.onebusaway.org/api/where/methods/routes-for-location)
-- Arrivals: [`arrivals-and-departures-for-stop`](https://developer.onebusaway.org/api/where/methods/arrivals-and-departures-for-stop), [`arrival-and-departure-for-stop`](https://developer.onebusaway.org/api/where/methods/arrival-and-departure-for-stop)
+- Arrivals: [`arrival-and-departure-for-stop`](https://developer.onebusaway.org/api/where/methods/arrival-and-departure-for-stop)
 
 List-returning methods must follow the bounded-read contract (explicit bound, lazy async iterator). Check each method's page for its paging and `limitExceeded` behavior before implementing.
 
