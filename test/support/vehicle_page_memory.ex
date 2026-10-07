@@ -80,7 +80,6 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   @trip_number_first 600_000_000
   @route_number_first 100
   @route_count 50
-  @stop_number_first 10_000
   @deviation_seconds_span 600
   @offset_seconds_span 900
   @random_bit_count 80
@@ -377,7 +376,7 @@ defmodule Gobusgo.Test.VehiclePageMemory do
       last_location_update_time_ms: report_time_ms,
       predicted: true,
       schedule_deviation_seconds: rem(index, @deviation_seconds_span),
-      next_stop_id: "#{agency_id}_#{@stop_number_first + index}",
+      next_stop_id: "#{agency_id}_0_#{rem(index, @route_stop_count)}",
       next_stop_time_offset_seconds: rem(index, @offset_seconds_span)
     }
   end

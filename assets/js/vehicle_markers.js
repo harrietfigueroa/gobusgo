@@ -41,6 +41,8 @@ function featureCollection(markersByAgency) {
           heading: marker.heading,
           route: marker.route,
           headsign: marker.headsign,
+          schedule: marker.schedule,
+          nextStop: marker.next_stop,
           status: marker.status,
           locationAge: marker.location_age,
           realTime: marker.real_time
@@ -106,6 +108,22 @@ function suppliedText(value) {
   }
 }
 
+// The lines for a vehicle's lateness and its next stop, each only for a
+// marker that has the text.
+function tripTimeLines(properties) {
+  const lines = []
+
+  if (typeof properties.schedule === "string") {
+    lines.push(`Schedule: ${properties.schedule}`)
+  }
+
+  if (typeof properties.nextStop === "string") {
+    lines.push(`Next stop: ${properties.nextStop}`)
+  }
+
+  return lines
+}
+
 // A popup's content is built as text nodes: the vehicle identifier comes
 // from outside the application and is never parsed as HTML.
 function popupContent(properties, statusLabels) {
@@ -113,6 +131,7 @@ function popupContent(properties, statusLabels) {
     `Vehicle ${properties.vehicleId}`,
     `Route: ${suppliedText(properties.route)}`,
     `Headsign: ${suppliedText(properties.headsign)}`,
+    ...tripTimeLines(properties),
     statusLabels.get(properties.status),
     `Location reported: ${properties.locationAge}`,
     `Real-time data: ${properties.realTime}`,

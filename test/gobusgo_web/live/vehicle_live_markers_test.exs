@@ -1,8 +1,8 @@
 defmodule GobusgoWeb.VehicleLiveMarkersTest do
   # Mounts the vehicle page with Phoenix.LiveViewTest over a basemap manifest
   # the test writes to its temporary directory and the application's vehicle
-  # view, filled with the record values VehicleBatch.Records builds. Both are
-  # global state, hence the non-async case. The browser draws the markers,
+  # view and stop view, filled with the record values their records modules
+  # build. All are global state, hence the non-async case. The browser draws the markers,
   # so these tests observe what the page hands it: the events that carry
   # each agency's markers, and the element the marker hook mounts on.
   use ExUnit.Case, async: false
@@ -10,6 +10,8 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Gobusgo.OneBusAway.RoutePathBatch.StopRecords
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView
 
@@ -42,8 +44,46 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
   end
 
   defp restart_view do
-    :ok = Supervisor.terminate_child(Gobusgo.Supervisor, VehicleView)
-    {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, VehicleView)
+    for view <- [VehicleView, StopView] do
+      :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
+      {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
+    end
+  end
+
+  # Publishes a fetch of the stops of one route, which lists the stop `id`
+  # under `name`.
+  defp apply_stop(%{id: id, name: name}) do
+    stop = %{
+      id: id,
+      name: name,
+      lat: 47.6,
+      lon: -122.3,
+      code: nil,
+      direction: nil,
+      location_type: 0,
+      parent: nil,
+      wheelchair_boarding: "UNKNOWN",
+      route_ids: ["1_100"]
+    }
+
+    record =
+      StopRecords.build(%{
+        route_id: "1_100",
+        destination: "raw/oba/stops-for-route/dt=2026-10-02/route=1_100/file.json.gz",
+        fetched_at: @fetched_at,
+        data_sha256: String.duplicate("ab", 32),
+        request_id: request_id(0),
+        route_path: %{
+          route_id: "1_100",
+          stop_ids: [id],
+          polylines: [],
+          stop_groupings: [],
+          stops: [stop],
+          parent_stops: []
+        }
+      })
+
+    :ok = StopView.apply_records(StopView, [record.value])
   end
 
   defp request_id(sequence) do
@@ -110,6 +150,35 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
       assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
       assert_push_event(view, @event, %{agency_id: "40", markers: [%{id: "40/40_x"}]})
+    end
+
+    test "is answered with a marker's lateness and its next stop, named by the stop view" do
+      apply_stop(%{id: "1_29247", name: "Pine St & 3rd Ave"})
+
+      fields = %{
+        schedule_deviation_seconds: 200,
+        next_stop_id: "1_29247",
+        next_stop_time_offset_seconds: 140
+      }
+
+      apply_fetch([vehicle("1_a", fields)], %{agency_id: "1", sequence: 1})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{
+        markers: [%{schedule: "3 min late", next_stop: "Pine St & 3rd Ave, 2 min away"}]
+      })
+    end
+
+    test "is answered with the time alone for a next stop the stop view does not hold" do
+      fields = %{next_stop_id: "1_404", next_stop_time_offset_seconds: 140}
+      apply_fetch([vehicle("1_a", fields)], %{agency_id: "1", sequence: 1})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{markers: [%{next_stop: "2 min away"}]})
     end
 
     test "is answered with a marker's position, status, and texts" do
