@@ -129,7 +129,7 @@ A region is a box, so the box that holds two overlapping areas also holds ground
 
 | Rule | Value | Meaning |
 | --- | --- | --- |
-| Refill interval | 100 ms | Ten permits a second; the bucket holds one token, so idle time buys no burst |
+| Refill interval | 200 ms | Five permits a second; the bucket holds one token, so idle time buys no burst |
 | In-flight cap | 4 | Permits held at one time |
 | Waiter bound | 32 | Callers waiting for a permit, served in arrival order |
 | Backoff window | 1,000 ms doubling to 60,000 ms | The pause after a 429 without `Retry-After`, jittered between half the window and all of it |
@@ -141,9 +141,9 @@ A region is a box, so the box that holds two overlapping areas also holds ground
 - State is in memory and per node: a restart begins open with a full bucket, and two running instances each spend a full budget.
 - Logs: `warning` `OneBusAway request gate paused` with `pause_ms` and `pause_count`, and `info` `OneBusAway request gate reopened`.
 
-The budget of ten requests per second is an assumption. OneBusAway documents neither a rate limit nor a 429 status nor `Retry-After` (https://developer.onebusaway.org/api/where — checked 2026-10-03); the gate treats a 429 as rate limiting on the project owner's statement that limits exist. The live server has answered with 429: on 2026-10-03, with agency discovery once a minute and twelve vehicle fetches every five seconds, two requests in 75 seconds got one. The pause each one caused and whether the response carried `Retry-After` were not recorded, so the limit itself is still unknown.
+The budget of five requests per second is an assumption, half of the ten the gate first granted (decided in GOB-158). OneBusAway documents neither a rate limit nor a 429 status nor `Retry-After` (https://developer.onebusaway.org/api/where — checked 2026-10-03); the gate treats a 429 as rate limiting on the project owner's statement that limits exist. The live server has answered with 429: on 2026-10-03, with agency discovery once a minute and twelve vehicle fetches every five seconds, two requests in 75 seconds got one. The pause each one caused and whether the response carried `Retry-After` were not recorded. On 2026-10-06 a test that sent one `arrivals-and-departures-for-stop` request every 1.5 seconds beside a running application's twelve vehicle fetches every five seconds, about three requests a second together, got a 429 on its 223rd request, eleven minutes in. So the server has refused below five requests a second, the limit itself is still unknown, and the gate's pause after a 429 is what holds the application under it.
 
-A new source needs no change here: its requests reach the gate through the client. A deadline shorter than the time its requests spend waiting for permits ends in `:rate_limited`, so a source that issues many requests per run sizes its deadline to 100 ms per request, plus the time the requests themselves take while four are in flight.
+A new source needs no change here: its requests reach the gate through the client. A deadline shorter than the time its requests spend waiting for permits ends in `:rate_limited`, so a source that issues many requests per run sizes its deadline to 200 ms per request, plus the time the requests themselves take while four are in flight.
 
 ## Vehicles: `vehicles-for-agency`
 

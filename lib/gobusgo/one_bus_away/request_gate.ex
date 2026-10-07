@@ -1,5 +1,5 @@
 defmodule Gobusgo.OneBusAway.RequestGate do
-  @refill_interval_ms_default 100
+  @refill_interval_ms_default 200
   @in_flight_count_max_default 4
   @waiter_count_max_default 32
   @pause_ms_base_default 1_000
