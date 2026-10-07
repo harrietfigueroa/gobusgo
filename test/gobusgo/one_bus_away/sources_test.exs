@@ -46,7 +46,8 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       Keyword.merge(
         [
           vehicle_cycle_options: [task_supervisor: @tasks],
-          route_cycle_options: [task_supervisor: @tasks]
+          route_cycle_options: [task_supervisor: @tasks],
+          arrival_cycle_options: [task_supervisor: @tasks]
         ],
         options
       )
@@ -54,20 +55,27 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   end
 
   defp agency_discovery(record_options) do
-    assert [spec, _vehicles, _routes] = specs(agency_record_options: record_options)
+    assert [spec, _vehicles, _routes, _arrivals] = specs(agency_record_options: record_options)
     spec
   end
 
   defp vehicles(cycle_options) do
-    assert [_agencies, spec, _routes] =
+    assert [_agencies, spec, _routes, _arrivals] =
              specs(vehicle_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
   end
 
   defp routes(cycle_options) do
-    assert [_agencies, _vehicles, spec] =
+    assert [_agencies, _vehicles, spec, _arrivals] =
              specs(route_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
+
+    spec
+  end
+
+  defp arrivals(cycle_options) do
+    assert [_agencies, _vehicles, _routes, spec] =
+             specs(arrival_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
   end
@@ -179,6 +187,46 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
 
       assert {:ok, %{due_count: 1, recorded_count: 1}} = spec.run.()
       assert_received {:written, %{destination: "raw/oba/routes-for-agency/" <> _name}}
+    end
+
+    test "holds the arrival source, every five seconds" do
+      assert %{name: Gobusgo.OneBusAway.ArrivalScheduler, interval_ms: 5_000} = arrivals([])
+    end
+
+    test "gives the arrival source a deadline inside its interval" do
+      spec = arrivals([])
+
+      assert spec.deadline_ms >= 1
+      assert spec.deadline_ms < spec.interval_ms
+    end
+
+    test "runs the arrival source by recording one of the open stops that are due" do
+      Req.Test.stub(@stub_name, fn conn ->
+        body = File.read!(Path.join(@fixture_directory, "arrivals_and_departures_for_stop.json"))
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      spec =
+        arrivals(
+          stop_ids: fn -> ["95_7", "95_8"] end,
+          arrival_view: Module.concat(__MODULE__, NoArrivalView),
+          record_options: [
+            fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
+            write_options: [backend: RecordingBackend, recipient: self()],
+            publish_options: [backend: AcknowledgingPublisher]
+          ]
+        )
+
+      assert {:ok, %{open_count: 2, due_count: 2, recorded_count: 1, deferred_count: 1}} =
+               spec.run.()
+
+      assert_received {:written,
+                       %{destination: "raw/oba/arrivals-and-departures-for-stop/" <> _name}}
+
+      refute_received {:written, _request}
     end
   end
 end
