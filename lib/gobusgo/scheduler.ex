@@ -1,26 +1,35 @@
 defmodule Gobusgo.Scheduler do
+  @evaluation_period_ms 1_000
+
   @moduledoc """
   Runs one source at its cadence. This module owns the process, the timer,
-  and the run in flight; the rules that decide whether a tick starts a run
-  live in `Gobusgo.Scheduler.State`.
+  the clock, and the run in flight; the rules that decide whether a tick
+  starts a run live in `Gobusgo.Scheduler.State`.
 
   A source is described by a spec:
 
     * `:name`: the name the scheduler is registered under.
     * `:run`: the function to call. It returns `{:ok, term}` or
       `{:error, term}` and logs its own outcome.
-    * `:interval_ms`: the time between ticks.
+    * `:interval_ms`: the time from the start of one run to the start of
+      the next, at least #{@evaluation_period_ms}.
     * `:deadline_ms`: the longest a run may take before it is killed.
 
-  The first tick comes when the scheduler starts. Each run is a task under
-  the given task supervisor, so a run that raises or is killed is an outcome
-  and the scheduler keeps running. One run is in flight at a time: a tick
-  during a run is skipped and counted.
+  The scheduler ticks when it starts and every #{@evaluation_period_ms} ms
+  after that, whatever the interval. Each tick reads the monotonic clock and
+  hands the time and the interval to the rules, so a run starts within
+  #{@evaluation_period_ms} ms of the interval elapsing since the last run
+  started, and the first tick starts the first run. A failed run delays the
+  next one by a backoff, a duration the rules size from the interval.
+
+  Each run is a task under the given task supervisor, so a run that raises
+  or is killed is an outcome and the scheduler keeps running. One run is in
+  flight at a time: a tick during a run starts nothing.
 
   The scheduler logs what it decides itself: `error` `Scheduled run crashed`,
   `error` `Scheduled run exceeded its deadline`, and `warning`
-  `Scheduled run overran its interval` once per run with the count of
-  skipped ticks.
+  `Scheduled run overran its interval` once per run, with the count of
+  intervals that elapsed during the run as `skipped_interval_count`.
 
   When it stops, the scheduler waits for the run in flight, then kills it.
   State is in memory and a restart begins with nothing counted.
@@ -45,10 +54,17 @@ defmodule Gobusgo.Scheduler do
   @shutdown_margin_ms 5_000
   @shutdown_wait_ms_default 30_000
 
+  @doc "The time between two ticks of a scheduler, in milliseconds."
+  @spec evaluation_period_ms() :: pos_integer()
+  def evaluation_period_ms, do: @evaluation_period_ms
+
   @doc """
   Starts the scheduler of `options[:spec]`, with its runs under
   `options[:task_supervisor]`. `:shutdown_wait_ms` is how long a stop waits
   for the run in flight, #{@shutdown_wait_ms_default} by default.
+  `:monotonic_time_ms` is a zero-arity function returning the time in
+  milliseconds on a clock that never goes back, by default
+  `System.monotonic_time/1`.
   """
   @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(options) when is_list(options) do
@@ -56,7 +72,8 @@ defmodule Gobusgo.Scheduler do
       Keyword.validate!(options, [
         :spec,
         :task_supervisor,
-        shutdown_wait_ms: @shutdown_wait_ms_default
+        shutdown_wait_ms: @shutdown_wait_ms_default,
+        monotonic_time_ms: &monotonic_time_ms_default/0
       ])
 
     spec = Keyword.fetch!(options, :spec)
@@ -64,6 +81,11 @@ defmodule Gobusgo.Scheduler do
     shutdown_wait_ms = Keyword.fetch!(options, :shutdown_wait_ms)
     Assert.condition(is_integer(shutdown_wait_ms), "shutdown_wait_ms must be an integer")
     Assert.condition(shutdown_wait_ms >= 0, "shutdown_wait_ms must not be negative")
+
+    Assert.condition(
+      is_function(Keyword.fetch!(options, :monotonic_time_ms), 0),
+      "monotonic_time_ms must be a zero-arity function"
+    )
 
     GenServer.start_link(__MODULE__, Map.new(options), name: spec.name)
   end
@@ -85,8 +107,10 @@ defmodule Gobusgo.Scheduler do
 
   @doc """
   Returns the status of `scheduler`: whether a run is in flight, the failures
-  in a row, the ticks skipped, and how the last run ended. Exits when the
-  scheduler does not answer within #{@call_timeout_ms} ms.
+  in a row, the intervals skipped during runs, when the last run started and
+  a pending backoff ends on the scheduler's clock, and how the last run
+  ended. Exits when the scheduler does not answer within #{@call_timeout_ms}
+  ms.
   """
   @spec status(atom()) :: State.t()
   def status(scheduler) when is_atom(scheduler) do
@@ -94,7 +118,7 @@ defmodule Gobusgo.Scheduler do
   end
 
   @impl GenServer
-  def init(%{spec: spec, task_supervisor: task_supervisor, shutdown_wait_ms: shutdown_wait_ms}) do
+  def init(%{spec: spec, task_supervisor: task_supervisor} = options) do
     # Exits are trapped so that a stop reaches terminate/2, which waits for
     # the run in flight.
     Process.flag(:trap_exit, true)
@@ -104,7 +128,8 @@ defmodule Gobusgo.Scheduler do
      %{
        spec: spec,
        task_supervisor: task_supervisor,
-       shutdown_wait_ms: shutdown_wait_ms,
+       shutdown_wait_ms: options.shutdown_wait_ms,
+       monotonic_time_ms: options.monotonic_time_ms,
        state: State.new(),
        run: nil
      }}
@@ -116,10 +141,10 @@ defmodule Gobusgo.Scheduler do
   end
 
   @impl GenServer
-  def handle_info(:tick, %{spec: spec} = server) do
-    Process.send_after(self(), :tick, spec.interval_ms)
+  def handle_info(:tick, server) do
+    Process.send_after(self(), :tick, @evaluation_period_ms)
 
-    case State.tick(server.state) do
+    case State.tick(server.state, time(server)) do
       {state, :start} ->
         Assert.condition(server.run == nil, "a run must not be in flight at a start")
         {:noreply, %{server | state: state, run: start_run(server)}}
@@ -183,18 +208,26 @@ defmodule Gobusgo.Scheduler do
 
   defp finish_run(%{run: %{deadline_timer: deadline_timer}, spec: spec} = server, outcome) do
     Process.cancel_timer(deadline_timer)
-    run_skipped_tick_count = server.state.run_skipped_tick_count
+    finished = %{outcome: outcome, finished_at: DateTime.utc_now()}
+    state = State.finish(server.state, finished, time(server))
 
-    if run_skipped_tick_count >= 1 do
+    if state.run_skipped_interval_count >= 1 do
       Logger.warning("Scheduled run overran its interval",
         source: inspect(spec.name),
-        skipped_tick_count: run_skipped_tick_count
+        skipped_interval_count: state.run_skipped_interval_count
       )
     end
 
-    finished = %{outcome: outcome, finished_at: DateTime.utc_now()}
-    %{server | state: State.finish(server.state, finished), run: nil}
+    %{server | state: state, run: nil}
   end
+
+  defp time(%{spec: spec, monotonic_time_ms: monotonic_time_ms}) do
+    now_ms = monotonic_time_ms.()
+    Assert.condition(is_integer(now_ms), "the clock must return an integer")
+    %{now_ms: now_ms, interval_ms: spec.interval_ms}
+  end
+
+  defp monotonic_time_ms_default, do: System.monotonic_time(:millisecond)
 
   defp outcome({:ok, _value}), do: :ok
   defp outcome({:error, _reason}), do: :error
@@ -237,6 +270,11 @@ defmodule Gobusgo.Scheduler do
     Assert.condition(is_function(spec.run, 0), "run must be a function of no arguments")
     assert_duration(spec.interval_ms, "interval_ms")
     assert_duration(spec.deadline_ms, "deadline_ms")
+
+    Assert.condition(
+      spec.interval_ms >= @evaluation_period_ms,
+      "interval_ms must be at least #{@evaluation_period_ms}, got: #{spec.interval_ms}"
+    )
   end
 
   defp assert_duration(duration_ms, label) do

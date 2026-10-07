@@ -332,7 +332,7 @@ The agency recorder logs one line per call: `info` `OneBusAway agency response r
 | Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | 5 seconds | 4.5 seconds |
 | Routes | `Gobusgo.OneBusAway.RouteScheduler` | `RouteCycle.run/2` | 60 seconds | 55 seconds |
 
-A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the ticks it skipped during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped ticks are intended.
+A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the intervals that elapsed during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped intervals are intended.
 
 `Gobusgo.OneBusAway.VehicleCycle.run/2` is one run of the vehicle source. It takes the agencies of the agency view's current fetch, at most 64, and calls `Gobusgo.OneBusAway.VehicleRecorder.record/2` for each in identifier order, one after another, each in a task under the ingestion task supervisor.
 
@@ -348,7 +348,7 @@ Whether twelve fetches fit the 4-second budget against the live server is not me
 
 - An item is the routes of one agency or the stops and paths of one route. The agencies are those of the agency view's current fetch, at most 64, and the routes are those the route view holds for them, at most 5,000.
 - `Gobusgo.OneBusAway.RouteSchedule` is pure and says what is due. An identifier's slot is a minute of the UTC day, `:erlang.phash2(id, 1440)`, which is the same on every machine and release. An item is due when it has no fetch in its view, or when its fetch there was made before the latest time its slot came.
-- The run every minute is what the scheduler's rules ask for: a scheduler ticks when it starts and backs off after a failed run by skipping 1, 3, 7, then 15 ticks. A restart with fresh views fetches nothing, and a failed run is tried again within fifteen minutes.
+- The run every minute is what the scheduler's rules ask for: a scheduler starts a run when it starts and then once per interval, and backs off after a failed run for 1, 3, 7, then 15 intervals past the time the next run was due. A restart with fresh views fetches nothing, and the run after a failed one starts within sixteen minutes of it.
 - A cycle records due agencies before due routes, each in identifier order, at most 45 items, and counts the rest as `deferred_count`. It starts one request a second and none with less than 250 ms of its 50-second budget left; the items the budget does not reach are `skipped_count`.
 - An item gets at most 10 seconds and is not retried: it is still due in the next cycle. An item whose fetch fails, raises, or runs past its deadline is one failed item, and the cycle goes on to the next.
 - The cycle returns `{:ok, counts}` with `due_count`, `recorded_count`, `failed_count`, `skipped_count`, `deferred_count`, and `unannounced_count`, or `{:error, :nothing_recorded}` when an item failed and none is recorded, which makes the scheduler back off.
