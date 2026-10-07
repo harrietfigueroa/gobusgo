@@ -241,7 +241,7 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 - `lib/gobusgo/dead_letter.ex` builds the dead-letter record of a consumed record, with the failure in headers.
 - `lib/gobusgo/kafka/` holds the shared brod client and the topic subscriber that feeds a view from a topic. Read `lib/gobusgo/kafka/AGENTS.md` before changing it.
 - `config/config.exs` selects the writer, reader, and publisher backends, turns Kafka on outside the test environment, names the in-process publisher's subscribers for tests, schedules the sources everywhere except under test, and configures the HTTP endpoint; a production build also serves HTTP on start, reads the digested asset names, and logs from `info` upward. `config/runtime.exs` reads the environment variables and gives the file backends one base directory from `GOBUSGO_DATA_DIR`.
-- `Dockerfile` and `.dockerignore` build the local development image: a release, run by a non-root user, with the base directory at `/data`. `mix.exs` defines the release.
+- `Dockerfile` and `.dockerignore` build the application's image, the one a developer runs locally and the one CI publishes: a release, run by a non-root user, with the base directory at `/data`. `mix.exs` defines the release.
 - `test/` mirrors `lib/`; `test/support/` holds the helpers of the tests tagged `kafka`, the synthetic fetches and memory readings of the vehicle page measurements, and the headless Chrome those drive; `test/scripts/` holds the measurement that needs a browser.
 
 ## Toolchain and commands
@@ -273,6 +273,10 @@ brod's `crc32cer` dependency builds a native library with CMake, so compiling th
 - **A comment in `config/*.exs` can move.** Quokka sorts `config` stanzas and does not always carry a stanza's comment with it; check that each comment still sits on its stanza.
 
 When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, also run `docker build --tag gobusgo:local .`; CI runs it as its own job. The image's Elixir, Erlang, and Debian versions are build arguments in the `Dockerfile` and change together with `.tool-versions`. A file the release needs from outside `lib/`, `assets/`, and `config/` has to be admitted in `.dockerignore` and copied in the `Dockerfile`.
+
+CI's `image` job builds the image for `linux/arm64` on every pull request and publishes nothing. On a push to `main`, once every other job passes, the `publish` job builds the image again and pushes it to GitHub Container Registry as `ghcr.io/harrietfigueroa/gobusgo:<full commit SHA>`, signed in with the workflow's own token. A tag never moves: the job leaves a tag that is already published, and no `latest` exists. The job keeps the 10 newest images of the package and deletes the rest. A run on `main` is never canceled by a later one, so every merged commit gets its image.
+
+- **This repository holds no infrastructure work.** No workflow or file here names an AWS account, role, region, or registry, and no AWS credential is added to the repository. Whatever moves a published image further belongs to the infrastructure repository.
 
 ## Issue branches
 

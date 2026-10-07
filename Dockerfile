@@ -1,4 +1,5 @@
-# Builds the image that runs the HTTP server for local development.
+# Builds the image that runs the application as a release, on a developer's
+# machine and in production.
 #
 # The versions match .tool-versions. The run stage uses the Debian release
 # the build stage is based on, because a release bundles the Erlang runtime
