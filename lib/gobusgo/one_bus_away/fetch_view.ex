@@ -17,15 +17,21 @@ defmodule Gobusgo.OneBusAway.FetchView do
   table holds each identifier's current fetch as one entry, so a reader sees
   a whole fetch or the one before it.
 
-  When the current fetch of at least one identifier changes, the view
-  announces it once per `apply_records/2` call to the processes that called
+  When the current fetch of at least one identifier changes or expires, the
+  view announces it once per `apply_records/2` call to the processes that called
   `subscribe/1`, as `{:fetch_view_switched, view}`, after the table holds
   the new fetches.
 
   A record of another dataset is passed over and not counted. Any other
   value that is not a record is skipped. Each call logs `debug` when a
-  current fetch changed, `warning` with the count of skipped values, and
+  current fetch changed or expired, `warning` with the count of skipped values, and
   `warning` when an announcement could not be sent.
+
+  A view started with `:fetch_age_ms_max` drops a fetch once it is that
+  old: each `apply_records/2` call first removes the fetches that have
+  expired by the view's clock, and ignores a record of a fetch that old. A
+  view that receives no records keeps what it holds, so a reader that needs
+  a fresh fetch reads the fetch time.
 
   A view starts empty. It holds nothing across a restart.
   """
@@ -44,12 +50,24 @@ defmodule Gobusgo.OneBusAway.FetchView do
   Starts a view registered under `options[:name]` for the dataset of
   `options[:records]`, holding at most `options[:id_count_max]` identifiers,
   that announces its switches on the publish-subscribe server
-  `options[:pubsub]`.
+  `options[:pubsub]`. `options[:fetch_age_ms_max]` makes its fetches expire,
+  by the time `options[:clock]`, a zero-arity function, returns; the clock
+  defaults to `DateTime.utc_now/0`.
   """
-  @spec start_link(name: atom(), pubsub: atom(), records: module(), id_count_max: pos_integer()) ::
-          GenServer.on_start()
+  @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(options) when is_list(options) do
-    options = Keyword.validate!(options, [:name, :pubsub, :records, :id_count_max])
+    options =
+      Keyword.validate!(options, [
+        :name,
+        :pubsub,
+        :records,
+        :id_count_max,
+        fetch_age_ms_max: nil,
+        clock: &DateTime.utc_now/0
+      ])
+
+    clock = Keyword.fetch!(options, :clock)
+    Assert.condition(is_function(clock, 0), "clock must be a zero-arity function")
     name = Keyword.fetch!(options, :name)
     pubsub = Keyword.fetch!(options, :pubsub)
     records = Keyword.fetch!(options, :records)
@@ -61,7 +79,9 @@ defmodule Gobusgo.OneBusAway.FetchView do
       name: name,
       pubsub: pubsub,
       records: records,
-      id_count_max: Keyword.fetch!(options, :id_count_max)
+      clock: clock,
+      id_count_max: Keyword.fetch!(options, :id_count_max),
+      fetch_age_ms_max: Keyword.fetch!(options, :fetch_age_ms_max)
     }
 
     GenServer.start_link(__MODULE__, server, name: name)
@@ -166,22 +186,31 @@ defmodule Gobusgo.OneBusAway.FetchView do
   end
 
   @impl GenServer
-  def init(%{name: name, id_count_max: id_count_max} = server) do
+  def init(%{name: name} = server) do
     table = :ets.new(name, [:named_table, :protected, :set, read_concurrency: true])
-    {:ok, server |> Map.put(:table, table) |> Map.put(:state, State.new(id_count_max))}
+    {:ok, server |> Map.put(:table, table) |> Map.put(:state, new_state(server))}
+  end
+
+  defp new_state(%{fetch_age_ms_max: nil, id_count_max: id_count_max}),
+    do: State.new(id_count_max)
+
+  defp new_state(%{fetch_age_ms_max: fetch_age_ms_max, id_count_max: id_count_max}) do
+    State.new_expiring(%{id_count_max: id_count_max, fetch_age_ms_max: fetch_age_ms_max})
   end
 
   @impl GenServer
   def handle_call({:apply_records, values}, _from, %{table: table, name: name} = server) do
+    {state, expired_ids} = State.expire(server.state, server.clock.())
+    Enum.each(expired_ids, &:ets.delete(table, &1))
     counts = %{switched: %{}, invalid: 0}
-    {state, counts} = Enum.reduce(values, {server.state, counts}, &apply_value(&1, &2, server))
+    {state, counts} = Enum.reduce(values, {state, counts}, &apply_value(&1, &2, server))
+    true = :ets.insert(table, Map.to_list(counts.switched))
 
-    if map_size(counts.switched) >= 1 do
-      true = :ets.insert(table, Map.to_list(counts.switched))
-
+    if map_size(counts.switched) >= 1 or expired_ids != [] do
       Logger.debug("Fetch view switched",
         view: inspect(name),
-        id_count: map_size(counts.switched)
+        id_count: map_size(counts.switched),
+        expired_count: length(expired_ids)
       )
 
       announce(server)

@@ -10,7 +10,9 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.AgencyBatch
   alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
+  alias Gobusgo.OneBusAway.RawArrivalResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawVehicleResponse
   alias Gobusgo.OneBusAway.RequestGate
@@ -43,6 +45,13 @@ defmodule Gobusgo.Application do
   # paths. The 391 routes of 2026-10-05 reference 13,026 stops.
   @stop_view_stop_count_max 100_000
 
+  # The arrivals view is a fetch view of the arrivals at each stop. A
+  # response covers the 35 minutes after its fetch, so a fetch is of no use
+  # five minutes after that.
+  @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @arrival_view_stop_count_max 2_000
+  @arrival_view_fetch_age_ms_max 40 * 60 * 1_000
+
   # Each dataset's "response stored" events are processed by a consumer
   # group of its own, with the attempts under a task supervisor of its own.
   # The two route datasets share a topic, so one consumer group serves both.
@@ -67,6 +76,13 @@ defmodule Gobusgo.Application do
       consumer_group: "gobusgo.route-processor",
       event: RouteDatasets,
       processor: RouteDatasets
+    },
+    %{
+      consumer: Gobusgo.OneBusAway.ArrivalTriggerConsumer,
+      tasks: Gobusgo.OneBusAway.ArrivalTriggerTasks,
+      consumer_group: "gobusgo.arrival-processor",
+      event: RawArrivalResponse.StoredEvent,
+      processor: ArrivalBatch
     }
   ]
 
@@ -99,7 +115,13 @@ defmodule Gobusgo.Application do
            name: StopView,
            pubsub: Gobusgo.PubSub,
            route_count_max: @route_path_view_route_count_max,
-           stop_count_max: @stop_view_stop_count_max}
+           stop_count_max: @stop_view_stop_count_max},
+          {FetchView,
+           name: @arrival_view,
+           pubsub: Gobusgo.PubSub,
+           records: ArrivalBatch.Records,
+           id_count_max: @arrival_view_stop_count_max,
+           fetch_age_ms_max: @arrival_view_fetch_age_ms_max}
         ] ++
           kafka_children(kafka) ++
           [
@@ -164,6 +186,11 @@ defmodule Gobusgo.Application do
         name: Gobusgo.OneBusAway.StopViewSubscriber,
         topic: RoutePathBatch.StopRecords.topic(),
         subscriber: {StopView, :apply_records, [StopView]}
+      },
+      %{
+        name: Gobusgo.OneBusAway.ArrivalViewSubscriber,
+        topic: ArrivalBatch.Records.topic(),
+        subscriber: {FetchView, :apply_records, [@arrival_view]}
       }
     ]
   end

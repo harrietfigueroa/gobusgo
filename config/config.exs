@@ -61,6 +61,15 @@ else
            },
            []
          ]},
+      "oba.arrivals.response-stored" =>
+        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+         [
+           %{
+             event: Gobusgo.OneBusAway.RawArrivalResponse.StoredEvent,
+             processor: Gobusgo.OneBusAway.ArrivalBatch
+           },
+           []
+         ]},
       "oba.agencies-with-coverage.state" =>
         {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
       "oba.vehicles-for-agency.state" =>
@@ -69,7 +78,9 @@ else
         {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
          [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]},
       "oba.stops.state" =>
-        {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]}
+        {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]},
+      "oba.arrivals.state" =>
+        {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
     }
 end
 
