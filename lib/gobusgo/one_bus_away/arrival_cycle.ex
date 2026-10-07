@@ -12,7 +12,9 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   are due, through `Gobusgo.OneBusAway.ArrivalRecorder`, one request after
   another at a fixed pace.
 
-  The open stops are those of `Gobusgo.OneBusAway.OpenStops`, and
+  The open stops are the items of the arrivals dataset in `Gobusgo.Demand`,
+  the stops whose `Gobusgo.OneBusAway.DemandKey.arrivals/1` key at least
+  one process holds, and
   `Gobusgo.OneBusAway.ArrivalSchedule` says which are due, from the fetch
   time each has in the arrivals view. A stop no process has open is never
   fetched, so what riders look at decides which stops a cycle may fetch and
@@ -51,7 +53,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
     * `:task_supervisor` (required): the `Task.Supervisor` the stops run
       under.
     * `:stop_ids`: a zero-arity function returning the open stops. Defaults
-      to those of `Gobusgo.OneBusAway.OpenStops`.
+      to the items of the arrivals dataset in `Gobusgo.Demand`.
     * `:arrival_view`: the fetch view read. Defaults to
       `Gobusgo.OneBusAway.ArrivalView`.
     * `:clock`: returns the current UTC time. Defaults to
@@ -69,11 +71,12 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   require Logger
 
   alias Gobusgo.Assert
+  alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.ArrivalRecorder
   alias Gobusgo.OneBusAway.ArrivalSchedule
   alias Gobusgo.OneBusAway.Client
   alias Gobusgo.OneBusAway.FetchView
-  alias Gobusgo.OneBusAway.OpenStops
+  alias Gobusgo.OneBusAway.DemandKey
 
   @type counts :: %{
           open_count: non_neg_integer(),
@@ -145,7 +148,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
     end
   end
 
-  defp open_stop_ids, do: OpenStops.stop_ids(OpenStops)
+  defp open_stop_ids, do: Demand.items(Demand, DemandKey.arrivals_dataset())
 
   defp record_each(settings, stop_ids, options) do
     budget_end_ms = System.monotonic_time(:millisecond) + Keyword.fetch!(options, :budget_ms)

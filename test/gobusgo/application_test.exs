@@ -53,7 +53,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.RoutePathView,
              Gobusgo.OneBusAway.StopView,
              Gobusgo.OneBusAway.ArrivalView,
-             Gobusgo.OneBusAway.OpenStops,
+             Gobusgo.Demand,
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,
              Gobusgo.SchedulerSupervisor,

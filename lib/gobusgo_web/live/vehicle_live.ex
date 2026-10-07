@@ -77,6 +77,13 @@ defmodule GobusgoWeb.VehicleLive do
   page keeps no stop, only whether the browser has asked. A third element
   that shows nothing mounts the hook that draws the stops, under the
   vehicles and only when the map is zoomed in.
+
+  A connected page registers the vehicles key of
+  `Gobusgo.OneBusAway.DemandKey` in `Gobusgo.Demand`, so it counts as one
+  viewer of vehicles until its process exits; the static render registers
+  nothing. A registration the registry refuses leaves the page as it is and
+  uncounted, and the page logs `Vehicle page not counted as a viewer` at
+  `warning` with the refusal.
   """
 
   use Phoenix.LiveView
@@ -85,7 +92,9 @@ defmodule GobusgoWeb.VehicleLive do
 
   alias Gobusgo.Assert
   alias Gobusgo.Basemap
+  alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.VehicleFilter
   alias Gobusgo.OneBusAway.VehicleView
@@ -112,6 +121,7 @@ defmodule GobusgoWeb.VehicleLive do
       :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
       :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
       :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
+      register_viewer()
     end
 
     {:ok,
@@ -299,6 +309,16 @@ defmodule GobusgoWeb.VehicleLive do
       <div :if={@basemap != nil} id="route-lines" phx-hook="RouteLines" hidden></div>
     </main>
     """
+  end
+
+  defp register_viewer do
+    case Demand.register(Demand, DemandKey.vehicles()) do
+      :ok ->
+        :ok
+
+      {:error, refusal} ->
+        Logger.warning("Vehicle page not counted as a viewer", refusal: refusal)
+    end
   end
 
   # A directory with no manifest is the state before any extraction and

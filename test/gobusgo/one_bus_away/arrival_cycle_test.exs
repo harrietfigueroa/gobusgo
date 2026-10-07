@@ -10,10 +10,11 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
 
   import ExUnit.CaptureLog
 
+  alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.ArrivalCycle
   alias Gobusgo.OneBusAway.FetchView
-  alias Gobusgo.OneBusAway.OpenStops
+  alias Gobusgo.OneBusAway.DemandKey
 
   @moduletag capture_log: true
 
@@ -190,16 +191,17 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
 
     test "reads the open stops of the registry it is given", context do
       registry = Module.concat(__MODULE__, "Registry#{context.line}")
-      start_supervised!({OpenStops, name: registry})
-      :ok = OpenStops.open(registry, "1_100")
+      start_supervised!({Demand, name: registry, datasets: DemandKey.datasets()})
+      stop_ids = fn -> Demand.items(registry, DemandKey.arrivals_dataset()) end
+      :ok = Demand.register(registry, DemandKey.arrivals("1_100"))
 
       assert {:ok, %{open_count: 1, recorded_count: 1}} =
-               run(context, [], stop_ids: fn -> OpenStops.stop_ids(registry) end)
+               run(context, [], stop_ids: stop_ids)
 
-      :ok = OpenStops.close(registry, "1_100")
+      :ok = Demand.release(registry, DemandKey.arrivals("1_100"))
 
       assert {:ok, %{open_count: 0, due_count: 0}} =
-               run(context, [], stop_ids: fn -> OpenStops.stop_ids(registry) end)
+               run(context, [], stop_ids: stop_ids)
 
       assert written() == ["1_100"]
     end
