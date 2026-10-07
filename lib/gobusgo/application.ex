@@ -12,6 +12,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
+  alias Gobusgo.OneBusAway.OpenStops
   alias Gobusgo.OneBusAway.RawArrivalResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawVehicleResponse
@@ -125,6 +126,7 @@ defmodule Gobusgo.Application do
         ] ++
           kafka_children(kafka) ++
           [
+            {OpenStops, name: OpenStops},
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
@@ -230,7 +232,8 @@ defmodule Gobusgo.Application do
       {:ok, settings} ->
         Sources.specs(settings,
           vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
-          route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
+          route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
+          arrival_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
         )
 
       {:error, {:missing, key}} ->
