@@ -9,7 +9,12 @@ defmodule GobusgoWeb.AppInfoTest do
 
   @lock_path "assets/vendor.lock.json"
   @license_path "LICENSE"
-  @cadences %{vehicle_interval_ms: 5_000, route_period_minutes: 1_440}
+  @cadences %{
+    vehicle_interval_ms: 5_000,
+    route_period_minutes: 1_440,
+    arrival_refresh_age_ms_min: 30_000,
+    arrival_refresh_age_ms_max: 300_000
+  }
 
   defp data_use_text(cadences), do: cadences |> AppInfo.data_use() |> Enum.join(" ")
 
@@ -44,22 +49,48 @@ defmodule GobusgoWeb.AppInfoTest do
       end
     end
 
+    for {age_ms_min, age_ms_max, text} <- [
+          {30_000, 300_000, "every 30 seconds to 5 minutes"},
+          {1_000, 60_000, "every second to a minute"},
+          {60_000, 90_000, "every minute to 90 seconds"}
+        ] do
+      test "says a stop's arrivals are read #{text} for ages of #{age_ms_min} to #{age_ms_max} ms" do
+        cadences = %{
+          @cadences
+          | arrival_refresh_age_ms_min: unquote(age_ms_min),
+            arrival_refresh_age_ms_max: unquote(age_ms_max)
+        }
+
+        assert data_use_text(cadences) =~
+                 "While a stop's popup is open, the arrivals at that stop are read " <>
+                   "#{unquote(text)}, less often the more stops are open."
+      end
+    end
+
+    test "names arrival times among what comes from the source" do
+      assert data_use_text(@cadences) =~
+               "Vehicle positions, routes, stops, and arrival times come from"
+    end
+
     test "names the source" do
       assert data_use_text(@cadences) =~ "OneBusAway"
     end
 
-    for {label, cadences} <- [
-          {"a vehicle interval that is no whole count of seconds",
-           %{vehicle_interval_ms: 1_500, route_period_minutes: 1_440}},
-          {"a vehicle interval of zero", %{vehicle_interval_ms: 0, route_period_minutes: 1_440}},
-          {"a route period that is no whole count of hours",
-           %{vehicle_interval_ms: 5_000, route_period_minutes: 90}},
-          {"a route period of zero", %{vehicle_interval_ms: 5_000, route_period_minutes: 0}}
+    for {label, fields} <- [
+          {"a vehicle interval that is no whole count of seconds", %{vehicle_interval_ms: 1_500}},
+          {"a vehicle interval of zero", %{vehicle_interval_ms: 0}},
+          {"a route period that is no whole count of hours", %{route_period_minutes: 90}},
+          {"a route period of zero", %{route_period_minutes: 0}},
+          {"an arrival refresh age that is no whole count of seconds",
+           %{arrival_refresh_age_ms_min: 1_500}},
+          {"an arrival refresh age of zero", %{arrival_refresh_age_ms_min: 0}},
+          {"a longest arrival refresh age that is not over the shortest",
+           %{arrival_refresh_age_ms_max: 30_000}}
         ] do
       test "refuses #{label}" do
-        assert_raise Gobusgo.Assert.AssertionError, fn ->
-          AppInfo.data_use(unquote(Macro.escape(cadences)))
-        end
+        cadences = Map.merge(@cadences, unquote(Macro.escape(fields)))
+
+        assert_raise Gobusgo.Assert.AssertionError, fn -> AppInfo.data_use(cadences) end
       end
     end
   end
