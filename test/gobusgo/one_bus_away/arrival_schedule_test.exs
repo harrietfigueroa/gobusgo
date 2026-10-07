@@ -1,6 +1,7 @@
 defmodule Gobusgo.OneBusAway.ArrivalScheduleTest do
   # Verifies which open stops are due as a pure function of the stops, the
-  # fetch time each has, and the time it is, all written out by hand.
+  # fetch time each has, the time it is, and the refresh age, all written
+  # out by hand.
   use ExUnit.Case, async: true
 
   alias Gobusgo.OneBusAway.ArrivalSchedule
@@ -9,12 +10,15 @@ defmodule Gobusgo.OneBusAway.ArrivalScheduleTest do
 
   defp ago(seconds), do: DateTime.add(@now, -seconds, :second)
 
-  defp due(stop_ids, fetch_times) do
-    ArrivalSchedule.due(%{stop_ids: stop_ids, fetch_times: fetch_times, now: @now})
-  end
+  @refresh_age_ms 300_000
 
-  test "the refresh age is five minutes" do
-    assert ArrivalSchedule.refresh_age_ms() == 300_000
+  defp due(stop_ids, fetch_times, refresh_age_ms \\ @refresh_age_ms) do
+    ArrivalSchedule.due(%{
+      stop_ids: stop_ids,
+      fetch_times: fetch_times,
+      now: @now,
+      refresh_age_ms: refresh_age_ms
+    })
   end
 
   test "no stop is due when no stop is open" do
@@ -25,20 +29,37 @@ defmodule Gobusgo.OneBusAway.ArrivalScheduleTest do
     assert due(["1_100"], %{}) == ["1_100"]
   end
 
-  for {name, age_seconds, due?} <- [
-        {"just fetched", 0, false},
-        {"fetched one second short of five minutes ago", 299, false},
-        {"fetched five minutes ago", 300, true},
-        {"fetched an hour ago", 3_600, true}
+  # Each row is a refresh age, the age of a stop's fetch, and whether the
+  # stop is due: for each of three ages, a fetch one millisecond short of
+  # it and a fetch exactly at it, then a fetch just made and one far past.
+  for {refresh_age_ms, fetch_age_ms, due?} <- [
+        {30_000, 29_999, false},
+        {30_000, 30_000, true},
+        {35_000, 34_999, false},
+        {35_000, 35_000, true},
+        {300_000, 299_999, false},
+        {300_000, 300_000, true},
+        {300_000, 0, false},
+        {30_000, 3_600_000, true}
       ] do
-    test "a stop #{name} is #{if due?, do: "due", else: "not due"}" do
+    test "a stop fetched #{fetch_age_ms} ms ago is #{if due?, do: "due", else: "not due"} at a refresh age of #{refresh_age_ms} ms" do
+      fetched_at = DateTime.add(@now, -unquote(fetch_age_ms), :millisecond)
+
       expected =
         case unquote(due?) do
           true -> ["1_100"]
           false -> []
         end
 
-      assert due(["1_100"], %{"1_100" => ago(unquote(age_seconds))}) == expected
+      assert due(["1_100"], %{"1_100" => fetched_at}, unquote(refresh_age_ms)) == expected
+    end
+  end
+
+  for refresh_age_ms <- [0, -1, 30_000.0, nil] do
+    test "refuses the refresh age #{inspect(refresh_age_ms)}, which is not a positive integer" do
+      assert_raise Gobusgo.Assert.AssertionError, ~r/refresh_age_ms/, fn ->
+        due(["1_100"], %{}, unquote(refresh_age_ms))
+      end
     end
   end
 

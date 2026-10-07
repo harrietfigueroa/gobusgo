@@ -37,9 +37,17 @@ defmodule Gobusgo.OneBusAway.Sources do
   `Gobusgo.OneBusAway.ArrivalCycle` every five seconds, which fetches the
   arrivals of one open stop that is due, so the source makes at most one
   request every five seconds (decided in GOB-158).
+
+  The arrival cycle takes the age at which a stop is due again from
+  `arrival_refresh_policy/0`, a proportional policy whose spacing is the
+  time between two requests of the arrival source, so a stop is due again
+  once every open stop has had its request: after 30 seconds for six open
+  stops or fewer, five seconds more for each further stop, and five minutes
+  from 60 open stops up.
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Cadence
   alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.AgencyRecorder
   alias Gobusgo.OneBusAway.ArrivalCycle
@@ -61,6 +69,8 @@ defmodule Gobusgo.OneBusAway.Sources do
   @arrival_deadline_ms 4_500
   @arrival_budget_ms 4_000
   @arrival_request_count_max 1
+  @arrival_refresh_age_ms_min 30_000
+  @arrival_refresh_age_ms_max 300_000
 
   @doc """
   Returns `:ok` when `tombstone_grace_ms`, the time after which an absent
@@ -129,7 +139,11 @@ defmodule Gobusgo.OneBusAway.Sources do
 
     arrival_cycle_options =
       Keyword.merge(
-        [budget_ms: @arrival_budget_ms, request_count_max: @arrival_request_count_max],
+        [
+          budget_ms: @arrival_budget_ms,
+          request_count_max: @arrival_request_count_max,
+          refresh_policy: arrival_refresh_policy()
+        ],
         Keyword.fetch!(options, :arrival_cycle_options)
       )
 
@@ -164,6 +178,35 @@ defmodule Gobusgo.OneBusAway.Sources do
 
     Enum.each(specs, &Scheduler.assert_spec/1)
     specs
+  end
+
+  @doc """
+  Returns the `Gobusgo.Cadence` policy that decides the age at which an open
+  stop's arrivals are fetched again, from the signal `:item_count`, the
+  count of open stops. Its spacing is the arrival source's interval divided
+  by the requests one run of it makes, and its bounds are
+  #{@arrival_refresh_age_ms_min} and #{@arrival_refresh_age_ms_max} ms.
+  """
+  @spec arrival_refresh_policy() :: Cadence.policy()
+  def arrival_refresh_policy do
+    request_spacing_ms = Integer.floor_div(@arrival_interval_ms, @arrival_request_count_max)
+
+    Assert.condition(
+      request_spacing_ms * @arrival_request_count_max == @arrival_interval_ms,
+      "the arrival interval must hold a whole count of milliseconds for each request, " <>
+        "got: #{@arrival_interval_ms} over #{@arrival_request_count_max}"
+    )
+
+    policy =
+      {:proportional,
+       %{
+         interval_ms_min: @arrival_refresh_age_ms_min,
+         interval_ms_max: @arrival_refresh_age_ms_max,
+         item_spacing_ms: request_spacing_ms
+       }}
+
+    Cadence.assert_policy(policy)
+    policy
   end
 
   defp vehicle_cadence(demand) do

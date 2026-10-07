@@ -7,6 +7,8 @@ defmodule Gobusgo.CadenceTest do
   alias Gobusgo.Cadence
 
   @bounds %{interval_ms_min: 5_000, interval_ms_max: 60_000}
+  @proportional {:proportional,
+                 %{interval_ms_min: 30_000, interval_ms_max: 300_000, item_spacing_ms: 5_000}}
 
   describe "interval_ms/2" do
     for interval_ms <- [1, 5_000, 60_000] do
@@ -44,9 +46,56 @@ defmodule Gobusgo.CadenceTest do
     end
   end
 
+  describe "interval_ms/2 under a proportional policy" do
+    # Each row is a count of items and the interval that a spacing of
+    # 5,000 ms an item decides for it between 30,000 and 300,000 ms: no
+    # item, the counts on each side of where the product leaves the shortest
+    # interval and of where it reaches the longest, one between them, and
+    # one far past any count a caller holds.
+    for {item_count, interval_ms} <- [
+          {0, 30_000},
+          {1, 30_000},
+          {6, 30_000},
+          {7, 35_000},
+          {12, 60_000},
+          {59, 295_000},
+          {60, 300_000},
+          {61, 300_000},
+          {10 ** 30, 300_000}
+        ] do
+      test "returns #{interval_ms} ms for #{item_count} items" do
+        signals = %{item_count: unquote(item_count)}
+
+        assert Cadence.interval_ms(@proportional, signals) == unquote(interval_ms)
+      end
+    end
+
+    test "reads the item count beside signals it does not know" do
+      assert Cadence.interval_ms(@proportional, %{item_count: 12, viewer_count: 3}) == 60_000
+    end
+
+    for item_count <- [-1, 1.5, 6.0, nil, "6"] do
+      test "refuses the item count #{inspect(item_count)}, which is not a count" do
+        assert_raise AssertionError, ~r/item_count/, fn ->
+          Cadence.interval_ms(@proportional, %{item_count: unquote(item_count)})
+        end
+      end
+    end
+
+    test "refuses signals without an item count" do
+      assert_raise AssertionError, ~r/item_count/, fn ->
+        Cadence.interval_ms(@proportional, %{viewer_count: 3})
+      end
+    end
+  end
+
   describe "interval_ms_min/1" do
     test "is the one interval of a fixed policy" do
       assert Cadence.interval_ms_min({:fixed, 5_000}) == 5_000
+    end
+
+    test "is the shortest interval of a proportional policy" do
+      assert Cadence.interval_ms_min(@proportional) == 30_000
     end
 
     test "refuses an unknown policy shape" do
@@ -61,6 +110,46 @@ defmodule Gobusgo.CadenceTest do
 
     test "refuses a fixed policy whose interval is zero" do
       assert_raise AssertionError, fn -> Cadence.assert_policy({:fixed, 0}) end
+    end
+
+    test "accepts a proportional policy with bounds and a spacing" do
+      assert Cadence.assert_policy(@proportional) == :ok
+    end
+
+    test "accepts a proportional policy whose bounds are equal" do
+      policy =
+        {:proportional, %{interval_ms_min: 30_000, interval_ms_max: 30_000, item_spacing_ms: 1}}
+
+      assert Cadence.assert_policy(policy) == :ok
+    end
+
+    for {label, changes} <- [
+          {"shortest interval is over its longest", %{interval_ms_min: 300_001}},
+          {"shortest interval is zero", %{interval_ms_min: 0}},
+          {"longest interval is not an integer", %{interval_ms_max: 300_000.0}},
+          {"spacing is zero", %{item_spacing_ms: 0}},
+          {"spacing is negative", %{item_spacing_ms: -5_000}},
+          {"spacing is not an integer", %{item_spacing_ms: 5_000.0}}
+        ] do
+      test "refuses a proportional policy whose #{label}" do
+        {:proportional, parameters} = @proportional
+        policy = {:proportional, Map.merge(parameters, unquote(Macro.escape(changes)))}
+
+        assert_raise AssertionError, fn -> Cadence.assert_policy(policy) end
+      end
+    end
+
+    for field <- [:interval_ms_min, :interval_ms_max, :item_spacing_ms] do
+      test "refuses a proportional policy without #{field}" do
+        {:proportional, parameters} = @proportional
+        policy = {:proportional, Map.delete(parameters, unquote(field))}
+
+        assert_raise AssertionError, fn -> Cadence.assert_policy(policy) end
+      end
+    end
+
+    test "refuses a proportional policy whose parameters are not a map" do
+      assert_raise AssertionError, fn -> Cadence.assert_policy({:proportional, 5_000}) end
     end
 
     test "refuses an unknown policy shape" do

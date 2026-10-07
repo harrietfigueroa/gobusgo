@@ -2,6 +2,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   @budget_ms_default 4_000
   @fetch_retries_max 0
   @open_stop_count_max 2_000
+  @refresh_age_ms_default 300_000
   @request_count_max_default 1
   @request_deadline_ms_default 3_500
   @request_interval_ms_default 1_000
@@ -16,9 +17,13 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   the stops whose `Gobusgo.OneBusAway.DemandKey.arrivals/1` key at least
   one process holds, and
   `Gobusgo.OneBusAway.ArrivalSchedule` says which are due, from the fetch
-  time each has in the arrivals view. A stop no process has open is never
-  fetched, so what riders look at decides which stops a cycle may fetch and
-  the cycle decides how many.
+  time each has in the arrivals view and the refresh age. A stop no process
+  has open is never fetched, so what riders look at decides which stops a
+  cycle may fetch and the cycle decides how many.
+
+  The refresh age is what `Gobusgo.Cadence.interval_ms/2` decides under
+  `:refresh_policy`, with the count of the open stops the cycle read as the
+  signal `:item_count`.
 
   A cycle takes at most `:request_count_max` due stops and leaves the rest
   to the next cycle. It starts one request every `:request_interval_ms` and
@@ -41,8 +46,9 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
     * `{:error, :nothing_recorded}`: stops are due, at least one was tried,
       and none is recorded.
 
-  Each call logs once, with the counts and `failures`, the count of failed
-  stops by cause, and no stop identifier: `debug`
+  Each call logs once, with the counts, `refresh_age_ms`, the refresh age
+  it applied, and `failures`, the count of failed stops by cause, and no
+  stop identifier: `debug`
   `OneBusAway arrival cycle found nothing due`, `info`
   `OneBusAway arrival cycle finished` when every stop tried is recorded and
   announced, `warning` `OneBusAway arrival cycle finished degraded` when
@@ -58,6 +64,8 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
       `Gobusgo.OneBusAway.ArrivalView`.
     * `:clock`: returns the current UTC time. Defaults to
       `DateTime.utc_now/0`.
+    * `:refresh_policy`: the `Gobusgo.Cadence` policy that decides the
+      refresh age. Defaults to a fixed #{@refresh_age_ms_default} ms.
     * `:request_count_max`: defaults to #{@request_count_max_default}.
     * `:request_interval_ms`: defaults to #{@request_interval_ms_default}.
     * `:request_deadline_ms`: the bound on one stop. Defaults to
@@ -71,6 +79,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   require Logger
 
   alias Gobusgo.Assert
+  alias Gobusgo.Cadence
   alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.ArrivalRecorder
   alias Gobusgo.OneBusAway.ArrivalSchedule
@@ -97,6 +106,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
         stop_ids: &open_stop_ids/0,
         arrival_view: Gobusgo.OneBusAway.ArrivalView,
         clock: &DateTime.utc_now/0,
+        refresh_policy: {:fixed, @refresh_age_ms_default},
         request_count_max: @request_count_max_default,
         request_interval_ms: @request_interval_ms_default,
         request_deadline_ms: @request_deadline_ms_default,
@@ -121,11 +131,15 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
       "a cycle reads at most #{@open_stop_count_max} open stops, got: #{open_count}"
     )
 
+    refresh_age_ms =
+      Cadence.interval_ms(Keyword.fetch!(options, :refresh_policy), %{item_count: open_count})
+
     due =
       ArrivalSchedule.due(%{
         stop_ids: stop_ids,
         fetch_times: FetchView.fetch_times(Keyword.fetch!(options, :arrival_view)),
-        now: Keyword.fetch!(options, :clock).()
+        now: Keyword.fetch!(options, :clock).(),
+        refresh_age_ms: refresh_age_ms
       })
 
     {taken, deferred} = Enum.split(due, Keyword.fetch!(options, :request_count_max))
@@ -139,7 +153,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
         deferred_count: length(deferred)
       })
 
-    log(counts, failures(outcomes))
+    log(%{counts: counts, refresh_age_ms: refresh_age_ms, failures: failures(outcomes)})
 
     if counts.failed_count >= 1 and counts.recorded_count == 0 do
       {:error, :nothing_recorded}
@@ -234,8 +248,10 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
     for({:failed, cause} <- outcomes, do: cause) |> Enum.frequencies()
   end
 
-  defp log(counts, failures) do
-    properties = Map.to_list(counts) ++ [failures: inspect(failures)]
+  defp log(%{counts: counts, refresh_age_ms: refresh_age_ms, failures: failures}) do
+    properties =
+      Map.to_list(counts) ++ [refresh_age_ms: refresh_age_ms, failures: inspect(failures)]
+
     degraded_count = counts.failed_count + counts.skipped_count + counts.unannounced_count
 
     cond do

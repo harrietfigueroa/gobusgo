@@ -608,14 +608,26 @@ The rules of the registry:
 - A dataset remembers when at most 2,000 of its keys lost their last holder, its bound on items, and forgets the earliest beyond that; a forgotten key reads as one that never had a holder.
 - Registering and releasing log nothing, since the item a process holds is what one rider looks at. The vehicle page logs `Vehicle page not counted as a viewer` at `warning`, with the refusal and no item, when its registration is refused, and with the refusal `registry_unavailable` when its last attempt finds no registry; it stays mounted.
 
-`Gobusgo.OneBusAway.ArrivalSchedule.due/1` is the pure function from the open stops, the fetch time each has in the arrivals view, and the time it is to the stops that are due: the stops with no fetch first, in identifier order, then the stops whose fetch is at least five minutes old, the oldest first.
+`Gobusgo.OneBusAway.ArrivalSchedule.due/1` is the pure function from the open stops, the fetch time each has in the arrivals view, the time it is, and the refresh age to the stops that are due: the stops with no fetch first, in identifier order, then the stops whose fetch is at least as old as the refresh age, the oldest first. It holds no age of its own; `refresh_age_ms` is a required key of its argument.
 
 `Gobusgo.OneBusAway.ArrivalCycle.run/2` is one run of the arrival source. It records the due stops through `Gobusgo.OneBusAway.ArrivalRecorder.record/2`, each in a task under the ingestion task supervisor, with the route cycle's rules for pace, budget, deadline, and failure.
 
-- The source runs a cycle every five seconds and a cycle takes one due stop, so the source makes at most one request every five seconds and counts the other due stops as `deferred_count`. With every open stop due again after five minutes, that pace keeps 60 open stops fresh; beyond that each stop is refreshed less often.
+- The source runs a cycle every five seconds and a cycle takes one due stop, so the source makes at most one request every five seconds and counts the other due stops as `deferred_count`.
+- The refresh age scales with the count of open stops. Each run asks `Gobusgo.Cadence.interval_ms/2` for it, under the cycle's `:refresh_policy` with `%{item_count: open_count}` as the signals, where `open_count` is the count of the open stops that run read and schedules from. The source passes `Gobusgo.OneBusAway.Sources.arrival_refresh_policy/0`, `{:proportional, %{interval_ms_min: 30_000, interval_ms_max: 300_000, item_spacing_ms: 5_000}}`: the count times five seconds, no shorter than 30 seconds and no longer than five minutes. A cycle given no policy applies a fixed five minutes.
+
+  | Open stops | Refresh age |
+  | --- | --- |
+  | 0 to 6 | 30 s |
+  | 7 | 35 s |
+  | 12 | 60 s |
+  | 60 | 300 s |
+  | Over 60 | 300 s, and each stop is refreshed less often than that |
+
+- The spacing of that policy is the source's interval divided by the requests one run makes, computed in `Sources` from the constants that set the source's pace, so a change to the pace changes the spacing with it. `arrival_refresh_policy/0` asserts that the division is exact.
+- The source's own interval is a fixed policy, five seconds whatever the count of open stops.
 - A cycle reads at most 2,000 open stops.
 - It returns `{:ok, counts}` with `open_count`, `due_count`, `recorded_count`, `failed_count`, `skipped_count`, `deferred_count`, and `unannounced_count`, or `{:error, :nothing_recorded}` when stops are due and none is recorded.
-- It logs one line per run with those counts and `failures`, and no stop identifier: `debug` `OneBusAway arrival cycle found nothing due`, `info` `OneBusAway arrival cycle finished`, `warning` `OneBusAway arrival cycle finished degraded`, and `error` `OneBusAway arrival cycle failed`.
+- It logs one line per run with those counts, `refresh_age_ms`, the refresh age the run applied, and `failures`, and no stop identifier: `debug` `OneBusAway arrival cycle found nothing due`, `info` `OneBusAway arrival cycle finished`, `warning` `OneBusAway arrival cycle finished degraded`, and `error` `OneBusAway arrival cycle failed`.
 
 ## Arrival records and arrivals view
 
