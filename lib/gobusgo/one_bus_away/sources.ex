@@ -4,6 +4,11 @@ defmodule Gobusgo.OneBusAway.Sources do
   `Gobusgo.Scheduler`. Everything here is pure: it builds the specs and starts
   nothing.
 
+  Every source names its cadence as a policy of `Gobusgo.Cadence` with the
+  function that returns the policy's signals. Each names a fixed policy,
+  which decides from no signals, and a deadline under the policy's shortest
+  interval, which `specs/2` asserts.
+
   Agency discovery records one response through
   `Gobusgo.OneBusAway.AgencyRecorder` once a minute. The vehicle source runs
   one `Gobusgo.OneBusAway.VehicleCycle` every five seconds, with a budget
@@ -45,7 +50,7 @@ defmodule Gobusgo.OneBusAway.Sources do
   `Gobusgo.OneBusAway.RouteCycle.run/2`, and
   `options[:arrival_cycle_options]` those of
   `Gobusgo.OneBusAway.ArrivalCycle.run/2`, each cycle's `:task_supervisor`
-  among them.
+  among them. Every spec passes `Gobusgo.Scheduler.assert_spec/1`.
   """
   @spec specs(Client.settings(), Keyword.t()) :: [Scheduler.spec()]
   def specs(%{base_url: base_url, api_key: api_key} = settings, options)
@@ -80,31 +85,40 @@ defmodule Gobusgo.OneBusAway.Sources do
 
     # The settings travel inside each function, which prints as an opaque
     # reference, so an inspected spec never shows the key.
-    [
+    specs = [
       %{
         name: Gobusgo.OneBusAway.AgencyScheduler,
         run: fn -> AgencyRecorder.record(settings, agency_record_options) end,
-        interval_ms: @agency_interval_ms,
+        cadence: fixed_cadence(@agency_interval_ms),
         deadline_ms: @agency_deadline_ms
       },
       %{
         name: Gobusgo.OneBusAway.VehicleScheduler,
         run: fn -> VehicleCycle.run(settings, vehicle_cycle_options) end,
-        interval_ms: @vehicle_interval_ms,
+        cadence: fixed_cadence(@vehicle_interval_ms),
         deadline_ms: @vehicle_deadline_ms
       },
       %{
         name: Gobusgo.OneBusAway.RouteScheduler,
         run: fn -> RouteCycle.run(settings, route_cycle_options) end,
-        interval_ms: @route_interval_ms,
+        cadence: fixed_cadence(@route_interval_ms),
         deadline_ms: @route_deadline_ms
       },
       %{
         name: Gobusgo.OneBusAway.ArrivalScheduler,
         run: fn -> ArrivalCycle.run(settings, arrival_cycle_options) end,
-        interval_ms: @arrival_interval_ms,
+        cadence: fixed_cadence(@arrival_interval_ms),
         deadline_ms: @arrival_deadline_ms
       }
     ]
+
+    Enum.each(specs, &Scheduler.assert_spec/1)
+    specs
   end
+
+  defp fixed_cadence(interval_ms) do
+    %{policy: {:fixed, interval_ms}, signals: &no_signals/0}
+  end
+
+  defp no_signals, do: %{}
 end

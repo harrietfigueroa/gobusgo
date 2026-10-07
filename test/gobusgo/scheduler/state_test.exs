@@ -6,6 +6,7 @@ defmodule Gobusgo.Scheduler.StateTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.Assert.AssertionError
+  alias Gobusgo.Cadence
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.Scheduler
   alias Gobusgo.Scheduler.State
@@ -146,8 +147,9 @@ defmodule Gobusgo.Scheduler.StateTest do
 
   describe "cadence" do
     # Simulates each source's scheduler over ten runs that succeed, with the
-    # interval read from the source's spec, and compares the times the runs
-    # start at with multiples of the interval listed for the source.
+    # interval the policy of the source's spec decides from the spec's
+    # signals, and compares the times the runs start at with multiples of
+    # the interval listed for the source.
     for {name, interval_ms} <- [
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
           {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
@@ -162,9 +164,10 @@ defmodule Gobusgo.Scheduler.StateTest do
             arrival_cycle_options: []
           )
 
-        spec = Enum.find(specs, &(&1.name == unquote(name)))
+        %{cadence: cadence} = Enum.find(specs, &(&1.name == unquote(name)))
+        interval_ms = Cadence.interval_ms(cadence.policy, cadence.signals.())
 
-        {_state, start_times_ms} = run_times(10, :ok, spec.interval_ms)
+        {_state, start_times_ms} = run_times(10, :ok, interval_ms)
 
         assert start_times_ms == Enum.map(0..9, &(&1 * unquote(interval_ms)))
       end

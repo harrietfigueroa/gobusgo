@@ -1,5 +1,6 @@
 defmodule Gobusgo.Scheduler do
   @evaluation_period_ms 1_000
+  @signals_wait_ms_default 100
 
   @moduledoc """
   Runs one source at its cadence. This module owns the process, the timer,
@@ -11,16 +12,32 @@ defmodule Gobusgo.Scheduler do
     * `:name`: the name the scheduler is registered under.
     * `:run`: the function to call. It returns `{:ok, term}` or
       `{:error, term}` and logs its own outcome.
-    * `:interval_ms`: the time from the start of one run to the start of
-      the next, at least #{@evaluation_period_ms}.
-    * `:deadline_ms`: the longest a run may take before it is killed.
+    * `:cadence`: how the interval, the time from the start of one run to
+      the start of the next, is decided. `:policy` is a policy of
+      `Gobusgo.Cadence` whose shortest interval is at least
+      #{@evaluation_period_ms}, and `:signals` is a function of no arguments
+      that returns the signals the policy decides from, a map.
+    * `:deadline_ms`: the longest a run may take before it is killed, under
+      the policy's shortest interval, so a run at the fastest cadence ends
+      before the next is due.
 
   The scheduler ticks when it starts and every #{@evaluation_period_ms} ms
-  after that, whatever the interval. Each tick reads the monotonic clock and
-  hands the time and the interval to the rules, so a run starts within
-  #{@evaluation_period_ms} ms of the interval elapsing since the last run
-  started, and the first tick starts the first run. A failed run delays the
-  next one by a backoff, a duration the rules size from the interval.
+  after that, whatever the interval. Each tick reads the signals, asks
+  `Gobusgo.Cadence.interval_ms/2` for the interval, reads the monotonic
+  clock, and hands the time and the interval to the rules, so a run starts
+  within #{@evaluation_period_ms} ms of the interval elapsing since the last
+  run started, and the first tick starts the first run. The end of a run
+  reads the signals and asks for the interval the same way. A failed run
+  delays the next one by a backoff, a duration the rules size from the
+  interval.
+
+  The signals function runs in a process of its own, which the scheduler
+  waits on for `:signals_wait_ms` and then kills, so a function that stalls
+  holds a tick or the end of a run for that long at most. A read fails when
+  the function raises, exits, throws, or is killed at the wait. After a
+  failed read the scheduler keeps the interval of its last read that worked,
+  or the policy's shortest interval when none has, and counts the read.
+  Signals that are not a map are a programmer error and stop the scheduler.
 
   Each run is a task under the given task supervisor, so a run that raises
   or is killed is an outcome and the scheduler keeps running. One run is in
@@ -29,7 +46,9 @@ defmodule Gobusgo.Scheduler do
   The scheduler logs what it decides itself: `error` `Scheduled run crashed`,
   `error` `Scheduled run exceeded its deadline`, and `warning`
   `Scheduled run overran its interval` once per run, with the count of
-  intervals that elapsed during the run as `skipped_interval_count`.
+  intervals that elapsed during the run as `skipped_interval_count`, and
+  `warning` `Scheduler signals read failed` for the first failed read after
+  a start or after a read that worked.
 
   When it stops, the scheduler waits for the run in flight, then kills it.
   State is in memory and a restart begins with nothing counted.
@@ -40,14 +59,27 @@ defmodule Gobusgo.Scheduler do
   require Logger
 
   alias Gobusgo.Assert
+  alias Gobusgo.Cadence
   alias Gobusgo.Scheduler.State
 
   @type run_result :: {:ok, term()} | {:error, term()}
+  @type cadence :: %{policy: Cadence.policy(), signals: (-> Cadence.signals())}
   @type spec :: %{
           name: atom(),
           run: (-> run_result()),
-          interval_ms: pos_integer(),
+          cadence: cadence(),
           deadline_ms: pos_integer()
+        }
+  @type status :: %{
+          phase: :idle | :running,
+          failure_count: non_neg_integer(),
+          run_start_ms: integer() | nil,
+          backoff_end_ms: integer() | nil,
+          skipped_interval_count: non_neg_integer(),
+          run_skipped_interval_count: non_neg_integer(),
+          last_outcome: State.finished() | nil,
+          interval_ms: pos_integer(),
+          signals_failure_count: non_neg_integer()
         }
 
   @call_timeout_ms 5_000
@@ -64,7 +96,9 @@ defmodule Gobusgo.Scheduler do
   for the run in flight, #{@shutdown_wait_ms_default} by default.
   `:monotonic_time_ms` is a zero-arity function returning the time in
   milliseconds on a clock that never goes back, by default
-  `System.monotonic_time/1`.
+  `System.monotonic_time/1`. `:signals_wait_ms` is how long one read of the
+  signals may take, #{@signals_wait_ms_default} by default and under
+  #{@evaluation_period_ms}.
   """
   @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(options) when is_list(options) do
@@ -73,7 +107,8 @@ defmodule Gobusgo.Scheduler do
         :spec,
         :task_supervisor,
         shutdown_wait_ms: @shutdown_wait_ms_default,
-        monotonic_time_ms: &monotonic_time_ms_default/0
+        monotonic_time_ms: &monotonic_time_ms_default/0,
+        signals_wait_ms: @signals_wait_ms_default
       ])
 
     spec = Keyword.fetch!(options, :spec)
@@ -87,7 +122,46 @@ defmodule Gobusgo.Scheduler do
       "monotonic_time_ms must be a zero-arity function"
     )
 
+    signals_wait_ms = Keyword.fetch!(options, :signals_wait_ms)
+    assert_duration(signals_wait_ms, "signals_wait_ms")
+
+    Assert.condition(
+      signals_wait_ms < @evaluation_period_ms,
+      "signals_wait_ms must be under #{@evaluation_period_ms}, got: #{signals_wait_ms}"
+    )
+
     GenServer.start_link(__MODULE__, Map.new(options), name: spec.name)
+  end
+
+  @doc """
+  Returns `:ok` for a spec a scheduler can run, and raises an assertion
+  error for any other: one whose policy `Gobusgo.Cadence.assert_policy/1`
+  refuses, whose policy's shortest interval is under
+  #{@evaluation_period_ms}, or whose deadline is not under that shortest
+  interval.
+  """
+  @spec assert_spec(spec()) :: :ok
+  def assert_spec(spec) do
+    Assert.condition(is_map(spec), "spec must be a map")
+    Assert.condition(is_atom(spec[:name]), "name must be an atom, got: #{inspect(spec[:name])}")
+    Assert.condition(spec[:name] != nil, "name must be given")
+    Assert.condition(is_function(spec[:run], 0), "run must be a function of no arguments")
+
+    Assert.condition(
+      not is_map_key(spec, :interval_ms),
+      "a spec names its interval through its cadence, got interval_ms"
+    )
+
+    deadline_ms = spec[:deadline_ms]
+    assert_duration(deadline_ms, "deadline_ms")
+    cadence = spec[:cadence]
+    assert_cadence(cadence)
+    interval_ms_min = Cadence.interval_ms_min(cadence.policy)
+
+    Assert.condition(
+      deadline_ms < interval_ms_min,
+      "deadline_ms must be under the shortest interval #{interval_ms_min}, got: #{deadline_ms}"
+    )
   end
 
   @doc """
@@ -108,11 +182,12 @@ defmodule Gobusgo.Scheduler do
   @doc """
   Returns the status of `scheduler`: whether a run is in flight, the failures
   in a row, the intervals skipped during runs, when the last run started and
-  a pending backoff ends on the scheduler's clock, and how the last run
-  ended. Exits when the scheduler does not answer within #{@call_timeout_ms}
-  ms.
+  a pending backoff ends on the scheduler's clock, how the last run ended,
+  the interval the source runs at as `interval_ms`, and the failed reads of
+  the signals in a row as `signals_failure_count`. Exits when the scheduler
+  does not answer within #{@call_timeout_ms} ms.
   """
-  @spec status(atom()) :: State.t()
+  @spec status(atom()) :: status()
   def status(scheduler) when is_atom(scheduler) do
     GenServer.call(scheduler, :status, @call_timeout_ms)
   end
@@ -130,6 +205,9 @@ defmodule Gobusgo.Scheduler do
        task_supervisor: task_supervisor,
        shutdown_wait_ms: options.shutdown_wait_ms,
        monotonic_time_ms: options.monotonic_time_ms,
+       signals_wait_ms: options.signals_wait_ms,
+       interval_ms: Cadence.interval_ms_min(spec.cadence.policy),
+       signals_failure_count: 0,
        state: State.new(),
        run: nil
      }}
@@ -137,12 +215,19 @@ defmodule Gobusgo.Scheduler do
 
   @impl GenServer
   def handle_call(:status, _from, server) do
-    {:reply, server.state, server}
+    status =
+      Map.merge(server.state, %{
+        interval_ms: server.interval_ms,
+        signals_failure_count: server.signals_failure_count
+      })
+
+    {:reply, status, server}
   end
 
   @impl GenServer
   def handle_info(:tick, server) do
     Process.send_after(self(), :tick, @evaluation_period_ms)
+    server = read_interval(server)
 
     case State.tick(server.state, time(server)) do
       {state, :start} ->
@@ -208,6 +293,7 @@ defmodule Gobusgo.Scheduler do
 
   defp finish_run(%{run: %{deadline_timer: deadline_timer}, spec: spec} = server, outcome) do
     Process.cancel_timer(deadline_timer)
+    server = read_interval(server)
     finished = %{outcome: outcome, finished_at: DateTime.utc_now()}
     state = State.finish(server.state, finished, time(server))
 
@@ -221,10 +307,82 @@ defmodule Gobusgo.Scheduler do
     %{server | state: state, run: nil}
   end
 
-  defp time(%{spec: spec, monotonic_time_ms: monotonic_time_ms}) do
+  defp time(%{interval_ms: interval_ms, monotonic_time_ms: monotonic_time_ms}) do
     now_ms = monotonic_time_ms.()
     Assert.condition(is_integer(now_ms), "the clock must return an integer")
-    %{now_ms: now_ms, interval_ms: spec.interval_ms}
+    %{now_ms: now_ms, interval_ms: interval_ms}
+  end
+
+  defp read_interval(%{spec: %{cadence: cadence} = spec} = server) do
+    case read_signals(cadence.signals, server.signals_wait_ms) do
+      {:ok, signals} ->
+        interval_ms = Cadence.interval_ms(cadence.policy, signals)
+
+        Assert.condition(
+          interval_ms >= @evaluation_period_ms,
+          "an interval must be at least #{@evaluation_period_ms}, got: #{interval_ms}"
+        )
+
+        %{server | interval_ms: interval_ms, signals_failure_count: 0}
+
+      {:error, reason} ->
+        if server.signals_failure_count == 0 do
+          Logger.warning("Scheduler signals read failed",
+            source: inspect(spec.name),
+            interval_ms: server.interval_ms,
+            signals_wait_ms: server.signals_wait_ms,
+            err: crash_error(reason)
+          )
+        end
+
+        %{server | signals_failure_count: server.signals_failure_count + 1}
+    end
+  end
+
+  # The function runs in a process that is neither linked nor a task, so
+  # what it raises reaches the scheduler as its exit reason and nowhere
+  # else, and a function that never returns is killed at the wait.
+  defp read_signals(signals, signals_wait_ms) do
+    {reader, monitor} = spawn_monitor(fn -> exit({:signals_read, signals_result(signals)}) end)
+
+    case await_signals(monitor, signals_wait_ms) do
+      :timeout ->
+        Process.exit(reader, :kill)
+
+        # A reader that finishes as the wait ends is down with its result
+        # before the kill reaches it, and this second wait receives it.
+        case await_signals(monitor, signals_wait_ms) do
+          :timeout ->
+            Process.demonitor(monitor, [:flush])
+            {:error, :timeout}
+
+          {:error, :killed} ->
+            {:error, :timeout}
+
+          result ->
+            result
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp await_signals(monitor, signals_wait_ms) do
+    receive do
+      {:DOWN, ^monitor, :process, _reader, {:signals_read, result}} -> result
+      {:DOWN, ^monitor, :process, _reader, reason} -> {:error, reason}
+    after
+      signals_wait_ms -> :timeout
+    end
+  end
+
+  defp signals_result(signals) do
+    {:ok, signals.()}
+  rescue
+    exception -> {:error, {exception, __STACKTRACE__}}
+  catch
+    kind, _value -> {:error, kind}
   end
 
   defp monotonic_time_ms_default, do: System.monotonic_time(:millisecond)
@@ -264,16 +422,20 @@ defmodule Gobusgo.Scheduler do
 
   defp frame_arity(frame), do: frame
 
-  defp assert_spec(spec) do
-    Assert.condition(is_map(spec), "spec must be a map")
-    Assert.condition(is_atom(spec.name), "name must be an atom, got: #{inspect(spec.name)}")
-    Assert.condition(is_function(spec.run, 0), "run must be a function of no arguments")
-    assert_duration(spec.interval_ms, "interval_ms")
-    assert_duration(spec.deadline_ms, "deadline_ms")
+  defp assert_cadence(cadence) do
+    Assert.condition(is_map(cadence), "cadence must be a map, got: #{inspect(cadence)}")
 
     Assert.condition(
-      spec.interval_ms >= @evaluation_period_ms,
-      "interval_ms must be at least #{@evaluation_period_ms}, got: #{spec.interval_ms}"
+      is_function(cadence[:signals], 0),
+      "signals must be a function of no arguments"
+    )
+
+    Cadence.assert_policy(cadence[:policy])
+    interval_ms_min = Cadence.interval_ms_min(cadence.policy)
+
+    Assert.condition(
+      interval_ms_min >= @evaluation_period_ms,
+      "a policy's shortest interval must be at least #{@evaluation_period_ms}, got: #{interval_ms_min}"
     )
   end
 

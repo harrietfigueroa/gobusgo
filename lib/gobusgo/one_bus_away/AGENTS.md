@@ -324,16 +324,16 @@ The agency recorder logs one line per call: `info` `OneBusAway agency response r
 
 ## Scheduled sources
 
-`Gobusgo.OneBusAway.Sources.specs/2` returns one spec per source for `Gobusgo.Scheduler`: the name the scheduler is registered under, the function to run, the interval, and the deadline of one run. It is pure and starts nothing. The application starts a scheduler per spec when the OneBusAway settings are present, and none under test.
+`Gobusgo.OneBusAway.Sources.specs/2` returns one spec per source for `Gobusgo.Scheduler`: the name the scheduler is registered under, the function to run, the cadence, and the deadline of one run. The cadence is a policy of `Gobusgo.Cadence`, which decides the interval, with the function that returns the signals the policy decides from. Every source names a fixed policy, which decides from no signals, so its function returns an empty map. `specs/2` is pure and starts nothing, and asserts every spec with `Gobusgo.Scheduler.assert_spec/1`. The application starts a scheduler per spec when the OneBusAway settings are present, and none under test.
 
-| Source | Scheduler name | Run | Interval | Deadline |
+| Source | Scheduler name | Run | Cadence policy | Deadline |
 | --- | --- | --- | --- | --- |
-| Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | 60 seconds | 45 seconds |
-| Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | 5 seconds | 4.5 seconds |
-| Routes | `Gobusgo.OneBusAway.RouteScheduler` | `RouteCycle.run/2` | 60 seconds | 55 seconds |
-| Arrivals | `Gobusgo.OneBusAway.ArrivalScheduler` | `ArrivalCycle.run/2` | 5 seconds | 4.5 seconds |
+| Agency discovery | `Gobusgo.OneBusAway.AgencyScheduler` | `AgencyRecorder.record/2` | Fixed, 60 seconds | 45 seconds |
+| Vehicles | `Gobusgo.OneBusAway.VehicleScheduler` | `VehicleCycle.run/2` | Fixed, 5 seconds | 4.5 seconds |
+| Routes | `Gobusgo.OneBusAway.RouteScheduler` | `RouteCycle.run/2` | Fixed, 60 seconds | 55 seconds |
+| Arrivals | `Gobusgo.OneBusAway.ArrivalScheduler` | `ArrivalCycle.run/2` | Fixed, 5 seconds | 4.5 seconds |
 
-A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, and the intervals that elapsed during a run. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2`, with a deadline shorter than its interval unless skipped intervals are intended.
+A run returns `{:ok, term}` or `{:error, term}` and logs its own outcome; the scheduler logs a run that crashes, a run it kills at the deadline, the intervals that elapsed during a run, and the first read of the signals that fails after one that worked. The settings travel inside the run function, so a spec never shows the key when it is inspected. A new source is a new entry in `specs/2` that names its interval constant, a cadence with a policy of `Gobusgo.Cadence` and the function that returns that policy's signals, and a deadline under the policy's shortest interval, which `Gobusgo.Scheduler.assert_spec/1` requires. The budget and the deadline are fixed per source; the interval is the one value a policy decides. `Gobusgo.Scheduler.status/1` returns the interval a source runs at as `interval_ms` and its failed signals reads in a row as `signals_failure_count`.
 
 `Gobusgo.OneBusAway.VehicleCycle.run/2` is one run of the vehicle source. It takes the agencies of the agency view's current fetch, at most 64, and calls `Gobusgo.OneBusAway.VehicleRecorder.record/2` for each in identifier order, one after another, each in a task under the ingestion task supervisor.
 

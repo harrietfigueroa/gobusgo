@@ -5,7 +5,9 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   # network access, no storage, and no subscriber.
   use ExUnit.Case, async: true
 
+  alias Gobusgo.Cadence
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.Scheduler
 
   @moduletag capture_log: true
 
@@ -81,8 +83,38 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   end
 
   describe "specs/2" do
+    test "names a cadence for every source, and an interval for none" do
+      for spec <- specs([]) do
+        assert %{cadence: %{policy: {:fixed, _interval_ms}, signals: signals}} = spec
+        assert is_function(signals, 0)
+        refute is_map_key(spec, :interval_ms)
+      end
+    end
+
+    # Each row is a source and the interval it runs at, which its policy
+    # has to decide from the signals its own function returns.
+    for {name, interval_ms} <- [
+          {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
+          {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
+          {Gobusgo.OneBusAway.RouteScheduler, 60_000},
+          {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
+        ] do
+      test "has #{inspect(name)} run every #{interval_ms} ms" do
+        spec = Enum.find(specs([]), &(&1.name == unquote(name)))
+
+        assert Cadence.interval_ms(spec.cadence.policy, spec.cadence.signals.()) ==
+                 unquote(interval_ms)
+      end
+    end
+
+    test "returns specs a scheduler accepts" do
+      for spec <- specs([]) do
+        assert Scheduler.assert_spec(spec) == :ok
+      end
+    end
+
     test "holds agency discovery, once a minute" do
-      assert %{name: Gobusgo.OneBusAway.AgencyScheduler, interval_ms: 60_000} =
+      assert %{name: Gobusgo.OneBusAway.AgencyScheduler, cadence: %{policy: {:fixed, 60_000}}} =
                agency_discovery([])
     end
 
@@ -90,7 +122,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       spec = agency_discovery([])
 
       assert spec.deadline_ms >= 1
-      assert spec.deadline_ms < spec.interval_ms
+      assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
     test "runs agency discovery by recording one response" do
@@ -119,14 +151,15 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     end
 
     test "holds the vehicle source, every five seconds" do
-      assert %{name: Gobusgo.OneBusAway.VehicleScheduler, interval_ms: 5_000} = vehicles([])
+      assert %{name: Gobusgo.OneBusAway.VehicleScheduler, cadence: %{policy: {:fixed, 5_000}}} =
+               vehicles([])
     end
 
     test "gives the vehicle source a deadline inside its interval" do
       spec = vehicles([])
 
       assert spec.deadline_ms >= 1
-      assert spec.deadline_ms < spec.interval_ms
+      assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
     test "runs the vehicle source by recording every agency's vehicles" do
@@ -154,14 +187,15 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     end
 
     test "holds the route source, every minute" do
-      assert %{name: Gobusgo.OneBusAway.RouteScheduler, interval_ms: 60_000} = routes([])
+      assert %{name: Gobusgo.OneBusAway.RouteScheduler, cadence: %{policy: {:fixed, 60_000}}} =
+               routes([])
     end
 
     test "gives the route source a deadline inside its interval" do
       spec = routes([])
 
       assert spec.deadline_ms >= 1
-      assert spec.deadline_ms < spec.interval_ms
+      assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
     test "runs the route source by recording the routes of an agency that has none" do
@@ -190,14 +224,15 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     end
 
     test "holds the arrival source, every five seconds" do
-      assert %{name: Gobusgo.OneBusAway.ArrivalScheduler, interval_ms: 5_000} = arrivals([])
+      assert %{name: Gobusgo.OneBusAway.ArrivalScheduler, cadence: %{policy: {:fixed, 5_000}}} =
+               arrivals([])
     end
 
     test "gives the arrival source a deadline inside its interval" do
       spec = arrivals([])
 
       assert spec.deadline_ms >= 1
-      assert spec.deadline_ms < spec.interval_ms
+      assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
     test "runs the arrival source by recording one of the open stops that are due" do
