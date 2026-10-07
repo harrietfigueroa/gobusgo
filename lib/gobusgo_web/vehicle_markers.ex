@@ -42,6 +42,15 @@ defmodule GobusgoWeb.VehicleMarkers do
   A marker's route is the name `route_name/1` gives its vehicle, and its
   headsign is the destination the vehicle's trip shows to riders. Either is
   `nil` when the vehicle has none.
+
+  A marker's schedule says how far the vehicle is from its trip's schedule,
+  in whole minutes, a deviation under one minute either way reading as on
+  time. A `:scheduled` marker has none, because the source gives a vehicle
+  that has never reported a deviation that no report backs. A marker's next
+  stop names the stop the vehicle reaches next and the whole minutes to it
+  as of the fetch: the name alone without a time at zero or later, the time
+  alone for a stop with no name supplied. Either is `nil` when the vehicle
+  has neither part.
   """
 
   alias Gobusgo.Assert
@@ -61,7 +70,8 @@ defmodule GobusgoWeb.VehicleMarkers do
   least 0 and below #{@degrees_per_turn}, or `nil` for a vehicle with no
   heading. `location_age` and `real_time` are the texts a page shows for
   the age of the last report and for whether the source has real-time data
-  for the vehicle's trip.
+  for the vehicle's trip, and `schedule` and `next_stop` the texts it shows
+  for the vehicle's lateness and for the stop it reaches next.
   """
   @type marker :: %{
           id: String.t(),
@@ -71,6 +81,8 @@ defmodule GobusgoWeb.VehicleMarkers do
           heading: non_neg_integer() | nil,
           route: String.t() | nil,
           headsign: String.t() | nil,
+          schedule: String.t() | nil,
+          next_stop: String.t() | nil,
           status: status(),
           location_age: String.t(),
           real_time: String.t()
@@ -123,13 +135,17 @@ defmodule GobusgoWeb.VehicleMarkers do
 
   @doc """
   Returns the markers of `fetch`, one agency's current fetch, in the fetch's
-  vehicle order, and the count of its vehicles that have no position. Raises
-  `Gobusgo.Assert.AssertionError` when the fetch names a vehicle it does not
-  hold.
+  vehicle order, and the count of its vehicles that have no position.
+  `stop_names` gives the name of a stop by its identifier; a next stop it
+  lacks is shown without a name. Raises `Gobusgo.Assert.AssertionError` when
+  the fetch names a vehicle it does not hold.
   """
-  @spec agency_markers(State.fetch()) :: t()
-  def agency_markers(%{agency_id: agency_id, fetched_at: %DateTime{} = fetched_at} = fetch)
-      when is_binary(agency_id) do
+  @spec agency_markers(State.fetch(), %{String.t() => String.t()}) :: t()
+  def agency_markers(
+        %{agency_id: agency_id, fetched_at: %DateTime{} = fetched_at} = fetch,
+        stop_names
+      )
+      when is_binary(agency_id) and is_map(stop_names) do
     %{vehicle_ids: vehicle_ids, vehicles: vehicles} = fetch
     fetched_at_ms = DateTime.to_unix(fetched_at, :millisecond)
 
@@ -142,7 +158,8 @@ defmodule GobusgoWeb.VehicleMarkers do
 
         marker(Map.fetch!(vehicles, vehicle_id), %{
           agency_id: agency_id,
-          fetched_at_ms: fetched_at_ms
+          fetched_at_ms: fetched_at_ms,
+          stop_names: stop_names
         })
       end
 
@@ -151,6 +168,17 @@ defmodule GobusgoWeb.VehicleMarkers do
     Assert.condition(position_missing_count >= 0, "markers must come from the fetch's vehicles")
 
     %{agency_id: agency_id, markers: markers, position_missing_count: position_missing_count}
+  end
+
+  @doc """
+  Returns the identifier of every stop a vehicle of `fetch` reaches next,
+  each once, sorted: the stops `agency_markers/2` looks for a name of.
+  """
+  @spec next_stop_ids(State.fetch()) :: [String.t()]
+  def next_stop_ids(%{vehicles: vehicles}) when is_map(vehicles) do
+    stop_ids = for {_id, %{"nextStopId" => stop_id}} <- vehicles, is_binary(stop_id), do: stop_id
+
+    stop_ids |> Enum.uniq() |> Enum.sort()
   end
 
   @doc """
@@ -170,9 +198,11 @@ defmodule GobusgoWeb.VehicleMarkers do
 
   defp marker(%{"id" => vehicle_id, "position" => %{"lat" => lat, "lon" => lon}} = vehicle, %{
          agency_id: agency_id,
-         fetched_at_ms: fetched_at_ms
+         fetched_at_ms: fetched_at_ms,
+         stop_names: stop_names
        }) do
     report = report(vehicle["lastLocationUpdateTimeMs"], fetched_at_ms)
+    status = status(report)
 
     %{
       id: agency_id <> "/" <> vehicle_id,
@@ -182,7 +212,13 @@ defmodule GobusgoWeb.VehicleMarkers do
       heading: heading(vehicle["orientation"]),
       route: route_name(vehicle),
       headsign: vehicle["tripHeadsign"],
-      status: status(report),
+      schedule: schedule(vehicle["scheduleDeviationSeconds"], status),
+      next_stop:
+        next_stop(
+          Map.get(stop_names, vehicle["nextStopId"]),
+          vehicle["nextStopTimeOffsetSeconds"]
+        ),
+      status: status,
       location_age: location_age(report),
       real_time: yes_no(vehicle["predicted"])
     }
@@ -233,6 +269,40 @@ defmodule GobusgoWeb.VehicleMarkers do
       hours > 0 -> "#{hours} h #{rem(minutes, @minutes_per_hour)} min ago"
       minutes > 0 -> "#{minutes} min #{rem(seconds, @seconds_per_minute)} s ago"
       true -> "#{seconds} s ago"
+    end
+  end
+
+  defp schedule(nil, _status), do: nil
+  defp schedule(_deviation_seconds, :scheduled), do: nil
+
+  defp schedule(deviation_seconds, _status) when is_integer(deviation_seconds) do
+    minutes = div(abs(deviation_seconds), @seconds_per_minute)
+
+    cond do
+      minutes == 0 -> "on time"
+      deviation_seconds > 0 -> "#{minutes} min late"
+      true -> "#{minutes} min early"
+    end
+  end
+
+  defp next_stop(nil, offset_seconds), do: time_away(offset_seconds)
+
+  defp next_stop(name, offset_seconds) when is_binary(name) do
+    case time_away(offset_seconds) do
+      nil -> name
+      time_away -> name <> ", " <> time_away
+    end
+  end
+
+  # An offset before zero is of a stop the vehicle has passed, which a next
+  # stop is not, so it gives no time.
+  defp time_away(nil), do: nil
+  defp time_away(offset_seconds) when is_integer(offset_seconds) and offset_seconds < 0, do: nil
+
+  defp time_away(offset_seconds) when is_integer(offset_seconds) do
+    case div(offset_seconds, @seconds_per_minute) do
+      0 -> "under 1 min away"
+      minutes -> "#{minutes} min away"
     end
   end
 

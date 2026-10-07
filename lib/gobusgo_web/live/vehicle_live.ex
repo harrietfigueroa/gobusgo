@@ -488,9 +488,18 @@ defmodule GobusgoWeb.VehicleLive do
 
     kept = VehicleFilter.filter_fetch(%{filter: socket.assigns.filter, fetch: fetch})
 
+    stop_names = stop_names(VehicleMarkers.next_stop_ids(kept))
+
     socket
-    |> push_markers(VehicleMarkers.agency_markers(kept))
+    |> push_markers(VehicleMarkers.agency_markers(kept, stop_names))
     |> update(:shown_request_ids, &Map.put(&1, agency_id, kept.request_id))
+  end
+
+  # The name of each of the stops that the stop view holds.
+  defp stop_names(stop_ids) do
+    for stop_id <- stop_ids, held_stop = StopView.stop(StopView, stop_id), into: %{} do
+      {stop_id, Map.fetch!(held_stop.stop, "name")}
+    end
   end
 
   defp clear_agency(%{assigns: %{shown_request_ids: shown_request_ids}} = socket, agency_id) do
