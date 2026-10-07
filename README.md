@@ -192,7 +192,7 @@ Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<age
 
 ## Running in Docker
 
-The `Dockerfile` builds an image that runs the HTTP server as a release, for local development. It needs a container runtime with `docker` on the path; nothing else from Setup is required. Orchestration with the other local services lives in the infrastructure repository.
+The `Dockerfile` builds an image that runs the application as a release. This section runs it for local development, and CI publishes the same build from `main` (see Published image). It needs a container runtime with `docker` on the path; nothing else from Setup is required. Orchestration with the other local services lives in the infrastructure repository.
 
 ### Build
 
@@ -277,6 +277,19 @@ docker rm gobusgo
 | `GET /api/agencies` answers `503` after a restart | The state topic holds no fetch yet, or the container cannot reach the broker: check that it runs with `--network gobusgo` and `GOBUSGO_KAFKA_BOOTSTRAP_SERVERS=kafka:19092`, and that the topics exist. |
 | Stored responses are missing after a restart | The container ran without the `--mount` flag, so `/data` was the container's own file system. |
 | The build fails while downloading | The build stage has no network access, or a pinned base image is no longer published. |
+
+### Published image
+
+Every merge to `main` publishes the image to GitHub Container Registry, once the other CI jobs pass on the merged commit. CI's `publish` job builds it for `linux/arm64` and pushes it to `ghcr.io/harrietfigueroa/gobusgo` under one tag, the full SHA of the commit it was built from. No tag moves and there is no `latest`: a run that is started again leaves the tag of its commit as it is. The job's summary shows the image's digest.
+
+The package is private. The job signs in with the workflow's own token and keeps the 10 newest images, deleting the older ones. To pull one, sign in with a personal access token that has the `read:packages` scope:
+
+```sh
+docker login ghcr.io --username <GitHub user name>
+docker pull ghcr.io/harrietfigueroa/gobusgo:<commit SHA>
+```
+
+A pull request builds the image for the same platform and publishes nothing.
 
 ## Usage
 

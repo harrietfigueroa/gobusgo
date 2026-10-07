@@ -8,9 +8,10 @@ on:
 permissions:
   contents: read
 
+# A run on main is never canceled, because it publishes the image of its commit.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The five mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
@@ -139,10 +140,58 @@ jobs:
 
   image:
     name: image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - run: docker build --tag gobusgo:ci .
+      - run: docker build --platform linux/arm64 --tag gobusgo:ci .
+
+  publish:
+    name: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [compile, format, test, kafka, assets, image]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A run that is started again finds its commit's tag published and leaves it, because a second build has another digest.
+      - id: published
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      # The build attaches no provenance, so the tag names one image manifest and the package holds one version per commit.
+      - if: steps.published.outputs.exists == 'false'
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$IMAGE" \
+            .
+      - if: steps.published.outputs.exists == 'false'
+        run: docker push "$IMAGE"
+      - run: |
+          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')"
+          test -n "$digest"
+          echo "Published \`$IMAGE\` with digest \`$digest\`." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/delete-package-versions@v5.0.0
+        with:
+          package-name: ${{ github.event.repository.name }}
+          package-type: container
+          min-versions-to-keep: 10
