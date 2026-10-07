@@ -1,9 +1,10 @@
 defmodule Gobusgo.SchedulerTest do
-  # Starts a scheduler per test with an interval of one hour, so the only
-  # timer tick is the one at start; later ticks are sent as the `:tick`
-  # message the timer sends. Each run is a function defined here that reports
-  # to the test and waits for the test's instruction, so a run is in flight
-  # for exactly as long as the test wants.
+  # Starts a scheduler per test on a clock the test owns, which stands still
+  # until the test advances it, so a timer tick changes nothing by itself.
+  # After advancing the clock a test sends the `:tick` message the timer
+  # sends, and the scheduler evaluates the new time at once. Each run is a
+  # function defined here that reports to the test and waits for the test's
+  # instruction, so a run is in flight for exactly as long as the test wants.
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
@@ -22,8 +23,23 @@ defmodule Gobusgo.SchedulerTest do
 
     %{
       name: Module.concat(__MODULE__, "Scheduler#{context.line}"),
-      task_supervisor: task_supervisor
+      task_supervisor: task_supervisor,
+      clock: :atomics.new(1, signed: true)
     }
+  end
+
+  # The call returns once the scheduler has handled every message sent to it
+  # so far, the end of a run among them, so each of those is handled at the
+  # time before the advance.
+  defp advance_clock(context, duration_ms) do
+    Scheduler.status(context.name)
+    :atomics.add(context.clock, 1, duration_ms)
+  end
+
+  # Advances the clock and has the scheduler evaluate the new time.
+  defp tick_after(context, duration_ms) do
+    advance_clock(context, duration_ms)
+    send(Process.whereis(context.name), :tick)
   end
 
   # A run that tells the test it started, then does what the test sends it.
@@ -54,7 +70,12 @@ defmodule Gobusgo.SchedulerTest do
     # wait, so the suite never sits out the default.
     options =
       Keyword.merge(
-        [spec: spec, task_supervisor: context.task_supervisor, shutdown_wait_ms: 0],
+        [
+          spec: spec,
+          task_supervisor: context.task_supervisor,
+          shutdown_wait_ms: 0,
+          monotonic_time_ms: fn -> :atomics.get(context.clock, 1) end
+        ],
         Map.get(overrides, :options, [])
       )
 
@@ -112,14 +133,39 @@ defmodule Gobusgo.SchedulerTest do
                Scheduler.status(context.name)
     end
 
-    test "starts again on the next tick", context do
-      scheduler = start_scheduler(context)
+    test "does not start again before the interval has elapsed", context do
+      start_scheduler(context)
       run = await_run_start()
       end_run(run, {:return, {:ok, :recorded}})
 
-      send(scheduler, :tick)
+      tick_after(context, @interval_ms - 1)
+
+      assert %{phase: :idle} = Scheduler.status(context.name)
+      refute_received {:run_started, _run}
+    end
+
+    test "starts again once the interval has elapsed since it started", context do
+      start_scheduler(context)
+      run = await_run_start()
+      end_run(run, {:return, {:ok, :recorded}})
+
+      tick_after(context, @interval_ms)
 
       assert await_run_start() != run
+    end
+
+    # Advances the clock and sends no tick, so the run can only come from
+    # the scheduler's own timer, and waits one evaluation period for it.
+    test "starts within one evaluation period of the interval elapsing", context do
+      start_scheduler(context)
+      run = await_run_start()
+      end_run(run, {:return, {:ok, :recorded}})
+
+      advance_clock(context, @interval_ms)
+
+      period_ms = Scheduler.evaluation_period_ms()
+      assert_receive {:run_started, next_run}, period_ms + @receive_timeout_ms
+      assert next_run != run
     end
   end
 
@@ -149,14 +195,23 @@ defmodule Gobusgo.SchedulerTest do
       assert log =~ "source=#{inspect(context.name)}"
     end
 
-    test "is followed by a run once its backoff has passed", context do
-      scheduler = start_scheduler(context)
+    test "is not followed by a run while its backoff is pending", context do
+      start_scheduler(context)
       run = await_run_start()
       end_run(run, :raise)
 
-      send(scheduler, :tick)
-      assert %{phase: :idle, backoff_tick_count: 0} = Scheduler.status(context.name)
-      send(scheduler, :tick)
+      tick_after(context, @interval_ms * 2 - 1)
+
+      assert %{phase: :idle, failure_count: 1} = Scheduler.status(context.name)
+      refute_received {:run_started, _run}
+    end
+
+    test "is followed by a run once its backoff of one interval has passed", context do
+      start_scheduler(context)
+      run = await_run_start()
+      end_run(run, :raise)
+
+      tick_after(context, @interval_ms * 2)
 
       assert await_run_start() != run
     end
@@ -176,32 +231,56 @@ defmodule Gobusgo.SchedulerTest do
   end
 
   describe "a tick during a run" do
-    test "is skipped and counted, and starts nothing", context do
-      scheduler = start_scheduler(context)
+    test "starts nothing, and counts the intervals that have elapsed", context do
+      start_scheduler(context)
       await_run_start()
 
-      send(scheduler, :tick)
-      send(scheduler, :tick)
+      tick_after(context, @interval_ms)
+      tick_after(context, @interval_ms)
 
-      assert %{phase: :running, skipped_tick_count: 2} = Scheduler.status(context.name)
+      assert %{phase: :running, skipped_interval_count: 2} = Scheduler.status(context.name)
       refute_received {:run_started, _run}
     end
 
-    test "is logged once per run as a warning with the count", context do
+    test "inside the run's first interval counts nothing", context do
+      start_scheduler(context)
+      await_run_start()
+
+      tick_after(context, @interval_ms - 1)
+
+      assert %{phase: :running, skipped_interval_count: 0} = Scheduler.status(context.name)
+    end
+  end
+
+  describe "a run that overruns its interval" do
+    test "is logged once as a warning with the count of intervals", context do
       log =
         capture_log([metadata: :all], fn ->
-          scheduler = start_scheduler(context)
+          start_scheduler(context)
           run = await_run_start()
-          send(scheduler, :tick)
-          send(scheduler, :tick)
+          tick_after(context, @interval_ms)
+          tick_after(context, @interval_ms)
           Scheduler.status(context.name)
           end_run(run, {:return, {:ok, :recorded}})
           Scheduler.status(context.name)
         end)
 
       assert log =~ "[warning] Scheduled run overran its interval"
-      assert log =~ "skipped_tick_count=2"
+      assert log =~ "skipped_interval_count=2"
       assert length(String.split(log, "Scheduled run overran its interval")) == 2
+    end
+
+    test "is not logged when the run ends inside its interval", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          start_scheduler(context)
+          run = await_run_start()
+          tick_after(context, @interval_ms - 1)
+          end_run(run, {:return, {:ok, :recorded}})
+          Scheduler.status(context.name)
+        end)
+
+      refute log =~ "Scheduled run overran its interval"
     end
   end
 
@@ -254,7 +333,13 @@ defmodule Gobusgo.SchedulerTest do
   end
 
   describe "start_link/1" do
-    for {field, value} <- [interval_ms: 0, deadline_ms: 0, interval_ms: 1.5, run: :not_a_function] do
+    for {field, value} <- [
+          interval_ms: 0,
+          interval_ms: 999,
+          deadline_ms: 0,
+          interval_ms: 1.5,
+          run: :not_a_function
+        ] do
       test "refuses a spec whose #{field} is #{inspect(value)}", context do
         spec = %{
           name: context.name,
@@ -269,6 +354,29 @@ defmodule Gobusgo.SchedulerTest do
           Scheduler.start_link(spec: spec, task_supervisor: context.task_supervisor)
         end
       end
+    end
+
+    test "refuses a clock that is not a zero-arity function", context do
+      spec = %{
+        name: context.name,
+        run: fn -> {:ok, :recorded} end,
+        interval_ms: @interval_ms,
+        deadline_ms: @deadline_ms
+      }
+
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        Scheduler.start_link(
+          spec: spec,
+          task_supervisor: context.task_supervisor,
+          monotonic_time_ms: :not_a_function
+        )
+      end
+    end
+  end
+
+  describe "evaluation_period_ms/0" do
+    test "is one second" do
+      assert Scheduler.evaluation_period_ms() == 1_000
     end
   end
 end
