@@ -130,7 +130,12 @@ defmodule Gobusgo.OneBusAway.Client do
         retry_delay: &retry_delay_ms(&1, base_delay_ms),
         retry_log_level: false,
         receive_timeout: @receive_timeout_ms,
-        connect_options: [timeout: @connect_timeout_ms]
+        connect_options: [timeout: @connect_timeout_ms],
+        # A host with no IPv4 route connects over IPv6. Mint tries IPv6
+        # first and connects over IPv4 when that attempt fails, each attempt
+        # with the connect timeout of its own.
+        # https://hexdocs.pm/mint/Mint.HTTP.html#connect/4 — checked 2026-10-06
+        inet6: true
       ] ++ plug_option(Keyword.fetch!(options, :plug))
 
     gate = Keyword.fetch!(options, :gate)

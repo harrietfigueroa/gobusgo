@@ -2,8 +2,9 @@ defmodule Gobusgo.OneBusAway.ClientTest do
   # Verifies host/1 as a pure function of the settings, and get/3 where it
   # meets the request gate: each case starts a gate of its own, serves the
   # request from a Req.Test stub, and observes what get/3 returns and what
-  # the gate grants afterwards. The outcomes of a request itself are
-  # exercised through the requester tests.
+  # the gate grants afterwards. The address family cases send the request to
+  # a server on one loopback address instead. The outcomes of a request
+  # itself are exercised through the requester tests.
   use ExUnit.Case, async: true
 
   alias Gobusgo.Assert.AssertionError
@@ -86,6 +87,38 @@ defmodule Gobusgo.OneBusAway.ClientTest do
     test "raises for a parameter named key" do
       assert_raise AssertionError, ~r/key/, fn ->
         get(start_gate([]), params: [key: "another"])
+      end
+    end
+  end
+
+  describe "get/3 address families" do
+    # Starts an HTTP server on one loopback address alone, so a request to
+    # `localhost` reaches it only over that address's family.
+    defp start_loopback_server(ip, transport_options) do
+      server =
+        start_supervised!(
+          {Bandit,
+           plug: fn conn, _options -> Plug.Conn.send_resp(conn, 200, "") end,
+           scheme: :http,
+           ip: ip,
+           port: 0,
+           startup_log: false,
+           thousand_island_options: [transport_options: transport_options]}
+        )
+
+      {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+      %{base_url: "http://localhost:#{port}", api_key: "test-key-3f9a1c07be52"}
+    end
+
+    for {name, ip, transport_options} <- [
+          {"IPv6 alone", {0, 0, 0, 0, 0, 0, 0, 1}, [ipv6_v6only: true]},
+          {"IPv4 alone", {127, 0, 0, 1}, []}
+        ] do
+      test "connects to a server that listens on #{name}" do
+        settings = start_loopback_server(unquote(Macro.escape(ip)), unquote(transport_options))
+
+        assert {:ok, %{status: 200}} =
+                 Client.get(settings, @path, gate: start_gate([]), max_retries: 0)
       end
     end
   end
