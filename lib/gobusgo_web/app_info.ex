@@ -5,7 +5,8 @@ defmodule GobusgoWeb.AppInfo do
 
   @moduledoc """
   What the info panel of a map page says about the application: what it is,
-  that it is independent of the agencies, how it uses OneBusAway data, the terms that data is provided under, and
+  that it is independent of the agencies, how it uses OneBusAway data,
+  what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
   given and a test reads every text.
@@ -19,6 +20,8 @@ defmodule GobusgoWeb.AppInfo do
   @type cadences :: %{vehicle_interval_ms: pos_integer(), route_period_minutes: pos_integer()}
 
   @type terms :: %{name: String.t(), url: String.t()}
+
+  @type recorded_field :: %{field: String.t(), text: String.t()}
 
   @type app_license :: %{name: String.t(), copyright: String.t()}
 
@@ -45,6 +48,30 @@ defmodule GobusgoWeb.AppInfo do
     url:
       "https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use"
   }
+
+  @recorded [
+    %{field: "connectedAt", text: "When the page connected."},
+    %{field: "durationMs", text: "How long the page stayed connected."},
+    %{field: "page", text: "Which page it was."},
+    %{field: "reconnect", text: "Whether it was a page already open that connected again."},
+    %{field: "filter", text: "The agencies and routes of the filter the page showed last."},
+    %{
+      field: "filterValueOmittedCount",
+      text: "How many values of a long filter were left out of the record."
+    },
+    %{
+      field: "deviceClass",
+      text: "Whether the device is a phone, a tablet, a desktop computer, or a crawler."
+    },
+    %{field: "browserFamily", text: "The family of the browser, such as Firefox or Safari."},
+    %{field: "viewportWidthBucket", text: "Which of five ranges the window's width falls in."},
+    %{field: "language", text: "The browser's language, without the region."},
+    %{field: "referrerHost", text: "The site that linked here, without the page on it."}
+  ]
+
+  @recorded_never "A record holds no IP address, no cookie, no identifier of you or your " <>
+                    "device, and not the text your browser identifies itself with. Records " <>
+                    "of different visits cannot be told to be from the same visitor."
 
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
@@ -94,6 +121,17 @@ defmodule GobusgoWeb.AppInfo do
         "estimates the vehicle is, which is an estimate even for a vehicle that reported recently."
     ]
   end
+
+  @doc """
+  What a usage record holds of one page connection: every field of the
+  record, in display order, with the sentence that says what it is.
+  """
+  @spec recorded() :: [recorded_field(), ...]
+  def recorded, do: @recorded
+
+  @doc "The statement of what a usage record never holds."
+  @spec recorded_never() :: String.t()
+  def recorded_never, do: @recorded_never
 
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()

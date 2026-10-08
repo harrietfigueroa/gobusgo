@@ -90,6 +90,10 @@ config :gobusgo, GobusgoWeb.Endpoint,
 # request may leave the machine.
 config :gobusgo, :ingestion, scheduled: config_env() != :test
 
+# Page connections are recorded everywhere except under test, where the
+# pages the tests mount would be written into the data directory.
+config :gobusgo, :usage, recorded: config_env() != :test
+
 config :phoenix, :json_library, JSON
 
 config :tailwind,

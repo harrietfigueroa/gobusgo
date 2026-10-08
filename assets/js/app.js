@@ -8,9 +8,29 @@ import {VehicleFilter} from "./vehicle_filter"
 import {VehicleMarkers} from "./vehicle_markers"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+// What the browser tells the usage recorder about itself. The referrer is
+// reduced to its host here, so its path and query never leave the browser.
+function client() {
+  let referrerHost = null
+
+  try {
+    referrerHost = new URL(document.referrer).hostname
+  } catch (_invalid) {
+    // An empty referrer is no URL, and a visit with none sends no host.
+  }
+
+  return {
+    viewport_width: window.innerWidth,
+    language: navigator.language,
+    referrer_host: referrerHost
+  }
+}
+
+// The parameters are a function, so each connection sends the viewport of
+// its own moment.
 const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {Basemap, RouteLines, StopMarkers, VehicleFilter, VehicleMarkers},
-  params: {_csrf_token: csrfToken}
+  params: () => ({_csrf_token: csrfToken, client: client()})
 })
 
 // A <dialog> opens as a modal only through its showModal method, so the

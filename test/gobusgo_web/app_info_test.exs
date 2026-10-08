@@ -74,6 +74,27 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "recorded/0" do
+    test "has one entry for every field of a usage record, and for nothing else" do
+      fields = for %{field: field} <- AppInfo.recorded(), do: field
+
+      assert Enum.sort(fields) == Gobusgo.Usage.Records.fields()
+    end
+
+    test "says something of every field" do
+      for %{text: text} <- AppInfo.recorded() do
+        assert String.ends_with?(text, ".")
+      end
+    end
+  end
+
+  describe "recorded_never/0" do
+    test "says a record holds no address and no identifier" do
+      assert AppInfo.recorded_never() =~ "no IP address"
+      assert AppInfo.recorded_never() =~ "no identifier"
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =

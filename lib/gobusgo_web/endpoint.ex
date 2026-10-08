@@ -1,7 +1,8 @@
 defmodule GobusgoWeb.Endpoint do
   @moduledoc """
   The HTTP endpoint: the LiveView socket, and the plugs every request passes
-  through before the router. `Gobusgo.Application` starts it with the
+  through before the router. The socket hands a page the user agent and the
+  address it connected with, which `GobusgoWeb.UsageHook` reads. `Gobusgo.Application` starts it with the
   listener address and the secret that signs the session.
 
   A JSON response with an error status leaves as `application/problem+json`.
@@ -45,7 +46,7 @@ defmodule GobusgoWeb.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
+    websocket: [connect_info: [:user_agent, :uri, session: @session_options]],
     longpoll: false
 
   # A plug that can raise goes in a router pipeline, never here. The router
