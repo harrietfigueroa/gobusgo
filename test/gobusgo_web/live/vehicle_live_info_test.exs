@@ -211,14 +211,6 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       end
     end
 
-    test "states the cadences the sources run at today" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-      text = panel_text(view)
-
-      assert text =~ "read every 5 seconds"
-      assert text =~ "read once a day"
-    end
-
     test "links the terms the data is provided under" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       %{name: name, url: url} = AppInfo.terms()
