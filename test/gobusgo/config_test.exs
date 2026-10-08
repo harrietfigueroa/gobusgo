@@ -94,36 +94,6 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
-  describe "fetch_kafka/1" do
-    test "returns the local broker for an empty environment" do
-      assert Config.fetch_kafka([]) == {:ok, %{endpoints: [{"localhost", 9092}]}}
-    end
-
-    test "returns the default for a blank value" do
-      assert Config.fetch_kafka(bootstrap_servers: " ") ==
-               {:ok, %{endpoints: [{"localhost", 9092}]}}
-    end
-
-    test "returns every configured endpoint in order" do
-      assert Config.fetch_kafka(bootstrap_servers: "kafka:19092, b-2.example.test:9094") ==
-               {:ok, %{endpoints: [{"kafka", 19_092}, {"b-2.example.test", 9094}]}}
-    end
-
-    for text <- ["kafka", "kafka:", ":9092", "kafka:0", "kafka:65536", "kafka:9092,", "a:1:2"] do
-      test "reports bootstrap_servers as invalid for #{text}" do
-        assert Config.fetch_kafka(bootstrap_servers: unquote(text)) ==
-                 {:error, {:invalid, :bootstrap_servers}}
-      end
-    end
-
-    test "reports bootstrap_servers as invalid for more than 16 endpoints" do
-      text = Enum.map_join(1..17, ",", &"kafka-#{&1}:9092")
-
-      assert Config.fetch_kafka(bootstrap_servers: text) ==
-               {:error, {:invalid, :bootstrap_servers}}
-    end
-  end
-
   describe "fetch_basemap/1" do
     test "returns the configured directory" do
       assert Config.fetch_basemap(dir: "/data/basemap") == {:ok, %{dir: "/data/basemap"}}

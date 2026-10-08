@@ -1,7 +1,7 @@
 defmodule Gobusgo.OneBusAway.BatchFailure do
   @moduledoc """
   The failure of processing one stored response, as every processor returns
-  it: the stage that failed, its reason, the dead-letter error code, and
+  it: the stage that failed, its reason, its error code, and
   whether a repeated call fails the same way. Everything here is pure.
 
     * A read failure has the error code `READ_FAILURE`. It is `:permanent`

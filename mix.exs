@@ -33,8 +33,6 @@ defmodule Gobusgo.MixProject do
       {:phoenix_html, "~> 4.3"},
       {:bandit, "~> 1.12"},
       {:plug, "~> 1.16"},
-      {:broadway_kafka, "~> 0.7.0"},
-      {:brod, "~> 4.7"},
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:lazy_html, "~> 0.1", only: :test},

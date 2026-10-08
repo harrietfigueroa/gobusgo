@@ -1,40 +1,57 @@
 defmodule Gobusgo.ApplicationTest do
   # Verifies the application boots: its supervisor and the children the
-  # supervisor starts are alive, in the order they depend on each other.
+  # supervisor starts are alive, in the order they depend on each other, and
+  # every topic a dataset publishes to reaches a subscriber in the application.
   use ExUnit.Case, async: true
 
-  test "one subscriber reads the route state topic and hands its records to both route views" do
-    subscribers = Gobusgo.Application.topic_subscribers()
+  alias Gobusgo.OneBusAway.AgencyBatch
+  alias Gobusgo.OneBusAway.ArrivalBatch
+  alias Gobusgo.OneBusAway.RawAgencyResponse
+  alias Gobusgo.OneBusAway.RawArrivalResponse
+  alias Gobusgo.OneBusAway.RawVehicleResponse
+  alias Gobusgo.OneBusAway.RouteBatch
+  alias Gobusgo.OneBusAway.RouteDatasets
+  alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.OneBusAway.VehicleBatch
 
-    assert [route_state] = Enum.filter(subscribers, &(&1.topic == "oba.routes.state"))
+  defp subscribers do
+    :gobusgo
+    |> Application.fetch_env!(Gobusgo.Publisher.InProcess)
+    |> Keyword.fetch!(:subscribers)
+  end
 
-    assert route_state.subscriber ==
+  # Every topic a dataset publishes to, named by the module that owns it.
+  for module <- [
+        RawAgencyResponse.StoredEvent,
+        RawVehicleResponse.StoredEvent,
+        RouteDatasets,
+        RawArrivalResponse.StoredEvent,
+        AgencyBatch.Records,
+        VehicleBatch.Records,
+        RouteBatch.Records,
+        RoutePathBatch.Records,
+        RoutePathBatch.StopRecords,
+        ArrivalBatch.Records
+      ] do
+    test "the topic of #{inspect(module)} has a subscriber" do
+      assert Map.has_key?(subscribers(), unquote(module).topic())
+    end
+  end
+
+  test "the route state topic hands its records to both route views" do
+    assert subscribers()["oba.routes.state"] ==
              {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
               [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]}
   end
 
-  test "one subscriber reads the stop state topic and hands its records to the stop view" do
-    subscribers = Gobusgo.Application.topic_subscribers()
-
-    assert [stop_state] = Enum.filter(subscribers, &(&1.topic == "oba.stops.state"))
-
-    assert stop_state.subscriber ==
+  test "the stop state topic hands its records to the stop view" do
+    assert subscribers()["oba.stops.state"] ==
              {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]}
   end
 
-  test "one subscriber reads the arrivals state topic and hands its records to the arrivals view" do
-    subscribers = Gobusgo.Application.topic_subscribers()
-
-    assert [arrival_state] = Enum.filter(subscribers, &(&1.topic == "oba.arrivals.state"))
-
-    assert arrival_state.subscriber ==
+  test "the arrivals state topic hands its records to the arrivals view" do
+    assert subscribers()["oba.arrivals.state"] ==
              {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
-  end
-
-  test "no two topic subscribers read one topic" do
-    topics = Enum.map(Gobusgo.Application.topic_subscribers(), & &1.topic)
-
-    assert topics == Enum.uniq(topics)
   end
 
   test "the supervision tree is running" do

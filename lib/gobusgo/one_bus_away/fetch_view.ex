@@ -13,7 +13,8 @@ defmodule Gobusgo.OneBusAway.FetchView do
 
   A view is a process registered under a name and a table of the same name.
   `apply_records/2` hands it record values; `current/1`, `current_fetch/2`,
-  and `fetch_times/1` read the table and never wait on the process. The
+  `fetch_times/1`, and `attempt_times/1` read its tables and never wait on
+  the process. The
   table holds each identifier's current fetch as one entry, so a reader sees
   a whole fetch or the one before it.
 
@@ -32,6 +33,14 @@ defmodule Gobusgo.OneBusAway.FetchView do
   expired by the view's clock, and ignores a record of a fetch that old. A
   view that receives no records keeps what it holds, so a reader that needs
   a fresh fetch reads the fetch time.
+
+  `note_attempt/2` tells the view that a fetch of an identifier was
+  recorded, and `attempt_times/1` returns, for every identifier, the later
+  of its fetch time and its attempt time. A recorded fetch that never
+  reaches the view, because its response does not process, therefore still
+  has a time, and a schedule that reads `attempt_times/1` waits as long
+  after it as after a fetch the view holds. The attempts live in a second
+  table, which readers read without waiting on the process.
 
   A view starts empty. It holds nothing across a restart.
   """
@@ -160,6 +169,36 @@ defmodule Gobusgo.OneBusAway.FetchView do
   end
 
   @doc """
+  Returns the time of the latest fetch attempt of every identifier of `view`
+  that has one: the fetch time of its current fetch, or the time of a later
+  recorded fetch that has not reached the view. Returns `%{}` before a fetch
+  or an attempt arrives and while the view is not running.
+  """
+  @spec attempt_times(atom()) :: %{String.t() => DateTime.t()}
+  def attempt_times(view) when is_atom(view) do
+    attempts =
+      case :ets.whereis(attempt_table(view)) do
+        :undefined -> %{}
+        table -> table |> :ets.tab2list() |> Map.new()
+      end
+
+    Map.merge(fetch_times(view), attempts, fn _id, fetched_at, attempted_at ->
+      Enum.max([fetched_at, attempted_at], DateTime)
+    end)
+  end
+
+  @doc """
+  Notes in `view` that a fetch of `attempt.id` made at `attempt.fetched_at`
+  was recorded, and returns once `attempt_times/1` reflects it. Exits when
+  the view does not answer within #{@call_timeout_ms} ms.
+  """
+  @spec note_attempt(atom(), %{id: String.t(), fetched_at: DateTime.t()}) :: :ok
+  def note_attempt(view, %{id: id, fetched_at: %DateTime{}} = attempt)
+      when is_atom(view) and is_binary(id) do
+    GenServer.call(view, {:note_attempt, attempt}, @call_timeout_ms)
+  end
+
+  @doc """
   Applies `values`, at most `Gobusgo.Publisher.record_count_max/0` record
   values, to `view` in order, and returns once the table reflects them.
   Exits when the view does not answer within #{@call_timeout_ms} ms.
@@ -188,7 +227,17 @@ defmodule Gobusgo.OneBusAway.FetchView do
   @impl GenServer
   def init(%{name: name} = server) do
     table = :ets.new(name, [:named_table, :protected, :set, read_concurrency: true])
-    {:ok, server |> Map.put(:table, table) |> Map.put(:state, new_state(server))}
+
+    attempt_table =
+      :ets.new(attempt_table(name), [:named_table, :protected, :set, read_concurrency: true])
+
+    server =
+      server
+      |> Map.put(:table, table)
+      |> Map.put(:attempt_table, attempt_table)
+      |> Map.put(:state, new_state(server))
+
+    {:ok, server}
   end
 
   defp new_state(%{fetch_age_ms_max: nil, id_count_max: id_count_max}),
@@ -199,12 +248,19 @@ defmodule Gobusgo.OneBusAway.FetchView do
   end
 
   @impl GenServer
+  def handle_call({:note_attempt, attempt}, _from, server) do
+    state = State.attempt(server.state, attempt)
+    write_attempts(server, state)
+    {:reply, :ok, %{server | state: state}}
+  end
+
   def handle_call({:apply_records, values}, _from, %{table: table, name: name} = server) do
     {state, expired_ids} = State.expire(server.state, server.clock.())
     Enum.each(expired_ids, &:ets.delete(table, &1))
     counts = %{switched: %{}, invalid: 0}
     {state, counts} = Enum.reduce(values, {state, counts}, &apply_value(&1, &2, server))
     true = :ets.insert(table, Map.to_list(counts.switched))
+    write_attempts(server, state)
 
     if map_size(counts.switched) >= 1 or expired_ids != [] do
       Logger.debug("Fetch view switched",
@@ -240,6 +296,26 @@ defmodule Gobusgo.OneBusAway.FetchView do
   end
 
   defp topic(view), do: "fetch_view:" <> Atom.to_string(view)
+
+  defp attempt_table(view), do: Module.concat(view, Attempts)
+
+  # Brings the attempt table to the attempts of `state`. The entries that
+  # stay are never absent in between, so a reader never takes an identifier
+  # with an attempt for one without.
+  defp write_attempts(%{attempt_table: attempt_table, state: state_before}, state) do
+    attempts = State.attempts(state)
+    attempts_before = State.attempts(state_before)
+
+    if attempts != attempts_before do
+      for {id, _attempted_at} <- attempts_before, not is_map_key(attempts, id) do
+        true = :ets.delete(attempt_table, id)
+      end
+
+      true = :ets.insert(attempt_table, Map.to_list(attempts))
+    end
+
+    :ok
+  end
 
   defp apply_value(value, {state, counts}, %{records: records}) do
     case records.decode(value) do

@@ -1,7 +1,5 @@
 import Config
 
-kafka_enabled = config_env() != :test
-
 config :esbuild,
   version: "0.25.5",
   default: [
@@ -19,70 +17,61 @@ config :esbuild,
     cd: Path.expand("../assets", __DIR__)
   ]
 
-# Outside tests, records go to Kafka: the processor consumes "response
-# stored" events from it and the views read the state topics back. Tests run
-# with no broker, so records go straight to their subscribers in the running
-# application: a "response stored" event to the consumer that processes the
-# stored response, and the processed records of a dataset to its view.
-config :gobusgo, :kafka, enabled: kafka_enabled
+# Records go straight to their subscribers in the running application: a
+# "response stored" event to the consumer that processes the stored
+# response, and the processed records of a dataset to its view.
+config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
 
-if kafka_enabled do
-  config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.Kafka
-  config :gobusgo, Gobusgo.Publisher.Kafka, client: Gobusgo.Kafka.Client
-else
-  config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
-
-  config :gobusgo, Gobusgo.Publisher.InProcess,
-    subscribers: %{
-      "oba.agencies-with-coverage.response-stored" =>
-        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
-         [
-           %{
-             event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
-             processor: Gobusgo.OneBusAway.AgencyBatch
-           },
-           []
-         ]},
-      "oba.vehicles-for-agency.response-stored" =>
-        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
-         [
-           %{
-             event: Gobusgo.OneBusAway.RawVehicleResponse.StoredEvent,
-             processor: Gobusgo.OneBusAway.VehicleBatch
-           },
-           []
-         ]},
-      "oba.routes.response-stored" =>
-        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
-         [
-           %{
-             event: Gobusgo.OneBusAway.RouteDatasets,
-             processor: Gobusgo.OneBusAway.RouteDatasets
-           },
-           []
-         ]},
-      "oba.arrivals.response-stored" =>
-        {Gobusgo.OneBusAway.ResponseConsumer, :consume,
-         [
-           %{
-             event: Gobusgo.OneBusAway.RawArrivalResponse.StoredEvent,
-             processor: Gobusgo.OneBusAway.ArrivalBatch
-           },
-           []
-         ]},
-      "oba.agencies-with-coverage.state" =>
-        {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
-      "oba.vehicles-for-agency.state" =>
-        {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]},
-      "oba.routes.state" =>
-        {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
-         [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]},
-      "oba.stops.state" =>
-        {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]},
-      "oba.arrivals.state" =>
-        {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
-    }
-end
+config :gobusgo, Gobusgo.Publisher.InProcess,
+  subscribers: %{
+    "oba.agencies-with-coverage.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.OneBusAway.RawAgencyResponse.StoredEvent,
+           processor: Gobusgo.OneBusAway.AgencyBatch
+         },
+         []
+       ]},
+    "oba.vehicles-for-agency.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.OneBusAway.RawVehicleResponse.StoredEvent,
+           processor: Gobusgo.OneBusAway.VehicleBatch
+         },
+         []
+       ]},
+    "oba.routes.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.OneBusAway.RouteDatasets,
+           processor: Gobusgo.OneBusAway.RouteDatasets
+         },
+         []
+       ]},
+    "oba.arrivals.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.OneBusAway.RawArrivalResponse.StoredEvent,
+           processor: Gobusgo.OneBusAway.ArrivalBatch
+         },
+         []
+       ]},
+    "oba.agencies-with-coverage.state" =>
+      {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
+    "oba.vehicles-for-agency.state" =>
+      {Gobusgo.OneBusAway.VehicleView, :apply_records, [Gobusgo.OneBusAway.VehicleView]},
+    "oba.routes.state" =>
+      {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
+       [[Gobusgo.OneBusAway.RouteView, Gobusgo.OneBusAway.RoutePathView]]},
+    "oba.stops.state" =>
+      {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]},
+    "oba.arrivals.state" =>
+      {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
+  }
 
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile
 config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.LocalFile

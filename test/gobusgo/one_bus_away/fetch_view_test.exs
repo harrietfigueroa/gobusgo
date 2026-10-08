@@ -97,6 +97,41 @@ defmodule Gobusgo.OneBusAway.FetchViewTest do
     end
   end
 
+  describe "attempt_times/1" do
+    test "returns nothing for a view that is not running" do
+      assert FetchView.attempt_times(Module.concat(__MODULE__, NotRunning)) == %{}
+    end
+
+    test "returns the fetch time of an identifier whose fetch the view holds", %{view: view} do
+      :ok = FetchView.apply_records(view, [value()])
+
+      assert FetchView.attempt_times(view) == %{"40" => ~U[2026-10-05 01:00:00Z]}
+    end
+
+    test "returns the time of an attempt of an identifier with no fetch", %{view: view} do
+      :ok = FetchView.note_attempt(view, %{id: "40", fetched_at: ~U[2026-10-05 02:00:00Z]})
+
+      assert FetchView.attempt_times(view) == %{"40" => ~U[2026-10-05 02:00:00Z]}
+      assert FetchView.fetch_times(view) == %{}
+      assert FetchView.current(view) == []
+    end
+
+    test "returns the time of an attempt made after the current fetch", %{view: view} do
+      :ok = FetchView.apply_records(view, [value()])
+      :ok = FetchView.note_attempt(view, %{id: "40", fetched_at: ~U[2026-10-05 02:00:00Z]})
+
+      assert FetchView.attempt_times(view) == %{"40" => ~U[2026-10-05 02:00:00Z]}
+      assert [%{id: "40", name: "first"}] = FetchView.current(view)
+    end
+
+    test "returns the fetch time once a fetch follows the attempt", %{view: view} do
+      :ok = FetchView.note_attempt(view, %{id: "40", fetched_at: ~U[2026-10-05 00:30:00Z]})
+      :ok = FetchView.apply_records(view, [value()])
+
+      assert FetchView.attempt_times(view) == %{"40" => ~U[2026-10-05 01:00:00Z]}
+    end
+  end
+
   describe "apply_records/2" do
     test "replaces a fetch with a newer one of the same identifier", %{view: view} do
       newer =
@@ -231,6 +266,16 @@ defmodule Gobusgo.OneBusAway.FetchViewTest do
       assert FetchView.current(view) == []
       assert FetchView.fetch_times(view) == %{}
       assert_receive {:fetch_view_switched, ^view}
+    end
+
+    test "drops an attempt older than the bound at the next call",
+         %{view: view, clock: clock} do
+      :ok = FetchView.note_attempt(view, %{id: "40", fetched_at: ~U[2026-10-05 01:00:00Z]})
+      Agent.update(clock, fn _time -> ~U[2026-10-05 01:01:01Z] end)
+
+      :ok = FetchView.apply_records(view, [])
+
+      assert FetchView.attempt_times(view) == %{}
     end
 
     test "keeps a fetch the bound has not reached", %{view: view, clock: clock} do

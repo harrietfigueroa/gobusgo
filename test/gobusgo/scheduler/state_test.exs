@@ -156,7 +156,7 @@ defmodule Gobusgo.Scheduler.StateTest do
     # of vehicles.
     for {name, interval_ms} <- [
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
-          {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
+          {Gobusgo.OneBusAway.VehicleScheduler, 10_000},
           {Gobusgo.OneBusAway.RouteScheduler, 60_000},
           {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do

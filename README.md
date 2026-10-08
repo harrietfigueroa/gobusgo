@@ -4,7 +4,7 @@ Gobusgo is an Elixir application that consumes the [OneBusAway API](https://deve
 
 ## Requirements
 
-Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req). The HTTP server is [Phoenix](https://hex.pm/packages/phoenix) on [Bandit](https://hex.pm/packages/bandit), and browser pages are [Phoenix LiveView](https://hex.pm/packages/phoenix_live_view). [Plug](https://hex.pm/packages/plug) is also what `Req.Test` uses in tests. Assets are built by [esbuild](https://hex.pm/packages/esbuild) and [Tailwind](https://hex.pm/packages/tailwind), which download their own binaries; Node.js is not needed. Kafka is consumed through [BroadwayKafka](https://hex.pm/packages/broadway_kafka) and produced to through [brod](https://hex.pm/packages/brod). brod's checksum dependency compiles native code, which needs CMake and a C compiler: `.tool-versions` pins CMake, and the compiler comes from the Xcode command line tools on macOS or `build-essential` on Debian and Ubuntu.
+Erlang/OTP 29.1.1 and Elixir 1.20.4 (OTP 29), pinned in `.tool-versions`. The HTTP client is [Req](https://hex.pm/packages/req). The HTTP server is [Phoenix](https://hex.pm/packages/phoenix) on [Bandit](https://hex.pm/packages/bandit), and browser pages are [Phoenix LiveView](https://hex.pm/packages/phoenix_live_view). [Plug](https://hex.pm/packages/plug) is also what `Req.Test` uses in tests. Assets are built by [esbuild](https://hex.pm/packages/esbuild) and [Tailwind](https://hex.pm/packages/tailwind), which download their own binaries; Node.js is not needed.
 
 ## Setup
 
@@ -40,36 +40,15 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 `GOBUSGO_DATA_DIR` is the directory stored responses are written to and read from. Unset or blank, it is `data/` under the directory the server starts in; a relative value resolves against that directory.
 
-`GOBUSGO_KAFKA_BOOTSTRAP_SERVERS` is a comma-separated `host:port` list of the Kafka brokers. Unset, it defaults to `localhost:9092`. A value that is not valid stops the application at startup.
-
 `SECRET_KEY_BASE` signs the browser session. Leave it unset in development and test: a random secret is generated at each start, so restarting the server makes open pages reload. Production refuses to start without it; generate one with `mix phx.gen.secret`. A value shorter than 64 bytes stops the application at startup.
 
-## Kafka
+## Data flow
 
-Outside the test environment the application needs a Kafka broker for its data flow: the recorder publishes a "response stored" event for each stored response, a consumer group processes each event and publishes the processed records to a state topic, and the in-memory agency view reads that topic from its earliest record on every start. Tests run with no broker.
+The application needs no broker and no database. A recorder stores each response and publishes a "response stored" event; the event goes straight to the consumer in the same process, which processes the stored response and hands the processed records to the dataset's in-memory view. `config/config.exs` names the subscriber of every topic.
 
-The local broker is defined in the [infrastructure repository](https://github.com/harrietfigueroa/gobusgo-infra), and its `apply` also creates the topics below with their partitions and settings; its README covers start, stop, reset, and the topics. The broker listens on `localhost:9092`, and its automatic topic creation is off.
+The views start empty on every start and fill from OneBusAway: the agencies on the first agency fetch, the vehicles on the first vehicle cycle after it, and each agency's routes and each route's stops and paths within about ten minutes. The route source then refreshes each of those once a day. The agency endpoints answer `503` until the first agency fetch is processed.
 
-| Topic | Holds | Kept |
-| --- | --- | --- |
-| `oba.agencies-with-coverage.response-stored` | One "response stored" event per stored response | 7 days |
-| `oba.agencies-with-coverage.response-stored.dead-letter` | The events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
-| `oba.agencies-with-coverage.state` | One record per agency and one manifest per fetch | Compacted |
-| `oba.routes.response-stored` | One "response stored" event per stored response of an agency's routes or of a route's stops and paths, keyed by dataset and identifier | 7 days |
-| `oba.routes.response-stored.dead-letter` | The route events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
-| `oba.routes.state` | One record per agency holding its routes, and one record per route holding its paths | Compacted |
-| `oba.stops.state` | One record per route holding the stops it lists and the parent stops those name | Compacted |
-| `oba.vehicles-for-agency.response-stored` | One "response stored" event per stored vehicle response, keyed by agency | 1 day |
-| `oba.vehicles-for-agency.response-stored.dead-letter` | The vehicle events the consumer gave up on, key and value untouched, with the failure in headers | 30 days |
-| `oba.vehicles-for-agency.state` | One record per vehicle and one manifest per agency's fetch; a vehicle absent from its agency's fetches for more than five minutes gets a tombstone | Compacted |
-
-The application starts whether or not the broker answers. While it is unreachable the HTTP server runs, the agency endpoints answer `503`, a recorded response stays stored with a `warning` that its event was not published, and the Kafka clients reconnect every 10 seconds, logging each failed attempt.
-
-The consumer groups are `gobusgo.agency-processor` and `gobusgo.vehicle-processor`, one per event topic. An event that fails is retried in place, three attempts in all, and then goes to the dead-letter topic; read it with its headers:
-
-```sh
-docker exec gobusgo-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic oba.agencies-with-coverage.response-stored.dead-letter --from-beginning --timeout-ms 10000 --formatter-property print.headers=true --formatter-property print.key=true
-```
+A stored response that fails to process is logged once at `error` as `Response consumer failed`, and nothing retries it: the next fetch of the same data replaces it. A route item or an open stop whose response did not reach its view is fetched again when it is next due, the item at its daily slot and the stop after its refresh age.
 
 ## Running the server
 
@@ -79,7 +58,7 @@ mix phx.server
 
 Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
-While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every five seconds while a vehicle page is connected and for a minute after the last one leaves, and once a minute otherwise, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
+While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every ten seconds while a vehicle page is connected and for a minute after the last one leaves, and once a minute otherwise, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
 
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
@@ -129,7 +108,7 @@ Both answer `503` problem details with a `Retry-After` header until a fetch has 
 
 `GET /api/agencies/:id` returns the one agency as `data`, and its `meta` holds `fetchedAt` and `requestId`. Every agency in a response comes from the fetch `meta` names.
 
-The agencies are held in memory and are read back from the state topic on every start, so they are empty until a fetch has been processed. To see data without an API key, start the broker and the server in a shell with `iex -S mix phx.server`, store the test fixture as a response, and publish its "response stored" event:
+The agencies are held in memory, so they are empty until a fetch has been processed. To see data without an API key, start the server in a shell with `iex -S mix phx.server`, store the test fixture as a response, and publish its "response stored" event:
 
 ```elixir
 envelope =
@@ -167,7 +146,7 @@ event =
 :ok = Gobusgo.Publisher.publish([event], [])
 ```
 
-The consumer logs `Agency batch published` and the view logs `Agency view switched` within a few seconds; the first event after a start waits for the consumer group to form.
+The call returns once the response is processed: the processor logs `Agency batch published` and the view logs `Agency view switched` before it does.
 
 ```sh
 curl http://127.0.0.1:4000/api/agencies
@@ -186,7 +165,7 @@ http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's lat
 
 The map is the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. It fits the whole archive, and `/vehicles?agency=<agency id>` fits one agency's coverage. The map shows the OpenStreetMap attribution. Before any extraction the page says "No basemap yet." and shows the info button and nothing else. A view wider than the archive shows a plain background beyond the tiles the archive holds.
 
-With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds while the page is open, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
+With the OneBusAway settings exported, the server fetches every agency's vehicles every ten seconds while the page is open, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
 Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
 
@@ -204,17 +183,15 @@ The build downloads the dependencies and the esbuild and Tailwind binaries, so i
 
 ### Start
 
-The image is a production build, so it refuses to start without `SECRET_KEY_BASE`, and it publishes to and reads from Kafka. Start the local broker from the infrastructure repository first, which also creates the topics (see Kafka); the container joins the broker's `gobusgo` Docker network and reaches it as `kafka:19092`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
+The image is a production build, so it refuses to start without `SECRET_KEY_BASE`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
 
 ```sh
 docker volume create gobusgo-data
 
 docker run --detach --init --name gobusgo \
-  --network gobusgo \
   --publish 127.0.0.1:4000:4000 \
   --mount type=volume,source=gobusgo-data,target=/data \
   --env SECRET_KEY_BASE \
-  --env GOBUSGO_KAFKA_BOOTSTRAP_SERVERS=kafka:19092 \
   --env ONEBUSAWAY_BASE_URL \
   --env ONEBUSAWAY_API_KEY \
   gobusgo:local
@@ -239,7 +216,7 @@ The image's health check requests `/health` inside the container, and the status
 
 ### Data
 
-Stored responses live in the `gobusgo-data` volume mounted at `/data`, so they outlast the container and an image rebuild. The agencies the API serves are held in memory and read back from Kafka's state topic when the server starts; a scheduled fetch or a processed response fills them. `bin/gobusgo rpc` evaluates an expression in the running server:
+Stored responses live in the `gobusgo-data` volume mounted at `/data`, so they outlast the container and an image rebuild. The agencies the API serves are held in memory and are empty when the server starts; a scheduled fetch or a processed response fills them. `bin/gobusgo rpc` evaluates an expression in the running server:
 
 ```sh
 docker exec gobusgo find /data -type f
@@ -274,7 +251,7 @@ docker rm gobusgo
 | `curl` cannot connect, and the container is running | `GOBUSGO_HTTP_HOST` was overridden with a loopback address, which a published port cannot reach. Passing the whole `.env` with `--env-file` does this, because the file sets `127.0.0.1`. Pass the variables by name as above. |
 | `docker run` fails with "port is already allocated" | Another process, such as `mix phx.server`, holds port 4000. Stop it or publish another host port. |
 | The page loads and then keeps reloading, or the log holds "Could not check origin for Phoenix.Socket transport" | A production build accepts the LiveView socket only from pages on `localhost`. Open http://localhost:4000/, never http://127.0.0.1:4000/. |
-| `GET /api/agencies` answers `503` after a restart | The state topic holds no fetch yet, or the container cannot reach the broker: check that it runs with `--network gobusgo` and `GOBUSGO_KAFKA_BOOTSTRAP_SERVERS=kafka:19092`, and that the topics exist. |
+| `GET /api/agencies` answers `503` after a restart | The views are empty until the first agency fetch is processed, which needs `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY`: without them the log holds `OneBusAway sources not scheduled`. |
 | Stored responses are missing after a restart | The container ran without the `--mount` flag, so `/data` was the container's own file system. |
 | The build fails while downloading | The build stage has no network access, or a pinned base image is no longer published. |
 
@@ -311,7 +288,7 @@ The module documentation lists every error value.
 recorded.destination
 ```
 
-`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. The Kafka consumer calls it for every "response stored" event; calling it by hand publishes the same records again, which the view ignores. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range, and the consumer processes each one. Neither needs an API key.
+`Gobusgo.OneBusAway.AgencyBatch.process/2` processes the stored response at one destination and publishes it through `Gobusgo.Publisher`: one record per agency, then one manifest record that completes the fetch. The response consumer calls it for every "response stored" event; calling it by hand publishes the same records again, which the view ignores. `Gobusgo.OneBusAway.Reconciliation.republish/2` publishes a "response stored" event again for every stored response fetched inside a time range, and the consumer processes each one. Neither needs an API key.
 
 ```elixir
 {:ok, result} = Gobusgo.OneBusAway.AgencyBatch.process(recorded.destination, [])
@@ -327,35 +304,6 @@ request = %{
 ```
 
 The module documentation lists every result and error value.
-
-## Route backfill
-
-The route source fills the route views by itself within about ten minutes of a first start, and then refreshes each agency's routes and each route's paths once a day. `mix gobusgo.routes.backfill` fetches all of it once, on demand: to fill the views now, or to refill them after the route topics are reset.
-
-```sh
-set -a; source .env; set +a
-mise exec -- mix gobusgo.routes.backfill                               # every agency the server lists
-mise exec -- mix gobusgo.routes.backfill --agency 40 --agency 1        # the named agencies
-mise exec -- mix gobusgo.routes.backfill --agency 23 --route-limit 2   # at most two routes' paths
-```
-
-The task fetches each agency's routes and then each route's stops and paths, one request a second, stores every response under `GOBUSGO_DATA_DIR`, and publishes its "response stored" event to the broker of `GOBUSGO_KAFKA_BOOTSTRAP_SERVERS`. It does not start the application: a running application consumes the events and fills its views, so both have to use the same data directory. The 12 agencies and 391 routes of 2026-10-05 take about seven minutes.
-
-A request the server answers with 429 is tried again, three times in all. After ten failed requests in a row the task stops and counts the rest as skipped. It prints one summary and exits with a failure when it recorded nothing:
-
-```
-Route backfill finished
-  agencies:            1
-  routes:              2
-  recorded:            3
-  failed:              0
-  skipped:             0
-  stored, unannounced: 0
-  repeated requests:   0
-  failures by cause:   none
-```
-
-"Stored, unannounced" counts the responses that are stored and whose event the broker did not take; the route source fetches those again when they are due.
 
 ## Basemap archives
 
@@ -408,13 +356,7 @@ mix format --check-formatted
 mix test
 ```
 
-`mix test` needs no broker and leaves out the tests tagged `kafka`. With the local broker running, run those as well; each creates and deletes topics of its own:
-
-```sh
-mix test --include kafka
-```
-
-`GOBUSGO_TEST_KAFKA_BOOTSTRAP_SERVERS` names another broker for them. CI runs them against a Kafka service container in its `kafka` job.
+`mix test` needs no broker and no network access.
 
 ### Memory of the vehicle page
 

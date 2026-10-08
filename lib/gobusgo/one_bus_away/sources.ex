@@ -1,5 +1,5 @@
 defmodule Gobusgo.OneBusAway.Sources do
-  @vehicle_interval_ms_min 5_000
+  @vehicle_interval_ms_min 10_000
   @vehicle_interval_ms_max 60_000
   @vehicle_hold_ms 60_000
   @tombstone_grace_interval_count_min 4
@@ -60,8 +60,8 @@ defmodule Gobusgo.OneBusAway.Sources do
 
   @agency_interval_ms 60_000
   @agency_deadline_ms 45_000
-  @vehicle_deadline_ms 4_500
-  @vehicle_budget_ms 4_000
+  @vehicle_deadline_ms 9_500
+  @vehicle_budget_ms 9_000
   @route_interval_ms 60_000
   @route_deadline_ms 55_000
   @route_budget_ms 50_000
