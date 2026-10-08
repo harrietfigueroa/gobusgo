@@ -66,6 +66,12 @@ While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` s
 curl -i http://127.0.0.1:4000/health
 ```
 
+`GET /ready` answers `200` with `{"status": "ready"}` once the views hold what a start fills them with: the agency view has a fetch, and every agency's routes and every listed route's paths have been fetched once. Before that it answers `503` problem details with `Retry-After` and a `detail` that names what is missing. A start with fresh views takes about ten minutes to get there. The daily refresh of a route leaves the answer at `200`.
+
+```sh
+curl -i http://127.0.0.1:4000/ready
+```
+
 Every error response under `/api` is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served as `application/problem+json` with `type`, `title`, `status`, and, where the error has a written explanation, `detail`. Elsewhere, an error is an HTML page for a request that accepts HTML first, such as a browser's, and problem details otherwise:
 
 ```sh

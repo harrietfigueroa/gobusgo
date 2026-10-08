@@ -14,6 +14,7 @@ defmodule Gobusgo.OneBusAway.RouteCycleTest do
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RouteCycle
   alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.Test.RouteViewSeeds
 
   @moduletag capture_log: true
 
@@ -42,7 +43,6 @@ defmodule Gobusgo.OneBusAway.RouteCycleTest do
   @now ~U[2026-10-05 12:00:00Z]
   @fresh @now
   @stale ~U[2026-10-03 12:00:00Z]
-  @request_id "0199c4a2-7e1b-7a3f-9d20-000000000001"
 
   # The requests go through a gate of their own that refills at once, so
   # the tests neither wait on the application's gate nor spend its budget.
@@ -101,50 +101,15 @@ defmodule Gobusgo.OneBusAway.RouteCycleTest do
   end
 
   defp seed_routes(%{route_view: view}, agency_id, route_ids, fetched_at) do
-    record =
-      RouteBatch.Records.build(%{
-        agency_id: agency_id,
-        destination: "raw/oba/routes-for-agency/seeded.json.gz",
-        fetched_at: fetched_at,
-        data_sha256: String.duplicate("ab", 32),
-        request_id: @request_id,
-        routes:
-          for id <- route_ids do
-            %{
-              id: id,
-              agency_id: agency_id,
-              short_name: nil,
-              long_name: nil,
-              description: nil,
-              type: 3,
-              color: nil,
-              text_color: nil,
-              url: nil
-            }
-          end
-      })
-
-    :ok = FetchView.apply_records(view, [record.value])
+    RouteViewSeeds.routes(view, %{
+      agency_id: agency_id,
+      route_ids: route_ids,
+      fetched_at: fetched_at
+    })
   end
 
   defp seed_route_path(%{route_path_view: view}, route_id, fetched_at) do
-    record =
-      RoutePathBatch.Records.build(%{
-        route_id: route_id,
-        destination: "raw/oba/stops-for-route/seeded.json.gz",
-        fetched_at: fetched_at,
-        data_sha256: String.duplicate("ab", 32),
-        request_id: @request_id,
-        route_path: %{
-          route_id: route_id,
-          stop_ids: [],
-          polylines: [],
-          stop_groupings: [],
-          stops: []
-        }
-      })
-
-    :ok = FetchView.apply_records(view, [record.value])
+    RouteViewSeeds.route_path(view, %{route_id: route_id, fetched_at: fetched_at})
   end
 
   defp run(context, agency_ids, options \\ []) do
