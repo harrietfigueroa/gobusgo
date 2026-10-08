@@ -5,7 +5,8 @@ defmodule GobusgoWeb.VehicleLive do
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
   fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines of the routes the
-  two route views hold, and nothing else.
+  two route views hold, with the filter's controls and the info button of
+  `GobusgoWeb.AppInfoPanel` over it.
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
   reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
@@ -38,8 +39,8 @@ defmodule GobusgoWeb.VehicleLive do
   carries only the basemap's sources and bounds, from
   `GobusgoWeb.BasemapSources`, and the browser draws it; a change of agency
   inside one archive moves the view with the `basemap:fit` event. Before any
-  extraction the page says that no basemap is available, and shows nothing
-  else.
+  extraction the page says that no basemap is available, and shows the info
+  button and nothing else.
 
   On the map the browser draws one marker per vehicle that has a position,
   from `GobusgoWeb.VehicleMarkers`. An element that shows nothing mounts the
@@ -108,6 +109,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.VehicleFilter
   alias Gobusgo.OneBusAway.VehicleView
   alias GobusgoWeb.AgencyOptions
+  alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.FilterParams
   alias Gobusgo.OneBusAway.StopView
@@ -332,6 +334,8 @@ defmodule GobusgoWeb.VehicleLive do
       </div>
 
       <div :if={@basemap != nil} id="route-lines" phx-hook="RouteLines" hidden></div>
+
+      <AppInfoPanel.panel agencies={@agencies} />
     </main>
     """
   end

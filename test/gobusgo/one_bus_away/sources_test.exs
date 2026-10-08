@@ -260,6 +260,12 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
              } = vehicles([])
     end
 
+    test "names the vehicle policy's shortest interval as the vehicle source's" do
+      %{cadence: %{policy: {:steps, %{interval_ms_min: interval_ms_min}}}} = vehicles([])
+
+      assert Sources.vehicle_interval_ms_min() == interval_ms_min
+    end
+
     test "runs the vehicle source every minute while nobody has viewed vehicles" do
       assert vehicle_interval_ms() == 60_000
     end

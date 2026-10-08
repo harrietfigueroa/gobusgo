@@ -16,6 +16,12 @@ defmodule Gobusgo.OneBusAway.RouteScheduleTest do
     |> DateTime.add(RouteSchedule.slot_minute(@id) * 60 + offset_seconds, :second)
   end
 
+  describe "period_minutes/0" do
+    test "is one day" do
+      assert RouteSchedule.period_minutes() == 1_440
+    end
+  end
+
   describe "slot_minute/1" do
     test "is a minute of the day" do
       for id <- ["1", "40", "40_100479", "1_100224", "95_2116"] do

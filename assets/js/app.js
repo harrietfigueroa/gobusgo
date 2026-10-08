@@ -13,6 +13,10 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: {_csrf_token: csrfToken}
 })
 
+// A <dialog> opens as a modal only through its showModal method, so the
+// element that opens one dispatches this event to it.
+window.addEventListener("gobusgo:show-modal", event => event.target.showModal())
+
 liveSocket.connect()
 
 // Exposed for debugging from the browser console, such as liveSocket.enableDebug().
