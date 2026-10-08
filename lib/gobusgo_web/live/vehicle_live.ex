@@ -94,6 +94,10 @@ defmodule GobusgoWeb.VehicleLive do
   page as it is and uncounted, and the page logs
   `Vehicle page not counted as a viewer` at `warning` with the refusal,
   `registry_unavailable` for a registry that did not answer.
+
+  A connected page names each accepted filter it shows to the usage
+  recorder, `Gobusgo.Usage`, whose record of the page's connection holds the
+  last one. A refused filter is not named.
   """
 
   use Phoenix.LiveView
@@ -108,6 +112,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.VehicleFilter
   alias Gobusgo.OneBusAway.VehicleView
+  alias Gobusgo.Usage
   alias GobusgoWeb.AgencyOptions
   alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
@@ -164,6 +169,8 @@ defmodule GobusgoWeb.VehicleLive do
         nil -> nil
         manifest -> BasemapSources.view(manifest, fit_agency_id(filter))
       end
+
+    record_filter(socket, filter)
 
     {:noreply,
      socket
@@ -338,6 +345,15 @@ defmodule GobusgoWeb.VehicleLive do
       <AppInfoPanel.panel agencies={@agencies} />
     </main>
     """
+  end
+
+  # Names the filter a connected page shows to the usage recorder. A refused
+  # filter shows nothing and is not named.
+  defp record_filter(socket, filter) do
+    case {connected?(socket), filter} do
+      {true, %{} = filter} -> Usage.put_filter(Usage, filter)
+      {_connected, _filter} -> :ok
+    end
   end
 
   # Makes the attempt numbered `attempt_count` of a row of attempts to

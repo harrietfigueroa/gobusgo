@@ -14,6 +14,9 @@ defmodule Gobusgo.Config do
   @type ingestion :: %{scheduled: boolean()}
   @type ingestion_error :: {:invalid, :scheduled}
 
+  @type usage :: %{recorded: boolean()}
+  @type usage_error :: {:invalid, :recorded}
+
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
   @type http_error :: {:invalid, :host | :port}
 
@@ -68,6 +71,25 @@ defmodule Gobusgo.Config do
   @spec ingestion() :: {:ok, ingestion()} | {:error, ingestion_error()}
   def ingestion do
     :gobusgo |> Application.get_env(:ingestion, []) |> fetch_ingestion()
+  end
+
+  @doc """
+  Returns the usage settings from `env`: `:recorded`, whether page
+  connections are recorded. Returns the first value that is not valid; a
+  missing value is not valid.
+  """
+  @spec fetch_usage(Keyword.t()) :: {:ok, usage()} | {:error, usage_error()}
+  def fetch_usage(env) when is_list(env) do
+    case Keyword.get(env, :recorded) do
+      recorded when is_boolean(recorded) -> {:ok, %{recorded: recorded}}
+      _other -> {:error, {:invalid, :recorded}}
+    end
+  end
+
+  @doc "Reads the usage settings configured for the running application."
+  @spec usage() :: {:ok, usage()} | {:error, usage_error()}
+  def usage do
+    :gobusgo |> Application.get_env(:usage, []) |> fetch_usage()
   end
 
   @doc """

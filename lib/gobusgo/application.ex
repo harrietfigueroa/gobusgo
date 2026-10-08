@@ -18,6 +18,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
+  alias Gobusgo.Usage
 
   @ingestion_task_count_max 8
   @restart_count_max 3
@@ -49,6 +50,7 @@ defmodule Gobusgo.Application do
     with {:ok, %{ip: ip, port: port}} <- Config.http(),
          {:ok, configured_secret} <- Config.secret_key_base(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
+         {:ok, %{recorded: recorded}} <- Config.usage(),
          {:ok, _basemap} <- Config.basemap() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
@@ -79,14 +81,17 @@ defmodule Gobusgo.Application do
            records: ArrivalBatch.Records,
            id_count_max: @arrival_view_stop_count_max,
            fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
-          {Demand, name: Demand, datasets: DemandKey.datasets()},
-          {RequestGate, name: RequestGate},
-          {Task.Supervisor,
-           name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
-          scheduler_supervisor(source_specs(scheduled)),
-          {GobusgoWeb.Endpoint,
-           http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
-        ]
+          {Demand, name: Demand, datasets: DemandKey.datasets()}
+        ] ++
+          usage_children(recorded) ++
+          [
+            {RequestGate, name: RequestGate},
+            {Task.Supervisor,
+             name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
+            scheduler_supervisor(source_specs(scheduled)),
+            {GobusgoWeb.Endpoint,
+             http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
+          ]
 
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -99,6 +104,11 @@ defmodule Gobusgo.Application do
       {:error, {:missing, key}} -> {:error, {:missing_setting, key}}
     end
   end
+
+  # The recorder starts before the endpoint and stops after it, so the
+  # connections the endpoint's shutdown ends are in the recorder's last file.
+  defp usage_children(true), do: [{Usage, name: Usage}]
+  defp usage_children(false), do: []
 
   defp generate_secret do
     @generated_secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()

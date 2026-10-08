@@ -42,6 +42,25 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_usage/1" do
+    for recorded <- [true, false] do
+      test "returns recorded as #{recorded} when it is configured so" do
+        assert Config.fetch_usage(recorded: unquote(recorded)) ==
+                 {:ok, %{recorded: unquote(recorded)}}
+      end
+    end
+
+    test "reports recorded as invalid for an empty environment" do
+      assert Config.fetch_usage([]) == {:error, {:invalid, :recorded}}
+    end
+
+    for value <- ["true", 1, nil] do
+      test "reports recorded as invalid for #{inspect(value)}" do
+        assert Config.fetch_usage(recorded: unquote(value)) == {:error, {:invalid, :recorded}}
+      end
+    end
+  end
+
   describe "fetch_ingestion/1" do
     for scheduled <- [true, false] do
       test "returns scheduled as #{scheduled} when it is configured so" do

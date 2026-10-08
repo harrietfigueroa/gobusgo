@@ -1,7 +1,9 @@
 defmodule GobusgoWeb.Router do
   @moduledoc """
   The routes of the application: browser pages, the health endpoint, and
-  the JSON API under `/api`. A request under `/api` that no route matches is
+  the JSON API under `/api`. Every browser page is in one live session whose
+  mount hook, `GobusgoWeb.UsageHook`, registers the page's connection with
+  the usage recorder. A request under `/api` that no route matches is
   answered with problem details by `GobusgoWeb.FallbackController`. Any
   other request no route matches is answered by `GobusgoWeb.ErrorHTML` when
   it accepts HTML first, and by `GobusgoWeb.ErrorJSON` otherwise.
@@ -29,9 +31,11 @@ defmodule GobusgoWeb.Router do
   scope "/", GobusgoWeb do
     pipe_through :browser
 
-    live "/", HomeLive
-    live "/agencies", AgencyLive
-    live "/vehicles", VehicleLive
+    live_session :pages, on_mount: GobusgoWeb.UsageHook do
+      live "/", HomeLive
+      live "/agencies", AgencyLive
+      live "/vehicles", VehicleLive
+    end
   end
 
   scope "/", GobusgoWeb do

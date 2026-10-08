@@ -211,12 +211,33 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       end
     end
 
-    test "states the cadences the sources run at today" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-      text = panel_text(view)
+    for %{field: field, text: text} <- AppInfo.recorded() do
+      test "says the usage record holds #{field}" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert text =~ "read every 5 seconds"
-      assert text =~ "read once a day"
+        assert view |> element(@panel <> " #app-info-recorded-#{unquote(field)}") |> render() =~
+                 Phoenix.HTML.html_escape(unquote(text)) |> Phoenix.HTML.safe_to_string()
+      end
+    end
+
+    test "has one entry per field of the usage record" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      entries =
+        view
+        |> element(@panel)
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id^=app-info-recorded-]")
+        |> Enum.count()
+
+      assert entries == length(Gobusgo.Usage.Records.fields())
+    end
+
+    test "says what the usage record never holds" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert panel_text(view) =~ AppInfo.recorded_never()
     end
 
     test "links the terms the data is provided under" do
