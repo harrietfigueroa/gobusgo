@@ -1,4 +1,5 @@
-import {markerLayerNames} from "./vehicle_markers"
+import {markerLayerName as stopMarkerLayerName} from "./stop_markers"
+import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 
 // Everything above `attachRouteHover` is pure: the list is a function of the
 // features under the pointer, which lets it be run apart from a map.
@@ -114,10 +115,10 @@ function presentLayerNames(map, layerNames) {
 }
 
 // The list of the routes at `point`, or null where there is nothing to
-// list: off every line, or on a vehicle marker, which stands above the lines
-// and has a popup of its own.
+// list: off every line, or on the marker of a vehicle or a stop, which stands
+// above the lines and has a popup of its own.
 function listAt({map, point, layerName}) {
-  const markerLayers = presentLayerNames(map, markerLayerNames)
+  const markerLayers = presentLayerNames(map, [...vehicleMarkerLayerNames, stopMarkerLayerName])
 
   if (markerLayers.length > 0 && map.queryRenderedFeatures(point, {layers: markerLayers}).length > 0) {
     return null

@@ -200,10 +200,15 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       text = panel_text(view)
 
+      {:proportional, %{interval_ms_min: age_ms_min, interval_ms_max: age_ms_max}} =
+        Sources.arrival_refresh_policy()
+
       paragraphs =
         AppInfo.data_use(%{
           vehicle_interval_ms: Sources.vehicle_interval_ms_min(),
-          route_period_minutes: RouteSchedule.period_minutes()
+          route_period_minutes: RouteSchedule.period_minutes(),
+          arrival_refresh_age_ms_min: age_ms_min,
+          arrival_refresh_age_ms_max: age_ms_max
         })
 
       for paragraph <- paragraphs do

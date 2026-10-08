@@ -105,12 +105,17 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   defp data_use(assigns) do
+    {:proportional, %{interval_ms_min: age_ms_min, interval_ms_max: age_ms_max}} =
+      Sources.arrival_refresh_policy()
+
     assigns =
       assign(assigns,
         paragraphs:
           AppInfo.data_use(%{
             vehicle_interval_ms: Sources.vehicle_interval_ms_min(),
-            route_period_minutes: RouteSchedule.period_minutes()
+            route_period_minutes: RouteSchedule.period_minutes(),
+            arrival_refresh_age_ms_min: age_ms_min,
+            arrival_refresh_age_ms_max: age_ms_max
           })
       )
 
