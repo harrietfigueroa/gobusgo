@@ -6,13 +6,14 @@ defmodule Gobusgo.Application do
 
   alias Gobusgo.Assert
   alias Gobusgo.Config
+  alias Gobusgo.Demand
   alias Gobusgo.Kafka
   alias Gobusgo.OneBusAway.AgencyBatch
   alias Gobusgo.OneBusAway.ResponseTrigger.KafkaConsumer
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
-  alias Gobusgo.OneBusAway.OpenStops
+  alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.RawArrivalResponse
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawVehicleResponse
@@ -126,7 +127,7 @@ defmodule Gobusgo.Application do
         ] ++
           kafka_children(kafka) ++
           [
-            {OpenStops, name: OpenStops},
+            {Demand, name: Demand, datasets: DemandKey.datasets()},
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},

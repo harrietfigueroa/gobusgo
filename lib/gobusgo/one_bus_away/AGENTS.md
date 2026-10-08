@@ -580,15 +580,23 @@ Measured against the local broker on 2026-10-05: the processor published the rec
 
 A route's stops record stays in the topic after its agency stops listing the route, as its path record does, so the stops only that route lists stay in the view.
 
-## Open stops and the arrival cycle
+## Demand, open stops, and the arrival cycle
 
 No scheduler can fetch the arrivals of every stop, so the arrival source fetches only the stops that are open, at its own pace: what riders look at decides which stops a cycle may fetch, and the cycle decides how many (decided in GOB-158).
 
-`Gobusgo.OneBusAway.OpenStops` holds the stops that processes of this node have open. The application starts one, registered under the module's name. A process calls `open/2` when it shows a stop and `close/2` when it stops; the registry monitors each process that has a stop open, so a process that exits closes its stops. `stop_ids/1` returns the stops at least one process has open. `Gobusgo.OneBusAway.OpenStops.State` holds the rules and is pure.
+`Gobusgo.Demand`, outside this directory because its mechanism names no provider, holds the `{dataset, item}` keys that processes of this node have registered. The application starts one, registered under the module's name, for the datasets of `Gobusgo.OneBusAway.DemandKey.datasets/0`. A process calls `register/2` when it starts to look at something and `release/2` when it stops; the registry monitors each process that holds a key, so a process that exits, a crash included, releases its keys. `items/2` returns the items of a dataset that at least one process holds the key of, and `holder_count/2` how many processes hold one key. `Gobusgo.Demand.State` holds the rules and is pure.
 
-- At most 2,000 stops are open and one process has at most 4 open. An opening beyond either bound returns `{:error, :stop_count_exceeded}` or `{:error, :opener_stop_count_exceeded}`.
-- State is in memory and per node: a restart begins with no stop open, and with several instances each knows only its own pages' stops.
-- Opening and closing log nothing, since a stop a process opens is what one rider looks at.
+`Gobusgo.OneBusAway.DemandKey` names the keys and is pure:
+
+- `arrivals/1` is the key of one stop's arrivals, in the dataset `arrivals_dataset/0`. A stop is open while a process holds its key, so the open stops are `Demand.items(Demand, DemandKey.arrivals_dataset())`.
+- `vehicles/0` is the one key of the vehicles of every agency. A connected vehicle page registers it when it mounts, and its static render registers nothing, so `Demand.holder_count(Demand, DemandKey.vehicles())` is the count of vehicle viewers. Nothing reads that count yet.
+
+The rules of the registry:
+
+- The bounds count inside one dataset: a dataset has at most 2,000 items and one process holds at most 4 items of one dataset, so at most 2,000 stops are open, one process has at most 4 open, and the vehicles key takes no room from either. A registration beyond a bound returns `{:error, :item_count_exceeded}` or `{:error, :holder_item_count_exceeded}`. The count of processes that hold one key has no bound in the registry.
+- A call that names a dataset the registry was not started with raises in the caller.
+- State is in memory and per node: a restart begins with no key held, the processes that held keys do not register them again, and with several instances each knows only its own pages' demand.
+- Registering and releasing log nothing, since the item a process holds is what one rider looks at. The vehicle page logs `Vehicle page not counted as a viewer` at `warning`, with the refusal and no item, when its registration is refused; it stays mounted.
 
 `Gobusgo.OneBusAway.ArrivalSchedule.due/1` is the pure function from the open stops, the fetch time each has in the arrivals view, and the time it is to the stops that are due: the stops with no fetch first, in identifier order, then the stops whose fetch is at least five minutes old, the oldest first.
 
