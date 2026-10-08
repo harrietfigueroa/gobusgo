@@ -27,6 +27,11 @@ defmodule Gobusgo.Cadence do
       milliseconds, zero while the count is above zero, and `nil` when the
       count has not been above zero for as long as the signals' source
       remembers.
+    * `{:proportional, parameters}`: the count of items times
+      `parameters.item_spacing_ms`, the milliseconds each item adds, brought
+      inside the bounds `parameters` holds. No item decides the shortest
+      interval. Its signal is `:item_count`, how many items share the
+      interval, a non-negative integer.
 
   The signals are a map of what a policy decides from, and a policy reads
   the keys it knows. Signals without a key a policy reads, or with a value
@@ -47,7 +52,15 @@ defmodule Gobusgo.Cadence do
           steps: [step(), ...],
           hold_ms: non_neg_integer()
         }
-  @type policy :: {:fixed, pos_integer()} | {:steps, steps_policy()}
+  @type proportional_policy :: %{
+          interval_ms_min: pos_integer(),
+          interval_ms_max: pos_integer(),
+          item_spacing_ms: pos_integer()
+        }
+  @type policy ::
+          {:fixed, pos_integer()}
+          | {:steps, steps_policy()}
+          | {:proportional, proportional_policy()}
   @type signals :: map()
   @type bounds :: %{
           required(:interval_ms_min) => pos_integer(),
@@ -87,6 +100,7 @@ defmodule Gobusgo.Cadence do
   @spec interval_ms_min(policy()) :: pos_integer()
   def interval_ms_min({:fixed, interval_ms}), do: interval_ms
   def interval_ms_min({:steps, %{interval_ms_min: interval_ms_min}}), do: interval_ms_min
+  def interval_ms_min({:proportional, %{interval_ms_min: interval_ms_min}}), do: interval_ms_min
   def interval_ms_min(policy), do: Assert.unreachable(policy)
 
   @doc """
@@ -110,6 +124,11 @@ defmodule Gobusgo.Cadence do
 
     Enum.each(steps, &assert_step(&1, bounds))
     assert_step_order(Enum.map(steps, & &1.viewer_count_min))
+  end
+
+  def assert_policy({:proportional, %{item_spacing_ms: item_spacing_ms} = parameters}) do
+    assert_bounds(parameters)
+    assert_interval(item_spacing_ms, "item_spacing_ms")
   end
 
   def assert_policy(policy), do: Assert.unreachable(policy)
@@ -159,6 +178,29 @@ defmodule Gobusgo.Cadence do
     step = steps |> Enum.filter(&(&1.viewer_count_min <= viewer_count)) |> List.last()
     Assert.condition(step != nil, "a step must apply to the count #{viewer_count}")
     clamp(step.interval_ms, bounds)
+  end
+
+  defp decide({:proportional, parameters}, signals) do
+    Assert.condition(
+      is_map_key(signals, :item_count),
+      "a proportional policy needs the signal item_count, got: #{inspect(Map.keys(signals))}"
+    )
+
+    item_count = signals.item_count
+
+    Assert.condition(
+      is_integer(item_count),
+      "item_count must be an integer, got: #{inspect(item_count)}"
+    )
+
+    Assert.condition(item_count >= 0, "item_count must be zero or more, got: #{item_count}")
+
+    # The count is capped at the first one whose product passes the longest
+    # interval, which bounds the product whatever the count.
+    item_count_saturated =
+      Integer.floor_div(parameters.interval_ms_max, parameters.item_spacing_ms) + 1
+
+    clamp(min(item_count, item_count_saturated) * parameters.item_spacing_ms, parameters)
   end
 
   defp decide(policy, _signals), do: Assert.unreachable(policy)

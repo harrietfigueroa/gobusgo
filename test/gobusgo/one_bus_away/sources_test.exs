@@ -10,7 +10,9 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   alias Gobusgo.Assert.AssertionError
   alias Gobusgo.Cadence
   alias Gobusgo.Demand
+  alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.DemandKey
+  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
@@ -412,6 +414,101 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
                        %{destination: "raw/oba/arrivals-and-departures-for-stop/" <> _name}}
 
       refute_received {:written, _request}
+    end
+
+    # Each row is a count of open stops and whether the arrival source
+    # fetches again the one of them whose fetch is a minute old. The view is
+    # started and filled here, every other stop with a fetch a second old,
+    # and the cycle reads the time the test names.
+    for {open_count, written_count} <- [{12, 1}, {13, 0}] do
+      test "runs the arrival source at a refresh age scaled to #{open_count} open stops",
+           context do
+        now = ~U[2026-10-07 02:30:00Z]
+        view = Module.concat(__MODULE__, "ArrivalView#{context.line}")
+
+        start_supervised!(
+          {FetchView,
+           name: view, pubsub: Gobusgo.PubSub, records: ArrivalBatch.Records, id_count_max: 100}
+        )
+
+        stop_ids = ["95_7" | for(index <- 2..unquote(open_count), do: "95_#{index + 100}")]
+
+        for {stop_id, age_seconds} <- Enum.zip(stop_ids, [60 | List.duplicate(1, 99)]) do
+          record =
+            ArrivalBatch.Records.build(%{
+              stop_id: stop_id,
+              destination: "raw/oba/arrivals-and-departures-for-stop/seeded.json.gz",
+              fetched_at: DateTime.add(now, -age_seconds, :second),
+              data_sha256: String.duplicate("ab", 32),
+              request_id: "0199c4a2-7e1b-7a3f-9d20-000000000001",
+              arrivals: []
+            })
+
+          :ok = FetchView.apply_records(view, [record.value])
+        end
+
+        Req.Test.stub(@stub_name, fn conn ->
+          body =
+            File.read!(Path.join(@fixture_directory, "arrivals_and_departures_for_stop.json"))
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, body)
+        end)
+
+        spec =
+          arrivals(
+            stop_ids: fn -> stop_ids end,
+            arrival_view: view,
+            clock: fn -> now end,
+            record_options: [
+              fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
+              write_options: [backend: RecordingBackend, recipient: self()],
+              publish_options: [backend: AcknowledgingPublisher]
+            ]
+          )
+
+        assert {:ok, %{open_count: unquote(open_count), recorded_count: unquote(written_count)}} =
+                 spec.run.()
+      end
+    end
+  end
+
+  describe "arrival_refresh_policy/0" do
+    # Each row is a count of open stops and the age at which the arrival
+    # source fetches a stop again: no stop, the counts on each side of where
+    # the age leaves 30 seconds and of where it reaches five minutes, one
+    # between them, and one far past the stops a registry holds.
+    for {open_count, refresh_age_ms} <- [
+          {0, 30_000},
+          {1, 30_000},
+          {6, 30_000},
+          {7, 35_000},
+          {12, 60_000},
+          {59, 295_000},
+          {60, 300_000},
+          {61, 300_000},
+          {2_000, 300_000},
+          {10 ** 30, 300_000}
+        ] do
+      test "decides a refresh age of #{refresh_age_ms} ms for #{open_count} open stops" do
+        signals = %{item_count: unquote(open_count)}
+
+        assert Cadence.interval_ms(Sources.arrival_refresh_policy(), signals) ==
+                 unquote(refresh_age_ms)
+      end
+    end
+
+    test "spaces the stops by the interval between the arrival source's requests" do
+      spec = arrivals([])
+      request_interval_ms = Cadence.interval_ms(spec.cadence.policy, spec.cadence.signals.())
+
+      assert {:proportional, %{item_spacing_ms: ^request_interval_ms}} =
+               Sources.arrival_refresh_policy()
+    end
+
+    test "is a policy the cadence service accepts" do
+      assert Cadence.assert_policy(Sources.arrival_refresh_policy()) == :ok
     end
   end
 end

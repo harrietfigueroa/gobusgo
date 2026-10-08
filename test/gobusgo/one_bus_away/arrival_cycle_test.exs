@@ -46,6 +46,8 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
   @fresh DateTime.add(@now, -60, :second)
   @stale DateTime.add(@now, -600, :second)
   @request_id "0199c4a2-7e1b-7a3f-9d20-000000000001"
+  @proportional {:proportional,
+                 %{interval_ms_min: 30_000, interval_ms_max: 300_000, item_spacing_ms: 5_000}}
 
   # The requests go through a gate of their own that refills at once, so
   # the tests neither wait on the application's gate nor spend its budget.
@@ -172,6 +174,58 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
       assert {:ok, %{due_count: 1, recorded_count: 1}} = run(context, ["1_100"])
     end
 
+    # Each row is a count of open stops and whether the one of them fetched
+    # a minute ago is fetched again, under a policy of 5,000 ms a stop from
+    # 30,000 ms up. Every other stop has a fetch a second old, which no row
+    # makes due.
+    for {open_count, refresh_age_ms, written} <- [
+          {3, 30_000, ["1_1"]},
+          {12, 60_000, ["1_1"]},
+          {13, 65_000, []},
+          {20, 100_000, []}
+        ] do
+      test "with #{open_count} stops open, a fetch a minute old meets a refresh age of #{refresh_age_ms} ms",
+           context do
+        stop_ids = for index <- 1..unquote(open_count), do: "1_#{index}"
+        seed(context, "1_1", @fresh)
+        for stop_id <- tl(stop_ids), do: seed(context, stop_id, DateTime.add(@now, -1, :second))
+
+        assert {:ok, %{open_count: unquote(open_count)}} =
+                 run(context, stop_ids, refresh_policy: @proportional)
+
+        assert written() == unquote(written)
+      end
+    end
+
+    test "counts the open stops it schedules from as the policy's items", context do
+      test_pid = self()
+
+      stop_ids = fn ->
+        send(test_pid, :open_stops_read)
+        for index <- 1..12, do: "1_#{index}"
+      end
+
+      seed(context, "1_1", @fresh)
+
+      assert {:ok, %{open_count: 12, due_count: 12}} =
+               run(context, [], stop_ids: stop_ids, refresh_policy: @proportional)
+
+      assert_received :open_stops_read
+      refute_received :open_stops_read
+    end
+
+    test "applies a fixed age of five minutes unless given a policy", context do
+      seed(context, "1_100", DateTime.add(@now, -299, :second))
+
+      assert run(context, ["1_100"]) == {:ok, %{@nothing | open_count: 1}}
+    end
+
+    test "raises for a refresh policy of an unknown shape", context do
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        run(context, ["1_100"], refresh_policy: {:unknown, 30_000})
+      end
+    end
+
     test "fetches the stops with no fetch before the stale ones, the oldest first", context do
       seed(context, "1_100", @stale)
       seed(context, "1_200", DateTime.add(@stale, -60, :second))
@@ -249,6 +303,18 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
       assert written() == []
     end
 
+    test "defers the due stops the request count does not reach at the longest refresh age",
+         context do
+      stop_ids = for index <- 10..70, do: "1_#{index}"
+      options = Keyword.put(base_options(context, stop_ids), :refresh_policy, @proportional)
+
+      assert ArrivalCycle.run(@settings, options) ==
+               {:ok,
+                %{@nothing | open_count: 61, due_count: 61, recorded_count: 1, deferred_count: 60}}
+
+      assert written() == ["1_10"]
+    end
+
     test "raises for more open stops than a cycle reads", context do
       stop_ids = for index <- 1..2_001, do: "1_#{index}"
 
@@ -322,6 +388,30 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
 
         assert length(String.split(log, unquote(message))) == 2
         assert log =~ "[#{unquote(level)}]"
+      end
+    end
+
+    # Each row is a refresh policy, the open stops, and the age the cycle's
+    # one line has to name for them, read from the line's metadata.
+    for {label, policy, open_count, refresh_age_ms} <- [
+          {"the shortest age for no open stop", @proportional, 0, 30_000},
+          {"the scaled age for 12 open stops", @proportional, 12, 60_000},
+          {"the longest age for 61 open stops", @proportional, 61, 300_000},
+          {"the age of a fixed policy", {:fixed, 45_000}, 2, 45_000}
+        ] do
+      test "names #{label} as refresh_age_ms", context do
+        stop_ids = for index <- 1..unquote(open_count)//1, do: "1_#{index}"
+
+        log =
+          capture_log([level: :debug, metadata: :all], fn ->
+            run(context, stop_ids,
+              refresh_policy: unquote(Macro.escape(policy)),
+              request_count_max: 1
+            )
+          end)
+
+        [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ "OneBusAway arrival cycle"))
+        assert line =~ "refresh_age_ms=#{unquote(refresh_age_ms)} "
       end
     end
 
