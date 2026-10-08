@@ -6,8 +6,8 @@ defmodule GobusgoWeb.Endpoint do
   listener address and the secret that signs the session.
 
   A JSON response with an error status leaves as `application/problem+json`.
-  A request for `/health` is not logged. Built assets are served from
-  `priv/static`.
+  A request for `/health` or `/ready` is not logged. Built assets are served
+  from `priv/static`.
 
   The vendored archives of `priv/vendor` are served under `/vendor`, and a
   cache may keep a file for an hour.
@@ -28,6 +28,7 @@ defmodule GobusgoWeb.Endpoint do
   @problem_content_type "application/problem+json"
   @error_status_min 400
   @health_path "/health"
+  @readiness_path "/ready"
   @static_paths ["assets", "favicon.ico", "robots.txt"]
   @vendor_path "/vendor"
   @vendor_cache_seconds 3_600
@@ -94,6 +95,7 @@ defmodule GobusgoWeb.Endpoint do
   @doc "The level a request is logged at, or `false` for a request that is not logged."
   @spec log_level(Plug.Conn.t()) :: Logger.level() | false
   def log_level(%Plug.Conn{request_path: @health_path}), do: false
+  def log_level(%Plug.Conn{request_path: @readiness_path}), do: false
   def log_level(%Plug.Conn{}), do: :info
 
   defp problem_content_type(conn, _options) do

@@ -1,12 +1,12 @@
 defmodule Gobusgo.OneBusAway.RouteCycle do
-  @agency_count_max 64
+  @agency_count_max Gobusgo.OneBusAway.RouteItems.agency_count_max()
   @budget_ms_default 50_000
   @fetch_retries_max 0
   @request_count_max_default 45
   @request_deadline_ms_default 10_000
   @request_interval_ms_default 1_000
   @request_ms_min 250
-  @route_count_max 5_000
+  @route_count_max Gobusgo.OneBusAway.RouteItems.route_count_max()
 
   @moduledoc """
   One cycle of route fetches: records the route data that is due, one
@@ -14,11 +14,11 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
   recorded through `Gobusgo.OneBusAway.RouteRecorder`, or the stops and paths
   of one route, recorded through `Gobusgo.OneBusAway.RoutePathRecorder`.
 
-  The agencies are those of the agency view's current fetch, and the routes
-  are those the route view holds for them. `Gobusgo.OneBusAway.RouteSchedule`
-  says which are due, from the attempt time each has in its view: an item
-  with no fetch, and an item whose slot has come since its last fetch.
-  Agencies come before routes, each in identifier order. A cycle notes each
+  The agencies are those of the agency view's current fetch, and
+  `Gobusgo.OneBusAway.RouteItems` reads their items with the attempt time
+  each has in its view. `Gobusgo.OneBusAway.RouteSchedule` says which are
+  due: an item with no attempt, and an item whose slot has come since its
+  last one. Agencies come before routes, each in identifier order. A cycle notes each
   response it records and announces as an attempt in the item's view, so an
   item whose response does not process waits for its slot like any other.
 
@@ -78,6 +78,7 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
   alias Gobusgo.OneBusAway.Client
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RoutePathRecorder
+  alias Gobusgo.OneBusAway.RouteItems
   alias Gobusgo.OneBusAway.RouteRecorder
   alias Gobusgo.OneBusAway.RouteSchedule
 
@@ -89,9 +90,6 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
           deferred_count: non_neg_integer(),
           unannounced_count: non_neg_integer()
         }
-
-  @typedoc "One fetch a cycle can make: an agency's routes, or a route's stops and paths."
-  @type item :: {:routes, String.t()} | {:route_path, String.t()}
 
   @doc "Records the route data that is due, at most one slice of it."
   @spec run(Client.settings(), Keyword.t()) :: {:ok, counts()} | {:error, :nothing_recorded}
@@ -141,46 +139,19 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
     end
   end
 
-  # The due agencies, then the due routes of the agencies' current fetches.
   defp due_items(options) do
     now = Keyword.fetch!(options, :clock).()
-    route_view = Keyword.fetch!(options, :route_view)
-    agency_ids = options |> Keyword.fetch!(:agency_ids) |> then(& &1.()) |> Enum.sort()
-    agency_count = length(agency_ids)
 
-    Assert.condition(
-      agency_count <= @agency_count_max,
-      "a cycle reads at most #{@agency_count_max} agencies, got: #{agency_count}"
-    )
+    attempts =
+      RouteItems.read(%{
+        agency_ids: Keyword.fetch!(options, :agency_ids).(),
+        route_view: Keyword.fetch!(options, :route_view),
+        route_path_view: Keyword.fetch!(options, :route_path_view)
+      })
 
-    route_ids =
-      agency_ids
-      |> Enum.flat_map(fn agency_id ->
-        case FetchView.current_fetch(route_view, agency_id) do
-          nil -> []
-          %{route_ids: route_ids} -> route_ids
-        end
-      end)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    route_count = length(route_ids)
-
-    Assert.condition(
-      route_count <= @route_count_max,
-      "a cycle reads at most #{@route_count_max} routes, got: #{route_count}"
-    )
-
-    route_path_view = Keyword.fetch!(options, :route_path_view)
-
-    due(:routes, agency_ids, FetchView.attempt_times(route_view), now) ++
-      due(:route_path, route_ids, FetchView.attempt_times(route_path_view), now)
-  end
-
-  defp due(kind, ids, attempt_times, now) do
-    for id <- ids,
-        RouteSchedule.due?(%{id: id, fetched_at: Map.get(attempt_times, id), now: now}) do
-      {kind, id}
+    for %{item: {_kind, id} = item, attempted_at: attempted_at} <- attempts,
+        RouteSchedule.due?(%{id: id, fetched_at: attempted_at, now: now}) do
+      item
     end
   end
 
