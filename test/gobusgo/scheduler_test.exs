@@ -16,6 +16,10 @@ defmodule Gobusgo.SchedulerTest do
   @interval_ms 3_600_000
   @deadline_ms 60_000
   @receive_timeout_ms 1_000
+  @signals_wait_ms 20
+  @signals_working 0
+  @signals_raising 1
+  @signals_stalling 2
 
   setup context do
     task_supervisor = Module.concat(__MODULE__, "TaskSupervisor#{context.line}")
@@ -54,17 +58,31 @@ defmodule Gobusgo.SchedulerTest do
     end
   end
 
+  defp cadence(signals \\ fn -> %{} end) do
+    %{policy: {:fixed, @interval_ms}, signals: signals}
+  end
+
+  # A signals function that does what the test last set in `mode`, so one
+  # scheduler can meet a read that works and a read that does not.
+  defp switched_signals(mode) do
+    fn ->
+      case :atomics.get(mode, 1) do
+        @signals_working -> %{}
+        @signals_raising -> raise "signals failed"
+        @signals_stalling -> Process.sleep(:infinity)
+      end
+    end
+  end
+
+  defp spec(context, overrides) do
+    Map.merge(
+      %{name: context.name, run: run(self()), cadence: cadence(), deadline_ms: @deadline_ms},
+      overrides
+    )
+  end
+
   defp start_scheduler(context, overrides \\ %{}) do
-    spec =
-      Map.merge(
-        %{
-          name: context.name,
-          run: run(self()),
-          interval_ms: @interval_ms,
-          deadline_ms: @deadline_ms
-        },
-        Map.get(overrides, :spec, %{})
-      )
+    spec = spec(context, Map.get(overrides, :spec, %{}))
 
     # A test that ends with its run in flight stops the scheduler without a
     # wait, so the suite never sits out the default.
@@ -332,44 +350,237 @@ defmodule Gobusgo.SchedulerTest do
     end
   end
 
-  describe "start_link/1" do
-    for {field, value} <- [
-          interval_ms: 0,
-          interval_ms: 999,
-          deadline_ms: 0,
-          interval_ms: 1.5,
-          run: :not_a_function
+  describe "status/1" do
+    test "reports the interval the source runs at", context do
+      start_scheduler(context)
+      await_run_start()
+
+      assert %{interval_ms: @interval_ms, signals_failure_count: 0} =
+               Scheduler.status(context.name)
+    end
+  end
+
+  describe "a signals read that fails" do
+    # Each row is a signals function that never returns signals: one raises,
+    # one exits, one throws, and one never returns, which the scheduler
+    # gives up on after `signals_wait_ms`.
+    for {label, signals} <- [
+          {"raises", quote(do: fn -> raise "signals failed" end)},
+          {"exits", quote(do: fn -> exit(:signals_failed) end)},
+          {"throws", quote(do: fn -> throw(:signals_failed) end)},
+          {"stalls", quote(do: fn -> Process.sleep(:infinity) end)}
         ] do
-      test "refuses a spec whose #{field} is #{inspect(value)}", context do
-        spec = %{
-          name: context.name,
-          run: fn -> {:ok, :recorded} end,
-          interval_ms: @interval_ms,
-          deadline_ms: @deadline_ms
-        }
+      test "because the function #{label} is counted, and the interval is kept", context do
+        scheduler =
+          start_scheduler(context, %{
+            spec: %{cadence: cadence(unquote(signals))},
+            options: [signals_wait_ms: @signals_wait_ms]
+          })
 
-        spec = Map.put(spec, unquote(field), unquote(value))
+        await_run_start()
 
-        assert_raise Gobusgo.Assert.AssertionError, fn ->
-          Scheduler.start_link(spec: spec, task_supervisor: context.task_supervisor)
-        end
+        assert %{phase: :running, interval_ms: @interval_ms, signals_failure_count: 1} =
+                 Scheduler.status(context.name)
+
+        assert Process.whereis(context.name) == scheduler
+      end
+
+      test "because the function #{label} leaves the next run starting on time", context do
+        start_scheduler(context, %{
+          spec: %{cadence: cadence(unquote(signals))},
+          options: [signals_wait_ms: @signals_wait_ms]
+        })
+
+        run = await_run_start()
+        end_run(run, {:return, {:ok, :recorded}})
+        tick_after(context, @interval_ms)
+
+        assert await_run_start() != run
+      end
+    end
+
+    test "is counted once per read while the reads keep failing", context do
+      start_scheduler(context, %{spec: %{cadence: cadence(fn -> raise "signals failed" end)}})
+      await_run_start()
+
+      tick_after(context, 1)
+      tick_after(context, 1)
+
+      assert %{signals_failure_count: 3} = Scheduler.status(context.name)
+    end
+
+    test "is no longer counted after a read that works", context do
+      mode = :atomics.new(1, signed: false)
+      :atomics.put(mode, 1, @signals_raising)
+      start_scheduler(context, %{spec: %{cadence: cadence(switched_signals(mode))}})
+      await_run_start()
+
+      :atomics.put(mode, 1, @signals_working)
+      tick_after(context, 1)
+
+      assert %{signals_failure_count: 0, interval_ms: @interval_ms} =
+               Scheduler.status(context.name)
+    end
+
+    test "leaves no process of a stalled function behind", context do
+      test = self()
+
+      signals = fn ->
+        send(test, {:signals_read_started, self()})
+        Process.sleep(:infinity)
+      end
+
+      start_scheduler(context, %{
+        spec: %{cadence: cadence(signals)},
+        options: [signals_wait_ms: @signals_wait_ms]
+      })
+
+      assert_receive {:signals_read_started, read}, @receive_timeout_ms
+      Process.monitor(read)
+
+      assert_receive {:DOWN, _reference, :process, ^read, _reason}, @receive_timeout_ms
+    end
+
+    # Three reads fail in a row, then one works, then one fails, so the log
+    # holds one line for each time the reads went from working to failing.
+    test "is logged as a warning once per change from working to failing", context do
+      mode = :atomics.new(1, signed: false)
+      :atomics.put(mode, 1, @signals_raising)
+
+      log =
+        capture_log([metadata: :all], fn ->
+          start_scheduler(context, %{spec: %{cadence: cadence(switched_signals(mode))}})
+          await_run_start()
+          tick_after(context, 1)
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+          :atomics.put(mode, 1, @signals_working)
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+          :atomics.put(mode, 1, @signals_raising)
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+        end)
+
+      assert log =~ "[warning] Scheduler signals read failed"
+      assert log =~ "source=#{inspect(context.name)}"
+      assert length(String.split(log, "Scheduler signals read failed")) == 3
+    end
+
+    test "is logged without the message of what the function raised", context do
+      signals = fn -> raise "secret-3f9a1c07be52" end
+
+      log =
+        capture_log([metadata: :all], fn ->
+          start_scheduler(context, %{spec: %{cadence: cadence(signals)}})
+          await_run_start()
+          Scheduler.status(context.name)
+        end)
+
+      assert log =~ "Scheduler signals read failed"
+      refute log =~ "secret-3f9a1c07be52"
+    end
+
+    test "is not logged while every read works", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          start_scheduler(context)
+          await_run_start()
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+        end)
+
+      refute log =~ "Scheduler signals read failed"
+    end
+  end
+
+  describe "signals that are not a map" do
+    test "stop the scheduler, as the programmer error they are", context do
+      Process.flag(:trap_exit, true)
+      spec = spec(context, %{cadence: cadence(fn -> :not_signals end)})
+
+      {:ok, scheduler} =
+        Scheduler.start_link(spec: spec, task_supervisor: context.task_supervisor)
+
+      assert_receive {:EXIT, ^scheduler, {%Gobusgo.Assert.AssertionError{}, _stacktrace}},
+                     @receive_timeout_ms
+    end
+  end
+
+  describe "assert_spec/1" do
+    test "accepts a spec whose deadline is under its policy's shortest interval", context do
+      assert Scheduler.assert_spec(spec(context, %{})) == :ok
+    end
+
+    # Each row replaces one field of a spec that is otherwise accepted.
+    for {label, field, value} <- [
+          {"a policy interval of zero", :cadence,
+           quote(do: %{policy: {:fixed, 0}, signals: fn -> %{} end})},
+          {"a policy interval under the evaluation period", :cadence,
+           quote(do: %{policy: {:fixed, 999}, signals: fn -> %{} end})},
+          {"a policy interval that is not an integer", :cadence,
+           quote(do: %{policy: {:fixed, 1.5}, signals: fn -> %{} end})},
+          {"a policy of an unknown shape", :cadence,
+           quote(do: %{policy: {:unknown, 5_000}, signals: fn -> %{} end})},
+          {"signals that are not a function", :cadence,
+           quote(do: %{policy: {:fixed, 5_000}, signals: %{}})},
+          {"signals that take an argument", :cadence,
+           quote(do: %{policy: {:fixed, 5_000}, signals: fn _argument -> %{} end})},
+          {"a cadence that is not a map", :cadence, quote(do: {:fixed, 5_000})},
+          {"a deadline of zero", :deadline_ms, 0},
+          {"a deadline equal to the policy's shortest interval", :deadline_ms, @interval_ms},
+          {"a deadline over the policy's shortest interval", :deadline_ms, @interval_ms + 1},
+          {"a run that is not a function", :run, :not_a_function},
+          {"an interval beside its cadence", :interval_ms, @interval_ms}
+        ] do
+      test "refuses a spec with #{label}", context do
+        spec = spec(context, %{unquote(field) => unquote(value)})
+
+        assert_raise Gobusgo.Assert.AssertionError, fn -> Scheduler.assert_spec(spec) end
+      end
+    end
+
+    test "accepts a deadline one millisecond under the policy's shortest interval", context do
+      assert Scheduler.assert_spec(spec(context, %{deadline_ms: @interval_ms - 1})) == :ok
+    end
+
+    for field <- [:name, :run, :cadence, :deadline_ms] do
+      test "refuses a spec without #{field}", context do
+        spec = Map.delete(spec(context, %{}), unquote(field))
+
+        assert_raise Gobusgo.Assert.AssertionError, fn -> Scheduler.assert_spec(spec) end
+      end
+    end
+  end
+
+  describe "start_link/1" do
+    test "refuses a spec whose deadline is not under its policy's shortest interval", context do
+      spec = spec(context, %{deadline_ms: @interval_ms})
+
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        Scheduler.start_link(spec: spec, task_supervisor: context.task_supervisor)
       end
     end
 
     test "refuses a clock that is not a zero-arity function", context do
-      spec = %{
-        name: context.name,
-        run: fn -> {:ok, :recorded} end,
-        interval_ms: @interval_ms,
-        deadline_ms: @deadline_ms
-      }
-
       assert_raise Gobusgo.Assert.AssertionError, fn ->
         Scheduler.start_link(
-          spec: spec,
+          spec: spec(context, %{}),
           task_supervisor: context.task_supervisor,
           monotonic_time_ms: :not_a_function
         )
+      end
+    end
+
+    for signals_wait_ms <- [0, 1.5, 1_000] do
+      test "refuses a signals wait of #{signals_wait_ms} ms", context do
+        assert_raise Gobusgo.Assert.AssertionError, fn ->
+          Scheduler.start_link(
+            spec: spec(context, %{}),
+            task_supervisor: context.task_supervisor,
+            signals_wait_ms: unquote(signals_wait_ms)
+          )
+        end
       end
     end
   end
