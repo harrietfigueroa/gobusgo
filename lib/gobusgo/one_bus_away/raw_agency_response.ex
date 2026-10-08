@@ -68,6 +68,10 @@ defmodule Gobusgo.OneBusAway.RawAgencyResponse do
 
   @destination_prefix "raw/oba/agencies-with-coverage"
 
+  @doc "The prefix every destination of this dataset starts with."
+  @spec destination_prefix() :: String.t()
+  def destination_prefix, do: @destination_prefix
+
   @doc """
   Returns the destination and content that store `response` under
   `request_id`, with the fetch time and data hash they carry. `response` is a

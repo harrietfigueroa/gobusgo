@@ -48,7 +48,9 @@ defmodule Gobusgo.OneBusAway.Reconciliation do
   ## Results
 
   `{:ok, result}`, where `result` holds the `:published_count` and
-  `:skipped`, a list of `%{destination: destination, reason: reason}`.
+  `:skipped`, a list of `%{destination: destination, reason: reason}`. A
+  range whose stored responses have been deleted is a range that holds
+  none: the result has a `:published_count` of 0 and no skip.
 
   `{:error, reason}`:
 

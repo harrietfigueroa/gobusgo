@@ -167,7 +167,7 @@ The map is the basemap: the archive in the basemap directory (see [Basemap archi
 
 With the OneBusAway settings exported, the server fetches every agency's vehicles every ten seconds while the page is open, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
-Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
+Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and the cleanup deletes them after one day (see [Retention](#retention)).
 
 ## Running in Docker
 
@@ -272,7 +272,7 @@ A pull request builds the image for the same platform and publishes nothing.
 
 The application stores one record each time a page disconnects, to count visits. A record holds when the page connected, for how long, which page it was (`vehicle`, `agency`, `home`), whether it was a page already open that connected again, the agencies and routes of the last filter the page showed, the device class (`mobile`, `tablet`, `desktop`, `bot`, `unknown`), the browser family, the range the window's width falls in, the browser's language without its region, and the host of the site that linked to the page. A record holds no IP address, no cookie, no identifier of a visitor, and no user agent, so the records of two visits cannot be told to be from one visitor. The vehicle page's info panel lists the same fields.
 
-The records of the connections that ended in a minute are one gzip file under `usage/page-connections/dt=<date written>/` in the data directory: a JSON object with `meta` and `records`. A minute in which no connection ended writes no file, and the application writes what it holds when it shuts down. A crash loses the records not yet written and the connections open at that moment. Nothing deletes these files yet.
+The records of the connections that ended in a minute are one gzip file under `usage/page-connections/dt=<date written>/` in the data directory: a JSON object with `meta` and `records`. A minute in which no connection ended writes no file, and the application writes what it holds when it shuts down. A crash loses the records not yet written and the connections open at that moment. The cleanup deletes these files after three days (see [Retention](#retention)), and they cannot be fetched again, so counts over a longer time have to be copied out before then.
 
 A phone that sleeps reopens its connection, so a visit is a record whose `reconnect` is `false`. This counts the visits of each day, crawlers left out:
 
@@ -284,6 +284,21 @@ find "$GOBUSGO_DATA_DIR/usage/page-connections" -name '*.json.gz' -exec gunzip -
 ```
 
 The server logs `Usage records written` once per file, with the count of records in it and the counts its bounds dropped. Under test nothing is recorded.
+
+## Retention
+
+Once an hour the server deletes the stored files that are past their dataset's retention. A file belongs to the UTC date in its path, `dt=<date>`, and is deleted once that date is more than the dataset's days before today, so it is kept at least that many days and less than one day more.
+
+| Files | Kept |
+| --- | --- |
+| `raw/oba/vehicles-for-agency/` | 1 day |
+| `raw/oba/arrivals-and-departures-for-stop/` | 1 day |
+| `raw/oba/agencies-with-coverage/` | 30 days |
+| `raw/oba/routes-for-agency/` | 30 days |
+| `raw/oba/stops-for-route/` | 30 days |
+| `usage/page-connections/` | 3 days |
+
+A run deletes at most 20,000 files, the oldest first, and leaves the rest to the next run. It logs `Stored content cleanup finished` with the counts it deleted and failed to delete and whether a backlog is left. The first run starts with the server, so a data directory that holds older files loses them then. A directory that a deletion leaves empty is removed, up to the dataset's own. Under test nothing is scheduled. Reconciliation over a time range whose files are deleted publishes nothing and reports a count of 0.
 
 ## Usage
 

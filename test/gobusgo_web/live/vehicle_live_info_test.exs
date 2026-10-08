@@ -228,10 +228,17 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
         |> element(@panel)
         |> render()
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("[id^=app-info-recorded-]")
+        |> LazyHTML.query("li[id^=app-info-recorded-]")
         |> Enum.count()
 
       assert entries == length(Gobusgo.Usage.Records.fields())
+    end
+
+    test "says how long a usage record is kept, by the retention policy" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element(@panel <> " #app-info-recorded-retention") |> render() =~
+               AppInfo.recorded_retention(Gobusgo.RetentionPolicy.usage_day_count())
     end
 
     test "says what the usage record never holds" do

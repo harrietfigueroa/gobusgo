@@ -78,7 +78,7 @@ defmodule Gobusgo.ApplicationTest do
            ]
   end
 
-  test "no source is scheduled under test" do
+  test "no source and no cleanup is scheduled under test" do
     assert Supervisor.which_children(Gobusgo.SchedulerSupervisor) == []
   end
 end

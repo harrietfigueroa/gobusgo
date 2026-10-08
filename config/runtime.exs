@@ -7,6 +7,7 @@ data_dir_default = "data"
 data_dir = System.get_env("GOBUSGO_DATA_DIR", data_dir_default)
 base_dir = Path.expand(if String.trim(data_dir) == "", do: data_dir_default, else: data_dir)
 
+config :gobusgo, Gobusgo.Deleter.LocalFile, base_dir: base_dir
 config :gobusgo, Gobusgo.Reader.LocalFile, base_dir: base_dir
 config :gobusgo, Gobusgo.Writer.LocalFile, base_dir: base_dir
 

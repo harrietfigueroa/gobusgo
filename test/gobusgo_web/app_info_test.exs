@@ -88,6 +88,22 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "recorded_retention/1" do
+    for {day_count, text} <- [
+          {1, "kept for a day"},
+          {3, "kept for 3 days"},
+          {30, "kept for 30 days"}
+        ] do
+      test "says a record is #{text} for a retention of #{day_count} days" do
+        assert AppInfo.recorded_retention(unquote(day_count)) =~ unquote(text)
+      end
+    end
+
+    test "refuses a retention of no days" do
+      assert_raise Gobusgo.Assert.AssertionError, fn -> AppInfo.recorded_retention(0) end
+    end
+  end
+
   describe "recorded_never/0" do
     test "says a record holds no address and no identifier" do
       assert AppInfo.recorded_never() =~ "no IP address"

@@ -129,6 +129,20 @@ defmodule GobusgoWeb.AppInfo do
   @spec recorded() :: [recorded_field(), ...]
   def recorded, do: @recorded
 
+  @doc """
+  The statement of how long a usage record is kept, for a retention of
+  `day_count` days.
+  """
+  @spec recorded_retention(pos_integer()) :: String.t()
+  def recorded_retention(day_count) when is_integer(day_count) do
+    Assert.condition(day_count >= 1, "day_count must be positive, got: #{day_count}")
+
+    case day_count do
+      1 -> "A record is kept for a day and deleted within a day after that."
+      day_count -> "A record is kept for #{day_count} days and deleted within a day after that."
+    end
+  end
+
   @doc "The statement of what a usage record never holds."
   @spec recorded_never() :: String.t()
   def recorded_never, do: @recorded_never
