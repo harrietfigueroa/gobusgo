@@ -21,6 +21,8 @@ The documentation host (`developer.onebusaway.org`) serves docs only; it is not 
 
 Key process, per Sound Transit: email `oba_api_key@soundtransit.org` with the contact's first and last name, an email address if different from the sender, and acknowledgment of the Transit Data Terms of Use. Sound Transit states processing takes 20 business days. The project's key is issued.
 
+The Transit Data Terms of Use are at https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use (checked 2026-10-08, read through a summary of the page and not clause by clause). Three clauses shape what a page shows. Section 4 has the terms provided to every user who receives the data, so the vehicle page's info panel links them. Section 7 forbids a transit agency's name in the name of a business or an application and allows naming the agencies as providing the data on an "as is" basis, which is the wording of the panel's credits. Section 3 has the data shown unchanged and at its most current. The page carries no date of its last change. `GobusgoWeb.AppInfo` holds the link.
+
 Every request carries the `key` query parameter. The key is read from configuration at runtime (environment variable `ONEBUSAWAY_API_KEY`) and never committed, logged, or written to documentation. The documentation's `key=TEST` example value is not a credential for this project.
 
 Because the key travels in the query string, the HTTP client must redact `key` from URLs in serialized errors and logs. The AGENTS.md rule on stripping auth headers on cross-origin redirects does not apply to a query-string key; instead, do not follow redirects to a different origin, so the key never reaches an origin this integration did not name.

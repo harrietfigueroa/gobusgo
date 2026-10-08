@@ -17,6 +17,10 @@ defmodule Gobusgo.OneBusAway.RouteSchedule do
   holds until the slot comes again, a day later.
   """
 
+  @doc "The minutes from one coming of a slot to the next, which is how often an identifier is due."
+  @spec period_minutes() :: pos_integer()
+  def period_minutes, do: @day_minutes
+
   @doc "The slot of `id`: a minute of the UTC day, from 0 to #{@day_minutes - 1}."
   @spec slot_minute(String.t()) :: 0..1439
   def slot_minute(id) when is_binary(id), do: :erlang.phash2(id, @day_minutes)

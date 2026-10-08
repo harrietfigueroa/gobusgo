@@ -181,6 +181,13 @@ defmodule Gobusgo.OneBusAway.Sources do
   end
 
   @doc """
+  Returns the vehicle source's shortest interval, in milliseconds: the one
+  it runs at while vehicles have a viewer.
+  """
+  @spec vehicle_interval_ms_min() :: pos_integer()
+  def vehicle_interval_ms_min, do: @vehicle_interval_ms_min
+
+  @doc """
   Returns the `Gobusgo.Cadence` policy that decides the age at which an open
   stop's arrivals are fetched again, from the signal `:item_count`, the
   count of open stops. Its spacing is the arrival source's interval divided

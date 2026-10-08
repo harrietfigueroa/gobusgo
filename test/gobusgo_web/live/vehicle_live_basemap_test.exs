@@ -107,7 +107,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @west_map) == @west_bounds
     end
 
-    test "shows the map and the three hooks' elements, and nothing else" do
+    test "shows the map, the three hooks' elements, and the info panel, and nothing else" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       ids =
@@ -121,7 +121,9 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "basemap-basemap-20261004-01",
                "stop-markers",
                "vehicle-markers",
-               "route-lines"
+               "route-lines",
+               "app-info-open",
+               "app-info"
              ]
     end
 
