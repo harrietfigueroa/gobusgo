@@ -82,12 +82,26 @@ defmodule GobusgoWeb.VehicleLive do
   that shows nothing mounts the hook that draws the stops, under the
   vehicles and only when the map is zoomed in.
 
+  The browser opens a stop with the `stop-arrivals:open` event and closes
+  it with `stop-arrivals:close`, each naming the stop. Opening registers
+  the stop's arrivals key of `Gobusgo.OneBusAway.DemandKey` in
+  `Gobusgo.Demand`, which is what has the arrival source fetch it; the page
+  makes no OneBusAway request. The page answers with a
+  `stop-arrivals:arrivals` event from `GobusgoWeb.StopArrivals`: `waiting`
+  for a stop with no fetch in the arrivals view, `refused` for a stop the
+  stop view does not hold, `busy` for a stop the registry refuses or does
+  not answer for, or the stop's `arrivals`. A stop opened again is answered
+  again. The page sends an open stop again when the arrivals view or the
+  vehicle view switches and what it shows for the stop differs from what it
+  last sent, of which it keeps a hash and no arrival.
+
   A connected page registers the vehicles key of
   `Gobusgo.OneBusAway.DemandKey` in `Gobusgo.Demand`, so it counts as one
   viewer of vehicles until its process exits; the static render registers
   nothing. The page monitors the registry and registers again when the
   registry it registered with goes down, so a registry that restarts counts
-  the page again. While the registry does not answer, the page makes at
+  the page again, and registers the stops it has open with it, closing one
+  that registry refuses with a `busy` answer. While the registry does not answer, the page makes at
   most #{@viewer_registration_attempt_count_max} attempts in a row,
   #{@viewer_registration_retry_ms} ms apart. A registration
   the registry refuses, or the last of those attempts failing, leaves the
@@ -119,6 +133,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.FilterParams
   alias Gobusgo.OneBusAway.StopView
   alias GobusgoWeb.RouteLines
+  alias GobusgoWeb.StopArrivals
   alias GobusgoWeb.StopMarkers
   alias GobusgoWeb.VehicleMarkers
 
@@ -128,6 +143,8 @@ defmodule GobusgoWeb.VehicleLive do
   @route_field "route"
   @route_view Gobusgo.OneBusAway.RouteView
   @route_path_view Gobusgo.OneBusAway.RoutePathView
+  @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @stop_arrivals_event "stop-arrivals:arrivals"
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -141,6 +158,7 @@ defmodule GobusgoWeb.VehicleLive do
         shown_request_ids: %{},
         shown_route_versions: %{},
         stops_ready: false,
+        open_stops: %{},
         viewer_monitor: nil
       )
 
@@ -151,6 +169,7 @@ defmodule GobusgoWeb.VehicleLive do
         :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
         :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
         :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
+        :ok = FetchView.subscribe(%{view: @arrival_view, pubsub: @pubsub})
         {:ok, register_viewer(socket, 1)}
 
       false ->
@@ -189,7 +208,15 @@ defmodule GobusgoWeb.VehicleLive do
         %{assigns: %{shown_request_ids: shown_request_ids}} = socket
       ) do
     request_ids = VehicleView.current_request_ids(VehicleView)
-    {:noreply, push_agencies(socket, changed_agency_ids(shown_request_ids, request_ids))}
+
+    {:noreply,
+     socket
+     |> push_agencies(changed_agency_ids(shown_request_ids, request_ids))
+     |> push_open_stops()}
+  end
+
+  def handle_info({:fetch_view_switched, @arrival_view}, socket) do
+    {:noreply, push_open_stops(socket)}
   end
 
   def handle_info({:fetch_view_switched, view}, socket)
@@ -262,6 +289,38 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("stop-markers:ready", _params, socket) do
     {:noreply, socket |> assign(stops_ready: true) |> push_every_stop()}
+  end
+
+  def handle_event("stop-arrivals:open", %{"stop_id" => stop_id}, socket)
+      when is_binary(stop_id) do
+    case open_stop(stop_id) do
+      :ok ->
+        # A stop opened again is sent again, whatever the page last sent.
+        {:noreply,
+         socket |> update(:open_stops, &Map.put(&1, stop_id, nil)) |> push_open_stop(stop_id)}
+
+      refusal ->
+        {:noreply, push_event(socket, @stop_arrivals_event, %{stop_id: stop_id, status: refusal})}
+    end
+  end
+
+  def handle_event("stop-arrivals:close", %{"stop_id" => stop_id}, socket)
+      when is_binary(stop_id) do
+    case is_map_key(socket.assigns.open_stops, stop_id) do
+      true ->
+        :ok = release_stop(stop_id)
+        {:noreply, update(socket, :open_stops, &Map.delete(&1, stop_id))}
+
+      false ->
+        {:noreply, socket}
+    end
+  end
+
+  # An event whose parameters name no stop is the browser's error and
+  # changes nothing.
+  def handle_event("stop-arrivals:" <> action, _params, socket)
+      when action in ["open", "close"] do
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -373,11 +432,11 @@ defmodule GobusgoWeb.VehicleLive do
 
     case viewer_registration() do
       :ok ->
-        assign(socket, viewer_monitor: monitor)
+        socket |> assign(viewer_monitor: monitor) |> register_open_stops()
 
       {:error, refusal} ->
         Logger.warning("Vehicle page not counted as a viewer", refusal: refusal)
-        assign(socket, viewer_monitor: monitor)
+        socket |> assign(viewer_monitor: monitor) |> register_open_stops()
 
       :registry_unavailable ->
         Process.demonitor(monitor, [:flush])
@@ -592,6 +651,99 @@ defmodule GobusgoWeb.VehicleLive do
     socket
     |> push_markers(VehicleMarkers.agency_markers(kept, stop_names))
     |> update(:shown_request_ids, &Map.put(&1, agency_id, kept.request_id))
+  end
+
+  # Registers the stop as open for this page, so the arrival source fetches
+  # it: `:refused` for a stop the stop view does not hold, and `:busy` when
+  # the registry has no place for it or does not answer.
+  defp open_stop(stop_id) do
+    case StopView.stop(StopView, stop_id) do
+      nil ->
+        :refused
+
+      _held_stop ->
+        case stop_registration(stop_id) do
+          :ok -> :ok
+          {:error, _bound_exceeded} -> :busy
+          :registry_unavailable -> :busy
+        end
+    end
+  end
+
+  # A registry that is down or does not answer in time exits the call.
+  defp stop_registration(stop_id) do
+    Demand.register(Demand, DemandKey.arrivals(stop_id))
+  catch
+    :exit, _reason -> :registry_unavailable
+  end
+
+  # A registry that is down holds no registration to release.
+  defp release_stop(stop_id) do
+    Demand.release(Demand, DemandKey.arrivals(stop_id))
+  catch
+    :exit, _reason -> :ok
+  end
+
+  # Registers every stop the page has open, which a registry that has just
+  # started does not hold. A stop the registry refuses is closed and the
+  # browser told. A registry that does not answer leaves the stop open: the
+  # page watches that registry, and registers the stop when it goes down.
+  defp register_open_stops(%{assigns: %{open_stops: open_stops}} = socket) do
+    open_stops
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.reduce(socket, fn stop_id, socket ->
+      case stop_registration(stop_id) do
+        :ok ->
+          socket
+
+        :registry_unavailable ->
+          socket
+
+        {:error, _bound_exceeded} ->
+          socket
+          |> update(:open_stops, &Map.delete(&1, stop_id))
+          |> push_event(@stop_arrivals_event, %{stop_id: stop_id, status: :busy})
+      end
+    end)
+  end
+
+  defp push_open_stops(%{assigns: %{open_stops: open_stops}} = socket) do
+    open_stops |> Map.keys() |> Enum.sort() |> Enum.reduce(socket, &push_open_stop(&2, &1))
+  end
+
+  # Sends what the page shows for an open stop when it differs from what the
+  # page last sent for it. The page keeps a hash of that and no arrival.
+  defp push_open_stop(%{assigns: %{open_stops: open_stops}} = socket, stop_id) do
+    shown = stop_arrivals(stop_id)
+    version = :erlang.phash2(shown)
+
+    case open_stops do
+      %{^stop_id => ^version} ->
+        socket
+
+      open_stops ->
+        socket
+        |> push_event(@stop_arrivals_event, shown)
+        |> assign(open_stops: Map.put(open_stops, stop_id, version))
+    end
+  end
+
+  defp stop_arrivals(stop_id) do
+    case FetchView.current_fetch(@arrival_view, stop_id) do
+      nil ->
+        StopArrivals.waiting(stop_id)
+
+      fetch ->
+        vehicles =
+          for vehicle_id <- StopArrivals.vehicle_ids(fetch),
+              vehicle = VehicleView.vehicle(VehicleView, vehicle_id),
+              into: %{} do
+            {vehicle_id, vehicle}
+          end
+
+        StopArrivals.arrivals(%{fetch: fetch, vehicles: vehicles, now: DateTime.utc_now()})
+    end
   end
 
   # The name of each of the stops that the stop view holds.

@@ -506,7 +506,7 @@ The source's update times are kept apart from `fetchedAt`, which is when Gobusgo
 - At most 64 agencies have a current fetch, at most 32 incomplete fetches are held, the oldest forgotten first, and a fetch holds at most 5,000 vehicles. A switch forgets every held fetch of the same agency older than the new current one.
 - An `apply_records/2` call that switches at least one agency announces once, after the table holds the new fetches, as `{:vehicle_view_switched, view}` to every process that called `subscribe/1`.
 - `current/1` reads the table without calling the process and returns the current fetch of every agency, in agency identifier order, each with its own fetch time. It returns `[]` before a fetch is complete and while the view is not running.
-- `current_request_ids/1` returns the request identifier of every agency's current fetch and reads no vehicle, and `current_fetch/2` returns one agency's current fetch or `nil`. A reader that follows the announcements uses these two, so a switch of one agency costs it one agency's fetch.
+- `current_request_ids/1` returns the request identifier of every agency's current fetch and reads no vehicle, and `current_fetch/2` returns one agency's current fetch or `nil`. `vehicle/2` returns one vehicle of whichever agency's current fetch holds it, and reads that vehicle alone. A reader that follows the announcements uses these two, so a switch of one agency costs it one agency's fetch.
 - The table is the only place that holds a current fetch. The process keeps a fetch's vehicles until the fetch is complete; `State.put/2` then returns the fetch as `{:switched, fetch}`, the process writes it to the table, and the state keeps the fetch's request identifier and fetch time.
 - The view keeps when each vehicle of each agency was last seen: the newest fetch time among the vehicle's records, whether or not their fetch became current, for at most 20,000 vehicles an agency. `expired_vehicle_ids/2` reads those times without calling the process. A switch forgets the vehicles that have expired at the new current fetch, so the processor names an expired vehicle for the fetches up to that switch and for none after, and a tombstone that a failed run did not publish is published by the next run.
 - A vehicle is named as expired for more than one fetch, and each publishes its tombstone again.
@@ -624,7 +624,7 @@ The rules of the registry:
 
 ## Arrival records and arrivals view
 
-The arrivals at a stop go through the flow of the other datasets, one fetch whole in one record like a route path. The arrival source fetches the stops that processes have open, and no page opens one yet (GOB-160), so outside tests the view stays empty.
+The arrivals at a stop go through the flow of the other datasets, one fetch whole in one record like a route path. The arrival source fetches the stops that processes have open. The vehicle page opens one on its `stop-arrivals:open` event, which no hook sends yet (GOB-161), so outside tests the view stays empty.
 
 - **Stored form.** `Gobusgo.OneBusAway.ArrivalRecorder.record/2` stores one stop's response under `raw/oba/arrivals-and-departures-for-stop/dt=<date>/stop=<stop>/`, the stop written like a route in a route path's destination, with `stopId` in `meta`. `Gobusgo.OneBusAway.RawArrivalResponse` holds the stored form.
 - **Event.** The recorder publishes the "response stored" event to `oba.arrivals.response-stored` under the key `oba/arrivals-and-departures-for-stop/<stop id>`, with `data.stopId`. The response consumer processes it.
