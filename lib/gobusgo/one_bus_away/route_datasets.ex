@@ -11,8 +11,7 @@ defmodule Gobusgo.OneBusAway.RouteDatasets do
   The two route datasets as the one dataset a consumer of their shared
   "response stored" topic serves: the routes of an agency and the stops and
   paths of a route. It is both the event module and the processor module
-  `Gobusgo.OneBusAway.ResponseTrigger` and
-  `Gobusgo.OneBusAway.ResponseConsumer` take, and hands each event and each
+  `Gobusgo.OneBusAway.ResponseConsumer` takes, and hands each event and each
   stored response to the dataset it belongs to.
 
   Both datasets announce their stored responses on `#{@topic}`. An event
@@ -48,7 +47,7 @@ defmodule Gobusgo.OneBusAway.RouteDatasets do
   @spec topic() :: String.t()
   def topic, do: @topic
 
-  @doc "The name the two datasets share in logs and dead letters."
+  @doc "The name the two datasets share in logs."
   @spec dataset() :: String.t()
   def dataset, do: @dataset
 

@@ -253,10 +253,10 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       assert_received {:written, %{destination: ^destination}}
     end
 
-    test "holds the vehicle source, between every five seconds and every minute" do
+    test "holds the vehicle source, between every ten seconds and every minute" do
       assert %{
                name: Gobusgo.OneBusAway.VehicleScheduler,
-               cadence: %{policy: {:steps, %{interval_ms_min: 5_000, interval_ms_max: 60_000}}}
+               cadence: %{policy: {:steps, %{interval_ms_min: 10_000, interval_ms_max: 60_000}}}
              } = vehicles([])
     end
 
@@ -265,17 +265,17 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     end
 
     for viewer_count <- [1, 2, 25] do
-      test "runs the vehicle source every five seconds with #{viewer_count} viewers" do
+      test "runs the vehicle source every ten seconds with #{viewer_count} viewers" do
         for _viewer <- 1..unquote(viewer_count), do: start_viewer()
 
-        assert vehicle_interval_ms() == 5_000
+        assert vehicle_interval_ms() == 10_000
       end
     end
 
     # Each row is the time since the last viewer left, around the hold of
     # 60,000 ms: just inside it, exactly at it, and just past it.
     for {label, absence_ms, interval_ms} <- [
-          {"one millisecond inside the hold", 59_999, 5_000},
+          {"one millisecond inside the hold", 59_999, 10_000},
           {"exactly at the hold", 60_000, 60_000},
           {"one millisecond past the hold", 60_001, 60_000}
         ] do
@@ -289,7 +289,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       end
     end
 
-    test "runs the vehicle source every five seconds again when a viewer comes back" do
+    test "runs the vehicle source every ten seconds again when a viewer comes back" do
       viewer = start_viewer()
       end_viewer(viewer)
       advance_clock(60_000)
@@ -297,7 +297,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
 
       start_viewer()
 
-      assert vehicle_interval_ms() == 5_000
+      assert vehicle_interval_ms() == 10_000
     end
 
     test "has the vehicle source's signals read fail while the registry is down" do
@@ -350,7 +350,17 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
-    test "runs the route source by recording the routes of an agency that has none" do
+    test "runs the route source by recording the routes of an agency that has none", context do
+      route_view = Module.concat(__MODULE__, "RouteView#{context.line}")
+
+      start_supervised!(
+        {FetchView,
+         name: route_view,
+         pubsub: Gobusgo.PubSub,
+         records: Gobusgo.OneBusAway.RouteBatch.Records,
+         id_count_max: 1}
+      )
+
       Req.Test.stub(@stub_name, fn conn ->
         body = File.read!(Path.join(@fixture_directory, "routes_for_agency.json"))
 
@@ -362,7 +372,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       spec =
         routes(
           agency_ids: fn -> ["40"] end,
-          route_view: Module.concat(__MODULE__, NoRouteView),
+          route_view: route_view,
           route_path_view: Module.concat(__MODULE__, NoRoutePathView),
           record_options: [
             fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
@@ -387,7 +397,17 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
     end
 
-    test "runs the arrival source by recording one of the open stops that are due" do
+    test "runs the arrival source by recording one of the open stops that are due", context do
+      arrival_view = Module.concat(__MODULE__, "ArrivalView#{context.line}")
+
+      start_supervised!(
+        {FetchView,
+         name: arrival_view,
+         pubsub: Gobusgo.PubSub,
+         records: ArrivalBatch.Records,
+         id_count_max: 2}
+      )
+
       Req.Test.stub(@stub_name, fn conn ->
         body = File.read!(Path.join(@fixture_directory, "arrivals_and_departures_for_stop.json"))
 
@@ -399,7 +419,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
       spec =
         arrivals(
           stop_ids: fn -> ["95_7", "95_8"] end,
-          arrival_view: Module.concat(__MODULE__, NoArrivalView),
+          arrival_view: arrival_view,
           record_options: [
             fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
             write_options: [backend: RecordingBackend, recipient: self()],

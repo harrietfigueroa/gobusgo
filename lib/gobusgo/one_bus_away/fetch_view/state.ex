@@ -20,6 +20,13 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
 
   The state keeps the request identifier and the fetch time of each current
   fetch, which is all its rules read.
+
+  An attempt is a fetch that was recorded. `attempt/2` keeps its time for an
+  identifier whose current fetch is older than it or absent, and a fetch put
+  at or after that time clears it, so `attempts/1` holds the recorded
+  fetches that have not reached the view. At most `id_count_max` attempts
+  are kept; the earliest leaves for one beyond that. A view whose fetches
+  expire drops an attempt at the same age.
   """
 
   alias Gobusgo.Assert
@@ -37,6 +44,7 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
 
   @type t :: %{
           current: %{String.t() => header()},
+          attempts: %{String.t() => DateTime.t()},
           id_count_max: pos_integer(),
           fetch_age_ms_max: pos_integer() | nil,
           expired_before: DateTime.t() | nil
@@ -52,7 +60,14 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
   @spec new(pos_integer()) :: t()
   def new(id_count_max) when is_integer(id_count_max) do
     Assert.condition(id_count_max >= 1, "id_count_max must be positive, got: #{id_count_max}")
-    %{current: %{}, id_count_max: id_count_max, fetch_age_ms_max: nil, expired_before: nil}
+
+    %{
+      current: %{},
+      attempts: %{},
+      id_count_max: id_count_max,
+      fetch_age_ms_max: nil,
+      expired_before: nil
+    }
   end
 
   @doc """
@@ -71,9 +86,9 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
   end
 
   @doc """
-  Removes every current fetch that is older than the view's age bound at
-  `now`, and returns the identifiers removed, sorted. A view that keeps
-  every fetch removes none.
+  Removes every current fetch and every attempt that is older than the
+  view's age bound at `now`, and returns the identifiers whose fetch was
+  removed, sorted. A view that keeps every fetch removes none.
   """
   @spec expire(t(), DateTime.t()) :: {t(), [String.t()]}
   def expire(%{fetch_age_ms_max: nil} = state, %DateTime{}), do: {state, []}
@@ -87,7 +102,18 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
         id
       end
 
-    state = %{state | current: Map.drop(current, expired_ids), expired_before: expired_before}
+    attempts =
+      Map.reject(state.attempts, fn {_id, attempted_at} ->
+        DateTime.before?(attempted_at, expired_before)
+      end)
+
+    state = %{
+      state
+      | current: Map.drop(current, expired_ids),
+        attempts: attempts,
+        expired_before: expired_before
+    }
+
     {state, Enum.sort(expired_ids)}
   end
 
@@ -97,6 +123,28 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
   """
   @spec current(t()) :: %{String.t() => header()}
   def current(%{current: current}), do: current
+
+  @doc """
+  The time of the latest attempt of every identifier whose current fetch is
+  older than that attempt or absent.
+  """
+  @spec attempts(t()) :: %{String.t() => DateTime.t()}
+  def attempts(%{attempts: attempts}), do: attempts
+
+  @doc """
+  Notes that a fetch of `id` made at `fetched_at` was recorded. The attempt
+  is kept when it is later than the identifier's current fetch and its
+  earlier attempt, and changes nothing otherwise.
+  """
+  @spec attempt(t(), %{id: String.t(), fetched_at: DateTime.t()}) :: t()
+  def attempt(%{attempts: attempts} = state, %{id: id, fetched_at: %DateTime{} = fetched_at})
+      when is_binary(id) do
+    if Enum.all?(known_times(state, id), &DateTime.after?(fetched_at, &1)) do
+      %{state | attempts: attempts |> Map.put(id, fetched_at) |> bound(state.id_count_max)}
+    else
+      state
+    end
+  end
 
   @doc "Applies one fetch and says what became of it."
   @spec put(t(), fetch()) :: {t(), outcome()}
@@ -116,9 +164,54 @@ defmodule Gobusgo.OneBusAway.FetchView.State do
 
     if accepted do
       header = %{request_id: request_id, fetched_at: fetched_at}
-      {%{state | current: Map.put(current, id, header)}, :switched}
+      attempts = clear_attempt(state.attempts, id, fetched_at)
+      {%{state | current: Map.put(current, id, header), attempts: attempts}, :switched}
     else
       {state, :ignored}
+    end
+  end
+
+  # The fetch time and the attempt time the state holds for `id`.
+  defp known_times(%{current: current, attempts: attempts}, id) do
+    fetch_times =
+      case Map.fetch(current, id) do
+        {:ok, %{fetched_at: fetched_at}} -> [fetched_at]
+        :error -> []
+      end
+
+    attempt_times =
+      case Map.fetch(attempts, id) do
+        {:ok, attempted_at} -> [attempted_at]
+        :error -> []
+      end
+
+    fetch_times ++ attempt_times
+  end
+
+  defp bound(attempts, id_count_max) do
+    if map_size(attempts) <= id_count_max do
+      attempts
+    else
+      {earliest_id, _attempted_at} =
+        Enum.min_by(attempts, fn {id, attempted_at} ->
+          {DateTime.to_unix(attempted_at, :microsecond), id}
+        end)
+
+      Map.delete(attempts, earliest_id)
+    end
+  end
+
+  defp clear_attempt(attempts, id, fetched_at) do
+    case Map.fetch(attempts, id) do
+      {:ok, attempted_at} ->
+        if DateTime.after?(attempted_at, fetched_at) do
+          attempts
+        else
+          Map.delete(attempts, id)
+        end
+
+      :error ->
+        attempts
     end
   end
 

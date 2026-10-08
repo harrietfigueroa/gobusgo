@@ -17,12 +17,7 @@ defmodule Gobusgo.Config do
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
   @type http_error :: {:invalid, :host | :port}
 
-  @type kafka :: %{endpoints: [{String.t(), :inet.port_number()}, ...]}
-  @type kafka_error :: {:invalid, :bootstrap_servers}
-
   @one_bus_away_keys [:base_url, :api_key]
-  @kafka_bootstrap_servers_default "localhost:9092"
-  @kafka_endpoint_count_max 16
   @http_host_default "127.0.0.1"
   @http_port_default 4000
   @http_port_min 1
@@ -93,44 +88,6 @@ defmodule Gobusgo.Config do
   @spec http() :: {:ok, http()} | {:error, http_error()}
   def http do
     :gobusgo |> Application.get_env(:http, []) |> fetch_http()
-  end
-
-  @doc """
-  Returns the Kafka settings from `env`: `:bootstrap_servers`, a
-  comma-separated list of `host:port` with at most
-  #{@kafka_endpoint_count_max} entries. A nil or blank value takes the
-  default, `#{@kafka_bootstrap_servers_default}`.
-  """
-  @spec fetch_kafka(Keyword.t()) :: {:ok, kafka()} | {:error, kafka_error()}
-  def fetch_kafka(env) when is_list(env) do
-    entries =
-      (text(env, :bootstrap_servers) || @kafka_bootstrap_servers_default)
-      |> String.split(",", parts: @kafka_endpoint_count_max + 1)
-      |> Enum.map(&String.trim/1)
-
-    endpoints = for {:ok, endpoint} <- Enum.map(entries, &parse_endpoint/1), do: endpoint
-
-    if length(endpoints) == length(entries) and length(entries) <= @kafka_endpoint_count_max do
-      {:ok, %{endpoints: endpoints}}
-    else
-      {:error, {:invalid, :bootstrap_servers}}
-    end
-  end
-
-  @doc """
-  Reads the Kafka settings configured for the running application, with
-  `:enabled`: whether the application connects to Kafka at all.
-  """
-  @spec kafka() ::
-          {:ok, %{enabled: boolean(), endpoints: [{String.t(), :inet.port_number()}, ...]}}
-          | {:error, kafka_error()}
-  def kafka do
-    env = Application.fetch_env!(:gobusgo, :kafka)
-    enabled = Keyword.fetch!(env, :enabled)
-
-    with {:ok, %{endpoints: endpoints}} <- fetch_kafka(env) do
-      {:ok, %{enabled: enabled, endpoints: endpoints}}
-    end
   end
 
   @doc """
@@ -206,15 +163,6 @@ defmodule Gobusgo.Config do
     case :inet.parse_strict_address(String.to_charlist(host)) do
       {:ok, ip} -> {:ok, ip}
       {:error, :einval} -> {:error, {:invalid, :host}}
-    end
-  end
-
-  defp parse_endpoint(entry) do
-    with [host, port_text] when host != "" <- String.split(entry, ":"),
-         {:ok, port} <- parse_port(port_text) do
-      {:ok, {host, port}}
-    else
-      _other -> :error
     end
   end
 

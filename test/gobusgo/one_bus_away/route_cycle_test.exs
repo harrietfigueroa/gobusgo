@@ -325,6 +325,38 @@ defmodule Gobusgo.OneBusAway.RouteCycleTest do
     end
   end
 
+  # The publisher double announces a response and hands it to nobody, so a
+  # recorded response reaches no view here.
+  describe "run/2 a recorded response that does not reach its view" do
+    test "is not fetched again before its slot comes", context do
+      assert {:ok, %{due_count: 1, recorded_count: 1}} = run(context, ["40"])
+
+      assert run(context, ["40"]) == {:ok, @nothing}
+      assert written() == ["agency=40"]
+    end
+
+    test "is fetched again once its slot has come", context do
+      assert {:ok, %{due_count: 1, recorded_count: 1}} = run(context, ["40"])
+      later = DateTime.add(DateTime.utc_now(), 2, :day)
+
+      assert {:ok, %{due_count: 1, recorded_count: 1}} =
+               run(context, ["40"], clock: fn -> later end)
+    end
+
+    test "stays due when its event was not published", context do
+      options = [
+        record_options: [
+          fetch_options: [plug: {Req.Test, @stub_name}, gate: @gate],
+          write_options: [backend: RecordingBackend, recipient: self()],
+          publish_options: [backend: StubPublisher, result: {:error, :unavailable}]
+        ]
+      ]
+
+      assert {:ok, %{due_count: 1, unannounced_count: 1}} = run(context, ["40"], options)
+      assert {:ok, %{due_count: 1, unannounced_count: 1}} = run(context, ["40"], options)
+    end
+  end
+
   describe "run/2 logging" do
     for {name, level, message, arrange} <- [
           {"nothing due", :debug, "OneBusAway route cycle found nothing due", quote(do: %{})},

@@ -16,9 +16,11 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
 
   The agencies are those of the agency view's current fetch, and the routes
   are those the route view holds for them. `Gobusgo.OneBusAway.RouteSchedule`
-  says which are due, from the fetch time each has in its view: an item with
-  no fetch, and an item whose slot has come since its last fetch. Agencies
-  come before routes, each in identifier order.
+  says which are due, from the attempt time each has in its view: an item
+  with no fetch, and an item whose slot has come since its last fetch.
+  Agencies come before routes, each in identifier order. A cycle notes each
+  response it records and announces as an attempt in the item's view, so an
+  item whose response does not process waits for its slot like any other.
 
   A cycle takes at most `:request_count_max` due items and leaves the rest
   to the next cycle. It starts one request every `:request_interval_ms` and
@@ -171,13 +173,13 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
 
     route_path_view = Keyword.fetch!(options, :route_path_view)
 
-    due(:routes, agency_ids, FetchView.fetch_times(route_view), now) ++
-      due(:route_path, route_ids, FetchView.fetch_times(route_path_view), now)
+    due(:routes, agency_ids, FetchView.attempt_times(route_view), now) ++
+      due(:route_path, route_ids, FetchView.attempt_times(route_path_view), now)
   end
 
-  defp due(kind, ids, fetch_times, now) do
+  defp due(kind, ids, attempt_times, now) do
     for id <- ids,
-        RouteSchedule.due?(%{id: id, fetched_at: Map.get(fetch_times, id), now: now}) do
+        RouteSchedule.due?(%{id: id, fetched_at: Map.get(attempt_times, id), now: now}) do
       {kind, id}
     end
   end
@@ -225,13 +227,26 @@ defmodule Gobusgo.OneBusAway.RouteCycle do
       |> Task.Supervisor.async_nolink(fn -> record_item(settings, kind, id, record_options) end)
 
     case Task.yield(task, deadline_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, %{event_published: true}}} -> :recorded
-      {:ok, {:ok, %{event_published: false}}} -> :unannounced
-      {:ok, {:error, {stage, reason}}} -> {:failed, cause(stage, reason)}
-      nil -> {:failed, "deadline_exceeded"}
-      {:exit, _reason} -> {:failed, "crashed"}
+      {:ok, {:ok, %{event_published: true, fetched_at: fetched_at}}} ->
+        :ok = FetchView.note_attempt(view(kind, options), %{id: id, fetched_at: fetched_at})
+        :recorded
+
+      {:ok, {:ok, %{event_published: false}}} ->
+        :unannounced
+
+      {:ok, {:error, {stage, reason}}} ->
+        {:failed, cause(stage, reason)}
+
+      nil ->
+        {:failed, "deadline_exceeded"}
+
+      {:exit, _reason} ->
+        {:failed, "crashed"}
     end
   end
+
+  defp view(:routes, options), do: Keyword.fetch!(options, :route_view)
+  defp view(:route_path, options), do: Keyword.fetch!(options, :route_path_view)
 
   defp record_item(settings, :routes, agency_id, record_options) do
     RouteRecorder.record(settings, Keyword.put(record_options, :agency_id, agency_id))

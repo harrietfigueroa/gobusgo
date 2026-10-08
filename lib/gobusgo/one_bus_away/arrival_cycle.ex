@@ -16,10 +16,12 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
   The open stops are the items of the arrivals dataset in `Gobusgo.Demand`,
   the stops whose `Gobusgo.OneBusAway.DemandKey.arrivals/1` key at least
   one process holds, and
-  `Gobusgo.OneBusAway.ArrivalSchedule` says which are due, from the fetch
+  `Gobusgo.OneBusAway.ArrivalSchedule` says which are due, from the attempt
   time each has in the arrivals view and the refresh age. A stop no process
   has open is never fetched, so what riders look at decides which stops a
-  cycle may fetch and the cycle decides how many.
+  cycle may fetch and the cycle decides how many. A cycle notes each response
+  it records and announces as an attempt in the arrivals view, so a stop
+  whose response does not process waits out the refresh age like any other.
 
   The refresh age is what `Gobusgo.Cadence.interval_ms/2` decides under
   `:refresh_policy`, with the count of the open stops the cycle read as the
@@ -137,7 +139,7 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
     due =
       ArrivalSchedule.due(%{
         stop_ids: stop_ids,
-        fetch_times: FetchView.fetch_times(Keyword.fetch!(options, :arrival_view)),
+        fetch_times: FetchView.attempt_times(Keyword.fetch!(options, :arrival_view)),
         now: Keyword.fetch!(options, :clock).(),
         refresh_age_ms: refresh_age_ms
       })
@@ -209,11 +211,22 @@ defmodule Gobusgo.OneBusAway.ArrivalCycle do
       end)
 
     case Task.yield(task, deadline_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, %{event_published: true}}} -> :recorded
-      {:ok, {:ok, %{event_published: false}}} -> :unannounced
-      {:ok, {:error, {stage, reason}}} -> {:failed, cause(stage, reason)}
-      nil -> {:failed, "deadline_exceeded"}
-      {:exit, _reason} -> {:failed, "crashed"}
+      {:ok, {:ok, %{event_published: true, fetched_at: fetched_at}}} ->
+        attempt = %{id: stop_id, fetched_at: fetched_at}
+        :ok = FetchView.note_attempt(Keyword.fetch!(options, :arrival_view), attempt)
+        :recorded
+
+      {:ok, {:ok, %{event_published: false}}} ->
+        :unannounced
+
+      {:ok, {:error, {stage, reason}}} ->
+        {:failed, cause(stage, reason)}
+
+      nil ->
+        {:failed, "deadline_exceeded"}
+
+      {:exit, _reason} ->
+        {:failed, "crashed"}
     end
   end
 

@@ -4,9 +4,12 @@ defmodule Gobusgo.OneBusAway.ResponseConsumer do
   names, in the calling process. This module decodes and hands over; the
   event and the processing live in the dataset's modules.
 
-  A dataset is `%{event: module, processor: module}`: the event module has
-  `dataset/0` and `decode/1`, and the processor module has `process/2`, as
-  `Gobusgo.OneBusAway.ResponseTrigger` describes them.
+  A dataset is `%{event: module, processor: module}`. The event module has
+  `dataset/0`, the name of the dataset, and `decode/1`, which returns the
+  `:event_id`, the `:destination`, and the `:request_id` of a "response
+  stored" value or the reason it is none. The processor module has
+  `process/2`, which takes the destination and returns `{:ok, result}` or
+  `{:error, failure}` with a `t:Gobusgo.OneBusAway.BatchFailure.t/0`.
 
   `consume/3` takes record values, the bytes the event module's `record/1`
   builds, and processes them in order. A value that is not a "response

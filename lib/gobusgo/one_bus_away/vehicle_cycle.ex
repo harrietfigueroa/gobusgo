@@ -1,7 +1,7 @@
 defmodule Gobusgo.OneBusAway.VehicleCycle do
   @agency_count_max 64
-  @agency_deadline_ms_default 2_000
-  @budget_ms_default 4_000
+  @agency_deadline_ms_default 4_000
+  @budget_ms_default 9_000
   @fetch_retries_max 0
 
   @moduledoc """

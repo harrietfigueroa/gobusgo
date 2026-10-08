@@ -148,6 +148,72 @@ defmodule Gobusgo.OneBusAway.FetchView.StateTest do
     end
   end
 
+  # An attempt is a fetch that was recorded; the view keeps its time until a
+  # fetch at least that late reaches it.
+  describe "attempts" do
+    test "a view starts with none" do
+      assert State.attempts(State.new(8)) == %{}
+    end
+
+    test "an attempt of an identifier with no fetch is kept with its time" do
+      state = State.attempt(State.new(8), %{id: "40", fetched_at: @earlier})
+
+      assert State.attempts(state) == %{"40" => @earlier}
+      assert State.current(state) == %{}
+    end
+
+    test "a later attempt replaces an earlier one" do
+      state = State.attempt(State.new(8), %{id: "40", fetched_at: @earlier})
+      state = State.attempt(state, %{id: "40", fetched_at: @later})
+
+      assert State.attempts(state) == %{"40" => @later}
+    end
+
+    test "an earlier attempt changes nothing" do
+      state = State.attempt(State.new(8), %{id: "40", fetched_at: @later})
+
+      assert State.attempt(state, %{id: "40", fetched_at: @earlier}) == state
+    end
+
+    test "an attempt made after the current fetch is kept beside it" do
+      {state, [:switched]} = put_all([fetch(%{})])
+      state = State.attempt(state, %{id: "40", fetched_at: @later})
+
+      assert State.attempts(state) == %{"40" => @later}
+      assert Map.keys(State.current(state)) == ["40"]
+    end
+
+    test "an attempt no later than the current fetch changes nothing" do
+      {state, [:switched]} = put_all([fetch(%{fetched_at: @later})])
+
+      assert State.attempt(state, %{id: "40", fetched_at: @later}) == state
+    end
+
+    test "a fetch put at or after an attempt clears it" do
+      state = State.attempt(State.new(8), %{id: "40", fetched_at: @earlier})
+
+      assert {state, :switched} = State.put(state, fetch(%{fetched_at: @earlier}))
+      assert State.attempts(state) == %{}
+    end
+
+    test "the earliest attempt leaves when the bound is reached" do
+      state = State.attempt(State.new(2), %{id: "a", fetched_at: @later})
+      state = State.attempt(state, %{id: "b", fetched_at: @earlier})
+      state = State.attempt(state, %{id: "c", fetched_at: @later})
+
+      assert State.attempts(state) == %{"a" => @later, "c" => @later}
+    end
+
+    test "expiry removes an attempt older than the bound" do
+      state = State.new_expiring(%{id_count_max: 2, fetch_age_ms_max: 60_000})
+      state = State.attempt(state, %{id: "old", fetched_at: @earlier})
+      state = State.attempt(state, %{id: "new", fetched_at: @later})
+
+      assert {state, []} = State.expire(state, DateTime.add(@later, 1, :second))
+      assert State.attempts(state) == %{"new" => @later}
+    end
+  end
+
   test "a view whose fetches do not expire removes none" do
     {state, [:switched]} = put_all([fetch(%{})])
 

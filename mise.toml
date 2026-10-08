@@ -1,4 +1,4 @@
-# The pmtiles command that `mix gobusgo.basemap.extract` runs. Erlang, Elixir,
-# and CMake are pinned in .tool-versions.
+# The pmtiles command that `mix gobusgo.basemap.extract` runs. Erlang and
+# Elixir are pinned in .tool-versions.
 [tools]
 "ubi:protomaps/go-pmtiles" = { version = "1.31.2", exe = "pmtiles" }
