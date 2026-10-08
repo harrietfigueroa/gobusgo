@@ -128,6 +128,32 @@ defmodule Gobusgo.OneBusAway.VehicleView do
   end
 
   @doc """
+  Returns the vehicle `vehicle_id` of whichever agency's current fetch in
+  `view` holds it, or `nil` for a vehicle no current fetch holds and while
+  the view is not running. It reads the one vehicle and no fetch, so it
+  costs the same however many vehicles the fetches hold.
+  """
+  @spec vehicle(atom(), String.t()) :: State.vehicle() | nil
+  def vehicle(view, vehicle_id) when is_atom(view) and is_binary(vehicle_id) do
+    case :ets.whereis(view) do
+      :undefined ->
+        nil
+
+      table ->
+        held =
+          :ets.select(table, [
+            {{{:current, :_}, %{vehicles: :"$1"}}, [{:is_map_key, vehicle_id, :"$1"}],
+             [{:map_get, vehicle_id, :"$1"}]}
+          ])
+
+        case held do
+          [vehicle | _others] -> vehicle
+          [] -> nil
+        end
+    end
+  end
+
+  @doc """
   Returns, sorted, the vehicles of `fetch.agency_id` in `view` that have
   expired at `fetch`, a fetch made at `fetch.fetched_at` with the vehicles
   `fetch.vehicle_ids`: absent from it, and last seen more than

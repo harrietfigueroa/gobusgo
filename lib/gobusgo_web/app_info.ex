@@ -1,5 +1,6 @@
 defmodule GobusgoWeb.AppInfo do
   @ms_per_second 1_000
+  @ms_per_minute 60_000
   @minutes_per_hour 60
   @hours_per_day 24
 
@@ -12,12 +13,19 @@ defmodule GobusgoWeb.AppInfo do
   given and a test reads every text.
 
   `data_use/1` states a vehicle interval in whole seconds and a route period
-  in whole hours, a period of #{@hours_per_day} hours as once a day.
+  in whole hours, a period of #{@hours_per_day} hours as once a day. It
+  states each arrival refresh age in whole minutes where it is a whole count
+  of them, and in whole seconds otherwise.
   """
 
   alias Gobusgo.Assert
 
-  @type cadences :: %{vehicle_interval_ms: pos_integer(), route_period_minutes: pos_integer()}
+  @type cadences :: %{
+          vehicle_interval_ms: pos_integer(),
+          route_period_minutes: pos_integer(),
+          arrival_refresh_age_ms_min: pos_integer(),
+          arrival_refresh_age_ms_max: pos_integer()
+        }
 
   @type terms :: %{name: String.t(), url: String.t()}
 
@@ -102,21 +110,36 @@ defmodule GobusgoWeb.AppInfo do
 
   @doc """
   The paragraphs on how the application uses OneBusAway data, for a vehicle
-  source that reads every `vehicle_interval_ms` while a map is open and
-  routes that are each read every `route_period_minutes`. The interval is a
-  whole count of seconds and the period a whole count of hours.
+  source that reads every `vehicle_interval_ms` while a map is open,
+  routes that are each read every `route_period_minutes`, and an open
+  stop's arrivals that are read again at an age from
+  `arrival_refresh_age_ms_min` to `arrival_refresh_age_ms_max`. The interval
+  and each age are a whole count of seconds, the period is a whole count of
+  hours, and the longest age is over the shortest.
   """
   @spec data_use(cadences()) :: [String.t()]
   def data_use(%{
         vehicle_interval_ms: vehicle_interval_ms,
-        route_period_minutes: route_period_minutes
+        route_period_minutes: route_period_minutes,
+        arrival_refresh_age_ms_min: age_ms_min,
+        arrival_refresh_age_ms_max: age_ms_max
       })
-      when is_integer(vehicle_interval_ms) and is_integer(route_period_minutes) do
+      when is_integer(vehicle_interval_ms) and is_integer(route_period_minutes) and
+             is_integer(age_ms_min) and is_integer(age_ms_max) do
+    Assert.condition(
+      age_ms_min < age_ms_max,
+      "the longest arrival refresh age must be over the shortest, " <>
+        "got: #{age_ms_min} and #{age_ms_max} ms"
+    )
+
     [
-      "Vehicle positions, routes, and stops come from the OneBusAway server of the " <>
-        "Puget Sound region, which Sound Transit provides access to.",
+      "Vehicle positions, routes, stops, and arrival times come from the OneBusAway server " <>
+        "of the Puget Sound region, which Sound Transit provides access to.",
       "While a map is open, vehicle positions are read #{seconds_text(vehicle_interval_ms)}. " <>
         "Routes and stops are read #{hours_text(route_period_minutes)}.",
+      "While a stop's popup is open, the arrivals at that stop are read every " <>
+        "#{every_text(duration(age_ms_min))} to #{up_to_text(duration(age_ms_max))}, " <>
+        "less often the more stops are open.",
       "The map shows the data as OneBusAway supplies it. A marker stands where OneBusAway " <>
         "estimates the vehicle is, which is an estimate even for a vehicle that reported recently."
     ]
@@ -175,6 +198,33 @@ defmodule GobusgoWeb.AppInfo do
       second_count -> "every #{second_count} seconds"
     end
   end
+
+  # A duration as a count of a unit: minutes where it is a whole count of
+  # them, and seconds otherwise.
+  defp duration(duration_ms) do
+    Assert.condition(
+      duration_ms >= @ms_per_second,
+      "duration must be at least a second, got: #{duration_ms} ms"
+    )
+
+    Assert.condition(
+      rem(duration_ms, @ms_per_second) == 0,
+      "duration must be a whole count of seconds, got: #{duration_ms} ms"
+    )
+
+    case rem(duration_ms, @ms_per_minute) do
+      0 -> {div(duration_ms, @ms_per_minute), "minute"}
+      _remainder_ms -> {div(duration_ms, @ms_per_second), "second"}
+    end
+  end
+
+  # The words after "every": "every second", "every 30 seconds".
+  defp every_text({1, unit}), do: unit
+  defp every_text({count, unit}), do: "#{count} #{unit}s"
+
+  # The words after "to": "to a minute", "to 5 minutes".
+  defp up_to_text({1, unit}), do: "a #{unit}"
+  defp up_to_text({count, unit}), do: "#{count} #{unit}s"
 
   defp hours_text(period_minutes) do
     Assert.condition(

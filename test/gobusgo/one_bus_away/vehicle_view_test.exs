@@ -130,6 +130,36 @@ defmodule Gobusgo.OneBusAway.VehicleViewTest do
     end
   end
 
+  describe "vehicle/2" do
+    test "is absent before a fetch is complete", %{view: view} do
+      assert VehicleView.vehicle(view, "1_a") == nil
+    end
+
+    test "is absent for a view that is not running" do
+      assert VehicleView.vehicle(Gobusgo.OneBusAway.VehicleViewTest.NotStarted, "1_a") == nil
+    end
+
+    test "is the vehicle of whichever agency's current fetch holds it", %{view: view} do
+      other =
+        records(["40_x"], %{
+          agency_id: "40",
+          request_id: "0199c4a2-7e1b-7a3f-9d20-000000000040"
+        })
+
+      :ok = VehicleView.apply_records(view, values(other))
+      :ok = VehicleView.apply_records(view, values(records(["1_a", "1_b"])))
+
+      assert %{"id" => "1_b", "agencyId" => "1"} = VehicleView.vehicle(view, "1_b")
+      assert %{"id" => "40_x", "agencyId" => "40"} = VehicleView.vehicle(view, "40_x")
+    end
+
+    test "is absent for a vehicle no current fetch holds", %{view: view} do
+      :ok = VehicleView.apply_records(view, values(records(["1_a"])))
+
+      assert VehicleView.vehicle(view, "1_z") == nil
+    end
+  end
+
   describe "current_request_ids/1" do
     test "is empty before a fetch is complete", %{view: view} do
       assert VehicleView.current_request_ids(view) == %{}
