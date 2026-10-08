@@ -14,7 +14,9 @@ defmodule Gobusgo.Demand do
   holds a key, so a process that exits, a crash included, releases every key
   it held. `items/2` returns the items of a dataset that at least one
   process holds the key of, and `holder_count/2` how many processes hold one
-  key.
+  key. `holding/2` returns that count with how long ago the key last had a
+  holder, on the monotonic clock the registry reads at each release, at each
+  exit of a holder, and at each `holding/2`.
 
   The bounds count inside one dataset, so one dataset's demand takes no room
   from another's: by default a dataset has at most
@@ -26,8 +28,9 @@ defmodule Gobusgo.Demand do
   A call that names a dataset the registry was not started with raises in
   the calling process and leaves the registry as it was.
 
-  State is in memory and per node: a restart begins with no key held, and
-  the processes that held keys do not register them again by themselves.
+  State is in memory and per node: a restart begins with no key held and
+  no key remembered as having had a holder, and the registry registers
+  nothing for the processes that held keys.
 
   Registering and releasing log nothing: which item a process holds is what
   one rider looks at.
@@ -45,7 +48,9 @@ defmodule Gobusgo.Demand do
   @doc """
   Starts a registry. `:name` registers it and `:datasets` lists the datasets
   it admits; both are required. `:item_count_max` and
-  `:holder_item_count_max` replace the defaults above.
+  `:holder_item_count_max` replace the defaults above. `:monotonic_time_ms`
+  is a zero-arity function returning the time in milliseconds on a clock
+  that never goes back, by default `System.monotonic_time/1`.
   """
   @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(options) when is_list(options) do
@@ -54,11 +59,19 @@ defmodule Gobusgo.Demand do
         :name,
         :datasets,
         item_count_max: @item_count_max_default,
-        holder_item_count_max: @holder_item_count_max_default
+        holder_item_count_max: @holder_item_count_max_default,
+        monotonic_time_ms: &monotonic_time_ms_default/0
       ])
 
     name = Keyword.fetch!(options, :name)
     Assert.condition(is_atom(name), "name must be an atom, got: #{inspect(name)}")
+
+    monotonic_time_ms = Keyword.fetch!(options, :monotonic_time_ms)
+
+    Assert.condition(
+      is_function(monotonic_time_ms, 0),
+      "monotonic_time_ms must be a zero-arity function"
+    )
 
     settings = %{
       datasets: Keyword.fetch!(options, :datasets),
@@ -66,7 +79,11 @@ defmodule Gobusgo.Demand do
       holder_item_count_max: Keyword.fetch!(options, :holder_item_count_max)
     }
 
-    GenServer.start_link(__MODULE__, settings, name: name)
+    GenServer.start_link(
+      __MODULE__,
+      %{settings: settings, monotonic_time_ms: monotonic_time_ms},
+      name: name
+    )
   end
 
   @doc """
@@ -95,6 +112,19 @@ defmodule Gobusgo.Demand do
     call(registry, dataset, {:holder_count, key})
   end
 
+  @doc """
+  Returns the holders of `key`: `holder_count`, how many processes hold it,
+  and `holder_absence_ms`, how long ago it last had a holder, in
+  milliseconds. The absence is zero while a process holds the key and `nil`
+  for a key that has had no holder for as long as the registry remembers:
+  since it started, or since the dataset's bound of remembered items passed
+  the key over.
+  """
+  @spec holding(GenServer.server(), key()) :: State.holding()
+  def holding(registry, {dataset, item} = key) when is_atom(dataset) and is_binary(item) do
+    call(registry, dataset, {:holding, key})
+  end
+
   defp call(registry, dataset, request) do
     reply = GenServer.call(registry, {dataset, request}, @call_timeout_ms)
 
@@ -107,7 +137,9 @@ defmodule Gobusgo.Demand do
   end
 
   @impl GenServer
-  def init(settings), do: {:ok, %{state: State.new(settings), monitors: %{}}}
+  def init(%{settings: settings, monotonic_time_ms: monotonic_time_ms}) do
+    {:ok, %{state: State.new(settings), monitors: %{}, monotonic_time_ms: monotonic_time_ms}}
+  end
 
   @impl GenServer
   def handle_call({dataset, request}, {pid, _tag}, registry) do
@@ -125,7 +157,7 @@ defmodule Gobusgo.Demand do
   def handle_info({:DOWN, reference, :process, pid, _reason}, registry) do
     case Map.fetch(registry.monitors, pid) do
       {:ok, ^reference} ->
-        state = State.release_all(registry.state, pid)
+        state = State.release_all(registry.state, %{holder: pid, now_ms: now_ms(registry)})
         {:noreply, %{registry | state: state, monitors: Map.delete(registry.monitors, pid)}}
 
       _other ->
@@ -142,7 +174,7 @@ defmodule Gobusgo.Demand do
   end
 
   defp handle_request({:release, key}, _dataset, pid, registry) do
-    state = State.release(registry.state, %{holder: pid, key: key})
+    state = State.release(registry.state, %{holder: pid, key: key, now_ms: now_ms(registry)})
     {:ok, demonitor(%{registry | state: state}, pid)}
   end
 
@@ -153,6 +185,18 @@ defmodule Gobusgo.Demand do
   defp handle_request({:holder_count, key}, _dataset, _pid, registry) do
     {State.holder_count(registry.state, key), registry}
   end
+
+  defp handle_request({:holding, key}, _dataset, _pid, registry) do
+    {State.holding(registry.state, %{key: key, now_ms: now_ms(registry)}), registry}
+  end
+
+  defp now_ms(%{monotonic_time_ms: monotonic_time_ms}) do
+    now_ms = monotonic_time_ms.()
+    Assert.condition(is_integer(now_ms), "the clock must return an integer")
+    now_ms
+  end
+
+  defp monotonic_time_ms_default, do: System.monotonic_time(:millisecond)
 
   defp monitor(%{monitors: monitors} = registry, pid) do
     case is_map_key(monitors, pid) do

@@ -7,6 +7,8 @@ defmodule Gobusgo.Scheduler.StateTest do
 
   alias Gobusgo.Assert.AssertionError
   alias Gobusgo.Cadence
+  alias Gobusgo.Demand
+  alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.Scheduler
   alias Gobusgo.Scheduler.State
@@ -149,7 +151,9 @@ defmodule Gobusgo.Scheduler.StateTest do
     # Simulates each source's scheduler over ten runs that succeed, with the
     # interval the policy of the source's spec decides from the spec's
     # signals, and compares the times the runs start at with multiples of
-    # the interval listed for the source.
+    # the interval listed for the source. The vehicle source's signals come
+    # from a demand registry started here, in which the test is one viewer
+    # of vehicles.
     for {name, interval_ms} <- [
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
           {Gobusgo.OneBusAway.VehicleScheduler, 5_000},
@@ -157,8 +161,13 @@ defmodule Gobusgo.Scheduler.StateTest do
           {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do
       test "#{inspect(name)} starts a run every #{interval_ms} ms" do
+        demand = Module.concat(__MODULE__, Demand)
+        start_supervised!({Demand, name: demand, datasets: DemandKey.datasets()})
+        :ok = Demand.register(demand, DemandKey.vehicles())
+
         specs =
           Sources.specs(%{base_url: "https://oba.example.test", api_key: "test-key"},
+            demand: demand,
             vehicle_cycle_options: [],
             route_cycle_options: [],
             arrival_cycle_options: []

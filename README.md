@@ -79,7 +79,7 @@ mix phx.server
 
 Open http://127.0.0.1:4000/ for the front end. In development the server also rebuilds the assets when a file under `assets/` or `lib/gobusgo_web/` changes.
 
-While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every five seconds, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
+While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every five seconds while a vehicle page is connected and for a minute after the last one leaves, and once a minute otherwise, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
 
 `GET /health` answers `200` with `{"status": "ok"}` while the server is running.
 
@@ -186,7 +186,7 @@ http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's lat
 
 The map is the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. It fits the whole archive, and `/vehicles?agency=<agency id>` fits one agency's coverage. The map shows the OpenStreetMap attribution. Before any extraction the page says "No basemap yet." and shows nothing else. A view wider than the archive shows a plain background beyond the tiles the archive holds.
 
-With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
+With the OneBusAway settings exported and the broker running, the server fetches every agency's vehicles every five seconds while the page is open, so the page fills a few seconds after the first agency fetch and then follows the live feed. A vehicle missing from an agency's newest fetch leaves the page with that fetch and comes back with the fetch that holds it again.
 
 Each response is stored under `raw/oba/vehicles-for-agency/dt=<date>/agency=<agency>/` in the data directory, compressed like the agency responses. A day of them is several gigabytes, and nothing deletes them yet.
 

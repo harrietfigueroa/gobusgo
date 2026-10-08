@@ -12,14 +12,22 @@ defmodule Gobusgo.DemandTest do
   @item_count_max_default 2_000
   @holder_item_count_max_default 4
 
+  # The registry reads a clock the test owns, which stands still until the
+  # test advances it.
   setup context do
     registry = Module.concat(__MODULE__, "Registry#{context.line}")
+    clock = :atomics.new(1, signed: true)
 
     start_supervised!(
-      {Demand, name: registry, datasets: @datasets, item_count_max: 2, holder_item_count_max: 2}
+      {Demand,
+       name: registry,
+       datasets: @datasets,
+       item_count_max: 2,
+       holder_item_count_max: 2,
+       monotonic_time_ms: fn -> :atomics.get(clock, 1) end}
     )
 
-    %{registry: registry}
+    %{registry: registry, clock: clock}
   end
 
   # A process that registers `key` and then waits to be told to release it
@@ -60,10 +68,28 @@ defmodule Gobusgo.DemandTest do
     assert_receive {:DOWN, ^reference, :process, ^pid, :killed}
   end
 
+  # Reads the count of holders until nobody holds `key`: the registry
+  # learns of a holder's exit in its own time, and reads its clock then.
+  defp await_no_holder(registry, key, reads_left \\ 500) do
+    case Demand.holder_count(registry, key) do
+      0 ->
+        :ok
+
+      count when reads_left > 1 ->
+        assert count >= 1
+        Process.sleep(1)
+        await_no_holder(registry, key, reads_left - 1)
+
+      count ->
+        flunk("expected no holder, got: #{count}")
+    end
+  end
+
   defp call(:register, registry), do: Demand.register(registry, {:routes, "1_100"})
   defp call(:release, registry), do: Demand.release(registry, {:routes, "1_100"})
   defp call(:items, registry), do: Demand.items(registry, :routes)
   defp call(:holder_count, registry), do: Demand.holder_count(registry, {:routes, "1_100"})
+  defp call(:holding, registry), do: Demand.holding(registry, {:routes, "1_100"})
 
   test "no dataset has an item at first", %{registry: registry} do
     assert Demand.items(registry, :arrivals) == []
@@ -179,6 +205,41 @@ defmodule Gobusgo.DemandTest do
     end
   end
 
+  describe "holding/2" do
+    test "is no holder and no absence for a key no process has held", %{registry: registry} do
+      assert Demand.holding(registry, @vehicles) == %{holder_count: 0, holder_absence_ms: nil}
+    end
+
+    test "is the count of holders and an absence of zero while the key is held", context do
+      :ok = Demand.register(context.registry, @vehicles)
+      :atomics.add(context.clock, 1, 500)
+
+      assert Demand.holding(context.registry, @vehicles) ==
+               %{holder_count: 1, holder_absence_ms: 0}
+    end
+
+    test "counts the absence from the release of the last holder", context do
+      :ok = Demand.register(context.registry, @vehicles)
+      :atomics.add(context.clock, 1, 500)
+      :ok = Demand.release(context.registry, @vehicles)
+      :atomics.add(context.clock, 1, 700)
+
+      assert Demand.holding(context.registry, @vehicles) ==
+               %{holder_count: 0, holder_absence_ms: 700}
+    end
+
+    test "counts the absence from the exit of the last holder", context do
+      {pid, :ok} = holder(context.registry, @vehicles)
+      :atomics.add(context.clock, 1, 500)
+      kill_and_wait(pid)
+      await_no_holder(context.registry, @vehicles)
+      :atomics.add(context.clock, 1, 700)
+
+      assert Demand.holding(context.registry, @vehicles) ==
+               %{holder_count: 0, holder_absence_ms: 700}
+    end
+  end
+
   describe "bounds" do
     test "refuses an item beyond the count of items of its dataset", %{registry: registry} do
       {_first, :ok} = holder(registry, {:arrivals, "1_1"})
@@ -268,7 +329,7 @@ defmodule Gobusgo.DemandTest do
       assert_raise AssertionError, ~r/item/, fn -> Demand.register(registry, {:arrivals, ""}) end
     end
 
-    for function <- [:register, :release, :items, :holder_count] do
+    for function <- [:register, :release, :items, :holder_count, :holding] do
       test "#{function} raises in the caller for a dataset the registry does not admit",
            %{registry: registry} do
         :ok = Demand.register(registry, {:arrivals, "1_100"})
@@ -276,6 +337,16 @@ defmodule Gobusgo.DemandTest do
         assert_raise AssertionError, ~r/dataset/, fn -> call(unquote(function), registry) end
 
         assert Demand.items(registry, :arrivals) == ["1_100"]
+      end
+    end
+
+    test "does not start with a clock that is not a zero-arity function" do
+      assert_raise AssertionError, ~r/monotonic_time_ms/, fn ->
+        Demand.start_link(
+          name: Module.concat(__MODULE__, NoClock),
+          datasets: @datasets,
+          monotonic_time_ms: :not_a_function
+        )
       end
     end
 

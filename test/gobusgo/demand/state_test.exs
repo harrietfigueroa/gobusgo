@@ -63,7 +63,7 @@ defmodule Gobusgo.Demand.StateTest do
   test "an item stays while another holder holds its key" do
     state = register_all(new(), [{:a, {:arrivals, "1_100"}}, {:b, {:arrivals, "1_100"}}])
 
-    state = State.release(state, %{holder: :a, key: {:arrivals, "1_100"}})
+    state = State.release(state, %{holder: :a, key: {:arrivals, "1_100"}, now_ms: 0})
 
     assert State.items(state, :arrivals) == ["1_100"]
   end
@@ -71,15 +71,15 @@ defmodule Gobusgo.Demand.StateTest do
   test "an item whose last holder releases its key is gone" do
     state = register_all(new(), [{:a, {:arrivals, "1_100"}}])
 
-    state = State.release(state, %{holder: :a, key: {:arrivals, "1_100"}})
+    state = State.release(state, %{holder: :a, key: {:arrivals, "1_100"}, now_ms: 0})
 
-    assert state == new()
+    assert State.items(state, :arrivals) == []
   end
 
   for {name, registration} <- [
-        {"another holder", %{holder: :b, key: {:arrivals, "1_100"}}},
-        {"another item", %{holder: :a, key: {:arrivals, "1_999"}}},
-        {"another dataset", %{holder: :a, key: {:vehicles, "1_100"}}}
+        {"another holder", %{holder: :b, key: {:arrivals, "1_100"}, now_ms: 0}},
+        {"another item", %{holder: :a, key: {:arrivals, "1_999"}, now_ms: 0}},
+        {"another dataset", %{holder: :a, key: {:vehicles, "1_100"}, now_ms: 0}}
       ] do
     test "releasing a key the holder does not hold changes nothing: #{name}" do
       state = register_all(new(), [{:a, {:arrivals, "1_100"}}])
@@ -97,7 +97,7 @@ defmodule Gobusgo.Demand.StateTest do
         {:b, {:arrivals, "1_200"}}
       ])
 
-    state = State.release_all(state, :a)
+    state = State.release_all(state, %{holder: :a, now_ms: 0})
 
     assert State.items(state, :arrivals) == ["1_200"]
     assert State.items(state, :vehicles) == []
@@ -108,13 +108,89 @@ defmodule Gobusgo.Demand.StateTest do
   test "releasing every key of a holder that has none changes nothing" do
     state = register_all(new(), [{:a, {:arrivals, "1_100"}}])
 
-    assert State.release_all(state, :b) == state
+    assert State.release_all(state, %{holder: :b, now_ms: 0}) == state
   end
 
   test "a holder of a key in any dataset is a holder" do
     state = register_all(new(), [{:a, {:vehicles, "all"}}])
 
     assert State.holder?(state, :a)
+  end
+
+  describe "holding/2" do
+    @vehicles {:vehicles, "all"}
+
+    test "is no holder and no absence for a key nobody has held" do
+      assert State.holding(new(), %{key: @vehicles, now_ms: 500}) ==
+               %{holder_count: 0, holder_absence_ms: nil}
+    end
+
+    test "is the count of holders and an absence of zero while the key is held" do
+      state = register_all(new(), [{:a, @vehicles}, {:b, @vehicles}])
+
+      assert State.holding(state, %{key: @vehicles, now_ms: 500}) ==
+               %{holder_count: 2, holder_absence_ms: 0}
+    end
+
+    test "counts the absence from the time the last holder released the key" do
+      state = register_all(new(), [{:a, @vehicles}, {:b, @vehicles}])
+      state = State.release(state, %{holder: :a, key: @vehicles, now_ms: 100})
+      state = State.release(state, %{holder: :b, key: @vehicles, now_ms: 300})
+
+      assert State.holding(state, %{key: @vehicles, now_ms: 1_000}) ==
+               %{holder_count: 0, holder_absence_ms: 700}
+    end
+
+    test "counts the absence from the time the last holder's every key was released" do
+      state = register_all(new(), [{:a, @vehicles}])
+      state = State.release_all(state, %{holder: :a, now_ms: 300})
+
+      assert State.holding(state, %{key: @vehicles, now_ms: 1_000}) ==
+               %{holder_count: 0, holder_absence_ms: 700}
+    end
+
+    test "keeps the absence as it is when a key nobody holds is released again" do
+      state = register_all(new(), [{:a, @vehicles}])
+      state = State.release(state, %{holder: :a, key: @vehicles, now_ms: 300})
+      state = State.release(state, %{holder: :a, key: @vehicles, now_ms: 900})
+
+      assert %{holder_absence_ms: 700} = State.holding(state, %{key: @vehicles, now_ms: 1_000})
+    end
+
+    test "is an absence of zero again once the key is held again" do
+      state = register_all(new(), [{:a, @vehicles}])
+      state = State.release(state, %{holder: :a, key: @vehicles, now_ms: 300})
+      state = register_all(state, [{:b, @vehicles}])
+
+      assert State.holding(state, %{key: @vehicles, now_ms: 1_000}) ==
+               %{holder_count: 1, holder_absence_ms: 0}
+    end
+
+    # The dataset takes three items, so it remembers three releases: a
+    # fourth takes the place of the one longest ago.
+    test "forgets the release longest ago beyond the count of items of the dataset" do
+      state =
+        Enum.reduce(1..4, new(), fn index, state ->
+          key = {:arrivals, "1_#{index}"}
+          state = register_all(state, [{:a, key}])
+          State.release(state, %{holder: :a, key: key, now_ms: index * 100})
+        end)
+
+      assert %{holder_absence_ms: nil} =
+               State.holding(state, %{key: {:arrivals, "1_1"}, now_ms: 1_000})
+
+      assert %{holder_absence_ms: 800} =
+               State.holding(state, %{key: {:arrivals, "1_2"}, now_ms: 1_000})
+    end
+
+    test "raises for a time before the release it is counted from" do
+      state = register_all(new(), [{:a, @vehicles}])
+      state = State.release(state, %{holder: :a, key: @vehicles, now_ms: 300})
+
+      assert_raise AssertionError, ~r/time/, fn ->
+        State.holding(state, %{key: @vehicles, now_ms: 299})
+      end
+    end
   end
 
   describe "holder_count/2" do
@@ -138,7 +214,7 @@ defmodule Gobusgo.Demand.StateTest do
     test "drops by one when a holder releases the key" do
       state = register_all(new(), [{:a, {:vehicles, "all"}}, {:b, {:vehicles, "all"}}])
 
-      state = State.release(state, %{holder: :a, key: {:vehicles, "all"}})
+      state = State.release(state, %{holder: :a, key: {:vehicles, "all"}, now_ms: 0})
 
       assert State.holder_count(state, {:vehicles, "all"}) == 1
     end
@@ -172,7 +248,7 @@ defmodule Gobusgo.Demand.StateTest do
 
     test "a released item leaves its place to another" do
       state = register_all(new(), @full)
-      state = State.release(state, %{holder: :a, key: {:arrivals, "1_1"}})
+      state = State.release(state, %{holder: :a, key: {:arrivals, "1_1"}, now_ms: 0})
 
       assert {_state, :registered} = State.register(state, %{holder: :d, key: {:arrivals, "1_4"}})
     end
