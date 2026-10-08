@@ -161,7 +161,7 @@ http://127.0.0.1:4000/agencies lists the same agencies in a browser: each agency
 
 ### Vehicle test page
 
-http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's latest fetch, with a filter by agency over one corner and an info button over another, and nothing else. The info button opens a panel that says what the application is, that it is an independent project no agency endorses, what each marker color means, how OneBusAway data is used and how often it is read, who provides the data and under which terms, and the licenses of the application and of the libraries the page uses. Each vehicle that has a position is a marker at the position the source estimates for it, colored by how far to trust that position: reported at most two minutes before the fetch, stale, schedule only for a vehicle that has never reported, or report time not supplied. A marker points the way the vehicle is heading when the source supplies a heading, and is labeled with its route where the map has room. Clicking a marker opens a popup with the vehicle, its status, its route and headsign, and its heading. Under the markers the map draws the path of every route of every agency as a thin line in the route's color, or in gray for a route that has no color; a route appears once the server has fetched its path, within about ten minutes of a first start or after `mix gobusgo.routes.backfill`. The map updates on its own.
+http://127.0.0.1:4000/vehicles shows a map of the vehicles of every agency's latest fetch, with a filter by agency over one corner and an info button over another, and nothing else. The info button opens a panel that says what the application is, that it is an independent project no agency endorses, what each marker color means, how OneBusAway data is used and how often it is read, what the application records about a page connection, who provides the data and under which terms, and the licenses of the application and of the libraries the page uses. Each vehicle that has a position is a marker at the position the source estimates for it, colored by how far to trust that position: reported at most two minutes before the fetch, stale, schedule only for a vehicle that has never reported, or report time not supplied. A marker points the way the vehicle is heading when the source supplies a heading, and is labeled with its route where the map has room. Clicking a marker opens a popup with the vehicle, its status, its route and headsign, and its heading. Under the markers the map draws the path of every route of every agency as a thin line in the route's color, or in gray for a route that has no color; a route appears once the server has fetched its path, within about ten minutes of a first start or after `mix gobusgo.routes.backfill`. The map updates on its own.
 
 The map is the basemap: the archive in the basemap directory (see [Basemap archives](#basemap-archives)), with the fonts and sprites that `mix assets.setup` downloads. It fits the whole archive, and `/vehicles?agency=<agency id>` fits one agency's coverage. The map shows the OpenStreetMap attribution. Before any extraction the page says "No basemap yet." and shows the info button and nothing else. A view wider than the archive shows a plain background beyond the tiles the archive holds.
 
@@ -267,6 +267,23 @@ docker pull ghcr.io/harrietfigueroa/gobusgo:<commit SHA>
 ```
 
 A pull request builds the image for the same platform and publishes nothing.
+
+## Usage records
+
+The application stores one record each time a page disconnects, to count visits. A record holds when the page connected, for how long, which page it was (`vehicle`, `agency`, `home`), whether it was a page already open that connected again, the agencies and routes of the last filter the page showed, the device class (`mobile`, `tablet`, `desktop`, `bot`, `unknown`), the browser family, the range the window's width falls in, the browser's language without its region, and the host of the site that linked to the page. A record holds no IP address, no cookie, no identifier of a visitor, and no user agent, so the records of two visits cannot be told to be from one visitor. The vehicle page's info panel lists the same fields.
+
+The records of the connections that ended in a minute are one gzip file under `usage/page-connections/dt=<date written>/` in the data directory: a JSON object with `meta` and `records`. A minute in which no connection ended writes no file, and the application writes what it holds when it shuts down. A crash loses the records not yet written and the connections open at that moment. Nothing deletes these files yet.
+
+A phone that sleeps reopens its connection, so a visit is a record whose `reconnect` is `false`. This counts the visits of each day, crawlers left out:
+
+```sh
+find "$GOBUSGO_DATA_DIR/usage/page-connections" -name '*.json.gz' -exec gunzip --stdout {} + |
+  jq --slurp '[.[].records[] | select(.reconnect == false and .deviceClass != "bot")]
+    | group_by(.connectedAt[0:10])
+    | map({date: .[0].connectedAt[0:10], visits: length})'
+```
+
+The server logs `Usage records written` once per file, with the count of records in it and the counts its bounds dropped. Under test nothing is recorded.
 
 ## Usage
 

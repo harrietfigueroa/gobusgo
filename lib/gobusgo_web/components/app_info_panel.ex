@@ -1,7 +1,7 @@
 defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
   The info button of a map page and the panel it opens: what the
-  application is, a disclaimer, how to read the map, how OneBusAway data is used, the
+  application is, a disclaimer, how to read the map, how OneBusAway data is used, what is recorded of a connection, the
   credits, and the licenses, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`.
 
@@ -66,6 +66,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         </section>
         <.legend />
         <.data_use />
+        <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />
       </div>
@@ -116,6 +117,24 @@ defmodule GobusgoWeb.AppInfoPanel do
     <section class="flex flex-col gap-2">
       <h3 class="font-semibold">How OneBusAway data is used</h3>
       <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+    </section>
+    """
+  end
+
+  defp recorded(assigns) do
+    assigns = assign(assigns, fields: AppInfo.recorded())
+
+    ~H"""
+    <section id="app-info-recorded" class="flex flex-col gap-2">
+      <h3 class="font-semibold">What is recorded</h3>
+      <p>
+        To count visits, Gobusgo stores one record each time a page disconnects. A record holds
+        the following and nothing else:
+      </p>
+      <ul class="list-disc pl-5">
+        <li :for={field <- @fields} id={"app-info-recorded-#{field.field}"}>{field.text}</li>
+      </ul>
+      <p>{AppInfo.recorded_never()}</p>
     </section>
     """
   end
