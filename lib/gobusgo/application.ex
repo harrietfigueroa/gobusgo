@@ -17,6 +17,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
+  alias Gobusgo.RetentionPolicy
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
@@ -88,7 +89,7 @@ defmodule Gobusgo.Application do
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
-            scheduler_supervisor(source_specs(scheduled)),
+            scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled)),
             {GobusgoWeb.Endpoint,
              http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
           ]
@@ -113,6 +114,11 @@ defmodule Gobusgo.Application do
   defp generate_secret do
     @generated_secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()
   end
+
+  # The cleanup of stored content runs wherever the sources are scheduled,
+  # with or without the OneBusAway settings.
+  defp cleanup_specs(true), do: [RetentionPolicy.cleanup_spec([])]
+  defp cleanup_specs(false), do: []
 
   defp source_specs(false), do: []
 

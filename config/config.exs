@@ -17,6 +17,8 @@ config :esbuild,
     cd: Path.expand("../assets", __DIR__)
   ]
 
+config :gobusgo, Gobusgo.Deleter, backend: Gobusgo.Deleter.LocalFile
+
 # Records go straight to their subscribers in the running application: a
 # "response stored" event to the consumer that processes the stored
 # response, and the processed records of a dataset to its view.

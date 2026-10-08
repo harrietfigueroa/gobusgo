@@ -87,6 +87,10 @@ defmodule Gobusgo.Usage.Records do
              "viewportWidthBucket" => {:nullable, :string}
            }}
 
+  @doc "The prefix every file's destination starts with."
+  @spec prefix() :: String.t()
+  def prefix, do: @prefix
+
   @doc "The name of every field of a record, sorted."
   @spec fields() :: [String.t(), ...]
   def fields, do: @fields

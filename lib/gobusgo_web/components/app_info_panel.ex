@@ -16,6 +16,7 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   alias Gobusgo.OneBusAway.RouteSchedule
   alias Gobusgo.OneBusAway.Sources
+  alias Gobusgo.RetentionPolicy
   alias GobusgoWeb.AppInfo
   alias GobusgoWeb.VehicleMarkers
   alias Phoenix.LiveView.JS
@@ -122,7 +123,11 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   defp recorded(assigns) do
-    assigns = assign(assigns, fields: AppInfo.recorded())
+    assigns =
+      assign(assigns,
+        fields: AppInfo.recorded(),
+        retention: AppInfo.recorded_retention(RetentionPolicy.usage_day_count())
+      )
 
     ~H"""
     <section id="app-info-recorded" class="flex flex-col gap-2">
@@ -135,6 +140,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         <li :for={field <- @fields} id={"app-info-recorded-#{field.field}"}>{field.text}</li>
       </ul>
       <p>{AppInfo.recorded_never()}</p>
+      <p id="app-info-recorded-retention">{@retention}</p>
     </section>
     """
   end
