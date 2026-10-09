@@ -4,6 +4,7 @@ defmodule GobusgoWeb.BasemapSourcesTest do
   use ExUnit.Case, async: true
 
   alias GobusgoWeb.BasemapSources
+  alias GobusgoWeb.MapLibrary
 
   @west_archive "basemap-20261004-01.pmtiles"
   @east_archive "basemap-20261004-02.pmtiles"
@@ -23,8 +24,9 @@ defmodule GobusgoWeb.BasemapSourcesTest do
   }
 
   describe "sources/1" do
-    test "names the archive, the fonts, and the sprites by path, with the attribution" do
+    test "names the library, the archive, the fonts, and the sprites by path, with the attribution" do
       assert BasemapSources.sources(@west_archive) == %{
+               library_url: MapLibrary.url(MapLibrary.version()),
                archive_url: "/basemap/basemap-20261004-01.pmtiles",
                fonts_url: "/vendor/basemaps-assets/fonts",
                sprites_url: "/vendor/basemaps-assets/sprites/v4",

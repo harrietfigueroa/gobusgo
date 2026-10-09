@@ -1,10 +1,6 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
 
-// MapLibre is served as its own module files and loaded at run time: it
-// starts its worker from the file beside the one it was loaded from, which a
-// bundle has no address for.
-const maplibreUrl = "/assets/vendor/maplibre-gl/maplibre-gl.mjs"
 const protocolName = "pmtiles"
 const sourceName = "protomaps"
 const flavorName = "light"
@@ -20,8 +16,10 @@ export const readyEventName = "basemap:ready"
 let maplibreLoading = null
 
 // Loads the library once for the page and registers the protocol that reads
-// tiles out of an archive with HTTP range requests.
-function loadMaplibre() {
+// tiles out of an archive with HTTP range requests. MapLibre is served as
+// its own module files and loaded at run time: it starts its worker from the
+// file beside the one it was loaded from, which a bundle has no address for.
+function loadMaplibre(maplibreUrl) {
   if (maplibreLoading === null) {
     maplibreLoading = import(maplibreUrl).then((maplibre) => {
       maplibre.addProtocol(protocolName, new Protocol().tile)
@@ -63,7 +61,8 @@ function cornerBounds({south, west, north, east}) {
 }
 
 // The hook of the element the map is drawn in. The element's data
-// attributes hold the basemap's sources and the bounds of the first view;
+// attributes hold the library's address, the basemap's sources, and the
+// bounds of the first view;
 // the server moves the view with the "basemap:fit" event. A new map is
 // announced on the element as a bubbling "basemap:ready" DOM event whose
 // detail holds the map and the library.
@@ -82,7 +81,7 @@ export const Basemap = {
       }
     })
 
-    loadMaplibre()
+    loadMaplibre(element.dataset.libraryUrl)
       .then((maplibre) => {
         this.map = new maplibre.Map({
           container: element,

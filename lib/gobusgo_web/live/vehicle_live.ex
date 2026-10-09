@@ -383,6 +383,7 @@ defmodule GobusgoWeb.VehicleLive do
         phx-hook="Basemap"
         phx-update="ignore"
         class="h-screen w-full"
+        data-library-url={@basemap.sources.library_url}
         data-archive-url={@basemap.sources.archive_url}
         data-fonts-url={@basemap.sources.fonts_url}
         data-sprites-url={@basemap.sources.sprites_url}
