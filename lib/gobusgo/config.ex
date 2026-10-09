@@ -26,6 +26,10 @@ defmodule Gobusgo.Config do
   @http_port_min 1
   @http_port_max 65_535
   @secret_key_base_bytes_min 64
+  # A host name is at most 253 bytes of labels, each at most 63.
+  # https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4 — checked 2026-10-09
+  @public_host_bytes_max 253
+  @public_host_label ~S"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 
   @doc """
   Returns the OneBusAway settings from `env`, or the first missing key.
@@ -166,6 +170,38 @@ defmodule Gobusgo.Config do
           {:ok, String.t() | nil} | {:error, {:missing | :invalid, :secret_key_base}}
   def secret_key_base do
     :gobusgo |> Application.fetch_env!(:session) |> fetch_secret_key_base()
+  end
+
+  @doc """
+  Returns the public host name from `env`: `:host`, the name pages are
+  served on, in lowercase with no scheme, port, or path, and `:required`, a
+  boolean. A nil or blank host name is `{:ok, nil}` when it is not required
+  and `{:error, {:missing, :public_host}}` when it is.
+  """
+  @spec fetch_public_host(Keyword.t()) ::
+          {:ok, String.t() | nil} | {:error, {:missing | :invalid, :public_host}}
+  def fetch_public_host(env) when is_list(env) do
+    required = Keyword.fetch!(env, :required)
+
+    case text(env, :host) do
+      nil ->
+        if required, do: {:error, {:missing, :public_host}}, else: {:ok, nil}
+
+      host ->
+        if public_host?(host), do: {:ok, host}, else: {:error, {:invalid, :public_host}}
+    end
+  end
+
+  @doc "Reads the public host name configured for the running application."
+  @spec public_host() ::
+          {:ok, String.t() | nil} | {:error, {:missing | :invalid, :public_host}}
+  def public_host do
+    :gobusgo |> Application.fetch_env!(:public) |> fetch_public_host()
+  end
+
+  defp public_host?(host) do
+    byte_size(host) <= @public_host_bytes_max and
+      Regex.match?(~r/\A#{@public_host_label}(?:\.#{@public_host_label})*\z/, host)
   end
 
   defp text(env, key) do

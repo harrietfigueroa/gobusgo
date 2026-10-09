@@ -158,4 +158,42 @@ defmodule Gobusgo.ConfigTest do
       end
     end
   end
+
+  describe "fetch_public_host/1" do
+    for host <- ["localhost", "d111111abcdef8.cloudfront.net", "gobusgo.example", "a-b.example"] do
+      test "returns the configured host name #{host}" do
+        assert Config.fetch_public_host(host: unquote(host), required: true) ==
+                 {:ok, unquote(host)}
+      end
+    end
+
+    test "returns nil for an unset host name that is not required" do
+      assert Config.fetch_public_host(host: nil, required: false) == {:ok, nil}
+    end
+
+    test "returns nil for a blank host name that is not required" do
+      assert Config.fetch_public_host(host: "  ", required: false) == {:ok, nil}
+    end
+
+    test "reports the host name as missing when it is required and unset" do
+      assert Config.fetch_public_host(host: nil, required: true) ==
+               {:error, {:missing, :public_host}}
+    end
+
+    for {reason, host} <- [
+          {"a scheme", "https://gobusgo.example"},
+          {"a port", "gobusgo.example:443"},
+          {"a path", "gobusgo.example/vehicles"},
+          {"an uppercase letter", "Gobusgo.example"},
+          {"a space", "gobusgo .example"},
+          {"an empty label", "gobusgo..example"},
+          {"a label that starts with a hyphen", "-gobusgo.example"},
+          {"more than 253 bytes", String.duplicate("a.", 127)}
+        ] do
+      test "reports a host name with #{reason} as invalid" do
+        assert Config.fetch_public_host(host: unquote(host), required: false) ==
+                 {:error, {:invalid, :public_host}}
+      end
+    end
+  end
 end

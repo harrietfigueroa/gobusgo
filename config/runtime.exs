@@ -24,6 +24,11 @@ config :gobusgo, :one_bus_away,
   base_url: System.get_env("ONEBUSAWAY_BASE_URL"),
   api_key: System.get_env("ONEBUSAWAY_API_KEY")
 
+# The host name pages are served on, which the socket's origin check needs.
+config :gobusgo, :public,
+  host: System.get_env("GOBUSGO_PUBLIC_HOST"),
+  required: config_env() == :prod
+
 config :gobusgo, :session,
   secret_key_base: System.get_env("SECRET_KEY_BASE"),
   required: config_env() == :prod

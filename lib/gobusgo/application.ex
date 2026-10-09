@@ -50,6 +50,7 @@ defmodule Gobusgo.Application do
   def start(_type, _args) do
     with {:ok, %{ip: ip, port: port}} <- Config.http(),
          {:ok, configured_secret} <- Config.secret_key_base(),
+         {:ok, public_host} <- Config.public_host(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
          {:ok, _basemap} <- Config.basemap() do
@@ -91,7 +92,8 @@ defmodule Gobusgo.Application do
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
             scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled)),
             {GobusgoWeb.Endpoint,
-             http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()}
+             [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
+               GobusgoWeb.PublicHost.endpoint_options(public_host)}
           ]
 
       Supervisor.start_link(children,
