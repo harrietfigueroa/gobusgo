@@ -38,7 +38,7 @@ function removeStored() {
 // filter the page turns down is removed.
 export const VehicleFilter = {
   mounted() {
-    this.detailsOpen = false
+    this.detailsOpen = []
     this.handleEvent(storeEventName, ({filter}) => writeStored(filter))
 
     if (this.el.dataset.supplied === "false") {
@@ -53,12 +53,15 @@ export const VehicleFilter = {
   },
 
   // The server's markup never holds the `open` attribute, so an update
-  // closes the list unless its state is carried across.
+  // closes each list unless its state is carried across. The lists keep
+  // their order, so a list is known by its place.
   beforeUpdate() {
-    this.detailsOpen = this.el.querySelector("details").open
+    this.detailsOpen = [...this.el.querySelectorAll("details")].map(details => details.open)
   },
 
   updated() {
-    this.el.querySelector("details").open = this.detailsOpen
+    this.el.querySelectorAll("details").forEach((details, index) => {
+      details.open = this.detailsOpen[index] === true
+    })
   }
 }

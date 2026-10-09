@@ -27,13 +27,6 @@ defmodule GobusgoWeb.FilterParams do
     end
   end
 
-  @doc """
-  Returns the values of one field as the one parameter value that `raw/1`
-  reads them back from, not yet encoded for a query string.
-  """
-  @spec param([String.t(), ...]) :: String.t()
-  def param([_value | _rest] = values), do: Enum.join(values, @value_separator)
-
   @doc "Returns `filter` as a query string, empty for the empty filter."
   @spec query(Filter.t()) :: String.t()
   def query(filter) when is_map(filter) do

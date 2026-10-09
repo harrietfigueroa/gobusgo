@@ -404,4 +404,86 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
       refute_push_event(view, @event, %{}, @push_wait_ms)
     end
   end
+
+  describe "the map's fit under a route filter" do
+    @fit_event "basemap:fit"
+    @route_bounds %{"south" => 47.6, "west" => -122.4, "north" => 47.7, "east" => -122.3}
+
+    # Agency "40" lists a route whose two stops span `@route_bounds`, and
+    # agency "1" a route with one stop elsewhere.
+    setup do
+      apply_routes([{"40_1", "1 Line"}], %{agency_id: "40", sequence: 1})
+      apply_routes([{"1_44", "44"}], %{agency_id: "1", sequence: 2})
+      apply_path(%{route_id: "40_1", sequence: 3})
+      apply_path(%{route_id: "1_44", sequence: 4})
+
+      apply_stops(
+        [
+          stop("a", %{route_ids: ["40_1"], lat: 47.6, lon: -122.3}),
+          stop("b", %{route_ids: ["40_1"], lat: 47.7, lon: -122.4})
+        ],
+        %{route_id: "40_1", sequence: 3}
+      )
+
+      apply_stops([stop("c", %{route_ids: ["1_44"], lat: 47.2, lon: -122.9})], %{
+        route_id: "1_44",
+        sequence: 4
+      })
+    end
+
+    defp fit_bounds(view) do
+      [value] =
+        view
+        |> element("#basemap-basemap-20261004-01")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("data-bounds")
+
+      JSON.decode!(value)
+    end
+
+    test "is the box around the stops of the route the filter names" do
+      assert fit_bounds(open_page("/vehicles?route=40_1")) == @route_bounds
+    end
+
+    test "is the box around the stops of every route the filter names" do
+      assert fit_bounds(open_page("/vehicles?route=40_1,1_44")) ==
+               %{"south" => 47.2, "west" => -122.9, "north" => 47.7, "east" => -122.3}
+    end
+
+    test "is the route's box under a filter that names its agency as well" do
+      assert fit_bounds(open_page("/vehicles?agency=40&route=40_1")) == @route_bounds
+    end
+
+    test "is the whole archive for a route that has no stop" do
+      assert fit_bounds(open_page("/vehicles?route=40_9")) == @bounds
+    end
+
+    test "is the whole archive for a route whose agency the filter leaves out" do
+      assert fit_bounds(open_page("/vehicles?agency=1&route=40_1")) == @bounds
+    end
+
+    test "moves the map when the filter comes to name the route" do
+      view = open_page()
+
+      render_patch(view, "/vehicles?route=40_1")
+
+      assert_push_event(view, @fit_event, %{
+        bounds: %{south: 47.6, west: -122.4, north: 47.7, east: -122.3}
+      })
+    end
+
+    test "leaves the map where it is when the route's stops change" do
+      view = open_page("/vehicles?route=40_1")
+
+      apply_stops([stop("a", %{route_ids: ["40_1"], lat: 47.1, lon: -122.1})], %{
+        route_id: "40_1",
+        sequence: 5
+      })
+
+      # A render waits for the page to have handled the announcement.
+      render(view)
+      refute_push_event(view, @fit_event, %{}, @push_wait_ms)
+    end
+  end
 end

@@ -1,7 +1,10 @@
 # Measures the memory the vehicle page holds in the browser and prints it.
 #
 #     MIX_ENV=test GOBUSGO_DATA_DIR=<base directory with a basemap> \
-#       mix run --no-start test/scripts/vehicle_page_browser_memory.exs <path of the Chrome executable>
+#       mix run --no-start test/scripts/vehicle_page_browser_memory.exs <path of the Chrome executable> [<page path>]
+#
+# The page path is the page's address with its filter, `/vehicles?agency=1`
+# for one, and `/vehicles` when left out.
 #
 # The script serves the application in the test environment, fills the
 # vehicle view with one fetch cycle of synthetic vehicles in the counts a
@@ -31,11 +34,13 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
   document.querySelectorAll(".maplibregl-canvas").length
   """
 
-  def run([executable]) do
+  def run([executable]), do: run([executable, @page_path])
+
+  def run([executable, @page_path <> _query = page_path]) do
     Application.put_env(:phoenix, :serve_endpoints, true)
     {:ok, _started} = Application.ensure_all_started(:gobusgo)
     {:ok, %{ip: ip, port: port}} = Gobusgo.Config.http()
-    url = "http://#{:inet.ntoa(ip)}:#{port}#{@page_path}"
+    url = "http://#{:inet.ntoa(ip)}:#{port}#{page_path}"
     profile = VehiclePageMemory.fetch_profile()
     vehicle_count = Enum.sum_by(profile, & &1.vehicle_count)
     apply_cycle(profile, 0)
@@ -73,8 +78,8 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
         measure(browser, session_id, worker_session_ids)
 
       IO.puts(
-        "\nVehicle page browser memory: #{vehicle_count} vehicles, #{length(profile)} agencies," <>
-          " #{route_count} routes, #{stop_count} stops"
+        "\nVehicle page browser memory at #{page_path}: #{vehicle_count} vehicles," <>
+          " #{length(profile)} agencies, #{route_count} routes, #{stop_count} stops"
       )
 
       print("After the first draw", first_draw)
@@ -85,7 +90,7 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
   end
 
   def run(_arguments) do
-    raise "usage: mix run --no-start #{__ENV__.file} <path of the Chrome executable>"
+    raise "usage: mix run --no-start #{__ENV__.file} <path of the Chrome executable> [<page path>]"
   end
 
   defp apply_cycle(profile, sequence) do

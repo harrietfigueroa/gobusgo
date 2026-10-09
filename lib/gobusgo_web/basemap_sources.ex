@@ -87,4 +87,13 @@ defmodule GobusgoWeb.BasemapSources do
       agency_ids: Enum.map(agencies, & &1.agency_id)
     }
   end
+
+  @doc """
+  Returns `view` fitted to `bounds`, bounds inside its archive that belong
+  to no agency.
+  """
+  @spec fitted(view(), Manifest.bounds()) :: view()
+  def fitted(%{archive: _archive} = view, %{south: _, west: _, north: _, east: _} = bounds) do
+    %{view | bounds: bounds, agency_id: nil}
+  end
 end
