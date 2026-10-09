@@ -11,6 +11,9 @@ const flavorName = "light"
 const labelLanguage = "en"
 const fitPaddingPixels = 24
 const failureText = "The map could not be loaded."
+// A map takes the texts of its controls when it is made, so the label of
+// the geolocate control is given here.
+const locale = {"GeolocateControl.FindMyLocation": "Snap to my location"}
 
 export const readyEventName = "basemap:ready"
 
@@ -86,6 +89,7 @@ export const Basemap = {
           style: basemapStyle(element.dataset),
           bounds: this.fitBounds,
           fitBoundsOptions: {padding: fitPaddingPixels},
+          locale,
           attributionControl: false
         })
 

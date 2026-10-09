@@ -40,9 +40,19 @@ defmodule GobusgoWeb.BasemapSourcesTest do
                archive: @west_archive,
                sources: BasemapSources.sources(@west_archive),
                bounds: @west_bounds,
+               archive_bounds: @west_bounds,
                agency_id: nil,
                agency_ids: ["near-west", "east"]
              }
+    end
+
+    test "names the bounds of the whole archive beside a chosen agency's coverage" do
+      assert %{bounds: @agency_bounds, archive_bounds: @west_bounds} =
+               BasemapSources.view(@manifest, "near-west")
+    end
+
+    test "names the bounds of the archive that holds the chosen agency" do
+      assert %{archive_bounds: @east_bounds} = BasemapSources.view(@manifest, "east")
     end
 
     test "fits the chosen agency's own coverage" do

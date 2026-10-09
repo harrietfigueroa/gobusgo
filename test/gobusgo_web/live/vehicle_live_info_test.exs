@@ -252,6 +252,19 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert panel_text(view) =~ AppInfo.recorded_never()
     end
 
+    test "says how the rider's location is used, in a section of its own" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-location")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.location()
+    end
+
     test "links the terms the data is provided under" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       %{name: name, url: url} = AppInfo.terms()
