@@ -7,6 +7,7 @@ defmodule GobusgoWeb.AppInfo do
   @moduledoc """
   What the info panel of a map page says about the application: what it is,
   that it is independent of the agencies, how it uses OneBusAway data,
+  how it uses the rider's location,
   what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
@@ -80,6 +81,11 @@ defmodule GobusgoWeb.AppInfo do
   @recorded_never "A record holds no IP address, no cookie, no identifier of you or your " <>
                     "device, and not the text your browser identifies itself with. Records " <>
                     "of different visits cannot be told to be from the same visitor."
+
+  @location "The location button centers the map on where you are. Your browser asks you " <>
+              "first, and your position never leaves your browser: Gobusgo's server does " <>
+              "not receive it. The browser remembers only that you used the button, so " <>
+              "that the map centers on you again on your next visit."
 
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
@@ -169,6 +175,10 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of what a usage record never holds."
   @spec recorded_never() :: String.t()
   def recorded_never, do: @recorded_never
+
+  @doc "The statement of how a map page uses the rider's location."
+  @spec location() :: String.t()
+  def location, do: @location
 
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()

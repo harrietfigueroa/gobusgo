@@ -35,6 +35,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
   }
   @west_map "#basemap-basemap-20261004-01"
   @east_map "#basemap-basemap-20261004-02"
+  @snap "#snap-to-location"
 
   setup %{tmp_dir: tmp_dir} do
     configured = Application.fetch_env!(:gobusgo, :basemap)
@@ -79,6 +80,12 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
 
       assert log =~ "Basemap manifest not usable"
     end
+
+    test "has no element for the snap to the rider's location" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @snap)
+    end
   end
 
   describe "GET /vehicles with a basemap" do
@@ -107,7 +114,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @west_map) == @west_bounds
     end
 
-    test "shows the map, the three hooks' elements, and the info panel, and nothing else" do
+    test "shows the map, the four hooks' elements, and the info panel, and nothing else" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       ids =
@@ -122,6 +129,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "stop-markers",
                "vehicle-markers",
                "route-lines",
+               "snap-to-location",
                "app-info-open",
                "app-info"
              ]
@@ -144,6 +152,33 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=6289")
 
       assert bounds(view, @west_map) == @west_bounds
+    end
+
+    test "mounts the snap hook on a notice that starts hidden and that a patch leaves alone" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @snap, "phx-hook") == "SnapToLocation"
+      assert attribute(view, @snap, "phx-update") == "ignore"
+      assert attribute(view, @snap, "role") == "status"
+      assert has_element?(view, @snap <> "[hidden]")
+    end
+
+    test "hands the snap hook the bounds of the whole archive" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert bounds(view, @snap) == @west_bounds
+    end
+
+    test "hands the snap hook the whole archive's bounds under a filter by one agency" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
+
+      assert bounds(view, @snap) == @west_bounds
+    end
+
+    test "hands the snap hook the bounds of the archive that holds the agency the address names" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles?agency=east")
+
+      assert bounds(view, @snap) == @east_bounds
     end
 
     test "names nothing about vehicles on the map element" do

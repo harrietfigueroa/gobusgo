@@ -40,13 +40,15 @@ defmodule GobusgoWeb.BasemapSources do
 
   @typedoc """
   The map a page shows: the archive it is drawn from, its sources, the
-  bounds the view fits, the agency those bounds belong to or `nil` for the
-  whole archive, and the agencies a view can be chosen for.
+  bounds the view fits, the bounds of the whole archive, the agency the
+  fitted bounds belong to or `nil` for the whole archive, and the agencies a
+  view can be chosen for.
   """
   @type view :: %{
           archive: String.t(),
           sources: t(),
           bounds: Manifest.bounds(),
+          archive_bounds: Manifest.bounds(),
           agency_id: String.t() | nil,
           agency_ids: [String.t()]
         }
@@ -71,10 +73,13 @@ defmodule GobusgoWeb.BasemapSources do
         :error -> {first_archive.name, first_archive.bounds, nil}
       end
 
+    {:ok, %{bounds: archive_bounds}} = Manifest.fetch_archive(manifest, archive)
+
     %{
       archive: archive,
       sources: sources(archive),
       bounds: bounds,
+      archive_bounds: archive_bounds,
       agency_id: selected_id,
       agency_ids: Enum.map(agencies, & &1.agency_id)
     }

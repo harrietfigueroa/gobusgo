@@ -142,6 +142,20 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "location/0" do
+    test "says the rider's position stays in the browser" do
+      assert AppInfo.location() =~ "never leaves your browser"
+    end
+
+    test "says the browser asks before it gives a position" do
+      assert AppInfo.location() =~ "asks you first"
+    end
+
+    test "says what the browser remembers" do
+      assert AppInfo.location() =~ "remembers only that you used the button"
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =

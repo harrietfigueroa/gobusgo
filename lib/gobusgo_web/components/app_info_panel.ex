@@ -1,7 +1,7 @@
 defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
   The info button of a map page and the panel it opens: what the
-  application is, a disclaimer, how to read the map, how OneBusAway data is used, what is recorded of a connection, the
+  application is, a disclaimer, how to read the map, how OneBusAway data is used, how the rider's location is used, what is recorded of a connection, the
   credits, and the licenses, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`.
 
@@ -67,6 +67,10 @@ defmodule GobusgoWeb.AppInfoPanel do
         </section>
         <.legend />
         <.data_use />
+        <section id="app-info-location" class="flex flex-col gap-2">
+          <h3 class="font-semibold">Your location</h3>
+          <p>{AppInfo.location()}</p>
+        </section>
         <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />

@@ -42,6 +42,12 @@ defmodule GobusgoWeb.VehicleLive do
   extraction the page says that no basemap is available, and shows the info
   button and nothing else.
 
+  An element of its own mounts the hook that centers the map on the rider's
+  location. It carries the bounds of the whole archive and starts hidden;
+  the browser writes into it why a snap the rider asked for did not happen,
+  and a patch of the page leaves it as the browser has it. The rider's
+  position stays in the browser: no event of this page carries it.
+
   On the map the browser draws one marker per vehicle that has a position,
   from `GobusgoWeb.VehicleMarkers`. An element that shows nothing mounts the
   hook that draws them and carries the definition of every status. A
@@ -400,6 +406,18 @@ defmodule GobusgoWeb.VehicleLive do
       </div>
 
       <div :if={@basemap != nil} id="route-lines" phx-hook="RouteLines" hidden></div>
+
+      <p
+        :if={@basemap != nil}
+        id="snap-to-location"
+        phx-hook="SnapToLocation"
+        phx-update="ignore"
+        role="status"
+        class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded bg-white px-3 py-2 text-sm shadow"
+        data-bounds={JSON.encode!(@basemap.archive_bounds)}
+        hidden
+      >
+      </p>
 
       <AppInfoPanel.panel agencies={@agencies} />
     </main>
