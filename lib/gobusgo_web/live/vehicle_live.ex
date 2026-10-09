@@ -19,26 +19,37 @@ defmodule GobusgoWeb.VehicleLive do
 
   Over the map's corner the page offers the filter as a form: one checkbox
   per agency of `Gobusgo.OneBusAway.AgencyView`, from
-  `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. The
-  form has no control for routes and holds the routes of the address's
-  filter in a hidden field. A change of the form goes through the same
+  `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. Under
+  them the form offers the routes, from `GobusgoWeb.RouteOptions`: one
+  checkbox per route the filter names, checked, then one per route of the
+  route view that the text in the form's text box narrows to, of the
+  agencies the filter names or of every agency when it names none, a
+  bounded count of them with the count of the rest. The page keeps the text
+  and the options it shows, and neither goes into the address or the
+  stored filter. A change of the form goes through the same
   contract, and one that names agencies keeps only the routes that one of
   those agencies lists in the route view, and no route field when it lists
-  none of them. When accepted, the filter goes
-  into the address, and the page has the browser store the filter with the
-  `vehicle-filter:store` event. A refused change changes nothing. The
+  none of them. When accepted and another filter than the page shows, it
+  goes into the address, and the page has the browser store the filter
+  with the `vehicle-filter:store` event. A refused change changes nothing
+  but the text. The
   browser offers its stored filter with the `vehicle-filter:restore` event,
   which the page puts into the address only when the address supplies no
   filter itself, so a filter in an address wins and is never stored. The
   reply says whether the stored filter is one to keep.
 
   The page draws the basemap of the configured basemap directory, read once
-  when the page is mounted. A filter that names one agency fits the map's
-  view to that agency's coverage; any other filter, and an agency the
+  when the page is mounted. A filter that names routes fits the map's view
+  to the box around the stops the page draws for them, from
+  `GobusgoWeb.MapExtent`, as the stop view holds them when the filter
+  changes; a later fetch leaves the view where it is. A filter that names
+  no route, or routes with no stop in the stop view, fits the coverage of
+  the one agency it names, and any other filter, and an agency the
   basemap does not hold, fits the whole archive. The map element
   carries only the basemap's sources and bounds, from
-  `GobusgoWeb.BasemapSources`, and the browser draws it; a change of agency
-  inside one archive moves the view with the `basemap:fit` event. Before any
+  `GobusgoWeb.BasemapSources`, and the browser draws it; a change of the
+  fitted bounds inside one archive moves the view with the `basemap:fit`
+  event. Before any
   extraction the page says that no basemap is available, and shows the info
   button and nothing else.
 
@@ -137,8 +148,10 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.FilterParams
+  alias GobusgoWeb.MapExtent
   alias Gobusgo.OneBusAway.StopView
   alias GobusgoWeb.RouteLines
+  alias GobusgoWeb.RouteOptions
   alias GobusgoWeb.StopArrivals
   alias GobusgoWeb.StopMarkers
   alias GobusgoWeb.VehicleMarkers
@@ -147,6 +160,8 @@ defmodule GobusgoWeb.VehicleLive do
   @path "/vehicles"
   @agency_field "agency"
   @route_field "route"
+  @route_query_param "route_query"
+  @route_query_debounce_ms 200
   @route_view Gobusgo.OneBusAway.RouteView
   @route_path_view Gobusgo.OneBusAway.RoutePathView
   @arrival_view Gobusgo.OneBusAway.ArrivalView
@@ -161,6 +176,8 @@ defmodule GobusgoWeb.VehicleLive do
         filter: nil,
         filter_supplied: false,
         agencies: agencies(),
+        route_query: "",
+        route_options: %{selected: [], matches: [], rest_count: 0},
         shown_request_ids: %{},
         shown_route_versions: %{},
         stops_ready: false,
@@ -189,24 +206,28 @@ defmodule GobusgoWeb.VehicleLive do
     raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
     filter = filter(raw)
 
+    socket = assign(socket, filter: filter, filter_supplied: raw != %{})
+
     basemap =
       case manifest do
         nil -> nil
-        manifest -> BasemapSources.view(manifest, fit_agency_id(filter))
+        manifest -> manifest |> BasemapSources.view(fit_agency_id(filter)) |> fit_routes(socket)
       end
 
     record_filter(socket, filter)
 
     {:noreply,
      socket
-     |> assign(basemap: basemap, filter: filter, filter_supplied: raw != %{})
+     |> assign(basemap: basemap)
+     |> assign_route_options()
      |> push_fit(shown, basemap)
      |> push_filter_change(shown_filter)}
   end
 
   @impl Phoenix.LiveView
   def handle_info({:agency_view_switched, AgencyView}, socket) do
-    {:noreply, socket |> assign(agencies: agencies()) |> push_route_changes()}
+    {:noreply,
+     socket |> assign(agencies: agencies()) |> assign_route_options() |> push_route_changes()}
   end
 
   def handle_info(
@@ -228,7 +249,7 @@ defmodule GobusgoWeb.VehicleLive do
   def handle_info({:fetch_view_switched, view}, socket)
       when view in [@route_view, @route_path_view] do
     shown = socket.assigns.shown_route_versions
-    socket = push_route_changes(socket)
+    socket = socket |> follow_route_view(view) |> push_route_changes()
 
     # A stop follows the lines: a route whose line appears or goes changes
     # which stops are drawn.
@@ -265,15 +286,23 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   def handle_event("vehicle-filter:change", params, socket) do
+    shown_filter = socket.assigns.filter
     raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
 
-    case filter(raw) do
+    socket =
+      socket
+      |> assign(route_query: RouteOptions.query(Map.get(params, @route_query_param)))
+      |> assign_route_options()
+
+    case changed_filter(raw) do
       :refused ->
         {:noreply, socket}
 
-      filter ->
-        filter = listed_routes_filter(filter)
+      # Text typed into the text box changes the form and not the filter.
+      ^shown_filter ->
+        {:noreply, socket}
 
+      filter ->
         {:noreply,
          socket
          |> push_event("vehicle-filter:store", %{filter: filter})
@@ -343,16 +372,11 @@ defmodule GobusgoWeb.VehicleLive do
           id="vehicle-filter"
           phx-hook="VehicleFilter"
           phx-change="vehicle-filter:change"
+          phx-submit="vehicle-filter:change"
           data-supplied={to_string(@filter_supplied)}
-          class="rounded bg-white px-3 py-2 text-sm shadow"
+          class="max-h-[calc(100vh-1rem)] max-w-xs overflow-y-auto rounded bg-white px-3 py-2 text-sm shadow"
         >
-          <input
-            :for={{field, value} <- hidden_fields(@filter)}
-            type="hidden"
-            name={field}
-            value={value}
-          />
-          <details>
+          <details id="vehicle-filter-agencies">
             <summary class="cursor-pointer font-medium">Agencies</summary>
             <div class="mt-2 flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
               <label
@@ -367,6 +391,45 @@ defmodule GobusgoWeb.VehicleLive do
                 />
                 <span>{option.name}</span>
               </label>
+            </div>
+          </details>
+          <details id="vehicle-filter-routes" class="mt-2">
+            <summary class="cursor-pointer font-medium">Routes</summary>
+            <input
+              type="search"
+              name={route_query_param()}
+              value={@route_query}
+              placeholder="Route name"
+              aria-label="Narrow the routes by name"
+              maxlength={RouteOptions.query_length_max()}
+              autocomplete="off"
+              phx-debounce={route_query_debounce_ms()}
+              class="mt-2 w-full rounded border border-gray-300 px-2 py-1"
+            />
+            <div class="mt-2 flex max-h-[40vh] flex-col gap-1 overflow-y-auto">
+              <label
+                :for={option <- @route_options.selected ++ @route_options.matches}
+                class="flex items-baseline gap-2"
+              >
+                <input
+                  type="checkbox"
+                  name="route[]"
+                  value={option.id}
+                  checked={option.checked}
+                />
+                <span class="font-medium">{option.name}</span>
+                <span :if={option.detail != nil}>{option.detail}</span>
+                <span :if={option.agency_name != nil} class="text-gray-500">
+                  {option.agency_name}
+                </span>
+              </label>
+              <p
+                :if={@route_options.rest_count > 0}
+                id="vehicle-filter-routes-rest"
+                class="text-gray-500"
+              >
+                {@route_options.rest_count} more
+              </p>
             </div>
           </details>
         </form>
@@ -551,12 +614,47 @@ defmodule GobusgoWeb.VehicleLive do
     AgencyOptions.options(%{agencies: agencies, selected_ids: selected_ids})
   end
 
-  # The fields of the filter the form has no control for, each with its
-  # values as one parameter value.
-  defp hidden_fields(%{@route_field => route_ids}),
-    do: [{@route_field, FilterParams.param(route_ids)}]
+  # The route options of the page's filter, of the text in the text box,
+  # and of what the route view and the agency view hold now. A refused
+  # filter selects nothing.
+  defp assign_route_options(socket) do
+    %{filter: filter, agencies: agencies, route_query: route_query} = socket.assigns
 
-  defp hidden_fields(_filter), do: []
+    selection =
+      case filter do
+        :refused -> %{}
+        filter -> filter
+      end
+
+    assign(socket,
+      route_options:
+        RouteOptions.options(%{
+          route_fetches: FetchView.current(@route_view),
+          agency_names: Map.new(agencies, &{&1.id, &1.name}),
+          agency_ids: Map.get(selection, @agency_field, []),
+          selected_ids: Map.get(selection, @route_field, []),
+          query: route_query
+        })
+    )
+  end
+
+  # A template reads `@name` as an assign, so the form's constants reach it
+  # as functions.
+  defp route_query_param, do: @route_query_param
+  defp route_query_debounce_ms, do: @route_query_debounce_ms
+
+  # The route options name the routes of the route view, and nothing of a
+  # route's path.
+  defp follow_route_view(socket, @route_view), do: assign_route_options(socket)
+  defp follow_route_view(socket, @route_path_view), do: socket
+
+  # The filter a change of the form stands for, or `:refused`.
+  defp changed_filter(raw) do
+    case filter(raw) do
+      :refused -> :refused
+      filter -> listed_routes_filter(filter)
+    end
+  end
 
   # A filter of the form that names agencies keeps the routes one of them
   # lists in the route view. A filter left with no route names none, since
@@ -580,6 +678,26 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp fit_agency_id(%{@agency_field => [agency_id]}), do: agency_id
   defp fit_agency_id(_filter), do: nil
+
+  # Under a filter that names routes, the view fitted to the stops the page
+  # draws, the stops of the routes whose lines it draws. A filter whose
+  # routes have no stop in the stop view leaves the view as it is.
+  defp fit_routes(view, %{assigns: %{filter: %{@route_field => _route_ids}}} = socket) do
+    route_ids = socket |> route_versions() |> Map.keys() |> MapSet.new()
+
+    positions =
+      for held_stop <- StopView.current(StopView),
+          StopMarkers.drawn?(%{held_stop: held_stop, route_ids: route_ids}) do
+        %{lat: Map.fetch!(held_stop.stop, "lat"), lon: Map.fetch!(held_stop.stop, "lon")}
+      end
+
+    case MapExtent.bounds(%{positions: positions, within: view.archive_bounds}) do
+      nil -> view
+      bounds -> BasemapSources.fitted(view, bounds)
+    end
+  end
+
+  defp fit_routes(view, _socket), do: view
 
   defp keeps_agency?(:refused, _agency_id), do: false
 

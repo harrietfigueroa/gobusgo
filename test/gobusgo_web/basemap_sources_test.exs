@@ -72,4 +72,13 @@ defmodule GobusgoWeb.BasemapSourcesTest do
                BasemapSources.view(@manifest, "6289")
     end
   end
+
+  describe "fitted/2" do
+    test "fits the view to other bounds, which belong to no agency" do
+      view = BasemapSources.view(@manifest, "near-west")
+      bounds = %{south: 10.5, west: 11.0, north: 11.0, east: 11.5}
+
+      assert BasemapSources.fitted(view, bounds) == %{view | bounds: bounds, agency_id: nil}
+    end
+  end
 end
