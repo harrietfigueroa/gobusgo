@@ -42,6 +42,8 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 `SECRET_KEY_BASE` signs the browser session. Leave it unset in development and test: a random secret is generated at each start, so restarting the server makes open pages reload. Production refuses to start without it; generate one with `mix phx.gen.secret`. A value shorter than 64 bytes stops the application at startup.
 
+`GOBUSGO_PUBLIC_HOST` is the host name pages are served on, such as `localhost` or the name of a content delivery network in front of the server, in lowercase with no scheme, port, or path. With it set, the LiveView socket accepts a page of that host, under any scheme and port, and refuses a page of any other. Leave it unset in development and test, where the socket accepts every origin. Production refuses to start without it, and a value that is not a host name stops the application at startup.
+
 ## Data flow
 
 The application needs no broker and no database. A recorder stores each response and publishes a "response stored" event; the event goes straight to the consumer in the same process, which processes the stored response and hands the processed records to the dataset's in-memory view. `config/config.exs` names the subscriber of every topic.
@@ -189,7 +191,7 @@ The build downloads the dependencies and the esbuild and Tailwind binaries, so i
 
 ### Start
 
-The image is a production build, so it refuses to start without `SECRET_KEY_BASE`. Generate one into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
+The image is a production build, so it refuses to start without `SECRET_KEY_BASE` and `GOBUSGO_PUBLIC_HOST`. Generate the secret into `.env` once (`mix phx.gen.secret`, or `openssl rand -base64 48` without Elixir installed), export the file as in Configuration, then start the container:
 
 ```sh
 docker volume create gobusgo-data
@@ -198,12 +200,13 @@ docker run --detach --init --name gobusgo \
   --publish 127.0.0.1:4000:4000 \
   --mount type=volume,source=gobusgo-data,target=/data \
   --env SECRET_KEY_BASE \
+  --env GOBUSGO_PUBLIC_HOST=localhost \
   --env ONEBUSAWAY_BASE_URL \
   --env ONEBUSAWAY_API_KEY \
   gobusgo:local
 ```
 
-`--env NAME` with no value passes the variable from the shell, so the credentials reach the container at run time and are never written to the image. The OneBusAway variables are needed only to make live requests; the server starts without them.
+`--env NAME` with no value passes the variable from the shell, so the credentials reach the container at run time and are never written to the image. `GOBUSGO_PUBLIC_HOST=localhost` is the host name of the address below; a page opened under another name, `127.0.0.1` among them, loads and has its socket refused. The OneBusAway variables are needed only to make live requests; the server starts without them.
 
 Open http://localhost:4000/ for the front end, and check the health endpoint from the host:
 
@@ -254,6 +257,9 @@ docker rm gobusgo
 | --- | --- |
 | The container exits at once and the log holds `{:missing_setting, :secret_key_base}` | `SECRET_KEY_BASE` is unset or blank in the shell that ran `docker run`. Export `.env` and start again. |
 | The log holds `{:invalid_setting, :secret_key_base}` | The secret is shorter than 64 bytes. |
+| The container exits at once and the log holds `{:missing_setting, :public_host}` | `GOBUSGO_PUBLIC_HOST` is unset or blank. Pass `--env GOBUSGO_PUBLIC_HOST=localhost` as above. |
+| The log holds `{:invalid_setting, :public_host}` | `GOBUSGO_PUBLIC_HOST` is not a host name: it holds a scheme, a port, a path, or an uppercase letter. |
+| A page loads and never updates, and the log holds "Could not check origin for Phoenix.Socket transport" | The page was opened under a host name other than `GOBUSGO_PUBLIC_HOST`. |
 | `curl` cannot connect, and the container is running | `GOBUSGO_HTTP_HOST` was overridden with a loopback address, which a published port cannot reach. Passing the whole `.env` with `--env-file` does this, because the file sets `127.0.0.1`. Pass the variables by name as above. |
 | `docker run` fails with "port is already allocated" | Another process, such as `mix phx.server`, holds port 4000. Stop it or publish another host port. |
 | The page loads and then keeps reloading, or the log holds "Could not check origin for Phoenix.Socket transport" | A production build accepts the LiveView socket only from pages on `localhost`. Open http://localhost:4000/, never http://127.0.0.1:4000/. |

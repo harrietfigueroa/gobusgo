@@ -113,8 +113,9 @@ if config_env() == :dev do
     ]
 end
 
-# The socket checks a page's origin against the public host name, which
-# only a production deployment has.
+# With no public host name the socket accepts a page of every origin. A
+# production build requires the name, and the endpoint is started with the
+# one origin it gives.
 if config_env() != :prod do
   config :gobusgo, GobusgoWeb.Endpoint, check_origin: false
 end
