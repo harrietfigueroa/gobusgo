@@ -10,10 +10,12 @@ config :esbuild,
   ],
   # MapLibre's module files are copied as they are and served beside each
   # other: the library starts its worker from the file next to its own, so
-  # it cannot be part of the bundle.
+  # it cannot be part of the bundle. The profile names no output directory:
+  # `mix gobusgo.assets.map_library` runs it with the one of the library's
+  # version.
   vendor: [
     args:
-      ~w(vendor/maplibre-gl/dist/maplibre-gl.mjs vendor/maplibre-gl/dist/maplibre-gl-shared.mjs vendor/maplibre-gl/dist/maplibre-gl-worker.mjs --loader:.mjs=copy --outdir=../priv/static/assets/vendor/maplibre-gl),
+      ~w(vendor/maplibre-gl/dist/maplibre-gl.mjs vendor/maplibre-gl/dist/maplibre-gl-shared.mjs vendor/maplibre-gl/dist/maplibre-gl-worker.mjs --loader:.mjs=copy),
     cd: Path.expand("../assets", __DIR__)
   ]
 

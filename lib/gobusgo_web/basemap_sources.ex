@@ -1,8 +1,8 @@
 defmodule GobusgoWeb.BasemapSources do
   @moduledoc """
-  Where a map page loads its basemap from: the address of an archive, of the
-  fonts, and of the sprites, and the attribution the map has to show; and
-  the view a page opens the map with. Everything here is pure, and nothing
+  Where a map page loads its basemap from: the address of the library that
+  draws it, of an archive, of the fonts, and of the sprites, and the
+  attribution the map has to show; and the view a page opens the map with. Everything here is pure, and nothing
   here is about vehicles.
 
   The archives are served under `/basemap` and the fonts and sprites under
@@ -19,8 +19,10 @@ defmodule GobusgoWeb.BasemapSources do
   @attribution ~s(<a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap</a>)
 
   alias Gobusgo.Basemap.Manifest
+  alias GobusgoWeb.MapLibrary
 
   @type t :: %{
+          library_url: String.t(),
           archive_url: String.t(),
           fonts_url: String.t(),
           sprites_url: String.t(),
@@ -31,6 +33,7 @@ defmodule GobusgoWeb.BasemapSources do
   @spec sources(String.t()) :: t()
   def sources(archive_name) when is_binary(archive_name) do
     %{
+      library_url: MapLibrary.url(MapLibrary.version()),
       archive_url: "#{@archive_path}/#{archive_name}",
       fonts_url: @fonts_path,
       sprites_url: @sprites_path,

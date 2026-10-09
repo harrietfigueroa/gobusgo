@@ -11,6 +11,8 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias GobusgoWeb.MapLibrary
+
   @moduletag :tmp_dir
   @moduletag capture_log: true
 
@@ -181,6 +183,13 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @snap) == @east_bounds
     end
 
+    test "hands the map the address of the library at the version in use" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @west_map, "data-library-url") ==
+               MapLibrary.url(MapLibrary.version())
+    end
+
     test "names nothing about vehicles on the map element" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
@@ -194,7 +203,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
         |> Enum.map(&elem(&1, 0))
 
       assert Enum.sort(names) ==
-               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-sprites-url id phx-hook phx-update)
+               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-library-url data-sprites-url id phx-hook phx-update)
     end
   end
 
