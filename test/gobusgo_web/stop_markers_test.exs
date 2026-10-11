@@ -31,6 +31,12 @@ defmodule GobusgoWeb.StopMarkersTest do
     }
   end
 
+  defp marker(overrides) do
+    StopMarkers.marker(
+      Map.merge(%{held_stop: held_stop(), route_names: %{}, route_agency_names: %{}}, overrides)
+    )
+  end
+
   describe "route_names/1" do
     test "returns the short name of each route of every fetch" do
       route_fetches = [
@@ -51,6 +57,35 @@ defmodule GobusgoWeb.StopMarkersTest do
       route_fetches = [%{routes: %{"95_1" => %{"shortName" => nil, "longName" => nil}}}]
 
       assert StopMarkers.route_names(route_fetches) == %{}
+    end
+  end
+
+  describe "route_agency_names/1" do
+    test "returns the name of the agency of each route of every fetch" do
+      route_fetches = [
+        %{routes: %{"1_44" => %{"agencyId" => "1"}, "1_45" => %{"agencyId" => "1"}}},
+        %{routes: %{"40_1" => %{"agencyId" => "40"}}}
+      ]
+
+      agency_names = %{"1" => "Metro Transit", "40" => "Sound Transit"}
+
+      assert StopMarkers.route_agency_names(%{
+               route_fetches: route_fetches,
+               agency_names: agency_names
+             }) == %{
+               "1_44" => "Metro Transit",
+               "1_45" => "Metro Transit",
+               "40_1" => "Sound Transit"
+             }
+    end
+
+    test "leaves out a route whose agency has no name" do
+      route_fetches = [%{routes: %{"95_1" => %{"agencyId" => "95"}}}]
+
+      assert StopMarkers.route_agency_names(%{
+               route_fetches: route_fetches,
+               agency_names: %{"1" => "Metro Transit"}
+             }) == %{}
     end
   end
 
@@ -79,28 +114,45 @@ defmodule GobusgoWeb.StopMarkersTest do
     test "holds the stop's position, texts, and the names of its routes in the stop's order" do
       route_names = %{"1_45" => "45", "1_44" => "44", "1_7" => "7"}
 
-      assert StopMarkers.marker(%{held_stop: held_stop(), route_names: route_names}) == %{
+      assert marker(%{route_names: route_names}) == %{
                id: "1_75403",
                lat: 47.654503,
                lon: -122.30513,
                name: "East Stevens Way NE & Benton Ln",
                code: "75403",
                direction: "SW",
-               routes: ["44", "45"]
+               routes: ["44", "45"],
+               agencies: []
              }
     end
 
     test "leaves out a route that has no name" do
-      marker = StopMarkers.marker(%{held_stop: held_stop(), route_names: %{"1_45" => "45"}})
+      assert marker(%{route_names: %{"1_45" => "45"}}).routes == ["45"]
+    end
 
-      assert marker.routes == ["45"]
+    test "holds the name of each agency of its routes once, in the stop's order of routes" do
+      held_stop = held_stop(%{"routeIds" => ["40_1", "1_44", "1_45"]})
+
+      route_agency_names = %{
+        "1_44" => "Metro Transit",
+        "1_45" => "Metro Transit",
+        "40_1" => "Sound Transit"
+      }
+
+      marker = marker(%{held_stop: held_stop, route_agency_names: route_agency_names})
+
+      assert marker.agencies == ["Sound Transit", "Metro Transit"]
+    end
+
+    test "leaves out the agency of a route that has no agency name" do
+      assert marker(%{route_agency_names: %{"1_45" => "Metro Transit"}}).agencies ==
+               ["Metro Transit"]
     end
 
     test "holds no code and no direction for a stop that has none" do
       held_stop = held_stop(%{"code" => nil, "direction" => nil})
 
-      assert %{code: nil, direction: nil} =
-               StopMarkers.marker(%{held_stop: held_stop, route_names: %{}})
+      assert %{code: nil, direction: nil} = marker(%{held_stop: held_stop})
     end
   end
 

@@ -94,10 +94,12 @@ defmodule GobusgoWeb.VehicleLive do
   and whether the browser first drops every stop it has: every stop, after
   a reset, when the browser sends `stop-markers:ready`, and afterwards the
   stops the view's announcement names. A change of the filter, and a route
-  whose line appears or goes, sends every stop again after a reset. The
+  whose line appears or goes, sends every stop again after a reset, and so
+  does a switch of the agency view that changes an agency's name. The
   page keeps no stop, only whether the browser has asked. A third element
   that shows nothing mounts the hook that draws the stops, under the
-  vehicles and only when the map is zoomed in.
+  vehicles and only when the map is zoomed in. A marker names the agencies
+  of the stop's routes as the agency view names them.
 
   The browser opens a stop with the `stop-arrivals:open` event and closes
   it with `stop-arrivals:close`, each naming the stop. Opening registers
@@ -226,8 +228,18 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def handle_info({:agency_view_switched, AgencyView}, socket) do
-    {:noreply,
-     socket |> assign(agencies: agencies()) |> assign_route_options() |> push_route_changes()}
+    names = agency_names(socket.assigns.agencies)
+
+    socket =
+      socket |> assign(agencies: agencies()) |> assign_route_options() |> push_route_changes()
+
+    # A stop's marker names the agencies of its routes, and the view
+    # switches at every fetch, most of which rename no agency.
+    if agency_names(socket.assigns.agencies) == names do
+      {:noreply, socket}
+    else
+      {:noreply, push_every_stop(socket)}
+    end
   end
 
   def handle_info(
@@ -981,14 +993,27 @@ defmodule GobusgoWeb.VehicleLive do
   # needless. Each stop is read here and kept nowhere.
   defp push_stops(socket, %{ids: ids, removed: removed, reset: reset}) do
     route_ids = MapSet.new(Map.keys(socket.assigns.shown_route_versions))
-    route_names = StopMarkers.route_names(FetchView.current(@route_view))
+    route_fetches = FetchView.current(@route_view)
+    route_names = StopMarkers.route_names(route_fetches)
+
+    route_agency_names =
+      StopMarkers.route_agency_names(%{
+        route_fetches: route_fetches,
+        agency_names: agency_names(socket.assigns.agencies)
+      })
 
     {markers, undrawn} =
       Enum.reduce(ids, {[], []}, fn id, {markers, undrawn} ->
         held_stop = StopView.stop(StopView, id)
 
         if held_stop != nil and StopMarkers.drawn?(%{held_stop: held_stop, route_ids: route_ids}) do
-          marker = StopMarkers.marker(%{held_stop: held_stop, route_names: route_names})
+          marker =
+            StopMarkers.marker(%{
+              held_stop: held_stop,
+              route_names: route_names,
+              route_agency_names: route_agency_names
+            })
+
           {[marker | markers], undrawn}
         else
           {markers, [id | undrawn]}
@@ -1015,6 +1040,8 @@ defmodule GobusgoWeb.VehicleLive do
 
     Enum.reduce(events, socket, &push_event(&2, "stop-markers:stops", &1))
   end
+
+  defp agency_names(agencies), do: Map.new(agencies, &{&1.id, &1.name})
 
   defp stops_only(chunks),
     do: for(stops <- chunks, do: %{stops: stops, removed: [], reset: false})

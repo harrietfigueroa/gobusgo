@@ -595,7 +595,7 @@ No scheduler can fetch the arrivals of every stop, so the arrival source fetches
 
 The rules of the registry:
 
-- The bounds count inside one dataset: a dataset has at most 2,000 items and one process holds at most 4 items of one dataset, so at most 2,000 stops are open, one process has at most 4 open, and the vehicles key takes no room from either. A registration beyond a bound returns `{:error, :item_count_exceeded}` or `{:error, :holder_item_count_exceeded}`. The count of processes that hold one key has no bound in the registry.
+- The bounds count inside one dataset: a dataset has at most 2,000 items and one process holds at most 5 items of one dataset, so at most 2,000 stops are open, one process has at most 5 open, and the vehicles key takes no room from either. A registration beyond a bound returns `{:error, :item_count_exceeded}` or `{:error, :holder_item_count_exceeded}`. The count of processes that hold one key has no bound in the registry.
 - A call that names a dataset the registry was not started with raises in the caller.
 - State is in memory and per node: a restart begins with no key held and no absence remembered, the registry registers nothing for the processes that held keys, and with several instances each knows only its own pages' demand. A holder that has to stay counted across a restart monitors the registry and registers again, which the vehicle page does: it registers again when the registry it registered with goes down, with at most 5 attempts 100 ms apart while the registry does not answer.
 - A dataset remembers when at most 2,000 of its keys lost their last holder, its bound on items, and forgets the earliest beyond that; a forgotten key reads as one that never had a holder.

@@ -10,7 +10,7 @@ defmodule Gobusgo.DemandTest do
   @datasets [:arrivals, :vehicles]
   @vehicles {:vehicles, "all"}
   @item_count_max_default 2_000
-  @holder_item_count_max_default 4
+  @holder_item_count_max_default 5
 
   # The registry reads a clock the test owns, which stands still until the
   # test advances it.
@@ -294,7 +294,7 @@ defmodule Gobusgo.DemandTest do
       %{registry: registry}
     end
 
-    test "one process holds 4 items of a dataset and is refused a fifth", %{registry: registry} do
+    test "one process holds 5 items of a dataset and is refused a sixth", %{registry: registry} do
       for index <- 1..@holder_item_count_max_default do
         assert Demand.register(registry, {:arrivals, "1_#{index}"}) == :ok
       end
@@ -316,7 +316,8 @@ defmodule Gobusgo.DemandTest do
             Process.sleep(:infinity)
           end)
 
-        assert_receive {:registered, ^pid, [:ok, :ok, :ok, :ok]}
+        assert_receive {:registered, ^pid, results}
+        assert Enum.uniq(results) == [:ok]
       end)
 
       assert length(Demand.items(registry, :arrivals)) == @item_count_max_default

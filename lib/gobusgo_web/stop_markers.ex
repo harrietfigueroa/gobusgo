@@ -8,7 +8,8 @@ defmodule GobusgoWeb.StopMarkers do
 
   A marker holds the stop's `id`, its position as `lat` and `lon`, its
   `name`, its `code` and `direction`, each `nil` when the source supplies
-  none, and `routes`, the names of the routes that serve it.
+  none, `routes`, the names of the routes that serve it, and `agencies`,
+  the names of the agencies of those routes.
 
   A stop is drawn when one of its routes is drawn, so a filter that hides a
   route's line hides the stops only that route serves, and a stop no route
@@ -27,11 +28,15 @@ defmodule GobusgoWeb.StopMarkers do
           name: String.t(),
           code: String.t() | nil,
           direction: String.t() | nil,
-          routes: [String.t()]
+          routes: [String.t()],
+          agencies: [String.t()]
         }
 
   @typedoc "The name a page shows for each route that has one, by route identifier."
   @type route_names :: %{String.t() => String.t()}
+
+  @typedoc "The name of the agency of each route whose agency has one, by route identifier."
+  @type route_agency_names :: %{String.t() => String.t()}
 
   @doc "The most stops one event holds."
   @spec event_stop_count_max() :: pos_integer()
@@ -54,6 +59,25 @@ defmodule GobusgoWeb.StopMarkers do
   end
 
   @doc """
+  Returns the name of the agency of every route of `route_fetches`, the
+  current fetches of the route view, whose own record names an agency that
+  `agency_names` holds by its identifier.
+  """
+  @spec route_agency_names(%{
+          route_fetches: [map()],
+          agency_names: %{String.t() => String.t()}
+        }) :: route_agency_names()
+  def route_agency_names(%{route_fetches: route_fetches, agency_names: agency_names})
+      when is_list(route_fetches) and is_map(agency_names) do
+    for %{routes: routes} <- route_fetches,
+        {route_id, route} <- routes,
+        is_map_key(agency_names, route["agencyId"]),
+        into: %{} do
+      {route_id, Map.fetch!(agency_names, route["agencyId"])}
+    end
+  end
+
+  @doc """
   Whether a page that draws the routes of `route_ids` draws `held_stop`, a
   stop of the stop view: whether one of the stop's routes is among them.
   """
@@ -66,12 +90,21 @@ defmodule GobusgoWeb.StopMarkers do
 
   @doc """
   Returns the marker of `held_stop`, a stop of the stop view, with the name
-  in `route_names` of each of its routes that has one, in the stop's order
-  of routes.
+  in `route_names` of each of its routes that has one, and the name in
+  `route_agency_names` of each of their agencies that has one, once each,
+  both in the stop's order of routes.
   """
-  @spec marker(%{held_stop: StopView.State.held_stop(), route_names: route_names()}) :: marker()
-  def marker(%{held_stop: %{id: id, stop: stop}, route_names: route_names})
-      when is_binary(id) and is_map(route_names) do
+  @spec marker(%{
+          held_stop: StopView.State.held_stop(),
+          route_names: route_names(),
+          route_agency_names: route_agency_names()
+        }) :: marker()
+  def marker(%{
+        held_stop: %{id: id, stop: stop},
+        route_names: route_names,
+        route_agency_names: route_agency_names
+      })
+      when is_binary(id) and is_map(route_names) and is_map(route_agency_names) do
     %{"lat" => lat, "lon" => lon, "name" => name, "routeIds" => route_ids} = stop
 
     %{
@@ -82,7 +115,15 @@ defmodule GobusgoWeb.StopMarkers do
       code: stop["code"],
       direction: stop["direction"],
       routes:
-        for(route_id <- route_ids, is_map_key(route_names, route_id), do: route_names[route_id])
+        for(route_id <- route_ids, is_map_key(route_names, route_id), do: route_names[route_id]),
+      agencies:
+        Enum.uniq(
+          for(
+            route_id <- route_ids,
+            is_map_key(route_agency_names, route_id),
+            do: route_agency_names[route_id]
+          )
+        )
     }
   end
 

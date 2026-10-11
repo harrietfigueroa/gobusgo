@@ -11,6 +11,8 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Gobusgo.OneBusAway.AgencyBatch
+  alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
@@ -48,7 +50,7 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
   end
 
   defp restart_views do
-    for view <- [@route_view, @route_path_view, StopView] do
+    for view <- [AgencyView, @route_view, @route_path_view, StopView] do
       :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
       {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
     end
@@ -96,6 +98,30 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
       },
       overrides
     )
+  end
+
+  # Publishes a fetch of agencies, each `{id, name}`; `sequence` orders the
+  # fetches of a test.
+  defp apply_agencies(agencies, sequence) do
+    %{agencies: records, manifest: manifest} =
+      AgencyBatch.Records.build(%{
+        destination: "raw/oba/agencies-with-coverage/dt=2026-10-05/file.json.gz",
+        fetched_at: DateTime.add(@fetched_at, sequence, :second),
+        data_sha256: String.duplicate("ab", 32),
+        request_id: request_id(sequence),
+        agencies:
+          for {id, name} <- agencies do
+            %{
+              id: id,
+              name: name,
+              url: "https://agency-#{id}.example.test",
+              timezone: "America/Los_Angeles",
+              coverage: %{lat: 47.5, lon: -122.25, lat_span: 0.5, lon_span: 0.75}
+            }
+          end
+      })
+
+    :ok = AgencyView.apply_records(AgencyView, Enum.map(records ++ [manifest], & &1.value))
   end
 
   # Publishes a fetch of the routes of `agency_id`, each `{id, short name}`;
@@ -194,6 +220,35 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
     end
   end
 
+  describe "a switch of the agency view" do
+    test "that renames an agency sends every stop again after a reset" do
+      apply_agencies([{"40", "Sound Transit"}], 0)
+      apply_one_route()
+      view = open_page()
+      ready(view)
+      assert_push_event(view, @event, %{reset: true})
+
+      apply_agencies([{"40", "Sound Transit Express"}], 3)
+
+      assert_push_event(view, @event, %{
+        stops: [%{id: "a", agencies: ["Sound Transit Express"]} | _rest],
+        reset: true
+      })
+    end
+
+    test "that leaves every agency's name as it is sends no stop" do
+      apply_agencies([{"40", "Sound Transit"}], 0)
+      apply_one_route()
+      view = open_page()
+      ready(view)
+      assert_push_event(view, @event, %{reset: true})
+
+      apply_agencies([{"40", "Sound Transit"}], 3)
+
+      refute_push_event(view, @event, %{}, @push_wait_ms)
+    end
+  end
+
   describe "the stops' ready event" do
     test "is answered with every stop a drawn route serves, in identifier order, after a reset" do
       apply_one_route()
@@ -211,7 +266,8 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
                  name: "Stop a",
                  code: "17",
                  direction: nil,
-                 routes: ["1 Line"]
+                 routes: ["1 Line"],
+                 agencies: []
                },
                %{
                  id: "b",
@@ -220,9 +276,20 @@ defmodule GobusgoWeb.VehicleLiveStopsTest do
                  name: "Stop b",
                  code: nil,
                  direction: nil,
-                 routes: ["1 Line"]
+                 routes: ["1 Line"],
+                 agencies: []
                }
              ]
+    end
+
+    test "names the agencies of a stop's routes that the agency view holds" do
+      apply_agencies([{"40", "Sound Transit"}], 0)
+      apply_one_route()
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{stops: [%{id: "a", agencies: ["Sound Transit"]} | _rest]})
     end
 
     test "is answered with a reset and no stop when the view holds none" do

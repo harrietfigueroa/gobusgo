@@ -1,6 +1,6 @@
 defmodule Gobusgo.Demand do
   @item_count_max_default 2_000
-  @holder_item_count_max_default 4
+  @holder_item_count_max_default 5
   @call_timeout_ms 5_000
 
   @moduledoc """
