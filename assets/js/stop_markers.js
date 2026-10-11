@@ -19,8 +19,9 @@ const labelTextColor = "#334155"
 const labelHaloColor = "#ffffff"
 const labelHaloWidthPixels = 1.5
 // A stop many routes serve names the first of them and counts the rest, so
-// its label stays the size of its neighbors'.
-const labelRouteCountMax = 6
+// its routes stay on one line of the label.
+const labelRouteCountMax = 4
+const labelRouteSeparator = " "
 const labelPartSeparator = " \u00b7 "
 const hasLabel = ["!=", ["get", "label"], ""]
 // The zoom from which a screen holds few enough stops that their popups
@@ -45,10 +46,10 @@ const arrivalUnnamed = "Arrival"
 // rest.
 function labelRoutes(routes) {
   if (routes.length > labelRouteCountMax) {
-    const shown = routes.slice(0, labelRouteCountMax).join(routeSeparator)
+    const shown = routes.slice(0, labelRouteCountMax).join(labelRouteSeparator)
     return `${shown} +${routes.length - labelRouteCountMax}`
   } else {
-    return routes.join(routeSeparator)
+    return routes.join(labelRouteSeparator)
   }
 }
 
