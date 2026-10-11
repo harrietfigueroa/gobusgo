@@ -271,19 +271,19 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
     end
 
     test "is answered with busy beyond the stops one page has open", %{now: now} do
-      stop_ids = for index <- 1..5, do: "1_#{index}"
+      stop_ids = for index <- 1..6, do: "1_#{index}"
       apply_stops(stop_ids, now)
       view = open_page()
 
-      for stop_id <- Enum.take(stop_ids, 4) do
+      for stop_id <- Enum.take(stop_ids, 5) do
         open_stop(view, stop_id)
         assert_push_event(view, @event, %{stop_id: ^stop_id, status: :waiting})
       end
 
-      open_stop(view, "1_5")
+      open_stop(view, "1_6")
 
-      assert_push_event(view, @event, %{stop_id: "1_5", status: :busy})
-      assert open_stop_ids() == Enum.take(stop_ids, 4)
+      assert_push_event(view, @event, %{stop_id: "1_6", status: :busy})
+      assert open_stop_ids() == Enum.take(stop_ids, 5)
     end
 
     test "again sends the arrivals again", %{now: now} do
