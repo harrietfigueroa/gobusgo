@@ -14,10 +14,12 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RequestGate
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.OneBusAway.RouteRebuild
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.RetentionPolicy
+  alias Gobusgo.S3.Credentials
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
@@ -53,48 +55,54 @@ defmodule Gobusgo.Application do
          {:ok, public_host} <- Config.public_host(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
+         {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.
+      # The rebuild fills the route views before the first route cycle reads
+      # them, and the endpoint starts before it, so the health check answers
+      # while it runs.
       children =
-        [
-          {Phoenix.PubSub, name: Gobusgo.PubSub},
-          {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
-          {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub},
-          {FetchView,
-           name: @route_view,
-           pubsub: Gobusgo.PubSub,
-           records: RouteBatch.Records,
-           id_count_max: @route_view_agency_count_max},
-          {FetchView,
-           name: @route_path_view,
-           pubsub: Gobusgo.PubSub,
-           records: RoutePathBatch.Records,
-           id_count_max: @route_path_view_route_count_max},
-          {StopView,
-           name: StopView,
-           pubsub: Gobusgo.PubSub,
-           route_count_max: @route_path_view_route_count_max,
-           stop_count_max: @stop_view_stop_count_max},
-          {FetchView,
-           name: @arrival_view,
-           pubsub: Gobusgo.PubSub,
-           records: ArrivalBatch.Records,
-           id_count_max: @arrival_view_stop_count_max,
-           fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
-          {Demand, name: Demand, datasets: DemandKey.datasets()}
-        ] ++
+        [{Phoenix.PubSub, name: Gobusgo.PubSub}] ++
+          storage_children(storage) ++
+          [
+            {AgencyView, name: AgencyView, pubsub: Gobusgo.PubSub},
+            {VehicleView, name: VehicleView, pubsub: Gobusgo.PubSub},
+            {FetchView,
+             name: @route_view,
+             pubsub: Gobusgo.PubSub,
+             records: RouteBatch.Records,
+             id_count_max: @route_view_agency_count_max},
+            {FetchView,
+             name: @route_path_view,
+             pubsub: Gobusgo.PubSub,
+             records: RoutePathBatch.Records,
+             id_count_max: @route_path_view_route_count_max},
+            {StopView,
+             name: StopView,
+             pubsub: Gobusgo.PubSub,
+             route_count_max: @route_path_view_route_count_max,
+             stop_count_max: @stop_view_stop_count_max},
+            {FetchView,
+             name: @arrival_view,
+             pubsub: Gobusgo.PubSub,
+             records: ArrivalBatch.Records,
+             id_count_max: @arrival_view_stop_count_max,
+             fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
+            {Demand, name: Demand, datasets: DemandKey.datasets()}
+          ] ++
           usage_children(recorded) ++
           [
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
-            scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled)),
             {GobusgoWeb.Endpoint,
              [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
-          ]
+          ] ++
+          rebuild_children(scheduled) ++
+          [scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled))]
 
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -107,6 +115,22 @@ defmodule Gobusgo.Application do
       {:error, {:missing, key}} -> {:error, {:missing_setting, key}}
     end
   end
+
+  # The credentials start before everything that stores and stop after it:
+  # the usage recorder writes its last file as it shuts down.
+  defp storage_children(:local), do: []
+
+  defp storage_children(%{credentials: source}) do
+    [{Credentials, name: Credentials, source: source}]
+  end
+
+  # The views are rebuilt wherever the sources are scheduled, from whatever
+  # the reader holds.
+  defp rebuild_children(true) do
+    [{RouteRebuild, task_supervisor: Gobusgo.IngestionTaskSupervisor}]
+  end
+
+  defp rebuild_children(false), do: []
 
   # The recorder starts before the endpoint and stops after it, so the
   # connections the endpoint's shutdown ends are in the recorder's last file.
