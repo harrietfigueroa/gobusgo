@@ -10,6 +10,13 @@
   --surface-border-color: #16a34a;
   --surface-border-width: 1px;
   --surface-radius: 8px;
+  --close-button-size: 28px;
+  --close-button-hit-size: 44px;
+  --close-button-inset: 8px;
+  --close-button-mark-size: 14px;
+  --close-button-fill: #dc2626;
+  --close-button-fill-hover: #b91c1c;
+  --close-button-focus-color: #0f172a;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -78,6 +85,55 @@
 .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
 .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
   display: none;
+}
+
+/* MapLibre's close button is a text "×" in the popup's corner. Here it is a
+   red square that draws its × as a background image, so the text is given
+   no size. */
+.maplibregl-popup-close-button {
+  top: var(--close-button-inset);
+  right: var(--close-button-inset);
+  width: var(--close-button-size);
+  height: var(--close-button-size);
+  border-radius: var(--surface-radius);
+  background: var(--close-button-fill)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M2.5 2.5l9 9M11.5 2.5l-9 9'/%3E%3C/svg%3E")
+    center / var(--close-button-mark-size) no-repeat;
+  font-size: 0;
+}
+
+/* The rule stands after MapLibre's hover rule, which has the same
+   specificity and gives the button a gray fill. */
+.maplibregl-popup-close-button:hover {
+  background-color: var(--close-button-fill-hover);
+}
+
+.maplibregl-popup-close-button:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 2px;
+}
+
+/* A finger gets a larger target than the square that is drawn. */
+@media (pointer: coarse) {
+  .maplibregl-popup-close-button::after {
+    position: absolute;
+    inset: calc((var(--close-button-size) - var(--close-button-hit-size)) / 2);
+    content: "";
+  }
+}
+
+/* A popup with a close button starts its content level with the button,
+   and its title leaves the button's width free. */
+.maplibregl-popup-content:has(> .maplibregl-popup-close-button) {
+  padding-top: var(--close-button-inset);
+}
+
+.popup-title {
+  display: flex;
+  align-items: center;
+  min-height: var(--close-button-size);
+  padding-right: calc(var(--close-button-size) + var(--close-button-inset));
+  font-weight: 600;
 }
 
 /* The list of the routes under the pointer stands at the pointer, so it

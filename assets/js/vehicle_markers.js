@@ -23,6 +23,7 @@ const markerStrokeColor = "#ffffff"
 const statusColorFallback = "#000000"
 const positionNote = "Marker position: the source's estimate"
 const notSupplied = "Not supplied"
+const titleClassName = "popup-title"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 
@@ -146,6 +147,7 @@ function popupContent(properties, statusLabels) {
     content.appendChild(paragraph)
   }
 
+  content.firstElementChild.className = titleClassName
   return content
 }
 
