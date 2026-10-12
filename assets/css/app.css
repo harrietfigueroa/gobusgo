@@ -10,6 +10,8 @@
   --surface-border-color: #16a34a;
   --surface-border-width: 1px;
   --surface-radius: 8px;
+  --control-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --control-radius-inner: calc(var(--surface-radius) - var(--surface-border-width));
   --close-button-size: 28px;
   --close-button-hit-size: 44px;
   --close-button-inset: 8px;
@@ -25,10 +27,12 @@
   --popup-tip-reach: calc(var(--popup-tip-size) * 0.2071);
 }
 
-/* The rules stand after MapLibre's, which give a popup a white fill and 3px
-   corners with the same specificity. */
+/* The rules stand after MapLibre's, which give a popup and a group of
+   controls a white fill and corners of their own with the same
+   specificity. */
 .surface,
-.maplibregl-popup-content {
+.maplibregl-popup-content,
+.maplibregl-ctrl-group {
   accent-color: var(--surface-border-color);
   background-color: var(--surface-fill);
   border: var(--surface-border-width) solid var(--surface-border-color);
@@ -87,12 +91,31 @@
   display: none;
 }
 
-/* MapLibre's close button is a text "×" in the popup's corner. Here it is a
-   red square that draws its × as a background image, so the text is given
-   no size. */
+/* MapLibre rings a group of controls with a gray line where the surface
+   has its border. */
+.maplibregl-ctrl-group:not(:empty) {
+  box-shadow: var(--control-shadow);
+}
+
+/* The first and the last button of a group follow the group's corners, so
+   a button's hover fill stays inside the border. The selectors with :focus
+   stand in for MapLibre's, which give a focused button 4px corners. */
+.maplibregl-ctrl-group button:first-child,
+.maplibregl-ctrl-group button:focus:first-child {
+  border-top-left-radius: var(--control-radius-inner);
+  border-top-right-radius: var(--control-radius-inner);
+}
+
+.maplibregl-ctrl-group button:last-child,
+.maplibregl-ctrl-group button:focus:last-child {
+  border-bottom-right-radius: var(--control-radius-inner);
+  border-bottom-left-radius: var(--control-radius-inner);
+}
+
+/* A close button is a red square that draws its × as a background image.
+   MapLibre's holds a text "×", which is given no size. */
+.close-button,
 .maplibregl-popup-close-button {
-  top: var(--close-button-inset);
-  right: var(--close-button-inset);
   width: var(--close-button-size);
   height: var(--close-button-size);
   border-radius: var(--surface-radius);
@@ -100,14 +123,27 @@
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M2.5 2.5l9 9M11.5 2.5l-9 9'/%3E%3C/svg%3E")
     center / var(--close-button-mark-size) no-repeat;
   font-size: 0;
+  cursor: pointer;
+}
+
+/* The hit area of a coarse pointer is placed against the button. */
+.close-button {
+  position: relative;
+}
+
+.maplibregl-popup-close-button {
+  top: var(--close-button-inset);
+  right: var(--close-button-inset);
 }
 
 /* The rule stands after MapLibre's hover rule, which has the same
    specificity and gives the button a gray fill. */
+.close-button:hover,
 .maplibregl-popup-close-button:hover {
   background-color: var(--close-button-fill-hover);
 }
 
+.close-button:focus-visible,
 .maplibregl-popup-close-button:focus-visible {
   outline: 2px solid var(--close-button-focus-color);
   outline-offset: 2px;
@@ -115,6 +151,7 @@
 
 /* A finger gets a larger target than the square that is drawn. */
 @media (pointer: coarse) {
+  .close-button::after,
   .maplibregl-popup-close-button::after {
     position: absolute;
     inset: calc((var(--close-button-size) - var(--close-button-hit-size)) / 2);
