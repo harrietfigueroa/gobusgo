@@ -1,4 +1,11 @@
 import {readyEventName} from "./basemap"
+import {placePopups} from "./popup_placement"
+import {
+  announceRiderPopupChange,
+  riderPopupBoxes,
+  riderPopupChangeEventName,
+  riderPopupClassName
+} from "./rider_popups"
 
 const sourceName = "stop-markers"
 // The layer a stop's marker is drawn in.
@@ -30,6 +37,13 @@ const autoOpenZoomMin = 16
 // The most stops on screen whose popups open by themselves, which is the
 // most stops the server keeps open for one page.
 const autoOpenStopCountMax = 5
+// The room between two popups, and between a popup and a rider's.
+const popupGapPixels = 4
+// MapLibre names the edge of a popup that touches its point, which is the
+// edge across from the side of the point the popup stands on.
+const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left"}
+// The side a popup stands on while it is only measured.
+const measuredSide = "above"
 const routeSeparator = ", "
 const notSupplied = "Not supplied"
 const titleClassName = "popup-title"
@@ -224,6 +238,46 @@ function writeArrivals(element, shown) {
   }
 }
 
+// A popup's content with the element its stop's arrivals are written into,
+// which says that it is waiting for them.
+function popupElements(stop) {
+  const content = popupContent({
+    name: stop.name,
+    code: stop.code,
+    direction: stop.direction,
+    routes: stop.routes.join(routeSeparator),
+    agencies: stop.agencies.join(routeSeparator)
+  })
+  const arrivalsElement = document.createElement("div")
+  writeArrivals(arrivalsElement, {status: "waiting"})
+  content.appendChild(arrivalsElement)
+
+  return {content, arrivalsElement}
+}
+
+// The options of a stop's popup. One that opens by itself stands on the
+// side it is given, stays through a click on the map, and leaves the
+// keyboard's focus where the rider has it. One the rider opens is placed by
+// MapLibre and closes on a click on the map.
+function popupOptions({auto, side}) {
+  if (auto) {
+    return {anchor: anchorBySide[side], closeOnClick: false, focusAfterOpen: false}
+  } else {
+    return {className: riderPopupClassName, closeOnClick: true, focusAfterOpen: true}
+  }
+}
+
+// The size of the box MapLibre draws around `content`, the content of a
+// popup that is on a map.
+function contentBoxSize(content) {
+  const {width, height} = content.parentElement.getBoundingClientRect()
+  return {width, height}
+}
+
+function largerSize(size, other) {
+  return {width: Math.max(size.width, other.width), height: Math.max(size.height, other.height)}
+}
+
 // The hook of the element beside the map. It holds every stop as the server
 // last sent it and draws the stops on each map the basemap announces, so a
 // map drawn anew for another archive shows them too. Its element stands
@@ -235,12 +289,20 @@ export const StopMarkers = {
     this.map = null
     this.drawTimer = null
     this.maplibre = null
-    // The popup that is open for each stop, with the element its arrivals
-    // are written into and whether it opened by itself.
+    this.followTimer = null
+    // The popup that is open for each stop, with its content, the element
+    // its arrivals are written into, whether it opened by itself, and the
+    // side of its stop it then stands on.
     this.openPopups = new Map()
     // The stops on screen whose popup the rider closed after it opened by
     // itself; such a popup stays closed until its stop leaves the screen.
     this.dismissedStopIds = new Set()
+    // The largest size the popup of each stop on screen has had, which is
+    // the room its stop is given. A popup grows when its arrivals come, and
+    // a stop left closed for lack of that room stays closed while its popup
+    // would open small and close again.
+    this.popupSizes = new Map()
+    this.tipLength = null
     this.zoom = null
 
     this.onBasemapReady = (event) => {
@@ -248,7 +310,9 @@ export const StopMarkers = {
       this.map = null
       this.maplibre = null
       this.zoom = null
+      this.tipLength = null
       this.dismissedStopIds.clear()
+      this.popupSizes.clear()
 
       // A popup belongs to the map it was opened on.
       this.closePopups([...this.openPopups.keys()])
@@ -257,7 +321,10 @@ export const StopMarkers = {
       map.once("load", () => { this.attach(map, maplibre) })
     }
 
+    this.onRiderPopupChange = () => { this.scheduleFollow() }
+
     window.addEventListener(readyEventName, this.onBasemapReady)
+    window.addEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
 
     this.handleEvent("stop-markers:stops", ({stops, removed, reset}) => {
       if (reset) {
@@ -281,6 +348,8 @@ export const StopMarkers = {
 
       if (open !== undefined) {
         writeArrivals(open.arrivalsElement, shown)
+        // The popup has another size with these lines.
+        this.scheduleFollow()
       }
     })
 
@@ -301,45 +370,126 @@ export const StopMarkers = {
   // Opens a stop's popup and tells the page, which answers with the stop's
   // arrivals and sends them again whenever they change, until the popup
   // closes.
-  // `auto` says the popup opens by itself, for a view that shows few stops;
-  // such a popup stays through a click on the map, which closes a popup the
-  // rider opened, and leaves the keyboard's focus where the rider has it.
-  openPopup({stop, auto}) {
+  // `auto` says the popup opens by itself, for a view that shows few stops,
+  // and `side` is then the side of its stop it stands on; a popup the rider
+  // opens has a null `side`.
+  openPopup({stop, auto, side}) {
+    const {content, arrivalsElement} = popupElements(stop)
+    const open = {popup: null, content, arrivalsElement, auto, side, closedByRider: true}
+
+    this.openPopups.set(stop.id, open)
+    this.showPopup({stop, open})
+    this.pushEvent("stop-arrivals:open", {stop_id: stop.id})
+
+    if (auto === false) {
+      announceRiderPopupChange()
+    }
+  },
+
+  // Puts the popup of `open` on the map, on the side `open` names.
+  showPopup({stop, open}) {
     const stopId = stop.id
-    const content = popupContent({
-      name: stop.name,
-      code: stop.code,
-      direction: stop.direction,
-      routes: stop.routes.join(routeSeparator),
-      agencies: stop.agencies.join(routeSeparator)
-    })
-    const arrivalsElement = document.createElement("div")
-    writeArrivals(arrivalsElement, {status: "waiting"})
-    content.appendChild(arrivalsElement)
-
-    const byRider = auto === false
-    const popup = new this.maplibre.Popup({closeOnClick: byRider, focusAfterOpen: byRider})
+    const popup = new this.maplibre.Popup(popupOptions(open))
       .setLngLat([stop.lon, stop.lat])
-      .setDOMContent(content)
-    const open = {popup, arrivalsElement, auto, closedByRider: true}
+      .setDOMContent(open.content)
 
-    // A popup opened anew for a stop takes the stop's place before the
-    // earlier one closes, and the earlier one's closing then changes
-    // nothing.
+    // A popup opened anew for a stop, or put on another side of it, takes
+    // the stop's place before the earlier one closes, and the earlier one's
+    // closing then changes nothing.
     popup.on("close", () => {
-      if (this.openPopups.get(stopId) === open) {
+      if (this.openPopups.get(stopId) === open && open.popup === popup) {
         this.openPopups.delete(stopId)
         this.pushEvent("stop-arrivals:close", {stop_id: stopId})
 
-        if (open.auto && open.closedByRider) {
-          this.dismissedStopIds.add(stopId)
+        if (open.auto) {
+          if (open.closedByRider) {
+            this.dismissedStopIds.add(stopId)
+          }
+        } else {
+          announceRiderPopupChange()
         }
       }
     })
 
-    this.openPopups.set(stopId, open)
+    open.popup = popup
     popup.addTo(this.map)
-    this.pushEvent("stop-arrivals:open", {stop_id: stopId})
+  },
+
+  // Puts an open popup on another side of its stop. The stop stays open
+  // for the page, and the popup keeps its content.
+  movePopup({stop, open, side}) {
+    const earlier = open.popup
+    open.side = side
+    this.showPopup({stop, open})
+    earlier.remove()
+  },
+
+  // The size of the content box of a stop's popup and the length of a
+  // popup's tip, read from a popup that is on the map only while it is
+  // measured and that the page is told nothing of.
+  measuredPopup(stop) {
+    const {content} = popupElements(stop)
+    const popup = new this.maplibre.Popup(popupOptions({auto: true, side: measuredSide}))
+      .setLngLat([stop.lon, stop.lat])
+      .setDOMContent(content)
+      .addTo(this.map)
+    const size = contentBoxSize(content)
+    const tipLength = popup.getElement().getBoundingClientRect().height - size.height
+
+    popup.remove()
+    return {size, tipLength}
+  },
+
+  // The room a stop's popup is given: the largest size it has had since its
+  // stop came on screen.
+  popupSize(stop) {
+    const open = this.openPopups.get(stop.id)
+    const kept = this.popupSizes.get(stop.id)
+    let size
+
+    if (open !== undefined) {
+      const shown = contentBoxSize(open.content)
+      size = kept === undefined ? shown : largerSize(shown, kept)
+    } else if (kept !== undefined) {
+      size = kept
+    } else {
+      const measured = this.measuredPopup(stop)
+      size = measured.size
+      this.tipLength = measured.tipLength
+    }
+
+    this.popupSizes.set(stop.id, size)
+    return size
+  },
+
+  // The side of its stop on which the popup of each stop of `stopIds`
+  // stands, so that no two of them cross and none crosses a rider's popup.
+  // A stop whose popup has no such side is left out.
+  popupSides(stopIds) {
+    if (stopIds.length === 0) {
+      return new Map()
+    }
+
+    const popups = stopIds.map((stopId) => {
+      const stop = this.stopsById.get(stopId)
+      const point = this.map.project([stop.lon, stop.lat])
+
+      // MapLibre draws a popup at a whole pixel.
+      return {id: stopId, point: {x: Math.round(point.x), y: Math.round(point.y)}, size: this.popupSize(stop)}
+    })
+    const container = this.map.getContainer()
+
+    if (this.tipLength === null) {
+      throw new Error("a popup's size is known before the length of a popup's tip")
+    }
+
+    return placePopups({
+      popups,
+      obstacles: riderPopupBoxes(this.map),
+      view: {width: container.clientWidth, height: container.clientHeight},
+      tipLength: this.tipLength,
+      gapPixels: popupGapPixels
+    })
   },
 
   // Closes the popups of the stops of `stopIds` as the hook's own doing,
@@ -358,7 +508,8 @@ export const StopMarkers = {
   // Brings the open popups in line with the map's view: a view zoomed out
   // from, to below the zoom where popups open by themselves, closes every
   // popup, and the popups that opened by themselves are those of the stops
-  // the view opens now, less the ones the rider closed.
+  // the view opens now, less the ones the rider closed, the ones the rider
+  // opened, and the ones with no side of their stop to stand on.
   followView() {
     if (this.map === null) {
       return
@@ -377,7 +528,6 @@ export const StopMarkers = {
       ? stopIdsWithin({stopsById: this.stopsById, bounds: this.map.getBounds()})
       : []
     const visible = new Set(visibleStopIds)
-    const autoOpen = new Set(autoOpenStopIds({zoom, visibleStopIds}))
 
     for (const stopId of [...this.dismissedStopIds]) {
       if (visible.has(stopId) === false) {
@@ -385,22 +535,56 @@ export const StopMarkers = {
       }
     }
 
+    for (const stopId of [...this.popupSizes.keys()]) {
+      if (visible.has(stopId) === false) {
+        this.popupSizes.delete(stopId)
+      }
+    }
+
+    const wanted = autoOpenStopIds({zoom, visibleStopIds}).filter((stopId) => this.opensByItself(stopId))
+    const sidesByStop = this.popupSides(wanted)
+
     // The closings go first, so the page never holds more stops open than
     // the server keeps for it.
     const closing = []
 
     for (const [stopId, open] of this.openPopups) {
-      if (open.auto && autoOpen.has(stopId) === false) {
+      if (open.auto && sidesByStop.has(stopId) === false) {
         closing.push(stopId)
       }
     }
 
     this.closePopups(closing)
 
-    for (const stopId of autoOpen) {
-      if (this.openPopups.has(stopId) === false && this.dismissedStopIds.has(stopId) === false) {
-        this.openPopup({stop: this.stopsById.get(stopId), auto: true})
+    for (const [stopId, side] of sidesByStop) {
+      const stop = this.stopsById.get(stopId)
+      const open = this.openPopups.get(stopId)
+
+      if (open === undefined) {
+        this.openPopup({stop, auto: true, side})
+      } else if (open.side !== side) {
+        this.movePopup({stop, open, side})
       }
+    }
+  },
+
+  // Whether a stop the view opens gets a popup that opens by itself: one
+  // whose popup the rider neither closed nor opened.
+  opensByItself(stopId) {
+    const open = this.openPopups.get(stopId)
+    const openedByRider = open !== undefined && open.auto === false
+
+    return this.dismissedStopIds.has(stopId) === false && openedByRider === false
+  },
+
+  // Follows the view once the events that are being handled are done, so a
+  // popup that closes inside `followView` starts no second run inside it.
+  scheduleFollow() {
+    if (this.followTimer === null) {
+      this.followTimer = window.setTimeout(() => {
+        this.followTimer = null
+        this.followView()
+      }, 0)
     }
   },
 
@@ -454,7 +638,7 @@ export const StopMarkers = {
 
       if (stop !== undefined && (open === undefined || open.auto === false)) {
         this.dismissedStopIds.delete(stopId)
-        this.openPopup({stop, auto: false})
+        this.openPopup({stop, auto: false, side: null})
       }
     })
 
@@ -486,6 +670,8 @@ export const StopMarkers = {
 
   destroyed() {
     window.removeEventListener(readyEventName, this.onBasemapReady)
+    window.removeEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
     window.clearTimeout(this.drawTimer)
+    window.clearTimeout(this.followTimer)
   }
 }

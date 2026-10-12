@@ -1,4 +1,5 @@
 import {readyEventName} from "./basemap"
+import {announceRiderPopupChange, riderPopupClassName} from "./rider_popups"
 
 const sourceName = "vehicle-markers"
 const roundLayerName = "vehicle-markers-round"
@@ -242,10 +243,13 @@ export const VehicleMarkers = {
       map.on("click", layerName, (event) => {
         const [feature] = event.features
 
-        new maplibre.Popup()
+        const popup = new maplibre.Popup({className: riderPopupClassName})
           .setLngLat(feature.geometry.coordinates)
           .setDOMContent(popupContent(feature.properties, this.statusLabels))
-          .addTo(map)
+
+        popup.on("close", announceRiderPopupChange)
+        popup.addTo(map)
+        announceRiderPopupChange()
       })
 
       map.on("mouseenter", layerName, () => { map.getCanvas().style.cursor = "pointer" })
