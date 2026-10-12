@@ -40,6 +40,8 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 `GOBUSGO_DATA_DIR` is the directory stored responses are written to and read from. Unset or blank, it is `data/` under the directory the server starts in; a relative value resolves against that directory.
 
+`GOBUSGO_S3_BUCKET` names an S3 bucket that holds the stored responses and the usage records in place of that directory; the basemap archives stay in the directory. It needs `GOBUSGO_S3_REGION`, the bucket's region. `GOBUSGO_S3_PREFIX` is a key prefix that ends in `/`, empty when unset, and `GOBUSGO_S3_ENDPOINT` is the `https` address the bucket is reached at, `https://<bucket>.s3.<region>.amazonaws.com` when unset. The credentials are those of the role the container runs under, read from the address in `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, which ECS sets; no setting holds a key. Leave the bucket unset in development and test. A value that is missing or not valid stops the application at startup. `lib/gobusgo/s3/AGENTS.md` holds the requests, the permissions the role needs, and what each S3 answer becomes.
+
 `SECRET_KEY_BASE` signs the browser session. Leave it unset in development and test: a random secret is generated at each start, so restarting the server makes open pages reload. Production refuses to start without it; generate one with `mix phx.gen.secret`. A value shorter than 64 bytes stops the application at startup.
 
 `GOBUSGO_PUBLIC_HOST` is the host name pages are served on, such as `localhost` or the name of a content delivery network in front of the server, in lowercase with no scheme, port, or path. With it set, the LiveView socket accepts a page of that host, under any scheme and port, and refuses a page of any other. Leave it unset in development and test, where the socket accepts every origin. Production refuses to start without it, and a value that is not a host name stops the application at startup.
@@ -48,7 +50,7 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 The application needs no broker and no database. A recorder stores each response and publishes a "response stored" event; the event goes straight to the consumer in the same process, which processes the stored response and hands the processed records to the dataset's in-memory view. `config/config.exs` names the subscriber of every topic.
 
-The views start empty on every start and fill from OneBusAway: the agencies on the first agency fetch, the vehicles on the first vehicle cycle after it, and each agency's routes and each route's stops and paths within about ten minutes. The route source then refreshes each of those once a day. The agency endpoints answer `503` until the first agency fetch is processed.
+The views start empty on every start. Before the first route cycle the server processes the newest stored response of each agency's routes and of each route's stops and paths from the last two days, at most 60 seconds, and logs `Route views rebuilt` with the counts, or `Route views rebuilt incomplete` when a response or a listing failed. The rest fills from OneBusAway: the agencies on the first agency fetch, the vehicles on the first vehicle cycle after it, and each route item the stored responses did not supply within about ten minutes. The route source then refreshes each of those once a day. The agency endpoints answer `503` until the first agency fetch is processed.
 
 A stored response that fails to process is logged once at `error` as `Response consumer failed`, and nothing retries it: the next fetch of the same data replaces it. A route item or an open stop whose response did not reach its view is fetched again when it is next due, the item at its daily slot and the stop after its refresh age.
 
@@ -310,7 +312,7 @@ Once an hour the server deletes the stored files that are past their dataset's r
 | `raw/oba/stops-for-route/` | 30 days |
 | `usage/page-connections/` | 3 days |
 
-A run deletes at most 20,000 files, the oldest first, and leaves the rest to the next run. It logs `Stored content cleanup finished` with the counts it deleted and failed to delete and whether a backlog is left. The first run starts with the server, so a data directory that holds older files loses them then. A directory that a deletion leaves empty is removed, up to the dataset's own. Under test nothing is scheduled. Reconciliation over a time range whose files are deleted publishes nothing and reports a count of 0.
+With a bucket configured the same rules delete its objects, each with a lookup and a deletion. A run deletes at most 20,000 files, the oldest first, and leaves the rest to the next run. It logs `Stored content cleanup finished` with the counts it deleted and failed to delete and whether a backlog is left. The first run starts with the server, so a data directory that holds older files loses them then. A directory that a deletion leaves empty is removed, up to the dataset's own. Under test nothing is scheduled. Reconciliation over a time range whose files are deleted publishes nothing and reports a count of 0.
 
 ## Usage
 
