@@ -446,7 +446,7 @@ defmodule GobusgoWeb.VehicleLive do
           </details>
         </form>
 
-        <p :if={@filter == :refused} id="filter-refused" class="rounded bg-white px-3 py-2 shadow">
+        <p :if={@filter == :refused} id="filter-refused" class="surface px-3 py-2 shadow">
           This filter is not valid.
           <.link patch="/vehicles" class="underline">Remove the filter</.link>
         </p>
@@ -489,7 +489,7 @@ defmodule GobusgoWeb.VehicleLive do
         phx-hook="SnapToLocation"
         phx-update="ignore"
         role="status"
-        class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded bg-white px-3 py-2 text-sm shadow"
+        class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
         data-bounds={JSON.encode!(@basemap.archive_bounds)}
         hidden
       >

@@ -41,7 +41,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       aria-label="About this map"
       aria-haspopup="dialog"
       phx-click={@show}
-      class="fixed bottom-2 left-2 z-10 h-9 w-9 rounded-full bg-white text-lg font-semibold shadow"
+      class="surface fixed bottom-2 left-2 z-10 h-11 w-11 [--surface-radius:9999px] text-lg font-semibold shadow"
     >
       i
     </button>
@@ -50,12 +50,12 @@ defmodule GobusgoWeb.AppInfoPanel do
       id={@panel_id}
       aria-labelledby="app-info-title"
       phx-mounted={JS.ignore_attributes("open")}
-      class="m-auto max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded bg-white p-0 text-sm text-slate-900 shadow-lg backdrop:bg-black/40"
+      class="m-auto max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto surface p-0 text-sm text-slate-900 shadow-lg backdrop:bg-black/40"
     >
-      <header class="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3">
+      <header class="sticky top-0 flex items-center justify-between border-b border-gray-300 bg-[var(--surface-fill)] px-4 py-3">
         <h2 id="app-info-title" class="text-base font-semibold">About Gobusgo</h2>
         <form method="dialog">
-          <button class="rounded border px-2 py-1">Close</button>
+          <button class="close-button [--close-button-size:32px]" aria-label="Close"></button>
         </form>
       </header>
 
@@ -86,7 +86,7 @@ defmodule GobusgoWeb.AppInfoPanel do
     <section class="flex flex-col gap-2">
       <h3 class="font-semibold">How to read the map</h3>
       <p>Each marker is one vehicle. Its color says how far to trust its position:</p>
-      <dl class="flex flex-col gap-2">
+      <dl class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
         <div
           :for={status <- @statuses}
           id={"app-info-status-#{status.status}"}
