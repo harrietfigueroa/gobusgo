@@ -32,6 +32,7 @@ const autoOpenZoomMin = 16
 const autoOpenStopCountMax = 5
 const routeSeparator = ", "
 const notSupplied = "Not supplied"
+const titleClassName = "popup-title"
 const drawDelayMs = 50
 const arrivalsHeading = "Arrivals"
 const arrivalsWaiting = "Waiting for this stop's arrivals"
@@ -153,6 +154,7 @@ function popupContent(properties) {
     appendParagraph(content, line)
   }
 
+  content.firstElementChild.className = titleClassName
   return content
 }
 
