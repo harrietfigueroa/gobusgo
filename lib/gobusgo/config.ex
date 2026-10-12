@@ -20,6 +20,24 @@ defmodule Gobusgo.Config do
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
   @type http_error :: {:invalid, :host | :port}
 
+  @typedoc """
+  Where the writer, the reader, and the deleter keep content: `:local`, or
+  the bucket with the key prefix, the region, the address the bucket is
+  reached at, and the source of the credentials.
+  """
+  @type storage ::
+          :local
+          | %{
+              bucket: String.t(),
+              prefix: String.t(),
+              region: String.t(),
+              endpoint: String.t(),
+              credentials: Gobusgo.S3.Credentials.source()
+            }
+  @type storage_error ::
+          {:invalid, :bucket | :prefix | :region | :endpoint | :credentials_uri}
+          | {:missing, :region | :credentials_uri}
+
   @one_bus_away_keys [:base_url, :api_key]
   @http_host_default "127.0.0.1"
   @http_port_default 4000
@@ -30,6 +48,17 @@ defmodule Gobusgo.Config do
   # https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4 — checked 2026-10-09
   @public_host_bytes_max 253
   @public_host_label ~S"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+
+  # A bucket name is 3 to 63 characters of lowercase letters, digits, dots,
+  # and hyphens, and begins and ends with a letter or a digit.
+  # https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html — checked 2026-10-11
+  @bucket_pattern ~r/\A[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\z/
+  @region_pattern ~r/\A[a-z0-9]+(?:-[a-z0-9]+)+\z/
+  @endpoint_pattern ~r/\Ahttps:\/\/[a-z0-9.-]+(?::[0-9]{1,5})?\z/
+
+  # The address a relative credentials URI is appended to.
+  # https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html — checked 2026-10-11
+  @credentials_host "http://169.254.170.2"
 
   @doc """
   Returns the OneBusAway settings from `env`, or the first missing key.
@@ -198,6 +227,100 @@ defmodule Gobusgo.Config do
   def public_host do
     :gobusgo |> Application.fetch_env!(:public) |> fetch_public_host()
   end
+
+  @doc """
+  Returns where content is stored from `env`. A nil or blank `:bucket` is
+  `{:ok, :local}`. With a bucket, `:region` is required, `:prefix` is empty
+  or destination segments that end in `/`, and `:endpoint`, an `https`
+  address with no path, defaults to the bucket's regional address. The
+  credentials come from `:credentials_relative_uri`, a path at the container
+  credentials address, or else from `:credentials_full_uri`, with
+  `:credentials_authorization` as the header either asks for; one of the two
+  is required. Returns the first value that is missing or not valid.
+  """
+  @spec fetch_storage(Keyword.t()) :: {:ok, storage()} | {:error, storage_error()}
+  def fetch_storage(env) when is_list(env) do
+    case text(env, :bucket) do
+      nil ->
+        {:ok, :local}
+
+      bucket ->
+        with :ok <- check(Regex.match?(@bucket_pattern, bucket), {:invalid, :bucket}),
+             {:ok, region} <- storage_region(env),
+             {:ok, prefix} <- storage_prefix(env),
+             {:ok, endpoint} <- storage_endpoint(env, %{bucket: bucket, region: region}),
+             {:ok, credentials_url} <- storage_credentials_url(env) do
+          {:ok,
+           %{
+             bucket: bucket,
+             prefix: prefix,
+             region: region,
+             endpoint: endpoint,
+             credentials: %{
+               url: credentials_url,
+               authorization: text(env, :credentials_authorization)
+             }
+           }}
+        end
+    end
+  end
+
+  @doc "Reads where content is stored, as configured for the running application."
+  @spec storage() :: {:ok, storage()} | {:error, storage_error()}
+  def storage do
+    :gobusgo |> Application.get_env(Gobusgo.S3, []) |> fetch_storage()
+  end
+
+  defp storage_region(env) do
+    case text(env, :region) do
+      nil ->
+        {:error, {:missing, :region}}
+
+      region ->
+        if Regex.match?(@region_pattern, region),
+          do: {:ok, region},
+          else: {:error, {:invalid, :region}}
+    end
+  end
+
+  defp storage_prefix(env) do
+    prefix = text(env, :prefix) || ""
+    if Gobusgo.S3.Key.prefix?(prefix), do: {:ok, prefix}, else: {:error, {:invalid, :prefix}}
+  end
+
+  defp storage_endpoint(env, location) do
+    case text(env, :endpoint) do
+      nil ->
+        {:ok, Gobusgo.S3.Client.endpoint(location)}
+
+      endpoint ->
+        if Regex.match?(@endpoint_pattern, endpoint),
+          do: {:ok, endpoint},
+          else: {:error, {:invalid, :endpoint}}
+    end
+  end
+
+  defp storage_credentials_url(env) do
+    case {text(env, :credentials_relative_uri), text(env, :credentials_full_uri)} do
+      {nil, nil} ->
+        {:error, {:missing, :credentials_uri}}
+
+      {nil, "http://" <> _rest = full_uri} ->
+        {:ok, full_uri}
+
+      {nil, "https://" <> _rest = full_uri} ->
+        {:ok, full_uri}
+
+      {"/" <> _rest = relative_uri, _full_uri} ->
+        {:ok, @credentials_host <> relative_uri}
+
+      _other ->
+        {:error, {:invalid, :credentials_uri}}
+    end
+  end
+
+  defp check(true, _error), do: :ok
+  defp check(false, error), do: {:error, error}
 
   defp public_host?(host) do
     byte_size(host) <= @public_host_bytes_max and

@@ -42,6 +42,108 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_storage/1" do
+    @storage [
+      bucket: "gobusgo-data",
+      prefix: "production/",
+      region: "us-west-2",
+      endpoint: nil,
+      credentials_relative_uri: "/v2/credentials/id",
+      credentials_full_uri: nil,
+      credentials_authorization: nil
+    ]
+
+    for bucket <- [nil, "", "  "] do
+      test "is local for the bucket #{inspect(bucket)}" do
+        assert Config.fetch_storage(Keyword.put(@storage, :bucket, unquote(bucket))) ==
+                 {:ok, :local}
+      end
+    end
+
+    test "is local for an empty environment" do
+      assert Config.fetch_storage([]) == {:ok, :local}
+    end
+
+    test "returns the bucket with its regional address and the credentials address" do
+      assert Config.fetch_storage(@storage) ==
+               {:ok,
+                %{
+                  bucket: "gobusgo-data",
+                  prefix: "production/",
+                  region: "us-west-2",
+                  endpoint: "https://gobusgo-data.s3.us-west-2.amazonaws.com",
+                  credentials: %{
+                    url: "http://169.254.170.2/v2/credentials/id",
+                    authorization: nil
+                  }
+                }}
+    end
+
+    test "takes an empty key prefix for a prefix that is not set" do
+      assert {:ok, %{prefix: ""}} = Config.fetch_storage(Keyword.put(@storage, :prefix, nil))
+    end
+
+    test "takes the endpoint that is set" do
+      endpoint = "https://gobusgo-data.s3.dualstack.us-west-2.amazonaws.com"
+
+      assert {:ok, %{endpoint: ^endpoint}} =
+               Config.fetch_storage(Keyword.put(@storage, :endpoint, endpoint))
+    end
+
+    test "takes the full credentials address and its authorization" do
+      env =
+        Keyword.merge(@storage,
+          credentials_relative_uri: nil,
+          credentials_full_uri: "http://localhost:8080/credentials",
+          credentials_authorization: "Basic abcd"
+        )
+
+      assert {:ok,
+              %{
+                credentials: %{
+                  url: "http://localhost:8080/credentials",
+                  authorization: "Basic abcd"
+                }
+              }} = Config.fetch_storage(env)
+    end
+
+    test "takes the relative credentials address over the full one" do
+      env = Keyword.put(@storage, :credentials_full_uri, "http://localhost/credentials")
+
+      assert {:ok, %{credentials: %{url: "http://169.254.170.2/v2/credentials/id"}}} =
+               Config.fetch_storage(env)
+    end
+
+    for {key, value, error} <- [
+          {:bucket, "Upper_Case", {:invalid, :bucket}},
+          {:bucket, "ab", {:invalid, :bucket}},
+          {:region, nil, {:missing, :region}},
+          {:region, "us west", {:invalid, :region}},
+          {:prefix, "production", {:invalid, :prefix}},
+          {:prefix, "/production/", {:invalid, :prefix}},
+          {:endpoint, "http://plain.example.com", {:invalid, :endpoint}},
+          {:endpoint, "https://host.example.com/path", {:invalid, :endpoint}},
+          {:credentials_relative_uri, nil, {:missing, :credentials_uri}},
+          {:credentials_relative_uri, "v2/credentials", {:invalid, :credentials_uri}}
+        ] do
+      test "reports #{inspect(error)} for #{key} #{inspect(value)}" do
+        env = Keyword.put(@storage, unquote(key), unquote(value))
+
+        assert Config.fetch_storage(env) == {:error, unquote(error)}
+      end
+    end
+
+    test "reports the credentials address as not valid for a full one that is no HTTP address" do
+      env =
+        Keyword.merge(@storage,
+          credentials_relative_uri: nil,
+          credentials_full_uri: "ftp://localhost/credentials"
+        )
+
+      assert Config.fetch_storage(env) == {:error, {:invalid, :credentials_uri}}
+    end
+  end
+
   describe "fetch_usage/1" do
     for recorded <- [true, false] do
       test "returns recorded as #{recorded} when it is configured so" do

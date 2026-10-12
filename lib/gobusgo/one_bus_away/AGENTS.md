@@ -649,6 +649,18 @@ It lists the `dt` partition of every date the range touches, takes the destinati
 
 Reconciliation logs one line per call: `info` `Reconciliation finished`, `warning` `Reconciliation finished with skips`, or `error` `Reconciliation failed`, with `dataset`, `range_start`, `range_end`, and the counts or the failure `reason`.
 
+## Route rebuild
+
+`Gobusgo.OneBusAway.RouteRebuild` fills the route view, the route path view, and the stop view from the stored responses at a start, so a start fetches from OneBusAway only what the store does not hold. The application runs it once, after the views and the endpoint and before the schedulers, wherever the sources are scheduled.
+
+- `run/1` discovers the stored `routes-for-agency` and `stops-for-route` responses of the last two UTC days through `Gobusgo.Reader`, the newer day first, keeps the newest destination of each agency and of each route, by the fetch time its name starts with, and calls `RouteBatch.process/2` or `RoutePathBatch.process/2` with each, at most eight at a time and 10 seconds each. The processors publish to the views as they do for a fresh fetch, and each logs its own line.
+- A record keeps the fetch time of its response, so `RouteSchedule` holds a rebuilt item until its slot next comes, and `Readiness` counts it as attempted. An item with no stored response in the two days, one whose response cannot be read, and one whose response fails to process stay without a fetch and are due in the first route cycles.
+- Discovery makes at most 20 calls of 1,000 destinations per dataset and day. A day that holds more, or whose discovery fails, is left out and counted.
+- `start_link/1` runs `run/1` in a task under the ingestion task supervisor, waits at most 60 seconds, and returns `:ignore` whatever the outcome, so a rebuild that fails, crashes, or runs out of time never stops the application from starting. A rebuild stopped at its deadline keeps what it published.
+- It reads no agency view: the agencies and routes are those the store holds, so the routes of an agency that no longer exists are filled as well.
+
+A run logs one line: `info` `Route views rebuilt`, or `warning` `Route views rebuilt incomplete` when a response failed or a day was left out, with `routes_processed_count`, `routes_failed_count`, `route_paths_processed_count`, `route_paths_failed_count`, `undiscovered_day_count`, and `elapsed_ms`. A run that reaches its deadline or crashes logs `warning` `Route views rebuild stopped` with the `reason`.
+
 ## Methods for future work
 
 Not implemented here. Each link was checked 2026-10-01 from the method index.
