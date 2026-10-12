@@ -5,6 +5,81 @@
 @source "../js";
 @source "../../lib/gobusgo_web";
 
+:root {
+  --surface-fill: #f0f9ff;
+  --surface-border-color: #16a34a;
+  --surface-border-width: 1px;
+  --surface-radius: 8px;
+  --popup-tip-size: 12px;
+  /* The tip is a square turned 45 degrees about its center, which stands on
+     the popup's edge: half of it lies over the popup, and its far corner
+     reaches (sqrt(2) - 1) / 2 of its side past its own box. */
+  --popup-tip-overlap: calc(var(--popup-tip-size) / -2);
+  --popup-tip-reach: calc(var(--popup-tip-size) * 0.2071);
+}
+
+/* The rules stand after MapLibre's, which give a popup a white fill and 3px
+   corners with the same specificity. */
+.surface,
+.maplibregl-popup-content {
+  accent-color: var(--surface-border-color);
+  background-color: var(--surface-fill);
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+}
+
+/* MapLibre draws a tip as a triangle of borders, which cannot carry an
+   outline. Here a tip is a square with the popup's fill and two bordered
+   sides, drawn over the popup's edge, so the popup's border runs around the
+   tip and none crosses its base. */
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  box-sizing: border-box;
+  width: var(--popup-tip-size);
+  height: var(--popup-tip-size);
+  background-color: var(--surface-fill);
+  border: 0 solid var(--surface-border-color);
+  border-right-width: var(--surface-border-width);
+  border-bottom-width: var(--surface-border-width);
+}
+
+/* The bordered corner of the square is its bottom right one, which each
+   rotation turns to the side the popup is anchored on. */
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  margin-top: var(--popup-tip-reach);
+  margin-bottom: var(--popup-tip-overlap);
+  transform: rotate(225deg);
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  margin-top: var(--popup-tip-overlap);
+  margin-bottom: var(--popup-tip-reach);
+  transform: rotate(45deg);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  margin-right: var(--popup-tip-overlap);
+  margin-left: var(--popup-tip-reach);
+  transform: rotate(135deg);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  margin-right: var(--popup-tip-reach);
+  margin-left: var(--popup-tip-overlap);
+  transform: rotate(315deg);
+}
+
+/* A popup anchored on a corner points with that corner, which MapLibre
+   leaves square, and has no tip. */
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  display: none;
+}
+
 /* The list of the routes under the pointer stands at the pointer, so it
    takes no pointer events: one that did would end the hover that shows it.
    The rule stands after MapLibre's, which gives a popup's content pointer

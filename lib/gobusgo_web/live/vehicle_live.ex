@@ -386,7 +386,7 @@ defmodule GobusgoWeb.VehicleLive do
           phx-change="vehicle-filter:change"
           phx-submit="vehicle-filter:change"
           data-supplied={to_string(@filter_supplied)}
-          class="max-h-[calc(100vh-1rem)] max-w-xs overflow-y-auto rounded bg-white px-3 py-2 text-sm shadow"
+          class="surface max-h-[calc(100vh-1rem)] max-w-xs overflow-y-auto px-3 py-2 text-sm shadow"
         >
           <details id="vehicle-filter-agencies">
             <summary class="cursor-pointer font-medium">Agencies</summary>
@@ -416,7 +416,7 @@ defmodule GobusgoWeb.VehicleLive do
               maxlength={RouteOptions.query_length_max()}
               autocomplete="off"
               phx-debounce={route_query_debounce_ms()}
-              class="mt-2 w-full rounded border border-gray-300 px-2 py-1"
+              class="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1"
             />
             <div class="mt-2 flex max-h-[40vh] flex-col gap-1 overflow-y-auto">
               <label
@@ -431,14 +431,14 @@ defmodule GobusgoWeb.VehicleLive do
                 />
                 <span class="font-medium">{option.name}</span>
                 <span :if={option.detail != nil}>{option.detail}</span>
-                <span :if={option.agency_name != nil} class="text-gray-500">
+                <span :if={option.agency_name != nil} class="text-gray-600">
                   {option.agency_name}
                 </span>
               </label>
               <p
                 :if={@route_options.rest_count > 0}
                 id="vehicle-filter-routes-rest"
-                class="text-gray-500"
+                class="text-gray-600"
               >
                 {@route_options.rest_count} more
               </p>
