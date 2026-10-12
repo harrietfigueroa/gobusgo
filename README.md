@@ -312,7 +312,7 @@ Once an hour the server deletes the stored files that are past their dataset's r
 | `raw/oba/stops-for-route/` | 30 days |
 | `usage/page-connections/` | 3 days |
 
-With a bucket configured the same rules delete its objects, each with a lookup and a deletion. A run deletes at most 20,000 files, the oldest first, and leaves the rest to the next run. It logs `Stored content cleanup finished` with the counts it deleted and failed to delete and whether a backlog is left. The first run starts with the server, so a data directory that holds older files loses them then. A directory that a deletion leaves empty is removed, up to the dataset's own. Under test nothing is scheduled. Reconciliation over a time range whose files are deleted publishes nothing and reports a count of 0.
+With a bucket configured the server schedules no cleanup: the bucket's lifecycle rules, which the infrastructure repository declares with the same days, expire its objects. A run deletes at most 20,000 files, the oldest first, and leaves the rest to the next run. It logs `Stored content cleanup finished` with the counts it deleted and failed to delete and whether a backlog is left. The first run starts with the server, so a data directory that holds older files loses them then. A directory that a deletion leaves empty is removed, up to the dataset's own. Under test nothing is scheduled. Reconciliation over a time range whose files are deleted publishes nothing and reports a count of 0.
 
 ## Usage
 

@@ -102,7 +102,7 @@ defmodule Gobusgo.Application do
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
           ] ++
           rebuild_children(scheduled) ++
-          [scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled))]
+          [scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled, storage))]
 
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -141,10 +141,12 @@ defmodule Gobusgo.Application do
     @generated_secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()
   end
 
-  # The cleanup of stored content runs wherever the sources are scheduled,
-  # with or without the OneBusAway settings.
-  defp cleanup_specs(true), do: [RetentionPolicy.cleanup_spec([])]
-  defp cleanup_specs(false), do: []
+  # The cleanup of stored content runs wherever the sources are scheduled
+  # and the content is in local files, with or without the OneBusAway
+  # settings. A bucket expires its own objects by its lifecycle rules.
+  defp cleanup_specs(true, :local), do: [RetentionPolicy.cleanup_spec([])]
+  defp cleanup_specs(true, %{bucket: _bucket}), do: []
+  defp cleanup_specs(false, _storage), do: []
 
   defp source_specs(false), do: []
 

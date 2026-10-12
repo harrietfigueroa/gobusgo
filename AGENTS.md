@@ -353,7 +353,7 @@ Intended, with no process or service in the repository yet. The decisions are re
 - The reverse-DNS prefix for the CloudEvents `type` attribute.
 - Which aggregates the REST API serves, and therefore which datasets need a history topic.
 - The OneBusAway rate limit; five requests per second is an assumption, and the live server has answered 429 at about three.
-- Whether the hourly cleanup deletes from S3 through the deleter, as it does now, or a lifecycle rule of the bucket takes its place (GOB-203, GOB-204); a deletion is two S3 requests.
+- With a bucket configured the hourly cleanup is not scheduled: the bucket's lifecycle rules, declared in the infrastructure repository, hold the retention of what is in S3, with the days of `Gobusgo.RetentionPolicy` (decided in GOB-203). The two are kept the same by hand; whether one should be derived from the other is open.
 - Whether the production network needs `GOBUSGO_S3_ENDPOINT` set to a dual-stack address, and the time the S3 requests add to a vehicle cycle; neither is tested on the instance (GOB-203).
 - How far back the route rebuild looks, two UTC days, which is not confirmed (GOB-203).
 - Removal from the views of what is no longer fetched: an agency that no longer exists keeps its last fetch until a restart, and so do the vehicles of an agency that is no longer fetched, the routes of such an agency, and the path of a route its agency no longer lists.
