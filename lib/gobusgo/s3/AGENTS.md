@@ -67,4 +67,5 @@ Callers use `Gobusgo.Writer`, `Gobusgo.Reader`, and `Gobusgo.Deleter` and name n
 ## Open items
 
 - Whether the production network, which reaches S3 through a gateway endpoint, needs `GOBUSGO_S3_ENDPOINT` set to a dual-stack address. To be tested on the instance.
-- The time two S3 requests add to each recorded fetch, and the time an hourly cleanup of a day of vehicle responses takes at two requests per deletion. Neither is measured.
+- The time two S3 requests add to each recorded fetch, which is not measured.
+- Retention in the bucket is its lifecycle rules, declared in the infrastructure repository with the days of `Gobusgo.RetentionPolicy`; the application schedules no cleanup with a bucket configured, and the deleter's S3 backend has no scheduled caller.
