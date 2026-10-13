@@ -173,11 +173,3 @@
   font-weight: 600;
 }
 
-/* The list of the routes under the pointer stands at the pointer, so it
-   takes no pointer events: one that did would end the hover that shows it.
-   The rule stands after MapLibre's, which gives a popup's content pointer
-   events. */
-.route-hover,
-.route-hover * {
-  pointer-events: none;
-}
