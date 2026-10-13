@@ -3,8 +3,12 @@ import {attachRouteHover} from "./route_hover"
 
 const sourceName = "route-lines"
 const layerName = "route-lines"
+const emphasisLayerName = "route-lines-emphasis"
 const lineWidthPixels = 2
 const lineOpacity = 0.6
+const lineOpacityDimmed = 0.2
+const emphasisWidthPixels = 5
+const emphasisOpacity = 1
 const coordinatePrecision = 1e5
 const chunkBits = 5
 const chunkMask = 0x1f
@@ -90,6 +94,20 @@ function firstSymbolLayerName(map) {
   }
 }
 
+// Draws the line of `routeId` emphasized and every other line dimmed, or
+// every line as it is without emphasis for null. It sets a filter and paint
+// and leaves the source's data as it is, so no polyline is decoded.
+function emphasizeRoute(map, routeId) {
+  if (routeId === null) {
+    map.setLayoutProperty(emphasisLayerName, "visibility", "none")
+    map.setPaintProperty(layerName, "line-opacity", lineOpacity)
+  } else {
+    map.setFilter(emphasisLayerName, ["==", ["get", "routeId"], routeId])
+    map.setLayoutProperty(emphasisLayerName, "visibility", "visible")
+    map.setPaintProperty(layerName, "line-opacity", lineOpacityDimmed)
+  }
+}
+
 // The hook of the element beside the map. It holds every route's line as
 // the server last sent it, encoded, and draws the lines on each map the
 // basemap announces, so a map drawn anew for another archive shows them too.
@@ -144,7 +162,27 @@ export const RouteLines = {
       }
     }, firstSymbolLayerName(map))
 
-    attachRouteHover({map, maplibre, layerName})
+    // The same lines again, above the layer of every line, of which a filter
+    // shows the one route that is emphasized.
+    map.addLayer({
+      id: emphasisLayerName,
+      type: "line",
+      source: sourceName,
+      layout: {"line-cap": "round", "line-join": "round", visibility: "none"},
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": emphasisWidthPixels,
+        "line-opacity": emphasisOpacity
+      }
+    }, firstSymbolLayerName(map))
+
+    attachRouteHover({
+      map,
+      maplibre,
+      layerName,
+      emphasize: (routeId) => { emphasizeRoute(map, routeId) },
+      routeDrawn: (routeId) => this.linesByRoute.has(routeId)
+    })
     this.map = map
   },
 
