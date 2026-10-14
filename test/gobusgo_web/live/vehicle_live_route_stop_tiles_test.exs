@@ -87,7 +87,11 @@ defmodule GobusgoWeb.VehicleLiveRouteStopTilesTest do
   end
 
   defp record_archive(destination) do
-    :ok = RouteStopTiles.record(RouteStopTiles, %{destination: destination, versions: %{}})
+    :ok =
+      RouteStopTiles.record(RouteStopTiles, %{
+        destination: destination,
+        content_sha256: :crypto.hash(:sha256, destination)
+      })
   end
 
   defp open_page(path) do

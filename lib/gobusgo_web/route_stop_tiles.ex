@@ -4,6 +4,7 @@ defmodule GobusgoWeb.RouteStopTiles do
   @extension ".pmtiles"
   @check_interval_ms 600_000
   @run_deadline_ms 120_000
+  @content_sha256_bytes 32
 
   @moduledoc """
   The tile archive of the routes and stops a map page draws, and the process
@@ -16,10 +17,11 @@ defmodule GobusgoWeb.RouteStopTiles do
   stored name points at the current one: the process holds it, and after a
   start finds the newest stored archive with `Gobusgo.Reader.discover/2`.
 
-  The process also holds the versions of the lines the current archive was
-  built from, `t:GobusgoWeb.RouteLines.versions/0`, so a build that would
-  repeat the current archive is passed over. Versions are what the process
-  of this node built, so the first build after a start always runs.
+  The process also holds the SHA-256 of the features the current archive was
+  built from, so a build whose features are those of the current archive is
+  passed over, however recently the data behind them was fetched. The hash
+  is what the process of this node built, so the first build after a start
+  always runs.
 
   `spec/1` is the spec of the scheduler that checks every
   #{@check_interval_ms} ms whether to build, with #{@run_deadline_ms} ms for
@@ -39,7 +41,6 @@ defmodule GobusgoWeb.RouteStopTiles do
   alias Gobusgo.Assert
   alias Gobusgo.Reader
   alias Gobusgo.Scheduler
-  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.RouteStopTiles.Build
 
   @type server :: GenServer.server()
@@ -75,15 +76,27 @@ defmodule GobusgoWeb.RouteStopTiles do
   @spec current_destination(server()) :: String.t() | nil
   def current_destination(server), do: GenServer.call(server, :current_destination)
 
-  @doc "The versions the current archive was built from on this node, or `nil`."
-  @spec built_versions(server()) :: RouteLines.versions() | nil
-  def built_versions(server), do: GenServer.call(server, :built_versions)
+  @doc """
+  The SHA-256 of the features the current archive was built from on this
+  node, or `nil`.
+  """
+  @spec built_content_sha256(server()) :: binary() | nil
+  def built_content_sha256(server), do: GenServer.call(server, :built_content_sha256)
 
-  @doc "Makes the archive at `build.destination`, built from `build.versions`, the current one."
-  @spec record(server(), %{destination: String.t(), versions: RouteLines.versions()}) :: :ok
-  def record(server, %{destination: destination, versions: versions} = build)
-      when is_binary(destination) and is_map(versions) do
+  @doc """
+  Makes the archive at `build.destination`, built from the features whose
+  SHA-256 is `build.content_sha256`, the current one.
+  """
+  @spec record(server(), %{destination: String.t(), content_sha256: binary()}) :: :ok
+  def record(server, %{destination: destination, content_sha256: content_sha256} = build)
+      when is_binary(destination) and is_binary(content_sha256) do
     Assert.condition(String.starts_with?(destination, @prefix <> "/"), "an archive destination")
+
+    Assert.condition(
+      byte_size(content_sha256) == @content_sha256_bytes,
+      "a SHA-256 is #{@content_sha256_bytes} bytes, got: #{byte_size(content_sha256)}"
+    )
+
     GenServer.call(server, {:record, build})
   end
 
@@ -109,7 +122,7 @@ defmodule GobusgoWeb.RouteStopTiles do
 
   @impl GenServer
   def init(read_options) do
-    {:ok, %{destination: nil, versions: nil}, {:continue, {:discover, read_options}}}
+    {:ok, %{destination: nil, content_sha256: nil}, {:continue, {:discover, read_options}}}
   end
 
   @impl GenServer
@@ -131,9 +144,13 @@ defmodule GobusgoWeb.RouteStopTiles do
 
   @impl GenServer
   def handle_call(:current_destination, _from, state), do: {:reply, state.destination, state}
-  def handle_call(:built_versions, _from, state), do: {:reply, state.versions, state}
+  def handle_call(:built_content_sha256, _from, state), do: {:reply, state.content_sha256, state}
 
-  def handle_call({:record, %{destination: destination, versions: versions}}, _from, state) do
-    {:reply, :ok, %{state | destination: destination, versions: versions}}
+  def handle_call(
+        {:record, %{destination: destination, content_sha256: content_sha256}},
+        _from,
+        state
+      ) do
+    {:reply, :ok, %{state | destination: destination, content_sha256: content_sha256}}
   end
 end

@@ -17,10 +17,8 @@ defmodule GobusgoWeb.RouteLines do
   `nil` where there is none. They are text from outside the application,
   which a map shows as data.
 
-  An archive tells what it was built from by a version per route:
-  everything of the line but its polylines, with the fetch time of its path
-  in their place, in microseconds since the Unix epoch. `versions/1` reads
-  no path, so comparing versions holds and copies no polyline.
+  A version of a route is everything of its line but its polylines.
+  `versions/1` reads no path, so it holds and copies no polyline.
   """
 
   alias Gobusgo.Assert
@@ -35,16 +33,14 @@ defmodule GobusgoWeb.RouteLines do
         }
 
   @typedoc """
-  What an archive's build keeps of a line: the route's color as the source
-  supplies it, six hexadecimal digits or `nil`, its names, and its path's
-  fetch time in microseconds since the Unix epoch.
+  A line but its polylines: the route's color as the source supplies it, six
+  hexadecimal digits or `nil`, and its names.
   """
   @type version :: %{
           color: String.t() | nil,
           short_name: String.t() | nil,
           long_name: String.t() | nil,
-          agency_name: String.t() | nil,
-          path_fetch_microseconds: integer()
+          agency_name: String.t() | nil
         }
 
   @type versions :: %{String.t() => version()}
@@ -76,15 +72,13 @@ defmodule GobusgoWeb.RouteLines do
         is_map_key(path_fetch_times, route_id),
         into: %{} do
       route = Map.fetch!(routes, route_id)
-      fetched_at = Map.fetch!(path_fetch_times, route_id)
 
       {route_id,
        %{
          color: route["color"],
          short_name: route["shortName"],
          long_name: route["longName"],
-         agency_name: Map.get(agency_names, route["agencyId"]),
-         path_fetch_microseconds: DateTime.to_unix(fetched_at, :microsecond)
+         agency_name: Map.get(agency_names, route["agencyId"])
        }}
     end
   end

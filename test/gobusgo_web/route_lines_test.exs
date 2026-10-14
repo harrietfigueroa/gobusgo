@@ -52,8 +52,7 @@ defmodule GobusgoWeb.RouteLinesTest do
         color: nil,
         short_name: nil,
         long_name: nil,
-        agency_name: nil,
-        path_fetch_microseconds: 1
+        agency_name: nil
       },
       fields
     )
@@ -73,7 +72,7 @@ defmodule GobusgoWeb.RouteLinesTest do
   end
 
   describe "versions/1" do
-    test "holds every route an agency lists that has a path, with its color and path time" do
+    test "holds every route an agency lists that has a path, with its color" do
       versions =
         RouteLines.versions(%{
           route_fetches: [
@@ -88,18 +87,9 @@ defmodule GobusgoWeb.RouteLinesTest do
         })
 
       assert versions == %{
-               "40_1" =>
-                 version(%{
-                   color: "28813F",
-                   path_fetch_microseconds: DateTime.to_unix(@earlier, :microsecond)
-                 }),
-               "40_2" =>
-                 version(%{path_fetch_microseconds: DateTime.to_unix(@later, :microsecond)}),
-               "1_1" =>
-                 version(%{
-                   color: "FDB71A",
-                   path_fetch_microseconds: DateTime.to_unix(@earlier, :microsecond)
-                 })
+               "40_1" => version(%{color: "28813F"}),
+               "40_2" => version(),
+               "1_1" => version(%{color: "FDB71A"})
              }
     end
 

@@ -21,13 +21,6 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     agency_name: "Metro",
     polylines: ["_p~iF~ps|U_ulLnnqC"]
   }
-  @version %{
-    color: "ff0000",
-    short_name: "10",
-    long_name: nil,
-    agency_name: "Metro",
-    path_fetch_microseconds: 1
-  }
   @marker %{
     id: "1_500",
     lat: 47.6,
@@ -39,10 +32,10 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     agencies: ["Metro"]
   }
   @content %{
-    versions: %{"1_100" => @version},
     lines: [@line],
     stops: [%{marker: @marker, route_ids: ["1_100"]}]
   }
+  @later DateTime.add(@built_at, 60)
 
   @stand_in """
   #!/bin/sh
@@ -110,24 +103,42 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     assert RouteStopTiles.current_destination(context.server) == destination
   end
 
-  test "builds nothing for the lines of the current archive", context do
+  test "builds nothing for the content of the current archive", context do
     {:ok, _build} = run(context, @content)
 
-    assert run(context, @content, now: fn -> DateTime.add(@built_at, 60) end) == {:ok, :unchanged}
+    assert run(context, @content, now: fn -> @later end) == {:ok, :unchanged}
   end
 
-  test "builds again when a line's version changes", context do
-    {:ok, _build} = run(context, @content)
-    content = put_in(@content.versions["1_100"].path_fetch_microseconds, 2)
+  for {name, change} <- [
+        {"a line's path",
+         quote(do: put_in(@content, [:lines], [%{@line | polylines: ["_p~iF~ps|U_ulLnnqD"]}]))},
+        {"a route's name", quote(do: put_in(@content, [:lines], [%{@line | short_name: "11"}]))},
+        {"a route's agency name",
+         quote(do: put_in(@content, [:lines], [%{@line | agency_name: "King County Metro"}]))},
+        {"a stop's name",
+         quote(
+           do:
+             put_in(@content, [:stops], [
+               %{marker: %{@marker | name: "Pike St"}, route_ids: ["1_100"]}
+             ])
+         )},
+        {"a stop's routes",
+         quote(
+           do: put_in(@content, [:stops], [%{marker: @marker, route_ids: ["1_100", "1_200"]}])
+         )}
+      ] do
+    test "builds again when #{name} changes", context do
+      {:ok, _build} = run(context, @content)
 
-    assert {:ok, %{destination: destination}} =
-             run(context, content, now: fn -> DateTime.add(@built_at, 60) end)
+      assert {:ok, %{destination: destination}} =
+               run(context, unquote(change), now: fn -> @later end)
 
-    assert destination == RouteStopTiles.destination(DateTime.add(@built_at, 60))
+      assert destination == RouteStopTiles.destination(@later)
+    end
   end
 
   test "builds nothing while the views hold no line", context do
-    assert run(context, %{versions: %{}, lines: [], stops: []}) == {:ok, :empty}
+    assert run(context, %{lines: [], stops: []}) == {:ok, :empty}
     assert RouteStopTiles.current_destination(context.server) == nil
   end
 
@@ -140,9 +151,9 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
   test "keeps the current archive when tippecanoe fails", context do
     {:ok, %{destination: destination}} = run(context, @content)
     File.write!(context.executable, "#!/bin/sh\necho broken\nexit 2\n")
-    content = put_in(@content.versions["1_100"].path_fetch_microseconds, 2)
+    content = put_in(@content, [:lines], [%{@line | short_name: "11"}])
 
-    assert run(context, content, now: fn -> DateTime.add(@built_at, 60) end) ==
+    assert run(context, content, now: fn -> @later end) ==
              {:error, {:tippecanoe, {:exit_status, 2, "broken\n"}}}
 
     assert RouteStopTiles.current_destination(context.server) == destination
@@ -162,7 +173,7 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
 
   test "a process started over stored archives holds the newest", context do
     {:ok, _build} = run(context, @content)
-    content = put_in(@content.versions["1_100"].path_fetch_microseconds, 2)
+    content = put_in(@content, [:lines], [%{@line | short_name: "11"}])
 
     {:ok, %{destination: newest}} =
       run(context, content, now: fn -> DateTime.add(@built_at, 86_400) end)
