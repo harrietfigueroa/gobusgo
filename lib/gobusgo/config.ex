@@ -7,6 +7,8 @@ defmodule Gobusgo.Config do
 
   @type basemap :: %{dir: String.t()}
   @type basemap_error :: {:missing, :dir}
+  @type tiles :: %{dir: String.t()}
+  @type tiles_error :: {:missing, :dir}
 
   @type one_bus_away :: %{base_url: String.t(), api_key: String.t()}
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
@@ -150,7 +152,29 @@ defmodule Gobusgo.Config do
   archives are served from. A nil or blank value counts as missing.
   """
   @spec fetch_basemap(Keyword.t()) :: {:ok, basemap()} | {:error, basemap_error()}
-  def fetch_basemap(env) when is_list(env) do
+  def fetch_basemap(env) when is_list(env), do: fetch_dir(env)
+
+  @doc "Reads the basemap settings configured for the running application."
+  @spec basemap() :: {:ok, basemap()} | {:error, basemap_error()}
+  def basemap do
+    :gobusgo |> Application.get_env(:basemap, []) |> fetch_basemap()
+  end
+
+  @doc """
+  Returns the tile settings from `env`: `:dir`, the directory the locally
+  stored tile archives are served from. A nil or blank value counts as
+  missing.
+  """
+  @spec fetch_tiles(Keyword.t()) :: {:ok, tiles()} | {:error, tiles_error()}
+  def fetch_tiles(env) when is_list(env), do: fetch_dir(env)
+
+  @doc "Reads the tile settings configured for the running application."
+  @spec tiles() :: {:ok, tiles()} | {:error, tiles_error()}
+  def tiles do
+    :gobusgo |> Application.get_env(:tiles, []) |> fetch_tiles()
+  end
+
+  defp fetch_dir(env) do
     case Keyword.get(env, :dir) do
       dir when is_binary(dir) ->
         if String.trim(dir) == "" do
@@ -162,12 +186,6 @@ defmodule Gobusgo.Config do
       nil ->
         {:error, {:missing, :dir}}
     end
-  end
-
-  @doc "Reads the basemap settings configured for the running application."
-  @spec basemap() :: {:ok, basemap()} | {:error, basemap_error()}
-  def basemap do
-    :gobusgo |> Application.get_env(:basemap, []) |> fetch_basemap()
   end
 
   @doc """

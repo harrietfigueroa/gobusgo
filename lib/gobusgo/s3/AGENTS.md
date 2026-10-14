@@ -1,6 +1,6 @@
 # Amazon S3: the bucket the backends store in
 
-Gobusgo stores every destination of the writer, the reader, and the deleter as one object of one S3 general purpose bucket, when a bucket is configured: the raw OneBusAway responses and the usage records. With no bucket configured the three use their local file backends, and nothing in this directory runs. The application creates no bucket and changes no bucket setting; the bucket and the role that reaches it belong to the infrastructure repository.
+Gobusgo stores every destination of the writer, the reader, and the deleter as one object of one S3 general purpose bucket, when a bucket is configured: the raw OneBusAway responses, the usage records, and the route and stop tile archives, which production serves to browsers from the bucket through CloudFront (GOB-218). With no bucket configured the three use their local file backends, and nothing in this directory runs. The application creates no bucket and changes no bucket setting; the bucket and the role that reaches it belong to the infrastructure repository.
 
 ## Documentation sources
 

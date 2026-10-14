@@ -56,7 +56,8 @@ defmodule Gobusgo.Application do
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
          {:ok, storage} <- Config.storage(),
-         {:ok, _basemap} <- Config.basemap() do
+         {:ok, _basemap} <- Config.basemap(),
+         {:ok, _tiles} <- Config.tiles() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.
@@ -97,12 +98,18 @@ defmodule Gobusgo.Application do
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
+            {GobusgoWeb.RouteStopTiles, name: GobusgoWeb.RouteStopTiles},
             {GobusgoWeb.Endpoint,
              [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
           ] ++
           rebuild_children(scheduled) ++
-          [scheduler_supervisor(source_specs(scheduled) ++ cleanup_specs(scheduled, storage))]
+          [
+            scheduler_supervisor(
+              source_specs(scheduled) ++
+                tile_specs(scheduled) ++ cleanup_specs(scheduled, storage)
+            )
+          ]
 
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -147,6 +154,11 @@ defmodule Gobusgo.Application do
   defp cleanup_specs(true, :local), do: [RetentionPolicy.cleanup_spec([])]
   defp cleanup_specs(true, %{bucket: _bucket}), do: []
   defp cleanup_specs(false, _storage), do: []
+
+  # The tile archive is built from the route views wherever the sources are
+  # scheduled, which is where the views are filled.
+  defp tile_specs(true), do: [GobusgoWeb.RouteStopTiles.spec(server: GobusgoWeb.RouteStopTiles)]
+  defp tile_specs(false), do: []
 
   defp source_specs(false), do: []
 

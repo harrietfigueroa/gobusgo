@@ -88,14 +88,14 @@ defmodule Gobusgo.OneBusAway.RequestGateTest do
     test "pauses every caller for the time the response names" do
       gate = start_gate([])
       {:ok, permit} = RequestGate.acquire(gate, @wait_ms)
+      # The clock starts before the release, so the time the next permit takes
+      # is measured from no later than the pause's start.
+      released_at_ms = System.monotonic_time(:millisecond)
       release(gate, permit, {:rate_limited, 150})
 
       assert RequestGate.acquire(gate, 30) == {:error, :rate_limited}
-
-      assert {{:ok, _permit}, elapsed_ms} =
-               elapsed_ms(fn -> RequestGate.acquire(gate, @wait_ms) end)
-
-      assert elapsed_ms >= 60
+      assert {:ok, _permit} = RequestGate.acquire(gate, @wait_ms)
+      assert System.monotonic_time(:millisecond) - released_at_ms >= 150
     end
 
     test "grants one probe after the pause and reopens when it completes" do
@@ -133,7 +133,7 @@ defmodule Gobusgo.OneBusAway.RequestGateTest do
           {:ok, _permit} = RequestGate.acquire(gate, @wait_ms)
         end)
 
-      assert_receive {:DOWN, ^monitor, :process, ^holder, :normal}
+      assert_receive {:DOWN, ^monitor, :process, ^holder, :normal}, @wait_ms
       assert {:ok, _permit} = RequestGate.acquire(gate, @wait_ms)
     end
 
@@ -148,7 +148,7 @@ defmodule Gobusgo.OneBusAway.RequestGateTest do
           Process.sleep(:infinity)
         end)
 
-      assert_receive :holding
+      assert_receive :holding, @wait_ms
       Process.exit(holder, :kill)
 
       assert {:ok, _permit} = RequestGate.acquire(gate, @wait_ms)
@@ -182,7 +182,7 @@ defmodule Gobusgo.OneBusAway.RequestGateTest do
           Process.sleep(:infinity)
         end)
 
-      assert_receive :probing
+      assert_receive :probing, @wait_ms
       Process.exit(prober, :kill)
 
       assert {:ok, _permit} = RequestGate.acquire(gate, @wait_ms)

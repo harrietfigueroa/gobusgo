@@ -5,6 +5,7 @@ defmodule Gobusgo.RetentionPolicy do
   @route_day_count 30
   @route_path_day_count 30
   @usage_day_count 3
+  @route_stop_tiles_day_count 2
   @cleanup_interval_ms 3_600_000
   @cleanup_deadline_ms 600_000
 
@@ -21,6 +22,8 @@ defmodule Gobusgo.RetentionPolicy do
     * the routes of an agency, #{@route_day_count} days;
     * the stops and paths of a route, #{@route_path_day_count} days;
     * the usage records of page connections, #{@usage_day_count} days.
+    * the route and stop tile archives, #{@route_stop_tiles_day_count} days,
+      longer than a page that loaded an archive stays open.
 
   The cleanup is one `Gobusgo.Cleanup.run/2` every #{@cleanup_interval_ms}
   ms, with #{@cleanup_deadline_ms} ms to finish.
@@ -45,7 +48,8 @@ defmodule Gobusgo.RetentionPolicy do
       %{prefix: RawAgencyResponse.destination_prefix(), day_count: @agency_day_count},
       %{prefix: RawRouteResponse.destination_prefix(), day_count: @route_day_count},
       %{prefix: RawRoutePathResponse.destination_prefix(), day_count: @route_path_day_count},
-      %{prefix: Usage.Records.prefix(), day_count: @usage_day_count}
+      %{prefix: Usage.Records.prefix(), day_count: @usage_day_count},
+      %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count}
     ]
 
     Enum.each(rules, &Retention.assert_rule/1)

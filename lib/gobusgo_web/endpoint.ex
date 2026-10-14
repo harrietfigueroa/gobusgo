@@ -21,6 +21,11 @@ defmodule GobusgoWeb.Endpoint do
   the tiles it needs out of an archive. A cache may keep an archive for an
   hour and has to revalidate the manifest on every use, because the manifest
   names the archives in use.
+
+  The locally stored route and stop tile archives are served under `/tiles`,
+  from the tile directory, with ranges as the basemap archives are. Each
+  archive's name is that of its own build, so a cache may keep it for a
+  year.
   """
 
   use Phoenix.Endpoint, otp_app: :gobusgo
@@ -38,6 +43,8 @@ defmodule GobusgoWeb.Endpoint do
   @basemap_archive_prefix "basemap-"
   @basemap_manifest_name "manifest.json"
   @basemap_archive_cache_seconds 3_600
+  @tiles_path "/tiles"
+  @tiles_cache_seconds 31_536_000
 
   # The salt separates the session's signing key from the other keys derived
   # from the secret; it is not itself a secret.
@@ -82,6 +89,12 @@ defmodule GobusgoWeb.Endpoint do
     only: [@basemap_manifest_name],
     cache_control_for_etags: "no-cache"
 
+  plug Plug.Static,
+    at: @tiles_path,
+    from: {__MODULE__, :tiles_dir, []},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@tiles_cache_seconds}, immutable"
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
   plug Plug.Session, @session_options
@@ -91,6 +104,13 @@ defmodule GobusgoWeb.Endpoint do
   @spec basemap_dir() :: String.t()
   def basemap_dir do
     {:ok, %{dir: dir}} = Gobusgo.Config.basemap()
+    dir
+  end
+
+  @doc "The directory the locally stored tile archives are served from."
+  @spec tiles_dir() :: String.t()
+  def tiles_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.tiles()
     dir
   end
 
