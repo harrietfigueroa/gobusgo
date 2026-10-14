@@ -128,6 +128,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
 
       assert ids == [
                "basemap-basemap-20261004-01",
+               "route-stop-tiles",
                "stop-markers",
                "vehicle-markers",
                "route-lines",

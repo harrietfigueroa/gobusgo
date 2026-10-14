@@ -1,9 +1,7 @@
 defmodule GobusgoWeb.StopMarkers do
-  @event_stop_count_max 500
-
   @moduledoc """
-  What a map page draws for stops: one marker per stop that a route the
-  page draws serves, from the stops of the stop view. Everything here is
+  The stops in the route and stop tile archive: one marker per stop that a
+  drawn route serves, from the stops of the stop view. Everything here is
   pure.
 
   A marker holds the stop's `id`, its position as `lat` and `lon`, its
@@ -14,9 +12,6 @@ defmodule GobusgoWeb.StopMarkers do
   A stop is drawn when one of its routes is drawn, so a filter that hides a
   route's line hides the stops only that route serves, and a stop no route
   serves, such as a parent station, is never drawn.
-
-  The stops of a page go out in events of at most #{@event_stop_count_max}
-  stops each.
   """
 
   alias Gobusgo.OneBusAway.StopView
@@ -32,15 +27,11 @@ defmodule GobusgoWeb.StopMarkers do
           agencies: [String.t()]
         }
 
-  @typedoc "The name a page shows for each route that has one, by route identifier."
+  @typedoc "The name a map shows for each route that has one, by route identifier."
   @type route_names :: %{String.t() => String.t()}
 
   @typedoc "The name of the agency of each route whose agency has one, by route identifier."
   @type route_agency_names :: %{String.t() => String.t()}
-
-  @doc "The most stops one event holds."
-  @spec event_stop_count_max() :: pos_integer()
-  def event_stop_count_max, do: @event_stop_count_max
 
   @doc """
   Returns the name of every route of `route_fetches`, the current fetches
@@ -78,7 +69,7 @@ defmodule GobusgoWeb.StopMarkers do
   end
 
   @doc """
-  Whether a page that draws the routes of `route_ids` draws `held_stop`, a
+  Whether a map that draws the routes of `route_ids` draws `held_stop`, a
   stop of the stop view: whether one of the stop's routes is among them.
   """
   @spec drawn?(%{held_stop: StopView.State.held_stop(), route_ids: MapSet.t(String.t())}) ::
@@ -126,8 +117,4 @@ defmodule GobusgoWeb.StopMarkers do
         )
     }
   end
-
-  @doc "Splits `markers` into the lists that go out as one event each."
-  @spec chunks([marker()]) :: [[marker()]]
-  def chunks(markers) when is_list(markers), do: Enum.chunk_every(markers, @event_stop_count_max)
 end

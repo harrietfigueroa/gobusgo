@@ -155,17 +155,4 @@ defmodule GobusgoWeb.StopMarkersTest do
       assert %{code: nil, direction: nil} = marker(%{held_stop: held_stop})
     end
   end
-
-  describe "chunks/1" do
-    test "splits the markers into lists of at most the event's bound" do
-      markers = for index <- 1..(StopMarkers.event_stop_count_max() + 1), do: %{id: index}
-
-      assert [first, [_last]] = StopMarkers.chunks(markers)
-      assert length(first) == StopMarkers.event_stop_count_max()
-    end
-
-    test "returns no list for no marker" do
-      assert StopMarkers.chunks([]) == []
-    end
-  end
 end

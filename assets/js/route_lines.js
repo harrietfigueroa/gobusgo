@@ -1,7 +1,15 @@
 import {readyEventName} from "./basemap"
 import {attachRouteHover} from "./route_hover"
+import {
+  addSource,
+  changeEventName,
+  filterProperties,
+  routeFilter,
+  routeKept,
+  routeLayerName,
+  sourceName
+} from "./route_stop_tiles"
 
-const sourceName = "route-lines"
 const layerName = "route-lines"
 const emphasisLayerName = "route-lines-emphasis"
 const lineWidthPixels = 2
@@ -9,78 +17,6 @@ const lineOpacity = 0.6
 const lineOpacityDimmed = 0.2
 const emphasisWidthPixels = 5
 const emphasisOpacity = 1
-const coordinatePrecision = 1e5
-const chunkBits = 5
-const chunkMask = 0x1f
-const chunkContinues = 0x20
-const characterOffset = 63
-const linePointCountMin = 2
-const drawDelayMs = 50
-
-// One value of an encoded polyline, read from `index`: a signed difference
-// in five-bit chunks, lowest first, each chunk but the last marked as
-// continued. Returns the difference and the index after it.
-// https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-10-05
-function decodeDifference(points, index) {
-  let result = 0
-  let shift = 0
-  let chunk = chunkContinues
-
-  // A string that ends inside a value reads NaN, which ends the loop.
-  while (chunk >= chunkContinues) {
-    chunk = points.charCodeAt(index) - characterOffset
-    result |= (chunk & chunkMask) << shift
-    shift += chunkBits
-    index += 1
-  }
-
-  // The lowest bit carries the sign.
-  const difference = (result & 1) === 1 ? ~(result >> 1) : result >> 1
-  return {difference, index}
-}
-
-// The coordinates of one encoded polyline, longitude first as GeoJSON
-// takes them. Each point is stored as its difference from the one before.
-export function decodePolyline(points) {
-  const coordinates = []
-  let index = 0
-  let latitude = 0
-  let longitude = 0
-
-  while (index < points.length) {
-    const latitudeStep = decodeDifference(points, index)
-    const longitudeStep = decodeDifference(points, latitudeStep.index)
-    latitude += latitudeStep.difference
-    longitude += longitudeStep.difference
-    index = longitudeStep.index
-    coordinates.push([longitude / coordinatePrecision, latitude / coordinatePrecision])
-  }
-
-  return coordinates
-}
-
-// Every route's line as one GeoJSON collection: a multi-line per route, of
-// the pieces that have at least two points, with the color it is drawn in
-// and the names the route goes by, each null where the route has none.
-function featureCollection(linesByRoute) {
-  const features = []
-
-  for (const [routeId, {color, shortName, longName, agencyName, polylines}] of linesByRoute) {
-    const pieces = polylines
-      .map(decodePolyline)
-      .filter((coordinates) => coordinates.length >= linePointCountMin)
-
-    if (pieces.length > 0) {
-      features.push({
-        type: "Feature",
-        geometry: {type: "MultiLineString", coordinates: pieces},
-        properties: {routeId, color, shortName, longName, agencyName}
-      })
-    }
-  }
-
-  return {type: "FeatureCollection", features}
-}
 
 // The first layer of the style that draws text or icons. The lines go under
 // it, so the basemap's labels and everything added later stay readable.
@@ -96,7 +32,7 @@ function firstSymbolLayerName(map) {
 
 // Draws the line of `routeId` emphasized and every other line dimmed, or
 // every line as it is without emphasis for null. It sets a filter and paint
-// and leaves the source's data as it is, so no polyline is decoded.
+// and leaves the source as it is.
 function emphasizeRoute(map, routeId) {
   if (routeId === null) {
     map.setLayoutProperty(emphasisLayerName, "visibility", "none")
@@ -108,52 +44,56 @@ function emphasizeRoute(map, routeId) {
   }
 }
 
-// The hook of the element beside the map. It holds every route's line as
-// the server last sent it, encoded, and draws the lines on each map the
-// basemap announces, so a map drawn anew for another archive shows them too.
+// The hook of the element beside the map. It draws the routes layer of the
+// route and stop tile archive on each map the basemap announces, so a map
+// drawn anew for another archive shows them too, and keeps the lines to the
+// routes the page's filter keeps.
 export const RouteLines = {
   mounted() {
-    this.linesByRoute = new Map()
     this.map = null
-    this.drawTimer = null
+    this.maplibre = null
+    this.attached = false
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
       this.map = null
+      this.attached = false
       // The map takes sources and layers once its style has loaded.
-      map.once("load", () => { this.attach(map, maplibre) })
+      map.once("load", () => {
+        this.map = map
+        this.maplibre = maplibre
+        this.attach()
+      })
+    }
+
+    this.onChange = () => {
+      if (this.map === null) {
+        return
+      } else if (this.attached) {
+        this.map.setFilter(layerName, routeFilter())
+      } else {
+        this.attach()
+      }
     }
 
     window.addEventListener(readyEventName, this.onBasemapReady)
-
-    this.handleEvent("route-lines:routes", ({lines, removed}) => {
-      for (const routeId of removed) {
-        this.linesByRoute.delete(routeId)
-      }
-
-      for (const line of lines) {
-        this.linesByRoute.set(line.id, {
-          color: line.color,
-          shortName: line.short_name,
-          longName: line.long_name,
-          agencyName: line.agency_name,
-          polylines: line.polylines
-        })
-      }
-
-      this.scheduleDraw()
-    })
-
-    this.pushEvent("route-lines:ready", {})
+    window.addEventListener(changeEventName, this.onChange)
   },
 
-  attach(map, maplibre) {
-    map.addSource(sourceName, {type: "geojson", data: featureCollection(this.linesByRoute)})
+  // Adds the layers, once the page has an archive to draw them from.
+  attach() {
+    const map = this.map
+
+    if (!addSource(map)) {
+      return
+    }
 
     map.addLayer({
       id: layerName,
       type: "line",
       source: sourceName,
+      "source-layer": routeLayerName,
+      ...filterProperties(routeFilter()),
       layout: {"line-cap": "round", "line-join": "round"},
       paint: {
         "line-color": ["get", "color"],
@@ -168,6 +108,7 @@ export const RouteLines = {
       id: emphasisLayerName,
       type: "line",
       source: sourceName,
+      "source-layer": routeLayerName,
       layout: {"line-cap": "round", "line-join": "round", visibility: "none"},
       paint: {
         "line-color": ["get", "color"],
@@ -178,32 +119,16 @@ export const RouteLines = {
 
     attachRouteHover({
       map,
-      maplibre,
+      maplibre: this.maplibre,
       layerName,
       emphasize: (routeId) => { emphasizeRoute(map, routeId) },
-      routeDrawn: (routeId) => this.linesByRoute.has(routeId)
+      routeDrawn: routeKept
     })
-    this.map = map
-  },
-
-  // Several events arrive in a row when a page opens; one draw covers them.
-  scheduleDraw() {
-    if (this.drawTimer === null) {
-      this.drawTimer = window.setTimeout(() => {
-        this.drawTimer = null
-        this.draw()
-      }, drawDelayMs)
-    }
-  },
-
-  draw() {
-    if (this.map !== null) {
-      this.map.getSource(sourceName).setData(featureCollection(this.linesByRoute))
-    }
+    this.attached = true
   },
 
   destroyed() {
     window.removeEventListener(readyEventName, this.onBasemapReady)
-    window.clearTimeout(this.drawTimer)
+    window.removeEventListener(changeEventName, this.onChange)
   }
 }

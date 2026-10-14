@@ -1,11 +1,10 @@
 defmodule GobusgoWeb.RouteLines do
   @default_color "#6b7280"
-  @event_line_count_max 50
 
   @moduledoc """
-  What a map page draws for routes: one line per route that an agency lists
-  and that has a path, from the fetches of the two route views. Everything
-  here is pure.
+  The lines of the routes in the route and stop tile archive: one line per
+  route that an agency lists and that has a path, from the fetches of the
+  two route views. Everything here is pure.
 
   A line holds the route's `id`, its `color` as a CSS color, its names, and
   its `polylines`, the lines of the whole route in the encoded polyline
@@ -16,15 +15,12 @@ defmodule GobusgoWeb.RouteLines do
   The names are the route's `short_name` and `long_name` and its
   `agency_name`, the name of the agency the route's own record names, each
   `nil` where there is none. They are text from outside the application,
-  which a page hands on as data.
+  which a map shows as data.
 
-  A page tells what it has sent by a version per route: everything of the
-  line but its polylines, with the fetch time of its path in their place, in
-  microseconds since the Unix epoch. `versions/1` reads no path, so a page
-  that compares versions holds and copies no polyline.
-
-  The lines of a page go out in events of at most #{@event_line_count_max}
-  lines each.
+  An archive tells what it was built from by a version per route:
+  everything of the line but its polylines, with the fetch time of its path
+  in their place, in microseconds since the Unix epoch. `versions/1` reads
+  no path, so comparing versions holds and copies no polyline.
   """
 
   alias Gobusgo.Assert
@@ -39,7 +35,7 @@ defmodule GobusgoWeb.RouteLines do
         }
 
   @typedoc """
-  What a page keeps of a line it has sent: the route's color as the source
+  What an archive's build keeps of a line: the route's color as the source
   supplies it, six hexadecimal digits or `nil`, its names, and its path's
   fetch time in microseconds since the Unix epoch.
   """
@@ -56,10 +52,6 @@ defmodule GobusgoWeb.RouteLines do
   @doc "The color of a route whose source supplies none."
   @spec default_color() :: String.t()
   def default_color, do: @default_color
-
-  @doc "The most lines one event holds."
-  @spec event_line_count_max() :: pos_integer()
-  def event_line_count_max, do: @event_line_count_max
 
   @doc """
   Returns the version of every route to draw: each route of
@@ -98,20 +90,6 @@ defmodule GobusgoWeb.RouteLines do
   end
 
   @doc """
-  Returns the routes a page that has sent `shown` has to send to show
-  `versions`: `:changed`, the routes that are new or whose version differs,
-  and `:removed`, the routes that are gone, each in identifier order.
-  """
-  @spec changes(versions(), versions()) :: %{changed: [String.t()], removed: [String.t()]}
-  def changes(shown, versions) when is_map(shown) and is_map(versions) do
-    changed =
-      for {route_id, version} <- versions, Map.get(shown, route_id) != version, do: route_id
-
-    removed = for {route_id, _version} <- shown, not is_map_key(versions, route_id), do: route_id
-    %{changed: Enum.sort(changed), removed: Enum.sort(removed)}
-  end
-
-  @doc """
   Returns the line of the route whose path is `path_fetch`, a current fetch
   of the route path view, with the color and the names of `version`, the
   route's version.
@@ -135,8 +113,4 @@ defmodule GobusgoWeb.RouteLines do
     Assert.condition(byte_size(color) == 6, "a route color is six hexadecimal digits")
     "#" <> color
   end
-
-  @doc "Splits `lines` into the lists that go out as one event each."
-  @spec chunks([line()]) :: [[line()]]
-  def chunks(lines) when is_list(lines), do: Enum.chunk_every(lines, @event_line_count_max)
 end

@@ -4,9 +4,9 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
   # directory and the application's vehicle view, filled with the record
   # values VehicleBatch.Records builds. Both are global state, hence the
   # non-async case. The browser draws the markers, so these tests observe
-  # the events that carry each agency's markers and the routes' lines, the
-  # bounds the map is handed, the notice of a refused filter, the controls,
-  # and the events the page and the hook that stores the filter exchange.
+  # the events that carry each agency's markers, the bounds the map is
+  # handed, the notice of a refused filter, the controls, and the events the
+  # page and the hook that stores the filter exchange.
   # The agency view and the route view fill the controls.
   use ExUnit.Case, async: false
 
@@ -27,7 +27,6 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
   @endpoint GobusgoWeb.Endpoint
   @event "vehicle-markers:agency"
-  @lines_event "route-lines:routes"
   @store_event "vehicle-filter:store"
   @form "#vehicle-filter"
   @route_view Gobusgo.OneBusAway.RouteView
@@ -233,16 +232,6 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
     :ok = FetchView.apply_records(@route_path_view, paths)
     :ok = FetchView.apply_records(@route_view, [record.value])
-  end
-
-  # Two agencies with a route each, and the page at `path` after its map
-  # asked for the lines.
-  defp open_lines_ready(path) do
-    apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
-    apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
-    {:ok, view, _html} = live(build_conn(), path)
-    view |> element("#route-lines") |> render_hook("route-lines:ready")
-    view
   end
 
   # Two agencies with a vehicle each, and the page at `path` after its map
@@ -560,109 +549,6 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
-  describe "the route lines under an agency filter" do
-    test "are the lines of the routes the kept agency lists" do
-      view = open_lines_ready("/vehicles?agency=40")
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}], removed: []})
-    end
-
-    test "hold no line of an agency the filter leaves out" do
-      view = open_lines_ready("/vehicles?agency=40")
-
-      refute_push_event(view, @lines_event, %{lines: [%{id: "1_100"} | _rest]})
-    end
-
-    test "leave out the routes of a new fetch of an agency the filter leaves out" do
-      view = open_lines_ready("/vehicles?agency=40")
-      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}]})
-
-      apply_routes(["1_200"], %{agency_id: "1", sequence: 3})
-
-      refute_push_event(view, @lines_event, %{})
-    end
-
-    test "change with the filter: the added agency's lines, the dropped agency's routes removed" do
-      view = open_lines_ready("/vehicles?agency=40")
-
-      render_patch(view, "/vehicles?agency=1")
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "1_100"}], removed: ["40_500"]})
-    end
-
-    test "are none for a refused filter" do
-      view = open_lines_ready("/vehicles?agency[x]=1")
-
-      refute_push_event(view, @lines_event, %{})
-    end
-
-    test "are every agency's without a filter" do
-      view = open_lines_ready("/vehicles")
-
-      assert_push_event(view, @lines_event, %{
-        lines: [%{id: "1_100"}, %{id: "40_500"}],
-        removed: []
-      })
-    end
-  end
-
-  describe "the route lines under a route filter" do
-    test "are the lines of the routes the filter names" do
-      view = open_lines_ready("/vehicles?route=40_500")
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}], removed: []})
-    end
-
-    test "hold no line of a route the filter leaves out" do
-      view = open_lines_ready("/vehicles?route=40_500")
-
-      refute_push_event(view, @lines_event, %{lines: [%{id: "1_100"} | _rest]})
-    end
-
-    test "are none for a route that no agency lists" do
-      view = open_lines_ready("/vehicles?route=1_999")
-
-      refute_push_event(view, @lines_event, %{})
-    end
-
-    test "are none for a route whose agency the filter leaves out" do
-      view = open_lines_ready("/vehicles?agency=1&route=40_500")
-
-      refute_push_event(view, @lines_event, %{})
-    end
-
-    test "hold the line of a named route of a named agency" do
-      view = open_lines_ready("/vehicles?agency=40&route=40_500")
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}], removed: []})
-    end
-
-    test "change with the filter: the added route's line, the dropped route removed" do
-      view = open_lines_ready("/vehicles?route=40_500")
-
-      render_patch(view, "/vehicles?route=1_100")
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "1_100"}], removed: ["40_500"]})
-    end
-
-    test "take in a named route that a new fetch of its agency lists" do
-      view = open_lines_ready("/vehicles?route=1_200")
-
-      apply_routes(["1_100", "1_200"], %{agency_id: "1", sequence: 3})
-
-      assert_push_event(view, @lines_event, %{lines: [%{id: "1_200"}], removed: []})
-    end
-
-    test "leave out the other routes of a new fetch" do
-      view = open_lines_ready("/vehicles?route=40_500")
-      assert_push_event(view, @lines_event, %{lines: [%{id: "40_500"}]})
-
-      apply_routes(["1_100", "1_200"], %{agency_id: "1", sequence: 3})
-
-      refute_push_event(view, @lines_event, %{})
-    end
-  end
-
   describe "a page opened at an address without a filter" do
     test "shows no notice" do
       view = open_ready("/vehicles")
@@ -866,15 +752,6 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
       assert_push_event(view, @store_event, %{
         filter: %{"agency" => ["40"], "route" => ["40_500"]}
       })
-    end
-
-    test "sends the line of an added route and removes the others" do
-      view = open_lines_ready("/vehicles")
-      assert_push_event(view, @lines_event, %{lines: [%{id: "1_100"}, %{id: "40_500"}]})
-
-      view |> form(@form, %{"route" => ["40_500"]}) |> render_change()
-
-      assert_push_event(view, @lines_event, %{lines: [], removed: ["1_100"]})
     end
 
     test "changes nothing for more routes than the limit" do

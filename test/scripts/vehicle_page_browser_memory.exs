@@ -10,8 +10,10 @@
 # vehicle view with one fetch cycle of synthetic vehicles in the counts a
 # real cycle had, the two route views with synthetic routes and paths in
 # the counts of a real day, and the stop view with synthetic stops in about
-# the count of a real day, opens the page in a headless Chrome, and applies further
-# cycles at the source's pace while the page is open. It reads the page's
+# the count of a real day, builds the route and stop tile archive from them
+# with the tippecanoe on the path, opens the page in a headless Chrome, and
+# applies further cycles at the source's pace while the page is open. It
+# reads the page's
 # JavaScript heap, the heaps of the page's workers, and the count of DOM
 # nodes after the first draw and after the last cycle, each as found and
 # again after a forced collection. Memory outside those heaps, such as the
@@ -53,6 +55,9 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
 
     stop_count = VehiclePageMemory.apply_stops(Gobusgo.OneBusAway.StopView)
 
+    {:ok, %{archive_bytes: archive_bytes}} =
+      GobusgoWeb.RouteStopTiles.Build.run(server: GobusgoWeb.RouteStopTiles)
+
     profile_dir =
       Path.join(System.tmp_dir!(), "gobusgo-chrome-#{System.unique_integer([:positive])}")
 
@@ -79,7 +84,8 @@ defmodule Gobusgo.Test.VehiclePageBrowserMemory do
 
       IO.puts(
         "\nVehicle page browser memory at #{page_path}: #{vehicle_count} vehicles," <>
-          " #{length(profile)} agencies, #{route_count} routes, #{stop_count} stops"
+          " #{length(profile)} agencies, #{route_count} routes, #{stop_count} stops," <>
+          " tile archive #{kibibytes(archive_bytes)}"
       )
 
       print("After the first draw", first_draw)
