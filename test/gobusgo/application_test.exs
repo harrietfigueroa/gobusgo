@@ -58,7 +58,7 @@ defmodule Gobusgo.ApplicationTest do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
 
-  test "the supervisor runs the publish-subscribe server, the views, the ingestion processes, and the HTTP endpoint" do
+  test "the supervisor runs the publish-subscribe server, the views, the ingestion processes, the tile archive's holder, and the HTTP endpoint" do
     children = Supervisor.which_children(Gobusgo.Supervisor)
 
     # which_children/1 lists the children last started first.
@@ -73,6 +73,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.Demand,
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,
+             GobusgoWeb.RouteStopTiles,
              GobusgoWeb.Endpoint,
              Gobusgo.SchedulerSupervisor
            ]

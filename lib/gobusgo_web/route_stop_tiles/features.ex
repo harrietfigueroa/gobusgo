@@ -1,0 +1,157 @@
+defmodule GobusgoWeb.RouteStopTiles.Features do
+  @stop_zoom_min 14
+  @point_count_min 2
+  @text_separator ", "
+  @route_id_separator ","
+  # A stop many routes serve names the first of them and counts the rest, so
+  # its routes stay on one line of the label.
+  @label_route_count_max 4
+  @label_route_separator " "
+  @label_part_separator " · "
+
+  @moduledoc """
+  The GeoJSON features of the route and stop tile archive, one encoded
+  feature per line, which tippecanoe reads. Everything here is pure.
+
+  A route's feature is a multi-line of its polylines with `routeId`,
+  `color`, `shortName`, `longName`, and `agencyName`. A stop's feature is a
+  point with `stopId`, `name`, `code`, `direction`, `routes` and `agencies`,
+  the names of its routes and of their agencies joined by
+  `#{@text_separator}`, `label`, the text a map shows beside the stop, and
+  `routeIds`, the identifiers of its drawn routes with
+  `#{@route_id_separator}` before, between, and after them, so that a map
+  can test for one route with a substring. A vector tile's property holds no
+  list, which is why each list is one text. A property a route or a stop
+  does not have is left out.
+
+  A stop's feature starts at zoom #{@stop_zoom_min}, the zoom a map first
+  draws stops at.
+  """
+
+  alias Gobusgo.Polyline
+  alias GobusgoWeb.RouteLines
+  alias GobusgoWeb.StopMarkers
+
+  @doc "The zoom a stop's feature starts at."
+  @spec stop_zoom_min() :: pos_integer()
+  def stop_zoom_min, do: @stop_zoom_min
+
+  @doc """
+  The encoded feature of `line`, or `:no_geometry` for a route none of
+  whose polylines has #{@point_count_min} points, or the reason a polyline
+  does not decode.
+  """
+  @spec route(RouteLines.line()) ::
+          {:ok, String.t()} | :no_geometry | {:error, {:polyline, Polyline.error()}}
+  def route(%{id: id, color: color, polylines: polylines} = line)
+      when is_binary(id) and is_binary(color) and is_list(polylines) do
+    case pieces(polylines) do
+      {:ok, []} ->
+        :no_geometry
+
+      {:ok, pieces} ->
+        properties =
+          drop_absent(%{
+            "routeId" => id,
+            "color" => color,
+            "shortName" => line.short_name,
+            "longName" => line.long_name,
+            "agencyName" => line.agency_name
+          })
+
+        {:ok,
+         JSON.encode!(%{
+           "type" => "Feature",
+           "geometry" => %{"type" => "MultiLineString", "coordinates" => pieces},
+           "properties" => properties
+         })}
+
+      {:error, reason} ->
+        {:error, {:polyline, reason}}
+    end
+  end
+
+  @doc """
+  The encoded feature of `marker`, whose drawn routes are `route_ids`.
+  """
+  @spec stop(%{marker: StopMarkers.marker(), route_ids: [String.t(), ...]}) :: {:ok, String.t()}
+  def stop(%{marker: %{id: id, lat: lat, lon: lon} = marker, route_ids: [_ | _] = route_ids})
+      when is_binary(id) and is_number(lat) and is_number(lon) do
+    properties =
+      drop_absent(%{
+        "stopId" => id,
+        "name" => marker.name,
+        "code" => marker.code,
+        "direction" => marker.direction,
+        "routes" => Enum.join(marker.routes, @text_separator),
+        "agencies" => Enum.join(marker.agencies, @text_separator),
+        "routeIds" => route_ids_text(route_ids),
+        "label" => label(marker)
+      })
+
+    {:ok,
+     JSON.encode!(%{
+       "type" => "Feature",
+       "geometry" => %{"type" => "Point", "coordinates" => [lon, lat]},
+       "properties" => properties,
+       "tippecanoe" => %{"minzoom" => @stop_zoom_min}
+     })}
+  end
+
+  @doc """
+  What a map shows beside a stop while its popup is closed: its routes on
+  one line, the first #{@label_route_count_max} and the count of the rest,
+  and its direction and the agencies of its routes on the next. A stop with
+  none of them has an empty label.
+  """
+  @spec label(%{routes: [String.t()], direction: String.t() | nil, agencies: [String.t()]}) ::
+          String.t()
+  def label(%{routes: routes, direction: direction, agencies: agencies})
+      when is_list(routes) and is_list(agencies) do
+    details =
+      [direction_text(direction), Enum.join(agencies, @text_separator)]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join(@label_part_separator)
+
+    [label_routes(routes), details]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
+  defp direction_text(direction) when is_binary(direction), do: direction
+  defp direction_text(nil), do: ""
+
+  defp label_routes(routes) when length(routes) > @label_route_count_max do
+    shown = routes |> Enum.take(@label_route_count_max) |> Enum.join(@label_route_separator)
+    "#{shown} +#{length(routes) - @label_route_count_max}"
+  end
+
+  defp label_routes(routes), do: Enum.join(routes, @label_route_separator)
+
+  defp route_ids_text(route_ids) do
+    @route_id_separator <> Enum.join(route_ids, @route_id_separator) <> @route_id_separator
+  end
+
+  # The pieces of `polylines` with at least the minimum of points, each a
+  # list of points, or the first reason a polyline does not decode.
+  defp pieces(polylines) do
+    Enum.reduce_while(polylines, {:ok, []}, fn points, {:ok, pieces} ->
+      case Polyline.decode(points) do
+        {:ok, decoded} when length(decoded) >= @point_count_min ->
+          {:cont, {:ok, [decoded | pieces]}}
+
+        {:ok, _decoded} ->
+          {:cont, {:ok, pieces}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, pieces} -> {:ok, Enum.reverse(pieces)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp drop_absent(properties), do: Map.reject(properties, fn {_key, value} -> value == nil end)
+end
