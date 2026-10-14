@@ -60,6 +60,7 @@ Nothing asks GitHub which commit is the newest: an archive moves only to a commi
 - A package's tarball is used only when its SHA-512 equals the integrity it is expected to have: the lock file's when fetching, the registry's own metadata when updating. An update therefore trusts the registry for the new version, and the lock file records what it returned. Each file taken from a tarball is also checked against its SHA-256 in the lock file when fetching.
 - An archive is pinned by its commit, which is itself a hash of the repository's content, and by `contentSha256`, a hash of the files taken: one line per file in path order, holding the path and the SHA-256 of the content. The lock file pins the content and not the archive's bytes, so repacking the same files leaves the hash as it is. A fetch uses the files only when they hash to the lock file's value.
 - Only regular files are taken from an archive. A symbolic link is skipped, and a path that would leave the directory it is written under is refused.
+- Beside each `.json`, `.pbf`, and `.txt` file of an archive, the fetch and the update write a gzip copy named `<file>.gz`, which the endpoint answers to a client that accepts gzip; a fetch that finds an archive present writes the copies that are absent. The copies are no files of the archive: `contentSha256` leaves them out, and an archive that holds a file ending in `.gz` is refused as `{:reserved_path, name, path}`.
 
 ## Using the module
 

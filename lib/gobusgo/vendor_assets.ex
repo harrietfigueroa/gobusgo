@@ -1,4 +1,7 @@
 defmodule Gobusgo.VendorAssets do
+  # PNG files are compressed already, so only these get a gzip copy.
+  @compressible_extensions ~w(.json .pbf .txt)
+  @copy_suffix ".gz"
   @lock_path "assets/vendor.lock.json"
   @static_dir "priv/vendor"
   @vendor_dir "assets/vendor"
@@ -21,6 +24,12 @@ defmodule Gobusgo.VendorAssets do
   path and the two directories; `paths/0` names the ones the application
   uses, `#{@lock_path}`, `#{@vendor_dir}`, and `#{@static_dir}`, relative to
   the project.
+
+  An archive's directory also holds a gzip copy of each of its files whose
+  extension is one of `#{Enum.join(@compressible_extensions, " ")}`, named
+  `<file>#{@copy_suffix}`, which the server answers to a client that accepts
+  gzip. The copies are no files of the archive: the content hash leaves them
+  out, and an archive that holds a file with a copy's ending is refused.
 
   Downloaded content is used only when it hashes to what is expected. A
   package's tarball has to hash to the lock's integrity for `fetch/2` and to
@@ -54,11 +63,14 @@ defmodule Gobusgo.VendorAssets do
       hash
     * `{:content_mismatch, name}`: an archive's files do not hash to the
       lock's content hash
+    * `{:reserved_path, name, path}`: an archive holds a file whose name ends
+      in `#{@copy_suffix}`, the ending of a gzip copy
     * `{:write, reason}`: a file or the lock was not written
 
   Options go to the request modules.
   """
 
+  alias Gobusgo.Assert
   alias Gobusgo.VendorAssets.Github
   alias Gobusgo.VendorAssets.Lock
   alias Gobusgo.VendorAssets.Registry
@@ -156,7 +168,7 @@ defmodule Gobusgo.VendorAssets do
            | content_sha256: Tarball.content_sha256(contents),
              file_count: map_size(contents)
          },
-         :ok <- write_entry(Path.join(static_dir, name), contents),
+         :ok <- write_entry(Path.join(static_dir, name), with_copies(contents)),
          :ok <- write_file(lock_path, Lock.encode(Lock.put_archive(lock, archive))) do
       {:ok, %{name: name, version: commit, previous_version: previous_commit}}
     end
@@ -383,13 +395,14 @@ defmodule Gobusgo.VendorAssets do
 
   defp fetch_archive(%{name: name} = archive, static_dir, options) do
     directory = Path.join(static_dir, name)
+    stored = stored_contents(directory)
 
-    if stored_content_sha256(directory) == archive.content_sha256 do
-      {:ok, :present}
+    if stored != nil and Tarball.content_sha256(stored) == archive.content_sha256 do
+      with :ok <- write_absent_copies(directory, stored), do: {:ok, :present}
     else
       with {:ok, contents} <- download_archive(archive, options),
            :ok <- check_content(archive, contents),
-           :ok <- write_entry(directory, contents) do
+           :ok <- write_entry(directory, with_copies(contents)) do
         {:ok, :downloaded}
       end
     end
@@ -402,7 +415,7 @@ defmodule Gobusgo.VendorAssets do
     case Github.fetch_archive(%{repository: repository, commit: commit}, options) do
       {:ok, tarball} ->
         case Tarball.extract_directories(tarball, directories) do
-          {:ok, contents} -> {:ok, contents}
+          {:ok, contents} -> check_reserved_paths(name, contents)
           {:error, reason} -> {:error, {:tarball, name, reason}}
         end
 
@@ -419,27 +432,70 @@ defmodule Gobusgo.VendorAssets do
     end
   end
 
-  # The content hash of the files under `directory`, or `nil` when it holds
-  # none, more than the bound, or one that cannot be read.
-  defp stored_content_sha256(directory) do
-    paths = directory |> Path.join("**") |> Path.wildcard() |> Enum.filter(&File.regular?/1)
+  defp check_reserved_paths(name, contents) do
+    contents
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.find(&copy?/1)
+    |> case do
+      nil -> {:ok, contents}
+      path -> {:error, {:reserved_path, name, path}}
+    end
+  end
+
+  defp copy?(path), do: String.ends_with?(path, @copy_suffix)
+
+  # The gzip copy of each compressible file of `contents`, keyed by its path.
+  defp copies(contents) do
+    for {path, content} <- contents,
+        Path.extname(path) in @compressible_extensions,
+        into: %{},
+        do: {path <> @copy_suffix, :zlib.gzip(content)}
+  end
+
+  defp with_copies(contents) do
+    copies = copies(contents)
+    colliding = contents |> Map.take(Map.keys(copies)) |> Map.keys()
+    Assert.condition(colliding == [], "gzip copies name files: #{inspect(colliding)}")
+    Map.merge(contents, copies)
+  end
+
+  # A directory whose files are present holds the copies of an earlier fetch,
+  # or none when that fetch wrote none; each copy is written whole or not at
+  # all, so one that exists is the copy of its file.
+  defp write_absent_copies(directory, stored) do
+    stored
+    |> copies()
+    |> Enum.reject(fn {path, _copy} -> File.exists?(Path.join(directory, path)) end)
+    |> Enum.reduce_while(:ok, fn {path, copy}, :ok ->
+      case write_file(Path.join(directory, path), copy) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # The files under `directory`, gzip copies left out, keyed by their path
+  # inside it, or `nil` when it holds none, more than the bound, or one that
+  # cannot be read.
+  defp stored_contents(directory) do
+    paths =
+      directory
+      |> Path.join("**")
+      |> Path.wildcard()
+      |> Enum.filter(&File.regular?/1)
+      |> Enum.reject(&copy?/1)
 
     if paths != [] and length(paths) <= @file_count_max do
-      contents =
-        Enum.reduce_while(paths, %{}, fn path, contents ->
-          case File.read(path) do
-            {:ok, content} ->
-              {:cont, Map.put(contents, Path.relative_to(path, directory), content)}
+      Enum.reduce_while(paths, %{}, fn path, contents ->
+        case File.read(path) do
+          {:ok, content} ->
+            {:cont, Map.put(contents, Path.relative_to(path, directory), content)}
 
-            {:error, _reason} ->
-              {:halt, nil}
-          end
-        end)
-
-      case contents do
-        nil -> nil
-        contents -> Tarball.content_sha256(contents)
-      end
+          {:error, _reason} ->
+            {:halt, nil}
+        end
+      end)
     end
   end
 

@@ -312,7 +312,12 @@ defmodule Gobusgo.VendorAssetsTest do
       stub_archives(
         [
           {@old_commit,
-           %{"fonts/a.pbf" => "old", "fonts/gone.pbf" => "gone", "README.md" => "r"}},
+           %{
+             "fonts/a.pbf" => "old",
+             "fonts/gone.pbf" => "gone",
+             "fonts/a.png" => "png",
+             "README.md" => "r"
+           }},
           {@new_commit, %{"fonts/a.pbf" => "new", "sprites/v4/light.json" => "{}"}}
         ],
         tmp_dir
@@ -339,8 +344,12 @@ defmodule Gobusgo.VendorAssetsTest do
                  commit: @old_commit,
                  directories: ["fonts"],
                  content_sha256:
-                   Tarball.content_sha256(%{"fonts/a.pbf" => "old", "fonts/gone.pbf" => "gone"}),
-                 file_count: 2
+                   Tarball.content_sha256(%{
+                     "fonts/a.pbf" => "old",
+                     "fonts/gone.pbf" => "gone",
+                     "fonts/a.png" => "png"
+                   }),
+                 file_count: 3
                }
              ]
     end
@@ -488,6 +497,54 @@ defmodule Gobusgo.VendorAssetsTest do
 
       assert fetch(tmp_dir) == {:error, {:content_mismatch, @archive}}
       assert File.exists?(served(tmp_dir, "fonts/a.pbf")) == false
+    end
+
+    defp gzip_copy(tmp_dir, path) do
+      case File.read(served(tmp_dir, path <> ".gz")) do
+        {:ok, compressed} -> :zlib.gunzip(compressed)
+        {:error, :enoent} -> :absent
+      end
+    end
+
+    for {path, copy} <- [{"fonts/a.pbf", "old"}, {"fonts/a.png", :absent}] do
+      test "update writes #{inspect(copy)} as the gzip copy of #{path}", %{tmp_dir: tmp_dir} do
+        {:ok, _added} = add_archive(tmp_dir)
+
+        assert gzip_copy(tmp_dir, unquote(path)) == unquote(copy)
+      end
+    end
+
+    test "fetch writes the gzip copy of each compressible file it downloads", %{
+      tmp_dir: tmp_dir
+    } do
+      {:ok, _added} = add_archive(tmp_dir)
+      File.rm_rf!(paths(tmp_dir).static_dir)
+
+      {:ok, _fetched} = fetch(tmp_dir)
+
+      assert gzip_copy(tmp_dir, "fonts/gone.pbf") == "gone"
+    end
+
+    test "fetch writes an absent gzip copy for an archive whose files are present", %{
+      tmp_dir: tmp_dir
+    } do
+      {:ok, _added} = add_archive(tmp_dir)
+      File.rm!(served(tmp_dir, "fonts/a.pbf.gz"))
+
+      assert fetch(tmp_dir) == {:ok, [%{name: @archive, version: @old_commit, status: :present}]}
+      assert gzip_copy(tmp_dir, "fonts/a.pbf") == "old"
+    end
+
+    test "update refuses an archive with a file whose name is that of a gzip copy", %{
+      tmp_dir: tmp_dir
+    } do
+      stub_archives([{@old_commit, %{"fonts/a.pbf" => "a", "fonts/b.pbf.gz" => "b"}}], tmp_dir)
+
+      assert update_archive(tmp_dir, %{
+               commit: @old_commit,
+               repository: @repository,
+               directories: ["fonts"]
+             }) == {:error, {:reserved_path, @archive, "fonts/b.pbf.gz"}}
     end
   end
 end
