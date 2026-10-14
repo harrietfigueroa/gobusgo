@@ -7,10 +7,12 @@ defmodule GobusgoWeb.Endpoint do
 
   A JSON response with an error status leaves as `application/problem+json`.
   A request for `/health` or `/ready` is not logged. Built assets are served
-  from `priv/static`.
+  from `priv/static`. The socket offers per-message compression.
 
   The vendored archives of `priv/vendor` are served under `/vendor`, and a
-  cache may keep a file for an hour.
+  cache may keep a file for an hour. A built asset or a vendored file that
+  has a gzip copy beside it, `<name>.gz`, is answered with the copy to a
+  client that accepts gzip.
 
   The basemap directory is served under `/basemap`: every file whose name
   starts with `basemap-`, and `manifest.json`. A response carries
@@ -47,7 +49,7 @@ defmodule GobusgoWeb.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [:user_agent, :uri, session: @session_options]],
+    websocket: [compress: true, connect_info: [:user_agent, :uri, session: @session_options]],
     longpoll: false
 
   # A plug that can raise goes in a router pipeline, never here. The router
@@ -58,12 +60,12 @@ defmodule GobusgoWeb.Endpoint do
   # the one JSON error that leaves as `application/json`.
   # deps/phoenix/lib/phoenix/endpoint.ex, __before_compile__/1 — checked 2026-10-02
   plug :problem_content_type
-  plug Plug.Static, at: "/", from: :gobusgo, gzip: false, only: @static_paths
+  plug Plug.Static, at: "/", from: :gobusgo, gzip: true, only: @static_paths
 
   plug Plug.Static,
     at: @vendor_path,
     from: {:gobusgo, "priv/vendor"},
-    gzip: false,
+    gzip: true,
     cache_control_for_etags: "public, max-age=#{@vendor_cache_seconds}"
 
   plug Plug.Static,
