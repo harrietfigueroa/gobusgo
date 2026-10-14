@@ -6,8 +6,16 @@ import {
   riderPopupChangeEventName,
   riderPopupClassName
 } from "./rider_popups"
+import {
+  addSource,
+  changeEventName,
+  filterProperties,
+  sourceName,
+  stopFilter,
+  stopLayerName
+} from "./route_stop_tiles"
+import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 
-const sourceName = "stop-markers"
 // The layer a stop's marker is drawn in.
 export const markerLayerName = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
@@ -25,11 +33,6 @@ const labelTextWidthEmsMax = 12
 const labelTextColor = "#334155"
 const labelHaloColor = "#ffffff"
 const labelHaloWidthPixels = 1.5
-// A stop many routes serve names the first of them and counts the rest, so
-// its routes stay on one line of the label.
-const labelRouteCountMax = 4
-const labelRouteSeparator = " "
-const labelPartSeparator = " \u00b7 "
 const hasLabel = ["!=", ["get", "label"], ""]
 // The zoom from which a screen holds few enough stops that their popups
 // stand apart.
@@ -44,10 +47,8 @@ const popupGapPixels = 4
 const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left"}
 // The side a popup stands on while it is only measured.
 const measuredSide = "above"
-const routeSeparator = ", "
 const notSupplied = "Not supplied"
 const titleClassName = "popup-title"
-const drawDelayMs = 50
 const arrivalsHeading = "Arrivals"
 const arrivalsWaiting = "Waiting for this stop's arrivals"
 const arrivalsNone = "No arrivals soon"
@@ -57,55 +58,52 @@ const arrivalNow = "now"
 const arrivalScheduledNote = " (scheduled)"
 const arrivalUnnamed = "Arrival"
 
-// The routes a stop's label names: the first of them, and the count of the
-// rest.
-function labelRoutes(routes) {
-  if (routes.length > labelRouteCountMax) {
-    const shown = routes.slice(0, labelRouteCountMax).join(labelRouteSeparator)
-    return `${shown} +${routes.length - labelRouteCountMax}`
+// A stop as its feature in the tile archive holds it: its position, and the
+// texts its popup shows, the routes and the agencies each one text. A text
+// the source does not supply is absent from the feature.
+function stopFromFeature({geometry, properties}) {
+  const [lon, lat] = geometry.coordinates
+
+  return {
+    id: properties.stopId,
+    lon,
+    lat,
+    name: properties.name,
+    code: properties.code,
+    direction: properties.direction,
+    routes: properties.routes,
+    agencies: properties.agencies
+  }
+}
+
+// The stops drawn in the view of `map`, by identifier. A stop near a tile's
+// edge is returned by each tile that holds it, and comes out once here.
+// https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#queryrenderedfeatures — checked 2026-10-14
+function renderedStops(map) {
+  const stopsById = new Map()
+
+  for (const feature of map.queryRenderedFeatures({layers: [markerLayerName]})) {
+    stopsById.set(feature.properties.stopId, stopFromFeature(feature))
+  }
+
+  return stopsById
+}
+
+// The first marker layer of the vehicles in the style, which the stops go
+// under, or undefined while the vehicles have none.
+function firstVehicleLayerName(map) {
+  return vehicleMarkerLayerNames.find((layerName) => map.getLayer(layerName) !== undefined)
+}
+
+// The filter of the label layer: a stop with a label, of the kept routes.
+function labelFilter() {
+  const kept = stopFilter()
+
+  if (kept === null) {
+    return hasLabel
   } else {
-    return routes.join(labelRouteSeparator)
+    return ["all", hasLabel, kept]
   }
-}
-
-// What a stop shows beside its marker while its popup is closed: its routes
-// on one line, and its direction and the agencies of its routes on the
-// next. A stop with none of them has an empty label.
-export function labelText({routes, direction, agencies}) {
-  const details = []
-
-  if (typeof direction === "string" && direction !== "") {
-    details.push(direction)
-  }
-
-  if (agencies.length > 0) {
-    details.push(agencies.join(routeSeparator))
-  }
-
-  const lines = []
-
-  if (routes.length > 0) {
-    lines.push(labelRoutes(routes))
-  }
-
-  if (details.length > 0) {
-    lines.push(details.join(labelPartSeparator))
-  }
-
-  return lines.join("\n")
-}
-
-// The identifiers of the stops inside `bounds`, the bounds of a map's view.
-export function stopIdsWithin({stopsById, bounds}) {
-  const stopIds = []
-
-  for (const stop of stopsById.values()) {
-    if (bounds.contains([stop.lon, stop.lat])) {
-      stopIds.push(stop.id)
-    }
-  }
-
-  return stopIds
 }
 
 // The stops whose popups are open by themselves in a view at `zoom` that
@@ -117,31 +115,6 @@ export function autoOpenStopIds({zoom, visibleStopIds}) {
   } else {
     return []
   }
-}
-
-// Every stop as one GeoJSON collection, a point per stop with the texts its
-// label and its popup show. A feature's properties hold no list, so the
-// routes are one text and the agencies another.
-function featureCollection(stopsById) {
-  const features = []
-
-  for (const stop of stopsById.values()) {
-    features.push({
-      type: "Feature",
-      geometry: {type: "Point", coordinates: [stop.lon, stop.lat]},
-      properties: {
-        stopId: stop.id,
-        name: stop.name,
-        code: stop.code,
-        direction: stop.direction,
-        routes: stop.routes.join(routeSeparator),
-        agencies: stop.agencies.join(routeSeparator),
-        label: labelText(stop)
-      }
-    })
-  }
-
-  return {type: "FeatureCollection", features}
 }
 
 function suppliedText(value) {
@@ -241,13 +214,7 @@ function writeArrivals(element, shown) {
 // A popup's content with the element its stop's arrivals are written into,
 // which says that it is waiting for them.
 function popupElements(stop) {
-  const content = popupContent({
-    name: stop.name,
-    code: stop.code,
-    direction: stop.direction,
-    routes: stop.routes.join(routeSeparator),
-    agencies: stop.agencies.join(routeSeparator)
-  })
+  const content = popupContent(stop)
   const arrivalsElement = document.createElement("div")
   writeArrivals(arrivalsElement, {status: "waiting"})
   content.appendChild(arrivalsElement)
@@ -278,17 +245,18 @@ function largerSize(size, other) {
   return {width: Math.max(size.width, other.width), height: Math.max(size.height, other.height)}
 }
 
-// The hook of the element beside the map. It holds every stop as the server
-// last sent it and draws the stops on each map the basemap announces, so a
-// map drawn anew for another archive shows them too. Its element stands
-// before the vehicle markers' element, so its layer is added first and the
-// vehicles are drawn over the stops.
+// The hook of the element beside the map. It draws the stops layer of the
+// route and stop tile archive on each map the basemap announces, so a map
+// drawn anew for another archive shows them too, and keeps the stops to
+// those of the routes the page's filter keeps. Its layers go under the
+// vehicle markers' layers.
 export const StopMarkers = {
   mounted() {
+    // The stops drawn in the view as the map last came to rest.
     this.stopsById = new Map()
     this.map = null
-    this.drawTimer = null
     this.maplibre = null
+    this.attached = false
     this.followTimer = null
     // The popup that is open for each stop, with its content, the element
     // its arrivals are written into, whether it opened by itself, and the
@@ -309,8 +277,10 @@ export const StopMarkers = {
       const {map, maplibre} = event.detail
       this.map = null
       this.maplibre = null
+      this.attached = false
       this.zoom = null
       this.tipLength = null
+      this.stopsById.clear()
       this.dismissedStopIds.clear()
       this.popupSizes.clear()
 
@@ -318,29 +288,30 @@ export const StopMarkers = {
       this.closePopups([...this.openPopups.keys()])
 
       // The map takes sources and layers once its style has loaded.
-      map.once("load", () => { this.attach(map, maplibre) })
+      map.once("load", () => {
+        this.map = map
+        this.maplibre = maplibre
+        map.on("idle", () => { this.followView() })
+        this.attach()
+      })
+    }
+
+    this.onChange = () => {
+      if (this.map === null) {
+        return
+      } else if (this.attached) {
+        this.map.setFilter(markerLayerName, stopFilter())
+        this.map.setFilter(labelLayerName, labelFilter())
+      } else {
+        this.attach()
+      }
     }
 
     this.onRiderPopupChange = () => { this.scheduleFollow() }
 
     window.addEventListener(readyEventName, this.onBasemapReady)
+    window.addEventListener(changeEventName, this.onChange)
     window.addEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
-
-    this.handleEvent("stop-markers:stops", ({stops, removed, reset}) => {
-      if (reset) {
-        this.stopsById.clear()
-      }
-
-      for (const stopId of removed) {
-        this.stopsById.delete(stopId)
-      }
-
-      for (const stop of stops) {
-        this.stopsById.set(stop.id, stop)
-      }
-
-      this.scheduleDraw()
-    })
 
     // Arrivals of a stop whose popup has closed are dropped.
     this.handleEvent("stop-arrivals:arrivals", (shown) => {
@@ -352,16 +323,11 @@ export const StopMarkers = {
         this.scheduleFollow()
       }
     })
-
-    this.pushEvent("stop-markers:ready", {})
   },
 
-  // The page that connects again knows nothing of what this hook holds: it
-  // answers with every stop after a reset, and is told again which stops
-  // are open.
+  // The page that connects again knows nothing of the stops this hook has
+  // open, and is told them again.
   reconnected() {
-    this.pushEvent("stop-markers:ready", {})
-
     for (const stopId of this.openPopups.keys()) {
       this.pushEvent("stop-arrivals:open", {stop_id: stopId})
     }
@@ -524,9 +490,8 @@ export const StopMarkers = {
     }
 
     // Below the zoom that draws stops, none is on screen.
-    const visibleStopIds = zoom >= zoomMin
-      ? stopIdsWithin({stopsById: this.stopsById, bounds: this.map.getBounds()})
-      : []
+    this.stopsById = this.attached && zoom >= zoomMin ? renderedStops(this.map) : new Map()
+    const visibleStopIds = [...this.stopsById.keys()]
     const visible = new Set(visibleStopIds)
 
     for (const stopId of [...this.dismissedStopIds]) {
@@ -588,21 +553,28 @@ export const StopMarkers = {
     }
   },
 
-  attach(map, maplibre) {
-    map.addSource(sourceName, {type: "geojson", data: featureCollection(this.stopsById)})
+  // Adds the layers, once the page has an archive to draw them from.
+  attach() {
+    const map = this.map
+
+    if (!addSource(map)) {
+      return
+    }
 
     map.addLayer({
       id: markerLayerName,
       type: "circle",
       source: sourceName,
+      "source-layer": stopLayerName,
       minzoom: zoomMin,
+      ...filterProperties(stopFilter()),
       paint: {
         "circle-radius": markerRadiusPixels,
         "circle-color": markerColor,
         "circle-stroke-color": markerStrokeColor,
         "circle-stroke-width": markerStrokeWidthPixels
       }
-    })
+    }, firstVehicleLayerName(map))
 
     // A label is left out where it would cover another label, so a crowded
     // street shows the labels of some of its stops.
@@ -610,8 +582,9 @@ export const StopMarkers = {
       id: labelLayerName,
       type: "symbol",
       source: sourceName,
+      "source-layer": stopLayerName,
       minzoom: zoomMin,
-      filter: hasLabel,
+      filter: labelFilter(),
       layout: {
         "text-field": ["get", "label"],
         "text-font": labelFont,
@@ -626,17 +599,16 @@ export const StopMarkers = {
         "text-halo-color": labelHaloColor,
         "text-halo-width": labelHaloWidthPixels
       }
-    })
+    }, firstVehicleLayerName(map))
 
     // A click on a stop whose popup opened by itself leaves that popup as
-    // it is. The feature may be a stop the server has since taken away.
+    // it is.
     map.on("click", markerLayerName, (event) => {
-      const [feature] = event.features
-      const stopId = feature.properties.stopId
-      const stop = this.stopsById.get(stopId)
+      const stop = stopFromFeature(event.features[0])
+      const stopId = stop.id
       const open = this.openPopups.get(stopId)
 
-      if (stop !== undefined && (open === undefined || open.auto === false)) {
+      if (open === undefined || open.auto === false) {
         this.dismissedStopIds.delete(stopId)
         this.openPopup({stop, auto: false, side: null})
       }
@@ -644,34 +616,14 @@ export const StopMarkers = {
 
     map.on("mouseenter", markerLayerName, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", markerLayerName, () => { map.getCanvas().style.cursor = "" })
-    map.on("moveend", () => { this.followView() })
 
-    this.map = map
-    this.maplibre = maplibre
-    this.followView()
-  },
-
-  // Several events arrive in a row when a page opens; one draw covers them.
-  scheduleDraw() {
-    if (this.drawTimer === null) {
-      this.drawTimer = window.setTimeout(() => {
-        this.drawTimer = null
-        this.draw()
-      }, drawDelayMs)
-    }
-  },
-
-  draw() {
-    if (this.map !== null) {
-      this.map.getSource(sourceName).setData(featureCollection(this.stopsById))
-      this.followView()
-    }
+    this.attached = true
   },
 
   destroyed() {
     window.removeEventListener(readyEventName, this.onBasemapReady)
+    window.removeEventListener(changeEventName, this.onChange)
     window.removeEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
-    window.clearTimeout(this.drawTimer)
     window.clearTimeout(this.followTimer)
   }
 }

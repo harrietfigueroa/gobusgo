@@ -3,6 +3,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
 import {RouteLines} from "./route_lines"
+import {RouteStopTiles} from "./route_stop_tiles"
 import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
 import {VehicleFilter} from "./vehicle_filter"
@@ -30,7 +31,7 @@ function client() {
 // The parameters are a function, so each connection sends the viewport of
 // its own moment.
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: {Basemap, RouteLines, SnapToLocation, StopMarkers, VehicleFilter, VehicleMarkers},
+  hooks: {Basemap, RouteLines, RouteStopTiles, SnapToLocation, StopMarkers, VehicleFilter, VehicleMarkers},
   params: () => ({_csrf_token: csrfToken, client: client()})
 })
 

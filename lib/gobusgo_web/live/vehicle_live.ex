@@ -4,9 +4,9 @@ defmodule GobusgoWeb.VehicleLive do
 
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
-  fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines of the routes the
-  two route views hold, with the filter's controls and the info button of
-  `GobusgoWeb.AppInfoPanel` over it.
+  fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines and the stops of
+  the route and stop tile archive, with the filter's controls and the info
+  button of `GobusgoWeb.AppInfoPanel` over it.
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
   reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
@@ -40,7 +40,7 @@ defmodule GobusgoWeb.VehicleLive do
 
   The page draws the basemap of the configured basemap directory, read once
   when the page is mounted. A filter that names routes fits the map's view
-  to the box around the stops the page draws for them, from
+  to the box around the stops of the routes it keeps, from
   `GobusgoWeb.MapExtent`, as the stop view holds them when the filter
   changes; a later fetch leaves the view where it is. A filter that names
   no route, or routes with no stop in the stop view, fits the coverage of
@@ -73,33 +73,18 @@ defmodule GobusgoWeb.VehicleLive do
   agency's fetch leaves the map. A change of the filter sends every agency
   again, an agency the filter no longer keeps with no marker.
 
-  Under the markers the browser draws one line per route, from
-  `GobusgoWeb.RouteLines`: every route the filter keeps that an agency the
-  filter keeps lists in the route view and that has a path in the route
-  path view. A second element that shows
-  nothing mounts the hook that draws them. A connected page subscribes to
-  both route views, and keeps the version of each line it has sent, the
-  route's color, its names, and its path's fetch time, and no polyline. A
-  line names its agency as the agency view does, so a switch of the agency
-  view sends the lines whose agency's name changed. The lines reach
-  the browser as `route-lines:routes` events, each holding the lines of some
-  routes and the routes that are gone: every line when the browser sends
-  `route-lines:ready`, and afterwards the lines whose version changed. A
-  change of the filter sends the lines it adds and the routes it removes.
-
-  The page sends the browser the stops of `Gobusgo.OneBusAway.StopView`
-  that a route whose line it draws serves, as markers from
-  `GobusgoWeb.StopMarkers`. They reach the browser as `stop-markers:stops`
-  events, each holding the markers of some stops, the stops that are gone,
-  and whether the browser first drops every stop it has: every stop, after
-  a reset, when the browser sends `stop-markers:ready`, and afterwards the
-  stops the view's announcement names. A change of the filter, and a route
-  whose line appears or goes, sends every stop again after a reset, and so
-  does a switch of the agency view that changes an agency's name. The
-  page keeps no stop, only whether the browser has asked. A third element
-  that shows nothing mounts the hook that draws the stops, under the
-  vehicles and only when the map is zoomed in. A marker names the agencies
-  of the stop's routes as the agency view names them.
+  Under the markers the browser draws the route lines and the stops of the
+  current archive of `GobusgoWeb.RouteStopTiles`, and the page sends none
+  of them. An element that shows nothing carries the archive's address,
+  read when the page mounts and when its filter changes, and the routes the
+  filter keeps, from `GobusgoWeb.VehicleLive.Routes`, which the browser
+  draws the lines and the stops of: none for a refused filter, and no
+  attribute for a filter that names nothing, which draws every route. A
+  connected page subscribes to the route view and patches the kept routes
+  as it changes. With no archive the element carries no address and the
+  map draws no line and no stop. Two more elements that show nothing mount
+  the hooks that draw the lines and the stops, the stops under the vehicles
+  and only when the map is zoomed in.
 
   The browser opens a stop with the `stop-arrivals:open` event and closes
   it with `stop-arrivals:close`, each naming the stop. Opening registers
@@ -143,7 +128,6 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
-  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Usage
   alias GobusgoWeb.AgencyOptions
@@ -152,22 +136,19 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
   alias GobusgoWeb.RouteOptions
+  alias GobusgoWeb.RouteStopTiles
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
-  alias GobusgoWeb.VehicleLive.Lines
   alias GobusgoWeb.VehicleLive.OpenStops
-  alias GobusgoWeb.VehicleLive.Stops
+  alias GobusgoWeb.VehicleLive.Routes
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
   @path "/vehicles"
   @route_view Gobusgo.OneBusAway.RouteView
-  @route_path_view Gobusgo.OneBusAway.RoutePathView
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @vehicle_markers_event "vehicle-markers:agency"
-  @route_lines_event "route-lines:routes"
-  @stop_markers_event "stop-markers:stops"
   @stop_arrivals_event "stop-arrivals:arrivals"
 
   @impl Phoenix.LiveView
@@ -182,8 +163,8 @@ defmodule GobusgoWeb.VehicleLive do
         route_query: "",
         route_options: %{selected: [], matches: [], rest_count: 0},
         shown_request_ids: %{},
-        shown_route_versions: %{},
-        stops_ready: false,
+        tile_archive_url: nil,
+        kept_route_ids: :every,
         open_stops: %{},
         viewer_monitor: nil
       )
@@ -193,8 +174,6 @@ defmodule GobusgoWeb.VehicleLive do
         :ok = AgencyView.subscribe(%{view: AgencyView, pubsub: @pubsub})
         :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
         :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
-        :ok = FetchView.subscribe(%{view: @route_path_view, pubsub: @pubsub})
-        :ok = StopView.subscribe(%{view: StopView, pubsub: @pubsub})
         :ok = FetchView.subscribe(%{view: @arrival_view, pubsub: @pubsub})
         {:ok, register_viewer(socket, 1)}
 
@@ -209,7 +188,13 @@ defmodule GobusgoWeb.VehicleLive do
     raw = Filter.raw(params)
     filter = Filter.normalize(raw)
 
-    socket = assign(socket, filter: filter, filter_supplied: raw != %{})
+    socket =
+      assign(socket,
+        filter: filter,
+        filter_supplied: raw != %{},
+        kept_route_ids: Routes.kept_ids(filter),
+        tile_archive_url: tile_archive_url()
+      )
 
     basemap =
       case manifest do
@@ -234,21 +219,10 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def handle_info({:agency_view_switched, AgencyView}, socket) do
-    names = agency_names(socket.assigns.agencies)
-
-    socket =
-      socket
-      |> assign(agencies: agencies())
-      |> assign_route_options(FetchView.current(@route_view))
-      |> push_route_changes()
-
-    # A stop's marker names the agencies of its routes, and the view
-    # switches at every fetch, most of which rename no agency.
-    if agency_names(socket.assigns.agencies) == names do
-      {:noreply, socket}
-    else
-      {:noreply, push_every_stop(socket)}
-    end
+    {:noreply,
+     socket
+     |> assign(agencies: agencies())
+     |> assign_route_options(FetchView.current(@route_view))}
   end
 
   def handle_info(
@@ -268,27 +242,11 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply, push_open_stops(socket)}
   end
 
-  def handle_info({:fetch_view_switched, view}, socket)
-      when view in [@route_view, @route_path_view] do
-    shown = socket.assigns.shown_route_versions
-    socket = socket |> follow_route_view(view) |> push_route_changes()
-
-    # A stop follows the lines: a route whose line appears or goes changes
-    # which stops are drawn.
-    if Lines.same_routes?(%{shown: shown, versions: socket.assigns.shown_route_versions}) do
-      {:noreply, socket}
-    else
-      {:noreply, push_every_stop(socket)}
-    end
-  end
-
-  def handle_info({:stop_view_switched, StopView, change}, socket) do
-    %{held_ids: held_ids, removed_ids: removed_ids} = change
-
-    case socket.assigns.stops_ready do
-      true -> {:noreply, push_stops(socket, %{ids: held_ids, removed: removed_ids})}
-      false -> {:noreply, socket}
-    end
+  def handle_info({:fetch_view_switched, @route_view}, socket) do
+    {:noreply,
+     socket
+     |> assign(kept_route_ids: Routes.kept_ids(socket.assigns.filter))
+     |> assign_route_options(FetchView.current(@route_view))}
   end
 
   def handle_info(
@@ -303,10 +261,6 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("route-lines:ready", _params, socket) do
-    {:noreply, socket |> assign(shown_route_versions: %{}) |> push_route_changes()}
-  end
-
   def handle_event("vehicle-filter:change", params, socket) do
     shown_filter = socket.assigns.filter
     route_fetches = FetchView.current(@route_view)
@@ -343,10 +297,6 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("vehicle-markers:ready", _params, socket) do
     {:noreply, push_every_agency(socket)}
-  end
-
-  def handle_event("stop-markers:ready", _params, socket) do
-    {:noreply, socket |> assign(stops_ready: true) |> push_every_stop()}
   end
 
   def handle_event("stop-arrivals:open", %{"stop_id" => stop_id}, socket)
@@ -406,7 +356,12 @@ defmodule GobusgoWeb.VehicleLive do
         </p>
       </div>
 
-      <.map_elements :if={@basemap != nil} basemap={@basemap} />
+      <.map_elements
+        :if={@basemap != nil}
+        basemap={@basemap}
+        tile_archive_url={@tile_archive_url}
+        kept_route_ids={@kept_route_ids}
+      />
 
       <AppInfoPanel.panel agencies={@agencies} />
     </main>
@@ -414,6 +369,8 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   attr :basemap, :map, required: true
+  attr :tile_archive_url, :string, required: true
+  attr :kept_route_ids, :any, required: true
 
   defp map_elements(assigns) do
     ~H"""
@@ -428,6 +385,15 @@ defmodule GobusgoWeb.VehicleLive do
       data-sprites-url={@basemap.sources.sprites_url}
       data-attribution={@basemap.sources.attribution}
       data-bounds={JSON.encode!(@basemap.bounds)}
+    >
+    </div>
+
+    <div
+      id="route-stop-tiles"
+      phx-hook="RouteStopTiles"
+      data-archive-url={@tile_archive_url}
+      data-route-ids={route_ids_attribute(@kept_route_ids)}
+      hidden
     >
     </div>
 
@@ -457,6 +423,24 @@ defmodule GobusgoWeb.VehicleLive do
     >
     </p>
     """
+  end
+
+  # A filter that names nothing draws every route, which no list names.
+  defp route_ids_attribute(:every), do: nil
+  defp route_ids_attribute(route_ids) when is_list(route_ids), do: JSON.encode!(route_ids)
+
+  # The address of the current tile archive, or `nil` while there is none.
+  # A tile process that does not answer leaves the page without lines and
+  # stops until it reads the address again.
+  defp tile_archive_url do
+    case RouteStopTiles.current_destination(RouteStopTiles) do
+      nil -> nil
+      destination -> "/" <> destination
+    end
+  catch
+    :exit, reason ->
+      Logger.warning("Route stop tiles not answered", reason: inspect(reason))
+      nil
   end
 
   # Names the filter a connected page shows to the usage recorder. A refused
@@ -556,16 +540,16 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp push_fit(socket, _shown, _basemap), do: socket
 
-  # Under a filter that names routes, the view fitted to the stops the page
-  # draws, the stops of the routes whose lines it draws. A filter whose
-  # routes have no stop in the stop view leaves the view as it is.
+  # Under a filter that names routes, the view fitted to the stops of the
+  # routes it keeps. A filter whose routes have no stop in the stop view
+  # leaves the view as it is.
   defp fit_routes(view, socket) do
     case Filter.route_ids(socket.assigns.filter) do
       [] ->
         view
 
       [_route_id | _rest] ->
-        positions = socket |> route_versions() |> Map.keys() |> MapSet.new() |> Stops.positions()
+        positions = Routes.stop_positions(socket.assigns.kept_route_ids)
 
         case MapExtent.bounds(%{positions: positions, within: view.archive_bounds}) do
           nil -> view
@@ -618,36 +602,21 @@ defmodule GobusgoWeb.VehicleLive do
     )
   end
 
-  # The route options name the routes of the route view, and nothing of a
-  # route's path.
-  defp follow_route_view(socket, @route_view) do
-    assign_route_options(socket, FetchView.current(@route_view))
-  end
-
-  defp follow_route_view(socket, @route_path_view), do: socket
-
   # Until the map asks, the page takes it to show what the first filter of
   # the address keeps, which is what a map shows whose page connects again.
-  # Another filter after that sends every agency's markers again, and the
-  # lines that differ.
+  # Another filter after that sends every agency's markers again.
   defp push_filter_change(socket, nil), do: assume_shown(socket)
 
   defp push_filter_change(%{assigns: %{filter: filter}} = socket, shown_filter) do
     if filter == shown_filter do
       socket
     else
-      socket
-      |> push_every_agency()
-      |> push_route_changes()
-      |> push_every_stop()
+      push_every_agency(socket)
     end
   end
 
   defp assume_shown(%{assigns: %{filter: filter}} = socket) do
-    assign(socket,
-      shown_request_ids: AgencyMarkers.kept_request_ids(filter),
-      shown_route_versions: route_versions(socket)
-    )
+    assign(socket, shown_request_ids: AgencyMarkers.kept_request_ids(filter))
   end
 
   defp push_every_agency(socket) do
@@ -682,39 +651,6 @@ defmodule GobusgoWeb.VehicleLive do
       OpenStops.updates(%{open_stops: socket.assigns.open_stops, stop_ids: stop_ids})
 
     socket |> push_events(@stop_arrivals_event, events) |> assign(open_stops: open_stops)
-  end
-
-  defp route_versions(%{assigns: %{filter: filter, agencies: agencies}}) do
-    Lines.versions(%{filter: filter, agencies: agencies})
-  end
-
-  # Each path is read for the event and kept nowhere: the page remembers
-  # only the version of each line.
-  defp push_route_changes(%{assigns: %{shown_route_versions: shown}} = socket) do
-    versions = route_versions(socket)
-
-    socket
-    |> push_events(@route_lines_event, Lines.events(%{shown: shown, versions: versions}))
-    |> assign(shown_route_versions: versions)
-  end
-
-  # Until the browser asks for the stops it has no map to draw them on.
-  defp push_every_stop(%{assigns: %{stops_ready: false}} = socket), do: socket
-
-  defp push_every_stop(socket) do
-    push_events(socket, @stop_markers_event, Stops.every(drawn_routes(socket)))
-  end
-
-  # Each stop is read for the event and kept nowhere.
-  defp push_stops(socket, %{ids: ids, removed: removed}) do
-    events =
-      Stops.events(Map.merge(drawn_routes(socket), %{ids: ids, removed: removed, reset: false}))
-
-    push_events(socket, @stop_markers_event, events)
-  end
-
-  defp drawn_routes(%{assigns: %{shown_route_versions: shown, agencies: agencies}}) do
-    %{route_ids: MapSet.new(Map.keys(shown)), agencies: agencies}
   end
 
   defp push_events(socket, name, events) do

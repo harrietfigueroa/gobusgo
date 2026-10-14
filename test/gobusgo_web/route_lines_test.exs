@@ -165,54 +165,6 @@ defmodule GobusgoWeb.RouteLinesTest do
     end
   end
 
-  describe "changes/2" do
-    @shown %{
-      "40_1" => %{
-        color: "28813F",
-        short_name: "1 Line",
-        long_name: "Lynnwood - Federal Way",
-        agency_name: "Sound Transit",
-        path_fetch_microseconds: 1
-      },
-      "40_2" => %{
-        color: nil,
-        short_name: nil,
-        long_name: nil,
-        agency_name: nil,
-        path_fetch_microseconds: 1
-      }
-    }
-
-    test "names nothing when the versions are the ones shown" do
-      assert RouteLines.changes(@shown, @shown) == %{changed: [], removed: []}
-    end
-
-    test "names a route that is new, in identifier order" do
-      versions = Map.merge(@shown, %{"40_3" => version(), "1_1" => version()})
-
-      assert RouteLines.changes(@shown, versions) == %{changed: ["1_1", "40_3"], removed: []}
-    end
-
-    test "names a route that is gone as removed" do
-      assert RouteLines.changes(@shown, Map.delete(@shown, "40_2")) ==
-               %{changed: [], removed: ["40_2"]}
-    end
-
-    for {field, value} <- [
-          path_fetch_microseconds: 2,
-          color: "FFFFFF",
-          short_name: "2 Line",
-          long_name: "Lynnwood - Redmond",
-          agency_name: "Sound Transit Express"
-        ] do
-      test "names a route of which only #{field} changed" do
-        versions = put_in(@shown, ["40_1", unquote(field)], unquote(value))
-
-        assert RouteLines.changes(@shown, versions) == %{changed: ["40_1"], removed: []}
-      end
-    end
-  end
-
   describe "line/1" do
     test "holds the route, its color as a CSS color, its names, and its polylines in order" do
       assert RouteLines.line(%{
@@ -253,19 +205,6 @@ defmodule GobusgoWeb.RouteLinesTest do
     test "holds no polylines for a route that has none" do
       assert %{id: "40_1", polylines: []} =
                RouteLines.line(%{version: version(), path_fetch: path_fetch("40_1", [])})
-    end
-  end
-
-  describe "chunks/1" do
-    test "splits the lines into events of at most the line count each" do
-      lines = for index <- 1..(RouteLines.event_line_count_max() * 2 + 1), do: %{id: "r#{index}"}
-
-      assert lines |> RouteLines.chunks() |> Enum.map(&length/1) ==
-               [RouteLines.event_line_count_max(), RouteLines.event_line_count_max(), 1]
-    end
-
-    test "is no event for no lines" do
-      assert RouteLines.chunks([]) == []
     end
   end
 end
