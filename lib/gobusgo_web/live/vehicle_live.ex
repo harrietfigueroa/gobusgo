@@ -143,7 +143,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
-  alias Gobusgo.OneBusAway.VehicleFilter
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Usage
   alias GobusgoWeb.AgencyOptions
@@ -151,22 +151,23 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
-  alias Gobusgo.OneBusAway.StopView
-  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.RouteOptions
-  alias GobusgoWeb.StopArrivals
-  alias GobusgoWeb.StopMarkers
+  alias GobusgoWeb.VehicleFilterForm
+  alias GobusgoWeb.VehicleLive.AgencyMarkers
+  alias GobusgoWeb.VehicleLive.Filter
+  alias GobusgoWeb.VehicleLive.Lines
+  alias GobusgoWeb.VehicleLive.OpenStops
+  alias GobusgoWeb.VehicleLive.Stops
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
   @path "/vehicles"
-  @agency_field "agency"
-  @route_field "route"
-  @route_query_param "route_query"
-  @route_query_debounce_ms 200
   @route_view Gobusgo.OneBusAway.RouteView
   @route_path_view Gobusgo.OneBusAway.RoutePathView
   @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @vehicle_markers_event "vehicle-markers:agency"
+  @route_lines_event "route-lines:routes"
+  @stop_markers_event "stop-markers:stops"
   @stop_arrivals_event "stop-arrivals:arrivals"
 
   @impl Phoenix.LiveView
@@ -205,15 +206,20 @@ defmodule GobusgoWeb.VehicleLive do
   @impl Phoenix.LiveView
   def handle_params(params, _uri, socket) do
     %{manifest: manifest, basemap: shown, filter: shown_filter} = socket.assigns
-    raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
-    filter = filter(raw)
+    raw = Filter.raw(params)
+    filter = Filter.normalize(raw)
 
     socket = assign(socket, filter: filter, filter_supplied: raw != %{})
 
     basemap =
       case manifest do
-        nil -> nil
-        manifest -> manifest |> BasemapSources.view(fit_agency_id(filter)) |> fit_routes(socket)
+        nil ->
+          nil
+
+        manifest ->
+          manifest
+          |> BasemapSources.view(Filter.single_agency_id(filter))
+          |> fit_routes(socket)
       end
 
     record_filter(socket, filter)
@@ -221,7 +227,7 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply,
      socket
      |> assign(basemap: basemap)
-     |> assign_route_options()
+     |> assign_route_options(FetchView.current(@route_view))
      |> push_fit(shown, basemap)
      |> push_filter_change(shown_filter)}
   end
@@ -231,7 +237,10 @@ defmodule GobusgoWeb.VehicleLive do
     names = agency_names(socket.assigns.agencies)
 
     socket =
-      socket |> assign(agencies: agencies()) |> assign_route_options() |> push_route_changes()
+      socket
+      |> assign(agencies: agencies())
+      |> assign_route_options(FetchView.current(@route_view))
+      |> push_route_changes()
 
     # A stop's marker names the agencies of its routes, and the view
     # switches at every fetch, most of which rename no agency.
@@ -246,12 +255,13 @@ defmodule GobusgoWeb.VehicleLive do
         {:vehicle_view_switched, VehicleView},
         %{assigns: %{shown_request_ids: shown_request_ids}} = socket
       ) do
-    request_ids = VehicleView.current_request_ids(VehicleView)
+    agency_ids =
+      AgencyMarkers.changed_agency_ids(%{
+        shown_request_ids: shown_request_ids,
+        request_ids: VehicleView.current_request_ids(VehicleView)
+      })
 
-    {:noreply,
-     socket
-     |> push_agencies(changed_agency_ids(shown_request_ids, request_ids))
-     |> push_open_stops()}
+    {:noreply, socket |> push_agencies(agency_ids) |> push_open_stops()}
   end
 
   def handle_info({:fetch_view_switched, @arrival_view}, socket) do
@@ -265,7 +275,7 @@ defmodule GobusgoWeb.VehicleLive do
 
     # A stop follows the lines: a route whose line appears or goes changes
     # which stops are drawn.
-    if same_routes?(shown, socket.assigns.shown_route_versions) do
+    if Lines.same_routes?(%{shown: shown, versions: socket.assigns.shown_route_versions}) do
       {:noreply, socket}
     else
       {:noreply, push_every_stop(socket)}
@@ -276,7 +286,7 @@ defmodule GobusgoWeb.VehicleLive do
     %{held_ids: held_ids, removed_ids: removed_ids} = change
 
     case socket.assigns.stops_ready do
-      true -> {:noreply, push_stops(socket, %{ids: held_ids, removed: removed_ids, reset: false})}
+      true -> {:noreply, push_stops(socket, %{ids: held_ids, removed: removed_ids})}
       false -> {:noreply, socket}
     end
   end
@@ -299,14 +309,15 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("vehicle-filter:change", params, socket) do
     shown_filter = socket.assigns.filter
-    raw = FilterParams.raw(%{params: params, spec: VehicleFilter.spec()})
+    route_fetches = FetchView.current(@route_view)
+    route_query = RouteOptions.query(Map.get(params, VehicleFilterForm.route_query_param()))
 
     socket =
       socket
-      |> assign(route_query: RouteOptions.query(Map.get(params, @route_query_param)))
-      |> assign_route_options()
+      |> assign(route_query: route_query)
+      |> assign_route_options(route_fetches)
 
-    case changed_filter(raw) do
+    case Filter.changed(%{raw: Filter.raw(params), route_fetches: route_fetches}) do
       :refused ->
         {:noreply, socket}
 
@@ -323,7 +334,7 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   def handle_event("vehicle-filter:restore", params, socket) do
-    case {socket.assigns.filter_supplied, stored_filter(params)} do
+    case {socket.assigns.filter_supplied, Filter.stored(params)} do
       {true, _stored} -> {:reply, %{accepted: true}, socket}
       {false, :refused} -> {:reply, %{accepted: false}, socket}
       {false, filter} -> {:reply, %{accepted: true}, push_patch(socket, to: path(filter))}
@@ -331,7 +342,7 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   def handle_event("vehicle-markers:ready", _params, socket) do
-    {:noreply, push_agencies(socket, every_agency_id(socket))}
+    {:noreply, push_every_agency(socket)}
   end
 
   def handle_event("stop-markers:ready", _params, socket) do
@@ -340,11 +351,13 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("stop-arrivals:open", %{"stop_id" => stop_id}, socket)
       when is_binary(stop_id) do
-    case open_stop(stop_id) do
+    case OpenStops.open(stop_id) do
       :ok ->
         # A stop opened again is sent again, whatever the page last sent.
         {:noreply,
-         socket |> update(:open_stops, &Map.put(&1, stop_id, nil)) |> push_open_stop(stop_id)}
+         socket
+         |> update(:open_stops, &Map.put(&1, stop_id, nil))
+         |> push_open_stops([stop_id])}
 
       refusal ->
         {:noreply, push_event(socket, @stop_arrivals_event, %{stop_id: stop_id, status: refusal})}
@@ -355,7 +368,7 @@ defmodule GobusgoWeb.VehicleLive do
       when is_binary(stop_id) do
     case is_map_key(socket.assigns.open_stops, stop_id) do
       true ->
-        :ok = release_stop(stop_id)
+        :ok = OpenStops.release(stop_id)
         {:noreply, update(socket, :open_stops, &Map.delete(&1, stop_id))}
 
       false ->
@@ -380,71 +393,12 @@ defmodule GobusgoWeb.VehicleLive do
       order, so the stored filter is offered before the map asks for its
       markers and lines. --%>
       <div :if={@basemap != nil} class="absolute left-2 top-2 z-10 flex flex-col items-start gap-2">
-        <form
-          id="vehicle-filter"
-          phx-hook="VehicleFilter"
-          phx-change="vehicle-filter:change"
-          phx-submit="vehicle-filter:change"
-          data-supplied={to_string(@filter_supplied)}
-          class="surface max-h-[calc(100vh-1rem)] max-w-xs overflow-y-auto px-3 py-2 text-sm shadow"
-        >
-          <details id="vehicle-filter-agencies">
-            <summary class="cursor-pointer font-medium">Agencies</summary>
-            <div class="mt-2 flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
-              <label
-                :for={option <- agency_options(@agencies, @filter)}
-                class="flex items-center gap-2"
-              >
-                <input
-                  type="checkbox"
-                  name="agency[]"
-                  value={option.id}
-                  checked={option.checked}
-                />
-                <span>{option.name}</span>
-              </label>
-            </div>
-          </details>
-          <details id="vehicle-filter-routes" class="mt-2">
-            <summary class="cursor-pointer font-medium">Routes</summary>
-            <input
-              type="search"
-              name={route_query_param()}
-              value={@route_query}
-              placeholder="Route name"
-              aria-label="Narrow the routes by name"
-              maxlength={RouteOptions.query_length_max()}
-              autocomplete="off"
-              phx-debounce={route_query_debounce_ms()}
-              class="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1"
-            />
-            <div class="mt-2 flex max-h-[40vh] flex-col gap-1 overflow-y-auto">
-              <label
-                :for={option <- @route_options.selected ++ @route_options.matches}
-                class="flex items-baseline gap-2"
-              >
-                <input
-                  type="checkbox"
-                  name="route[]"
-                  value={option.id}
-                  checked={option.checked}
-                />
-                <span class="font-medium">{option.name}</span>
-                <span :if={option.detail != nil}>{option.detail}</span>
-                <span :if={option.agency_name != nil} class="text-gray-600">
-                  {option.agency_name}
-                </span>
-              </label>
-              <p
-                :if={@route_options.rest_count > 0}
-                id="vehicle-filter-routes-rest"
-                class="text-gray-600"
-              >
-                {@route_options.rest_count} more
-              </p>
-            </div>
-          </details>
-        </form>
+        <VehicleFilterForm.form
+          agency_options={agency_options(@agencies, @filter)}
+          route_options={@route_options}
+          route_query={@route_query}
+          supplied={@filter_supplied}
+        />
 
         <p :if={@filter == :refused} id="filter-refused" class="surface px-3 py-2 shadow">
           This filter is not valid.
@@ -452,51 +406,56 @@ defmodule GobusgoWeb.VehicleLive do
         </p>
       </div>
 
-      <div
-        :if={@basemap != nil}
-        id={"basemap-" <> Path.rootname(@basemap.archive)}
-        phx-hook="Basemap"
-        phx-update="ignore"
-        class="h-screen w-full"
-        data-library-url={@basemap.sources.library_url}
-        data-archive-url={@basemap.sources.archive_url}
-        data-fonts-url={@basemap.sources.fonts_url}
-        data-sprites-url={@basemap.sources.sprites_url}
-        data-attribution={@basemap.sources.attribution}
-        data-bounds={JSON.encode!(@basemap.bounds)}
-      >
-      </div>
-
-      <%!-- The stops' element stands before the vehicles': hooks mount in
-      document order and add their layers in that order, so the vehicles are
-      drawn over the stops. --%>
-      <div :if={@basemap != nil} id="stop-markers" phx-hook="StopMarkers" hidden></div>
-
-      <div
-        :if={@basemap != nil}
-        id="vehicle-markers"
-        phx-hook="VehicleMarkers"
-        data-statuses={JSON.encode!(VehicleMarkers.statuses())}
-        hidden
-      >
-      </div>
-
-      <div :if={@basemap != nil} id="route-lines" phx-hook="RouteLines" hidden></div>
-
-      <p
-        :if={@basemap != nil}
-        id="snap-to-location"
-        phx-hook="SnapToLocation"
-        phx-update="ignore"
-        role="status"
-        class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
-        data-bounds={JSON.encode!(@basemap.archive_bounds)}
-        hidden
-      >
-      </p>
+      <.map_elements :if={@basemap != nil} basemap={@basemap} />
 
       <AppInfoPanel.panel agencies={@agencies} />
     </main>
+    """
+  end
+
+  attr :basemap, :map, required: true
+
+  defp map_elements(assigns) do
+    ~H"""
+    <div
+      id={"basemap-" <> Path.rootname(@basemap.archive)}
+      phx-hook="Basemap"
+      phx-update="ignore"
+      class="h-screen w-full"
+      data-library-url={@basemap.sources.library_url}
+      data-archive-url={@basemap.sources.archive_url}
+      data-fonts-url={@basemap.sources.fonts_url}
+      data-sprites-url={@basemap.sources.sprites_url}
+      data-attribution={@basemap.sources.attribution}
+      data-bounds={JSON.encode!(@basemap.bounds)}
+    >
+    </div>
+
+    <%!-- The stops' element stands before the vehicles': hooks mount in
+    document order and add their layers in that order, so the vehicles are
+    drawn over the stops. --%>
+    <div id="stop-markers" phx-hook="StopMarkers" hidden></div>
+
+    <div
+      id="vehicle-markers"
+      phx-hook="VehicleMarkers"
+      data-statuses={JSON.encode!(VehicleMarkers.statuses())}
+      hidden
+    >
+    </div>
+
+    <div id="route-lines" phx-hook="RouteLines" hidden></div>
+
+    <p
+      id="snap-to-location"
+      phx-hook="SnapToLocation"
+      phx-update="ignore"
+      role="status"
+      class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
+      data-bounds={JSON.encode!(@basemap.archive_bounds)}
+      hidden
+    >
+    </p>
     """
   end
 
@@ -553,6 +512,20 @@ defmodule GobusgoWeb.VehicleLive do
     :exit, _reason -> :registry_unavailable
   end
 
+  # Registers every stop the page has open, which a registry that has just
+  # started does not hold. A stop the registry refuses is closed and the
+  # browser told. A registry that does not answer leaves the stop open: the
+  # page watches that registry, and registers the stop when it goes down.
+  defp register_open_stops(socket) do
+    socket.assigns.open_stops
+    |> OpenStops.register()
+    |> Enum.reduce(socket, fn stop_id, socket ->
+      socket
+      |> update(:open_stops, &Map.delete(&1, stop_id))
+      |> push_event(@stop_arrivals_event, %{stop_id: stop_id, status: :busy})
+    end)
+  end
+
   # A directory with no manifest is the state before any extraction and
   # shows no map. A manifest that cannot be used shows no map either, and is
   # worth a look.
@@ -583,19 +556,23 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp push_fit(socket, _shown, _basemap), do: socket
 
-  # The filter a raw filter stands for, or `:refused` for one the contract
-  # does not accept.
-  defp filter(raw) do
-    case VehicleFilter.normalize(raw) do
-      {:ok, filter} -> filter
-      {:error, [_violation | _rest]} -> :refused
+  # Under a filter that names routes, the view fitted to the stops the page
+  # draws, the stops of the routes whose lines it draws. A filter whose
+  # routes have no stop in the stop view leaves the view as it is.
+  defp fit_routes(view, socket) do
+    case Filter.route_ids(socket.assigns.filter) do
+      [] ->
+        view
+
+      [_route_id | _rest] ->
+        positions = socket |> route_versions() |> Map.keys() |> MapSet.new() |> Stops.positions()
+
+        case MapExtent.bounds(%{positions: positions, within: view.archive_bounds}) do
+          nil -> view
+          bounds -> BasemapSources.fitted(view, bounds)
+        end
     end
   end
-
-  # What the browser stored is a filter as the page sent it, and is judged
-  # again as a raw filter, since a browser can hold anything.
-  defp stored_filter(%{"filter" => raw}) when is_map(raw), do: filter(raw)
-  defp stored_filter(_params), do: :refused
 
   defp path(filter) do
     case FilterParams.query(filter) do
@@ -617,106 +594,37 @@ defmodule GobusgoWeb.VehicleLive do
     end
   end
 
-  defp agency_options(agencies, filter) do
-    selected_ids =
-      case filter do
-        :refused -> []
-        filter -> Map.get(filter, @agency_field, [])
-      end
+  defp agency_names(agencies), do: Map.new(agencies, &{&1.id, &1.name})
 
-    AgencyOptions.options(%{agencies: agencies, selected_ids: selected_ids})
+  defp agency_options(agencies, filter) do
+    AgencyOptions.options(%{agencies: agencies, selected_ids: Filter.agency_ids(filter)})
   end
 
   # The route options of the page's filter, of the text in the text box,
   # and of what the route view and the agency view hold now. A refused
   # filter selects nothing.
-  defp assign_route_options(socket) do
+  defp assign_route_options(socket, route_fetches) do
     %{filter: filter, agencies: agencies, route_query: route_query} = socket.assigns
-
-    selection =
-      case filter do
-        :refused -> %{}
-        filter -> filter
-      end
 
     assign(socket,
       route_options:
         RouteOptions.options(%{
-          route_fetches: FetchView.current(@route_view),
-          agency_names: Map.new(agencies, &{&1.id, &1.name}),
-          agency_ids: Map.get(selection, @agency_field, []),
-          selected_ids: Map.get(selection, @route_field, []),
+          route_fetches: route_fetches,
+          agency_names: agency_names(agencies),
+          agency_ids: Filter.agency_ids(filter),
+          selected_ids: Filter.route_ids(filter),
           query: route_query
         })
     )
   end
 
-  # A template reads `@name` as an assign, so the form's constants reach it
-  # as functions.
-  defp route_query_param, do: @route_query_param
-  defp route_query_debounce_ms, do: @route_query_debounce_ms
-
   # The route options name the routes of the route view, and nothing of a
   # route's path.
-  defp follow_route_view(socket, @route_view), do: assign_route_options(socket)
+  defp follow_route_view(socket, @route_view) do
+    assign_route_options(socket, FetchView.current(@route_view))
+  end
+
   defp follow_route_view(socket, @route_path_view), do: socket
-
-  # The filter a change of the form stands for, or `:refused`.
-  defp changed_filter(raw) do
-    case filter(raw) do
-      :refused -> :refused
-      filter -> listed_routes_filter(filter)
-    end
-  end
-
-  # A filter of the form that names agencies keeps the routes one of them
-  # lists in the route view. A filter left with no route names none, since
-  # a field of a filter accepts at least one value.
-  defp listed_routes_filter(%{@agency_field => agency_ids, @route_field => route_ids} = filter) do
-    listed_ids =
-      for %{id: agency_id, route_ids: listed_ids} <- FetchView.current(@route_view),
-          agency_id in agency_ids,
-          route_id <- listed_ids,
-          into: MapSet.new() do
-        route_id
-      end
-
-    case Enum.filter(route_ids, &MapSet.member?(listed_ids, &1)) do
-      [] -> Map.delete(filter, @route_field)
-      kept_ids -> Map.put(filter, @route_field, kept_ids)
-    end
-  end
-
-  defp listed_routes_filter(filter), do: filter
-
-  defp fit_agency_id(%{@agency_field => [agency_id]}), do: agency_id
-  defp fit_agency_id(_filter), do: nil
-
-  # Under a filter that names routes, the view fitted to the stops the page
-  # draws, the stops of the routes whose lines it draws. A filter whose
-  # routes have no stop in the stop view leaves the view as it is.
-  defp fit_routes(view, %{assigns: %{filter: %{@route_field => _route_ids}}} = socket) do
-    route_ids = socket |> route_versions() |> Map.keys() |> MapSet.new()
-
-    positions =
-      for held_stop <- StopView.current(StopView),
-          StopMarkers.drawn?(%{held_stop: held_stop, route_ids: route_ids}) do
-        %{lat: Map.fetch!(held_stop.stop, "lat"), lon: Map.fetch!(held_stop.stop, "lon")}
-      end
-
-    case MapExtent.bounds(%{positions: positions, within: view.archive_bounds}) do
-      nil -> view
-      bounds -> BasemapSources.fitted(view, bounds)
-    end
-  end
-
-  defp fit_routes(view, _socket), do: view
-
-  defp keeps_agency?(:refused, _agency_id), do: false
-
-  defp keeps_agency?(filter, agency_id) do
-    VehicleFilter.keeps_agency?(%{filter: filter, agency_id: agency_id})
-  end
 
   # Until the map asks, the page takes it to show what the first filter of
   # the address keeps, which is what a map shows whose page connects again.
@@ -729,320 +637,87 @@ defmodule GobusgoWeb.VehicleLive do
       socket
     else
       socket
-      |> push_agencies(every_agency_id(socket))
+      |> push_every_agency()
       |> push_route_changes()
       |> push_every_stop()
     end
   end
 
   defp assume_shown(%{assigns: %{filter: filter}} = socket) do
-    request_ids =
-      for {agency_id, request_id} <- VehicleView.current_request_ids(VehicleView),
-          keeps_agency?(filter, agency_id),
-          into: %{} do
-        {agency_id, request_id}
-      end
-
-    assign(socket, shown_request_ids: request_ids, shown_route_versions: route_versions(socket))
-  end
-
-  # Every agency that has a fetch, then every agency the map shows.
-  defp every_agency_id(%{assigns: %{shown_request_ids: shown_request_ids}}) do
-    request_ids = VehicleView.current_request_ids(VehicleView)
-    request_ids |> Map.merge(shown_request_ids) |> Map.keys() |> Enum.sort()
-  end
-
-  # The agencies whose markers the map does not show yet: every agency
-  # whose current fetch is another request than the one shown, then every
-  # agency shown that has no fetch any more.
-  defp changed_agency_ids(shown_request_ids, request_ids) do
-    changed =
-      for {agency_id, request_id} <- request_ids,
-          Map.get(shown_request_ids, agency_id) != request_id do
-        agency_id
-      end
-
-    removed =
-      for {agency_id, _request_id} <- shown_request_ids, not is_map_key(request_ids, agency_id) do
-        agency_id
-      end
-
-    Enum.sort(changed) ++ Enum.sort(removed)
-  end
-
-  # Sends the markers of each agency's current fetch that the filter keeps,
-  # and no markers for an agency the map shows that has no fetch or that
-  # the filter leaves out. The fetch is read here and kept nowhere: the page
-  # remembers only the request each agency's markers came from, and nothing
-  # of an agency it shows no markers of.
-  defp push_agencies(%{assigns: %{filter: filter}} = socket, agency_ids) do
-    Enum.reduce(agency_ids, socket, fn agency_id, socket ->
-      if keeps_agency?(filter, agency_id) do
-        push_agency(socket, agency_id, VehicleView.current_fetch(VehicleView, agency_id))
-      else
-        clear_agency(socket, agency_id)
-      end
-    end)
-  end
-
-  defp push_agency(socket, agency_id, nil), do: clear_agency(socket, agency_id)
-
-  defp push_agency(socket, agency_id, %{agency_id: fetch_agency_id} = fetch) do
-    Assert.condition(
-      fetch_agency_id == agency_id,
-      "fetch must be of agency #{inspect(agency_id)}, got: #{inspect(fetch_agency_id)}"
+    assign(socket,
+      shown_request_ids: AgencyMarkers.kept_request_ids(filter),
+      shown_route_versions: route_versions(socket)
     )
+  end
 
-    kept = VehicleFilter.filter_fetch(%{filter: socket.assigns.filter, fetch: fetch})
+  defp push_every_agency(socket) do
+    push_agencies(socket, AgencyMarkers.every_agency_id(socket.assigns.shown_request_ids))
+  end
 
-    stop_names = stop_names(VehicleMarkers.next_stop_ids(kept))
+  # Each fetch is read for the event and kept nowhere: the page remembers
+  # only the request each agency's markers came from, and nothing of an
+  # agency it shows no markers of.
+  defp push_agencies(socket, agency_ids) do
+    %{filter: filter, shown_request_ids: shown_request_ids} = socket.assigns
+
+    %{events: events, shown_request_ids: shown_request_ids} =
+      AgencyMarkers.updates(%{
+        filter: filter,
+        agency_ids: agency_ids,
+        shown_request_ids: shown_request_ids
+      })
 
     socket
-    |> push_markers(VehicleMarkers.agency_markers(kept, stop_names))
-    |> update(:shown_request_ids, &Map.put(&1, agency_id, kept.request_id))
+    |> push_events(@vehicle_markers_event, events)
+    |> assign(shown_request_ids: shown_request_ids)
   end
 
-  # Registers the stop as open for this page, so the arrival source fetches
-  # it: `:refused` for a stop the stop view does not hold, and `:busy` when
-  # the registry has no place for it or does not answer.
-  defp open_stop(stop_id) do
-    case StopView.stop(StopView, stop_id) do
-      nil ->
-        :refused
-
-      _held_stop ->
-        case stop_registration(stop_id) do
-          :ok -> :ok
-          {:error, _bound_exceeded} -> :busy
-          :registry_unavailable -> :busy
-        end
-    end
+  defp push_open_stops(socket) do
+    push_open_stops(socket, Enum.sort(Map.keys(socket.assigns.open_stops)))
   end
 
-  # A registry that is down or does not answer in time exits the call.
-  defp stop_registration(stop_id) do
-    Demand.register(Demand, DemandKey.arrivals(stop_id))
-  catch
-    :exit, _reason -> :registry_unavailable
+  # The page keeps a hash of what it sent for each stop and no arrival.
+  defp push_open_stops(socket, stop_ids) do
+    %{events: events, open_stops: open_stops} =
+      OpenStops.updates(%{open_stops: socket.assigns.open_stops, stop_ids: stop_ids})
+
+    socket |> push_events(@stop_arrivals_event, events) |> assign(open_stops: open_stops)
   end
 
-  # A registry that is down holds no registration to release.
-  defp release_stop(stop_id) do
-    Demand.release(Demand, DemandKey.arrivals(stop_id))
-  catch
-    :exit, _reason -> :ok
-  end
-
-  # Registers every stop the page has open, which a registry that has just
-  # started does not hold. A stop the registry refuses is closed and the
-  # browser told. A registry that does not answer leaves the stop open: the
-  # page watches that registry, and registers the stop when it goes down.
-  defp register_open_stops(%{assigns: %{open_stops: open_stops}} = socket) do
-    open_stops
-    |> Map.keys()
-    |> Enum.sort()
-    |> Enum.reduce(socket, fn stop_id, socket ->
-      case stop_registration(stop_id) do
-        :ok ->
-          socket
-
-        :registry_unavailable ->
-          socket
-
-        {:error, _bound_exceeded} ->
-          socket
-          |> update(:open_stops, &Map.delete(&1, stop_id))
-          |> push_event(@stop_arrivals_event, %{stop_id: stop_id, status: :busy})
-      end
-    end)
-  end
-
-  defp push_open_stops(%{assigns: %{open_stops: open_stops}} = socket) do
-    open_stops |> Map.keys() |> Enum.sort() |> Enum.reduce(socket, &push_open_stop(&2, &1))
-  end
-
-  # Sends what the page shows for an open stop when it differs from what the
-  # page last sent for it. The page keeps a hash of that and no arrival.
-  defp push_open_stop(%{assigns: %{open_stops: open_stops}} = socket, stop_id) do
-    shown = stop_arrivals(stop_id)
-    version = :erlang.phash2(shown)
-
-    case open_stops do
-      %{^stop_id => ^version} ->
-        socket
-
-      open_stops ->
-        socket
-        |> push_event(@stop_arrivals_event, shown)
-        |> assign(open_stops: Map.put(open_stops, stop_id, version))
-    end
-  end
-
-  defp stop_arrivals(stop_id) do
-    case FetchView.current_fetch(@arrival_view, stop_id) do
-      nil ->
-        StopArrivals.waiting(stop_id)
-
-      fetch ->
-        vehicles =
-          for vehicle_id <- StopArrivals.vehicle_ids(fetch),
-              vehicle = VehicleView.vehicle(VehicleView, vehicle_id),
-              into: %{} do
-            {vehicle_id, vehicle}
-          end
-
-        StopArrivals.arrivals(%{fetch: fetch, vehicles: vehicles, now: DateTime.utc_now()})
-    end
-  end
-
-  # The name of each of the stops that the stop view holds.
-  defp stop_names(stop_ids) do
-    for stop_id <- stop_ids, held_stop = StopView.stop(StopView, stop_id), into: %{} do
-      {stop_id, Map.fetch!(held_stop.stop, "name")}
-    end
-  end
-
-  defp clear_agency(%{assigns: %{shown_request_ids: shown_request_ids}} = socket, agency_id) do
-    if is_map_key(shown_request_ids, agency_id) do
-      socket
-      |> push_markers(%{agency_id: agency_id, markers: []})
-      |> update(:shown_request_ids, &Map.delete(&1, agency_id))
-    else
-      socket
-    end
-  end
-
-  defp push_markers(socket, %{agency_id: agency_id, markers: markers}) do
-    push_event(socket, "vehicle-markers:agency", %{agency_id: agency_id, markers: markers})
-  end
-
-  # The version of every line to draw: the routes the filter keeps of each
-  # agency it keeps, an agency's routes being one fetch of the route view.
   defp route_versions(%{assigns: %{filter: filter, agencies: agencies}}) do
-    route_fetches =
-      for %{id: agency_id, route_ids: route_ids} = fetch <- FetchView.current(@route_view),
-          keeps_agency?(filter, agency_id) do
-        kept_ids =
-          Enum.filter(route_ids, fn route_id ->
-            VehicleFilter.keeps_route?(%{
-              filter: filter,
-              agency_id: agency_id,
-              route_id: route_id
-            })
-          end)
-
-        %{fetch | route_ids: kept_ids}
-      end
-
-    RouteLines.versions(%{
-      route_fetches: route_fetches,
-      path_fetch_times: FetchView.fetch_times(@route_path_view),
-      agency_names: Map.new(agencies, &{&1.id, &1.name})
-    })
+    Lines.versions(%{filter: filter, agencies: agencies})
   end
 
+  # Each path is read for the event and kept nowhere: the page remembers
+  # only the version of each line.
   defp push_route_changes(%{assigns: %{shown_route_versions: shown}} = socket) do
     versions = route_versions(socket)
-    push_route_lines(socket, versions, RouteLines.changes(shown, versions))
-  end
 
-  # Sends the lines of the changed routes, a bounded count an event, and the
-  # routes that are gone with the first event. Each path is read here and
-  # kept nowhere: the page remembers only the version of each line.
-  defp push_route_lines(socket, versions, %{changed: changed, removed: removed}) do
-    lines =
-      for route_id <- changed,
-          path_fetch = FetchView.current_fetch(@route_path_view, route_id),
-          path_fetch != nil do
-        RouteLines.line(%{version: Map.fetch!(versions, route_id), path_fetch: path_fetch})
-      end
-
-    events =
-      case {RouteLines.chunks(lines), removed} do
-        {[], []} -> []
-        {[], removed} -> [%{lines: [], removed: removed}]
-        {[first | rest], removed} -> [%{lines: first, removed: removed}] ++ lines_only(rest)
-      end
-
-    events
-    |> Enum.reduce(socket, &push_event(&2, "route-lines:routes", &1))
+    socket
+    |> push_events(@route_lines_event, Lines.events(%{shown: shown, versions: versions}))
     |> assign(shown_route_versions: versions)
-  end
-
-  defp lines_only(chunks), do: for(lines <- chunks, do: %{lines: lines, removed: []})
-
-  defp same_routes?(shown, versions) do
-    if map_size(shown) == map_size(versions) do
-      Enum.all?(shown, fn {route_id, _version} -> is_map_key(versions, route_id) end)
-    else
-      false
-    end
   end
 
   # Until the browser asks for the stops it has no map to draw them on.
   defp push_every_stop(%{assigns: %{stops_ready: false}} = socket), do: socket
 
   defp push_every_stop(socket) do
-    push_stops(socket, %{ids: StopView.stop_ids(StopView), removed: [], reset: true})
+    push_events(socket, @stop_markers_event, Stops.every(drawn_routes(socket)))
   end
 
-  # Sends the markers of the stops of `ids` that a drawn route serves, a
-  # bounded count an event, with the reset and the stops that are gone in
-  # the first event. A stop of `ids` that is not drawn goes out as gone,
-  # which a browser that never had it passes over, and which a reset makes
-  # needless. Each stop is read here and kept nowhere.
-  defp push_stops(socket, %{ids: ids, removed: removed, reset: reset}) do
-    route_ids = MapSet.new(Map.keys(socket.assigns.shown_route_versions))
-    route_fetches = FetchView.current(@route_view)
-    route_names = StopMarkers.route_names(route_fetches)
-
-    route_agency_names =
-      StopMarkers.route_agency_names(%{
-        route_fetches: route_fetches,
-        agency_names: agency_names(socket.assigns.agencies)
-      })
-
-    {markers, undrawn} =
-      Enum.reduce(ids, {[], []}, fn id, {markers, undrawn} ->
-        held_stop = StopView.stop(StopView, id)
-
-        if held_stop != nil and StopMarkers.drawn?(%{held_stop: held_stop, route_ids: route_ids}) do
-          marker =
-            StopMarkers.marker(%{
-              held_stop: held_stop,
-              route_names: route_names,
-              route_agency_names: route_agency_names
-            })
-
-          {[marker | markers], undrawn}
-        else
-          {markers, [id | undrawn]}
-        end
-      end)
-
-    removed =
-      case reset do
-        true -> []
-        false -> Enum.sort(removed ++ undrawn)
-      end
-
+  # Each stop is read for the event and kept nowhere.
+  defp push_stops(socket, %{ids: ids, removed: removed}) do
     events =
-      case {StopMarkers.chunks(Enum.reverse(markers)), removed, reset} do
-        {[], [], false} ->
-          []
+      Stops.events(Map.merge(drawn_routes(socket), %{ids: ids, removed: removed, reset: false}))
 
-        {[], removed, reset} ->
-          [%{stops: [], removed: removed, reset: reset}]
-
-        {[first | rest], removed, reset} ->
-          [%{stops: first, removed: removed, reset: reset}] ++ stops_only(rest)
-      end
-
-    Enum.reduce(events, socket, &push_event(&2, "stop-markers:stops", &1))
+    push_events(socket, @stop_markers_event, events)
   end
 
-  defp agency_names(agencies), do: Map.new(agencies, &{&1.id, &1.name})
+  defp drawn_routes(%{assigns: %{shown_route_versions: shown, agencies: agencies}}) do
+    %{route_ids: MapSet.new(Map.keys(shown)), agencies: agencies}
+  end
 
-  defp stops_only(chunks),
-    do: for(stops <- chunks, do: %{stops: stops, removed: [], reset: false})
+  defp push_events(socket, name, events) do
+    Enum.reduce(events, socket, &push_event(&2, name, &1))
+  end
 end

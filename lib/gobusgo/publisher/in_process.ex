@@ -9,7 +9,9 @@ defmodule Gobusgo.Publisher.InProcess do
   The `:subscribers` option, or the application config key `:subscribers`
   under `Gobusgo.Publisher.InProcess`, maps a topic to a
   `{module, function, arguments}`. The backend calls the function with
-  `arguments` followed by a list of record values and expects `:ok`.
+  `arguments` followed by a list of record values and expects `:ok`. A
+  subscriber that returns anything else, or raises, has broken that
+  contract, and the publishing process fails with it.
 
   Records are delivered in publish order, each run of records for one topic
   in one call. Keys and headers are not delivered, and neither is a
