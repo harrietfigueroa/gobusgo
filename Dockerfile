@@ -90,6 +90,12 @@ WORKDIR /app
 USER gobusgo
 COPY --from=build --chown=gobusgo:gobusgo /app/_build/prod/rel/gobusgo ./
 
+# The full commit the image is built from, which /health and the pages name.
+# A build without it, such as a local one, names no commit. It is declared
+# after the release is copied, so a new commit rebuilds no earlier layer.
+ARG GOBUSGO_REVISION=""
+ENV GOBUSGO_REVISION=${GOBUSGO_REVISION}
+
 EXPOSE 4000
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --start-interval=1s --retries=3 \

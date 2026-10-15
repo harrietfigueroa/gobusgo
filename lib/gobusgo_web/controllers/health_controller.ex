@@ -6,7 +6,16 @@ defmodule GobusgoWeb.HealthController do
 
   use Phoenix.Controller, formats: [:json]
 
-  @doc ~s(Answers 200 with `{"status": "ok"}`.)
+  @doc """
+  Answers 200 with `{"status": "ok"}`, and `revision`, the commit the
+  application was built from, beside it when the build names one.
+  """
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def show(conn, _params), do: json(conn, %{"status" => "ok"})
+  def show(conn, _params) do
+    {:ok, revision} = Gobusgo.Config.revision()
+    json(conn, body(revision))
+  end
+
+  defp body(nil), do: %{"status" => "ok"}
+  defp body(revision) when is_binary(revision), do: %{"status" => "ok", "revision" => revision}
 end
