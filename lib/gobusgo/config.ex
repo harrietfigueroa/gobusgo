@@ -10,6 +10,10 @@ defmodule Gobusgo.Config do
   @type tiles :: %{dir: String.t()}
   @type tiles_error :: {:missing, :dir}
 
+  @typedoc "The full commit the application was built from, or `nil` for a build that names none."
+  @type revision :: String.t() | nil
+  @type revision_error :: {:invalid, :revision}
+
   @type one_bus_away :: %{base_url: String.t(), api_key: String.t()}
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
@@ -57,6 +61,10 @@ defmodule Gobusgo.Config do
   @bucket_pattern ~r/\A[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\z/
   @region_pattern ~r/\A[a-z0-9]+(?:-[a-z0-9]+)+\z/
   @endpoint_pattern ~r/\Ahttps:\/\/[a-z0-9.-]+(?::[0-9]{1,5})?\z/
+
+  # A full Git commit name is the 40 lowercase hexadecimal digits of a SHA-1
+  # hash, the object format of the repository.
+  @revision_pattern ~r/\A[0-9a-f]{40}\z/
 
   # The address a relative credentials URI is appended to.
   # https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html — checked 2026-10-11
@@ -167,6 +175,32 @@ defmodule Gobusgo.Config do
   """
   @spec fetch_tiles(Keyword.t()) :: {:ok, tiles()} | {:error, tiles_error()}
   def fetch_tiles(env) when is_list(env), do: fetch_dir(env)
+
+  @doc """
+  Returns the commit the application was built from, from `env`:
+  `:revision`, a full commit name of 40 lowercase hexadecimal digits. A nil
+  or blank value is `{:ok, nil}`, a build that names no commit.
+  """
+  @spec fetch_revision(Keyword.t()) :: {:ok, revision()} | {:error, revision_error()}
+  def fetch_revision(env) when is_list(env) do
+    case text(env, :revision) do
+      nil ->
+        {:ok, nil}
+
+      revision ->
+        if Regex.match?(@revision_pattern, revision) do
+          {:ok, revision}
+        else
+          {:error, {:invalid, :revision}}
+        end
+    end
+  end
+
+  @doc "Reads the commit the running application was built from."
+  @spec revision() :: {:ok, revision()} | {:error, revision_error()}
+  def revision do
+    :gobusgo |> Application.get_env(:revision, []) |> fetch_revision()
+  end
 
   @doc "Reads the tile settings configured for the running application."
   @spec tiles() :: {:ok, tiles()} | {:error, tiles_error()}

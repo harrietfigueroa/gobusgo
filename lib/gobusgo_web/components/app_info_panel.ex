@@ -2,7 +2,8 @@ defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
   The info button of a map page and the panel it opens: what the
   application is, a disclaimer, how to read the map, how OneBusAway data is used, how the rider's location is used, what is recorded of a connection, the
-  credits, and the licenses, from `GobusgoWeb.AppInfo` and the statuses of
+  credits, the licenses, and the commit the application was built from where
+  the build names one, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`.
 
   The panel is a `<dialog>` the browser opens and closes. The button
@@ -176,13 +177,22 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   defp licenses(assigns) do
+    {:ok, revision} = Gobusgo.Config.revision()
+
     assigns =
-      assign(assigns, app_license: AppInfo.app_license(), components: AppInfo.components())
+      assign(assigns,
+        app_license: AppInfo.app_license(),
+        components: AppInfo.components(),
+        revision: revision
+      )
 
     ~H"""
     <section class="flex flex-col gap-2">
       <h3 class="font-semibold">License</h3>
       <p>Gobusgo is offered under the {@app_license.name}. {@app_license.copyright}.</p>
+      <p :if={@revision} id="app-info-revision">
+        This version is built from commit <span class="break-all font-mono">{@revision}</span>.
+      </p>
       <p>The page also uses:</p>
       <ul class="list-disc pl-5">
         <li :for={component <- @components}>{component.name}: {component.license}</li>

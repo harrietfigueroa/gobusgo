@@ -231,6 +231,36 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_revision/1" do
+    @revision "43402796c905c22db533043dee878950c74d5791"
+
+    test "returns the configured commit" do
+      assert Config.fetch_revision(revision: @revision) == {:ok, @revision}
+    end
+
+    for {description, env} <- [
+          {"an empty environment", []},
+          {"a nil commit", [revision: nil]},
+          {"a blank commit", [revision: "  "]}
+        ] do
+      test "returns nil for #{description}" do
+        assert Config.fetch_revision(unquote(env)) == {:ok, nil}
+      end
+    end
+
+    for {description, value} <- [
+          {"an abbreviated commit", "4340279"},
+          {"an uppercase commit", String.upcase("43402796c905c22db533043dee878950c74d5791")},
+          {"a commit with a space after it", "43402796c905c22db533043dee878950c74d5791 "},
+          {"a commit of 41 digits", "43402796c905c22db533043dee878950c74d57910"},
+          {"a branch name", "main"}
+        ] do
+      test "reports the commit as invalid for #{description}" do
+        assert Config.fetch_revision(revision: unquote(value)) == {:error, {:invalid, :revision}}
+      end
+    end
+  end
+
   describe "fetch_secret_key_base/1" do
     @secret String.duplicate("s", 64)
 

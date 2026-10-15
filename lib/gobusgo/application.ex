@@ -57,7 +57,8 @@ defmodule Gobusgo.Application do
          {:ok, %{recorded: recorded}} <- Config.usage(),
          {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap(),
-         {:ok, _tiles} <- Config.tiles() do
+         {:ok, _tiles} <- Config.tiles(),
+         {:ok, _revision} <- Config.revision() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.

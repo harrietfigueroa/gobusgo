@@ -57,6 +57,9 @@ config :gobusgo, :public,
   host: System.get_env("GOBUSGO_PUBLIC_HOST"),
   required: config_env() == :prod
 
+# The commit the application was built from, which the image build sets.
+config :gobusgo, :revision, revision: System.get_env("GOBUSGO_REVISION")
+
 config :gobusgo, :session,
   secret_key_base: System.get_env("SECRET_KEY_BASE"),
   required: config_env() == :prod

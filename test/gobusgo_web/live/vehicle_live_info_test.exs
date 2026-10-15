@@ -34,11 +34,13 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
 
   setup %{tmp_dir: tmp_dir} do
     configured = Application.fetch_env!(:gobusgo, :basemap)
+    configured_revision = Application.get_env(:gobusgo, :revision)
     Application.put_env(:gobusgo, :basemap, dir: tmp_dir)
     restart_agency_view()
 
     on_exit(fn ->
       Application.put_env(:gobusgo, :basemap, configured)
+      Application.put_env(:gobusgo, :revision, configured_revision)
       restart_agency_view()
     end)
   end
@@ -315,6 +317,21 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
         assert text =~ name
         assert text =~ license
       end
+    end
+
+    test "names the commit the application was built from" do
+      revision = "43402796c905c22db533043dee878950c74d5791"
+      Application.put_env(:gobusgo, :revision, revision: revision)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element(@panel <> " #app-info-revision") |> render() =~ revision
+    end
+
+    test "names no commit for an application built without one" do
+      Application.put_env(:gobusgo, :revision, revision: nil)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @panel <> " #app-info-revision")
     end
   end
 end
