@@ -1,5 +1,6 @@
 import {readyEventName} from "./basemap"
 import {announceRiderPopupChange, riderPopupClassName} from "./rider_popups"
+import {alertLines} from "./service_alerts"
 
 const sourceName = "vehicle-markers"
 const roundLayerName = "vehicle-markers-round"
@@ -41,6 +42,7 @@ function featureCollection(markersByAgency) {
         properties: {
           vehicleId: marker.vehicle_id,
           heading: marker.heading,
+          routeId: marker.route_id,
           route: marker.route,
           headsign: marker.headsign,
           schedule: marker.schedule,
@@ -126,13 +128,24 @@ function tripTimeLines(properties) {
   return lines
 }
 
+function appendParagraphs(content, lines) {
+  for (const line of lines) {
+    const paragraph = document.createElement("p")
+    paragraph.textContent = line
+    content.appendChild(paragraph)
+  }
+}
+
 // A popup's content is built as text nodes: the vehicle identifier comes
-// from outside the application and is never parsed as HTML.
+// from outside the application and is never parsed as HTML. The current
+// alerts of the vehicle's route stand under its route and headsign.
 function popupContent(properties, statusLabels) {
-  const lines = [
+  const tripLines = [
     `Vehicle ${properties.vehicleId}`,
     `Route: ${suppliedText(properties.route)}`,
-    `Headsign: ${suppliedText(properties.headsign)}`,
+    `Headsign: ${suppliedText(properties.headsign)}`
+  ]
+  const detailLines = [
     ...tripTimeLines(properties),
     statusLabels.get(properties.status),
     `Location reported: ${properties.locationAge}`,
@@ -140,13 +153,12 @@ function popupContent(properties, statusLabels) {
     `Heading: ${headingText(properties.heading)}`,
     positionNote
   ]
+  const routeIds = typeof properties.routeId === "string" ? [properties.routeId] : []
   const content = document.createElement("div")
 
-  for (const line of lines) {
-    const paragraph = document.createElement("p")
-    paragraph.textContent = line
-    content.appendChild(paragraph)
-  }
+  appendParagraphs(content, tripLines)
+  content.append(...alertLines({routeIds, stopId: null}))
+  appendParagraphs(content, detailLines)
 
   content.firstElementChild.className = titleClassName
   return content

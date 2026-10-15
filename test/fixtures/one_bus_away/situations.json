@@ -1,0 +1,187 @@
+{
+  "references": {
+    "situations": [
+      {
+        "activeWindows": [
+          {
+            "from": 1792231200000,
+            "to": 1792402200000
+          }
+        ],
+        "allAffects": [
+          {
+            "agencyId": "40",
+            "applicationId": "",
+            "directionId": "",
+            "routeId": "40_2LINE",
+            "stopId": "",
+            "tripId": ""
+          }
+        ],
+        "consequenceMessage": "",
+        "consequences": [
+          {
+            "condition": "",
+            "conditionDetails": {
+              "diversionPath": {
+                "length": 0,
+                "levels": "",
+                "points": ""
+              },
+              "diversionStopIds": []
+            }
+          }
+        ],
+        "creationTime": 1792080593599,
+        "description": {
+          "lang": "en",
+          "value": "2 Line will continue operating between Downtown Redmond to South Bellevue stations with 10 minutes between trains. Link shuttle buses will run approximately every 10 to 15 minutes between South Bellevue and Int'l District/Chinatown stations.  \r\n\n2 Line trains will not operate from the International District/Chinatown to Lynnwood City Center stations. Please use 1 Line trains. If you seek to travel through the 2 Line alignment to Bellevue and Redmond, transfer to Link shuttle buses at the International District/Chinatown station.  \r\n\n1 Line trains will operate every eight minutes between Lynnwood City Center and Federal Way Downtown stations.   \r\n\nPlease plan ahead for additional travel time.  \r\n\nSelect the link below to view our alternative service options.  \r\n"
+        },
+        "id": "40_21008",
+        "publicationWindows": [],
+        "reason": "MAINTENANCE",
+        "severity": "noImpact",
+        "summary": {
+          "lang": "en",
+          "value": "Link shuttle buses will replace 2 Line trains between South Bellevue and Int'l District/Chinatown stations for scheduled maintenance from Saturday, October 17 until end of service on Sunday, October 18. "
+        },
+        "url": {
+          "lang": "en",
+          "value": "https://www.soundtransit.org/ride-with-us/changes-affect-my-ride/planned-service-disruptions "
+        }
+      },
+      {
+        "activeWindows": [
+          {
+            "from": 1791899580000
+          }
+        ],
+        "allAffects": [
+          {
+            "agencyId": "23",
+            "applicationId": "",
+            "directionId": "",
+            "routeId": "23_100340",
+            "stopId": "",
+            "tripId": ""
+          }
+        ],
+        "consequenceMessage": "",
+        "consequences": [
+          {
+            "condition": "",
+            "conditionDetails": {
+              "diversionPath": {
+                "length": 0,
+                "levels": "",
+                "points": ""
+              },
+              "diversionStopIds": []
+            }
+          }
+        ],
+        "creationTime": 1792080592780,
+        "description": {
+          "lang": "en",
+          "value": "Customers wanting to travel to and from South Lake Union can also use Metro routes 40, 70, or RapidRide C Line."
+        },
+        "id": "1_96631",
+        "publicationWindows": [],
+        "reason": "UNKNOWN_CAUSE",
+        "severity": "noImpact",
+        "summary": {
+          "lang": "en",
+          "value": "Service on the South Lake Union Streetcar is reduced with trips operating about every 18 minutes until further notice."
+        },
+        "url": {
+          "lang": "en",
+          "value": "https://tripplanner.kingcounty.gov/#/app/nextdepartures/routeheadway/full/98/N/"
+        }
+      },
+      {
+        "activeWindows": [],
+        "allAffects": [
+          {
+            "agencyId": "40",
+            "applicationId": "",
+            "directionId": "",
+            "routeId": "40_100236",
+            "stopId": "",
+            "tripId": ""
+          }
+        ],
+        "consequenceMessage": "",
+        "consequences": [],
+        "creationTime": 1686346686785,
+        "description": {
+          "lang": "en",
+          "value": "Due to a bus system issue found, some ST Express trips will be canceled."
+        },
+        "id": "3_988f57b4-6736-498d-908f-b172bd6d47f4",
+        "publicationWindows": [],
+        "reason": "MAINTENANCE",
+        "severity": "severe",
+        "summary": {
+          "lang": "en",
+          "value": "Due to a bus system issue found, some ST Express trips will be canceled."
+        },
+        "url": {
+          "lang": "en",
+          "value": "https://pugetsound.onebusaway.org/#40_100232"
+        }
+      },
+      {
+        "activeWindows": [
+          {
+            "from": 1791398100000
+          }
+        ],
+        "allAffects": [
+          {
+            "agencyId": "40",
+            "applicationId": "",
+            "directionId": "",
+            "routeId": "40_532",
+            "stopId": "29_355",
+            "tripId": ""
+          },
+          {
+            "agencyId": "40",
+            "applicationId": "",
+            "directionId": "",
+            "routeId": "40_532",
+            "stopId": "1_67655",
+            "tripId": ""
+          }
+        ],
+        "consequenceMessage": "",
+        "consequences": [
+          {
+            "condition": "",
+            "conditionDetails": {
+              "diversionPath": {
+                "length": 0,
+                "levels": "",
+                "points": ""
+              },
+              "diversionStopIds": []
+            }
+          }
+        ],
+        "creationTime": 1792080641953,
+        "description": {
+          "lang": "en",
+          "value": "Affected stops:\r\n(CT Stop #2860) Bellevue Transit Center Bay 8 (to Bellevue Transit Center)\r\n(CT Stop #355) Bellevue Transit Center Bay 4 (to Everett Station)"
+        },
+        "id": "29_74873",
+        "publicationWindows": [],
+        "reason": "CONSTRUCTION",
+        "severity": "noImpact",
+        "summary": {
+          "lang": "en",
+          "value": "Route 532 notice: Construction work impacting the eastern part of Bellevue Transit Center will be ongoing. Use the temporary stops on 110th Ave NE, just south of the transit center entrance."
+        }
+      }
+    ]
+  }
+}

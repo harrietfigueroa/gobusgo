@@ -6,9 +6,12 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
   # recorder writes.
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Gobusgo.OneBusAway.RawVehicleResponse
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleBatch.Records
+  alias Gobusgo.OneBusAway.VehicleBatch.SituationRecords
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Publisher
 
@@ -42,6 +45,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
 
   @request_id "0199c4a2-7e1b-7a3f-9d20-000000000001"
   @fetched_at ~U[2026-10-02 03:15:00Z]
+  @situations_path Path.expand("../../fixtures/one_bus_away/situations.json", __DIR__)
 
   setup context do
     view = Module.concat(__MODULE__, "View#{context.line}")
@@ -50,8 +54,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
   end
 
   defp raw(vehicle_ids, overrides \\ %{}) do
-    %{fetched_at: fetched_at, request_id: request_id} =
-      Map.merge(%{fetched_at: @fetched_at, request_id: @request_id}, overrides)
+    %{fetched_at: fetched_at, request_id: request_id, situations: situations} =
+      Map.merge(%{fetched_at: @fetched_at, request_id: @request_id, situations: []}, overrides)
 
     list =
       for id <- vehicle_ids do
@@ -67,7 +71,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
         "data" => %{
           "limitExceeded" => false,
           "list" => list,
-          "references" => %{"routes" => [], "trips" => []}
+          "references" => %{"routes" => [], "trips" => [], "situations" => situations}
         },
         "text" => "OK",
         "version" => 2
@@ -110,8 +114,12 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
 
   defp decoded(records), do: Enum.map(records, &elem(Records.decode(&1.value), 1))
 
+  defp source_situations do
+    @situations_path |> File.read!() |> JSON.decode!() |> get_in(["references", "situations"])
+  end
+
   describe "process/2 success" do
-    test "publishes the vehicle records, then the manifest", %{view: view} do
+    test "publishes the vehicle records, then the manifest and the situations", %{view: view} do
       raw = raw(["40_b", "40_a"])
 
       assert process(raw, view) ==
@@ -122,12 +130,15 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
                   request_id: @request_id,
                   fetched_at: @fetched_at,
                   vehicle_count: 2,
-                  tombstone_count: 0
+                  tombstone_count: 0,
+                  situation_count: 0,
+                  situation_rejected_count: 0
                 }}
 
-      assert [vehicles, [manifest]] = published_calls()
+      assert [vehicles, [manifest, situations]] = published_calls()
       assert Enum.map(vehicles, & &1.key) == ["vehicle/40/40_a", "vehicle/40/40_b"]
       assert manifest.key == "manifest/40"
+      assert %{topic: "oba.situations.state", key: "vehicles/40"} = situations
 
       assert [{:manifest, %{vehicle_ids: ["40_a", "40_b"], destination: destination}}] =
                decoded([manifest])
@@ -135,10 +146,37 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
       assert destination == raw.destination
     end
 
-    test "publishes the manifest alone for a fetch without vehicles", %{view: view} do
+    test "publishes the manifest and the situations alone for a fetch without vehicles",
+         %{view: view} do
       assert {:ok, %{vehicle_count: 0}} = process(raw([]), view)
 
-      assert [[%{key: "manifest/40"}]] = published_calls()
+      assert [[%{key: "manifest/40"}, %{key: "vehicles/40"}]] = published_calls()
+    end
+
+    test "publishes the situations the response references", %{view: view} do
+      raw = raw(["40_a"], %{situations: source_situations()})
+
+      assert {:ok, %{situation_count: 4, situation_rejected_count: 0}} = process(raw, view)
+
+      assert [_vehicles, [_manifest, record]] = published_calls()
+
+      assert {:ok, %{id: "40", request_id: @request_id, situations: situations}} =
+               SituationRecords.decode(record.value)
+
+      assert Enum.map(situations, & &1.id) == Enum.map(source_situations(), & &1["id"])
+    end
+
+    test "publishes the other situations and logs once at warning when one is rejected",
+         %{view: view} do
+      [first | rest] = source_situations()
+      raw = raw(["40_a"], %{situations: [Map.put(first, "id", "") | rest]})
+
+      log =
+        capture_log(fn ->
+          assert {:ok, %{situation_count: 3, situation_rejected_count: 1}} = process(raw, view)
+        end)
+
+      assert length(String.split(log, "Situations rejected")) == 2
     end
 
     test "publishes a fetch larger than one publisher call completely, manifest last",
@@ -148,7 +186,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
 
       assert {:ok, %{vehicle_count: ^count}} = process(raw(ids), view)
 
-      assert [first, second, third, [manifest]] = published_calls()
+      assert [first, second, third, [manifest, _situations]] = published_calls()
       assert Enum.map([first, second, third], &length/1) == [1000, 1000, 1]
 
       assert Enum.sort(Enum.map(first ++ second ++ third, & &1.key)) ==
@@ -176,7 +214,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
       assert {:ok, %{vehicle_count: 1, tombstone_count: 1}} =
                process(raw(["40_a"], @after_grace), view)
 
-      assert [[%{key: "vehicle/40/40_a"}], [tombstone], [%{key: "manifest/40"}]] =
+      assert [[%{key: "vehicle/40/40_a"}], [tombstone], [%{key: "manifest/40"}, _situations]] =
                published_calls()
 
       assert tombstone == %{
@@ -192,7 +230,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatchTest do
 
       assert {:ok, %{tombstone_count: 0}} = process(raw(["40_a"], @within_grace), view)
 
-      assert [[%{key: "vehicle/40/40_a"}], [%{key: "manifest/40"}]] = published_calls()
+      assert [[%{key: "vehicle/40/40_a"}], [%{key: "manifest/40"}, _situations]] =
+               published_calls()
     end
 
     test "publishes no tombstone for a vehicle that is in the fetch again", %{view: view} do

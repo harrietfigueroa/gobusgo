@@ -116,6 +116,16 @@ defmodule GobusgoWeb.VehicleLive do
   A connected page names each accepted filter it shows to the usage
   recorder, `Gobusgo.Usage`, whose record of the page's connection holds the
   last one. A refused filter is not named.
+
+  Over the map, beside the info button, the page shows the service alerts
+  of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
+  `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
+  `Gobusgo.OneBusAway.VehicleSituationView` and
+  `Gobusgo.OneBusAway.ArrivalSituationView`. A connected page subscribes to
+  both and reads the alerts again when either switches, when the filter
+  changes, and when the route view switches, which renames routes. The
+  popups read the current alerts of their routes from an element the page
+  patches; no event carries them.
   """
 
   use Phoenix.LiveView
@@ -137,6 +147,8 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.MapExtent
   alias GobusgoWeb.RouteOptions
   alias GobusgoWeb.RouteStopTiles
+  alias GobusgoWeb.ServiceAlerts
+  alias GobusgoWeb.ServiceAlertsPanel
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
@@ -148,6 +160,8 @@ defmodule GobusgoWeb.VehicleLive do
   @path "/vehicles"
   @route_view Gobusgo.OneBusAway.RouteView
   @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
+  @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
   @vehicle_markers_event "vehicle-markers:agency"
   @stop_arrivals_event "stop-arrivals:arrivals"
 
@@ -166,7 +180,8 @@ defmodule GobusgoWeb.VehicleLive do
         tile_archive_url: nil,
         kept_route_ids: :every,
         open_stops: %{},
-        viewer_monitor: nil
+        viewer_monitor: nil,
+        service_alerts: %{current: [], upcoming: [], routes: %{}}
       )
 
     case connected?(socket) do
@@ -175,6 +190,8 @@ defmodule GobusgoWeb.VehicleLive do
         :ok = VehicleView.subscribe(%{view: VehicleView, pubsub: @pubsub})
         :ok = FetchView.subscribe(%{view: @route_view, pubsub: @pubsub})
         :ok = FetchView.subscribe(%{view: @arrival_view, pubsub: @pubsub})
+        :ok = FetchView.subscribe(%{view: @vehicle_situation_view, pubsub: @pubsub})
+        :ok = FetchView.subscribe(%{view: @arrival_situation_view, pubsub: @pubsub})
         {:ok, register_viewer(socket, 1)}
 
       false ->
@@ -213,6 +230,7 @@ defmodule GobusgoWeb.VehicleLive do
      socket
      |> assign(basemap: basemap)
      |> assign_route_options(FetchView.current(@route_view))
+     |> assign_service_alerts()
      |> push_fit(shown, basemap)
      |> push_filter_change(shown_filter)}
   end
@@ -246,7 +264,13 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply,
      socket
      |> assign(kept_route_ids: Routes.kept_ids(socket.assigns.filter))
-     |> assign_route_options(FetchView.current(@route_view))}
+     |> assign_route_options(FetchView.current(@route_view))
+     |> assign_service_alerts()}
+  end
+
+  def handle_info({:fetch_view_switched, view}, socket)
+      when view in [@vehicle_situation_view, @arrival_situation_view] do
+    {:noreply, assign_service_alerts(socket)}
   end
 
   def handle_info(
@@ -364,6 +388,7 @@ defmodule GobusgoWeb.VehicleLive do
       />
 
       <AppInfoPanel.panel agencies={@agencies} />
+      <ServiceAlertsPanel.panel :if={@basemap != nil} alerts={@service_alerts} />
     </main>
     """
   end
@@ -655,5 +680,22 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp push_events(socket, name, events) do
     Enum.reduce(events, socket, &push_event(&2, name, &1))
+  end
+
+  # The alerts of the routes the page's filter keeps, as the situation
+  # views hold them now.
+  defp assign_service_alerts(socket) do
+    situation_fetches =
+      FetchView.current(@vehicle_situation_view) ++ FetchView.current(@arrival_situation_view)
+
+    assign(socket,
+      service_alerts:
+        ServiceAlerts.alerts(%{
+          situation_fetches: situation_fetches,
+          kept_route_ids: socket.assigns.kept_route_ids,
+          route_names: ServiceAlerts.route_names(FetchView.current(@route_view)),
+          now: DateTime.utc_now()
+        })
+    )
   end
 end

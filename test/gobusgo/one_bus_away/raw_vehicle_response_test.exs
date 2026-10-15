@@ -122,8 +122,22 @@ defmodule Gobusgo.OneBusAway.RawVehicleResponseTest do
                   fetched_at: ~U[2026-10-02 03:15:00Z],
                   data_sha256: stored.data_sha256,
                   request_id: @request_id,
-                  vehicles: vehicles
+                  vehicles: vehicles,
+                  situations: [],
+                  situation_rejected_count: 0
                 }}
+    end
+
+    test "returns the situations the response references, with the count rejected" do
+      situations = get_in(envelope("situations"), ["references", "situations"])
+      [first | rest] = situations
+      referenced = [Map.put(first, "id", "") | rest]
+      altered = put_in(envelope(), ["data", "references", "situations"], referenced)
+
+      assert {:ok, %{situations: parsed, situation_rejected_count: 1}} =
+               parse(build(%{envelope: altered}))
+
+      assert Enum.map(parsed, & &1.id) == Enum.map(rest, & &1["id"])
     end
 
     test "returns a fetch without vehicles for an agency that has none" do

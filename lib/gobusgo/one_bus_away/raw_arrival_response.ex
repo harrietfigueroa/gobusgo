@@ -27,18 +27,25 @@ defmodule Gobusgo.OneBusAway.RawArrivalResponse do
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.RawResponse
   alias Gobusgo.OneBusAway.Arrivals
+  alias Gobusgo.OneBusAway.Situations
   alias Gobusgo.RequestId
 
   @type t :: RawResponse.t()
 
-  @typedoc "One stored fetch of the arrivals at a stop, as `parse/1` returns it."
+  @typedoc """
+  One stored fetch of the arrivals at a stop, as `parse/1` returns it, with
+  the situations its response references and the count of those
+  `Gobusgo.OneBusAway.Situations.parse/1` rejects.
+  """
   @type parsed :: %{
           stop_id: String.t(),
           destination: String.t(),
           fetched_at: DateTime.t(),
           data_sha256: String.t(),
           request_id: RequestId.t(),
-          arrivals: [Arrivals.arrival()]
+          arrivals: [Arrivals.arrival()],
+          situations: [Situations.t()],
+          situation_rejected_count: non_neg_integer()
         }
 
   @typedoc """
@@ -79,7 +86,8 @@ defmodule Gobusgo.OneBusAway.RawArrivalResponse do
 
   @doc """
   Returns the fetch that `content`, read back from `destination`, stored. The first
-  rule the content breaks returns as a value.
+  rule the content breaks returns as a value. A situation that breaks a rule
+  of `Gobusgo.OneBusAway.Situations` is counted and fails nothing.
   """
   @spec parse(%{destination: String.t(), content: binary()}) ::
           {:ok, parsed()} | {:error, parse_error()}
@@ -95,6 +103,8 @@ defmodule Gobusgo.OneBusAway.RawArrivalResponse do
 
     with {:ok, %{data: data, meta: %{"stopId" => stop_id}} = stored} <- raw,
          {:ok, arrivals} <- parse_arrivals(data, stop_id) do
+      %{situations: situations, rejected_count: rejected_count} = Situations.parse(data)
+
       {:ok,
        %{
          stop_id: stop_id,
@@ -102,7 +112,9 @@ defmodule Gobusgo.OneBusAway.RawArrivalResponse do
          fetched_at: stored.fetched_at,
          data_sha256: stored.data_sha256,
          request_id: stored.request_id,
-         arrivals: arrivals
+         arrivals: arrivals,
+         situations: situations,
+         situation_rejected_count: rejected_count
        }}
     end
   end

@@ -76,6 +76,11 @@ defmodule GobusgoWeb.AppInfoTest do
       assert data_use_text(@cadences) =~ "OneBusAway"
     end
 
+    test "says the alerts are those of the trips running and of the open stops" do
+      assert data_use_text(@cadences) =~
+               "the agencies' alerts for the trips running now and for the stops whose popups are open"
+    end
+
     for {label, fields} <- [
           {"a vehicle interval that is no whole count of seconds", %{vehicle_interval_ms: 1_500}},
           {"a vehicle interval of zero", %{vehicle_interval_ms: 0}},

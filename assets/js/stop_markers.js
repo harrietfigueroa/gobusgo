@@ -6,6 +6,7 @@ import {
   riderPopupChangeEventName,
   riderPopupClassName
 } from "./rider_popups"
+import {alertLines} from "./service_alerts"
 import {
   addSource,
   changeEventName,
@@ -60,7 +61,8 @@ const arrivalUnnamed = "Arrival"
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its popup shows, the routes and the agencies each one text. A text
-// the source does not supply is absent from the feature.
+// the source does not supply is absent from the feature. The feature holds
+// its routes' identifiers with a comma before, between, and after them.
 function stopFromFeature({geometry, properties}) {
   const [lon, lat] = geometry.coordinates
 
@@ -72,7 +74,8 @@ function stopFromFeature({geometry, properties}) {
     code: properties.code,
     direction: properties.direction,
     routes: properties.routes,
-    agencies: properties.agencies
+    agencies: properties.agencies,
+    routeIds: (properties.routeIds ?? "").split(",").filter((routeId) => routeId !== "")
   }
 }
 
@@ -126,14 +129,16 @@ function suppliedText(value) {
 }
 
 // A popup's content is built as text nodes: a stop's texts come from
-// outside the application and are never parsed as HTML.
-function popupContent(properties) {
+// outside the application and are never parsed as HTML. The current alerts
+// of the stop's routes, those of a route as a whole and those that name the
+// stop, stand under its texts.
+function popupContent(stop) {
   const lines = [
-    properties.name,
-    `Stop code: ${suppliedText(properties.code)}`,
-    `Direction: ${suppliedText(properties.direction)}`,
-    `Routes: ${suppliedText(properties.routes)}`,
-    `Agencies: ${suppliedText(properties.agencies)}`
+    stop.name,
+    `Stop code: ${suppliedText(stop.code)}`,
+    `Direction: ${suppliedText(stop.direction)}`,
+    `Routes: ${suppliedText(stop.routes)}`,
+    `Agencies: ${suppliedText(stop.agencies)}`
   ]
   const content = document.createElement("div")
 
@@ -141,6 +146,7 @@ function popupContent(properties) {
     appendParagraph(content, line)
   }
 
+  content.append(...alertLines({routeIds: stop.routeIds, stopId: stop.id}))
   content.firstElementChild.className = titleClassName
   return content
 }

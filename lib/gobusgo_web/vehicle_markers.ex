@@ -72,6 +72,8 @@ defmodule GobusgoWeb.VehicleMarkers do
   the age of the last report and for whether the source has real-time data
   for the vehicle's trip, and `schedule` and `next_stop` the texts it shows
   for the vehicle's lateness and for the stop it reaches next.
+  `route_id` is the route of the vehicle's trip, which the page's other
+  data about the route is keyed by.
   """
   @type marker :: %{
           id: String.t(),
@@ -79,6 +81,7 @@ defmodule GobusgoWeb.VehicleMarkers do
           lat: number(),
           lon: number(),
           heading: non_neg_integer() | nil,
+          route_id: String.t() | nil,
           route: String.t() | nil,
           headsign: String.t() | nil,
           schedule: String.t() | nil,
@@ -210,6 +213,7 @@ defmodule GobusgoWeb.VehicleMarkers do
       lat: lat,
       lon: lon,
       heading: heading(vehicle["orientation"]),
+      route_id: vehicle["routeId"],
       route: route_name(vehicle),
       headsign: vehicle["tripHeadsign"],
       schedule: schedule(vehicle["scheduleDeviationSeconds"], status),
