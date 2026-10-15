@@ -26,11 +26,28 @@ defmodule Gobusgo.OneBusAway.RawVehicleResponse do
 
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.RawResponse
+  alias Gobusgo.OneBusAway.Situations
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.Vehicles
   alias Gobusgo.RequestId
 
   @type t :: RawResponse.t()
+
+  @typedoc """
+  One stored fetch, in the form `Gobusgo.OneBusAway.VehicleBatch.Records.build/1`
+  takes, with the situations its response references and the count of
+  those `Gobusgo.OneBusAway.Situations.parse/1` rejects.
+  """
+  @type parsed :: %{
+          agency_id: String.t(),
+          destination: String.t(),
+          fetched_at: DateTime.t(),
+          data_sha256: String.t(),
+          request_id: RequestId.t(),
+          vehicles: [Records.vehicle()],
+          situations: [Situations.t()],
+          situation_rejected_count: non_neg_integer()
+        }
 
   @typedoc """
     * `:invalid_json` — the content is not JSON.
@@ -70,10 +87,11 @@ defmodule Gobusgo.OneBusAway.RawVehicleResponse do
   @doc """
   Returns the fetch that `content`, read back from `destination`, stored, in
   the form `Gobusgo.OneBusAway.VehicleBatch.Records.build/1` takes. The first
-  rule the content breaks returns as a value.
+  rule the content breaks returns as a value. A situation that breaks a rule
+  of `Gobusgo.OneBusAway.Situations` is counted and fails nothing.
   """
   @spec parse(%{destination: String.t(), content: binary()}) ::
-          {:ok, Records.fetch()} | {:error, parse_error()}
+          {:ok, parsed()} | {:error, parse_error()}
   def parse(%{destination: destination, content: content})
       when is_binary(destination) and is_binary(content) do
     raw =
@@ -86,6 +104,8 @@ defmodule Gobusgo.OneBusAway.RawVehicleResponse do
 
     with {:ok, %{data: data, meta: %{"agencyId" => agency_id}} = stored} <- raw,
          {:ok, vehicles} <- parse_vehicles(data) do
+      %{situations: situations, rejected_count: rejected_count} = Situations.parse(data)
+
       {:ok,
        %{
          agency_id: agency_id,
@@ -93,7 +113,9 @@ defmodule Gobusgo.OneBusAway.RawVehicleResponse do
          fetched_at: stored.fetched_at,
          data_sha256: stored.data_sha256,
          request_id: stored.request_id,
-         vehicles: vehicles
+         vehicles: vehicles,
+         situations: situations,
+         situation_rejected_count: rejected_count
        }}
     end
   end

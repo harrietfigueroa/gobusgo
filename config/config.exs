@@ -74,7 +74,10 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
     "oba.stops.state" =>
       {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]},
     "oba.arrivals.state" =>
-      {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
+      {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]},
+    "oba.situations.state" =>
+      {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
+       [[Gobusgo.OneBusAway.VehicleSituationView, Gobusgo.OneBusAway.ArrivalSituationView]]}
   }
 
 config :gobusgo, Gobusgo.Reader, backend: Gobusgo.Reader.LocalFile

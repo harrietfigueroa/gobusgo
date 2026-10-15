@@ -11,6 +11,7 @@ defmodule Gobusgo.OneBusAway.ArrivalBatchTest do
 
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.ArrivalBatch.Records
+  alias Gobusgo.OneBusAway.ArrivalBatch.SituationRecords
   alias Gobusgo.OneBusAway.RawArrivalResponse
 
   @moduletag capture_log: true
@@ -47,14 +48,27 @@ defmodule Gobusgo.OneBusAway.ArrivalBatchTest do
                 )
   @request_id "0199c4a2-7e1b-7a3f-9d20-000000000001"
   @fetched_at ~U[2026-10-05 01:17:31Z]
+  @situations_path Path.expand("../../fixtures/one_bus_away/situations.json", __DIR__)
 
-  defp stored do
+  defp source_situations do
+    @situations_path |> File.read!() |> JSON.decode!() |> get_in(["references", "situations"])
+  end
+
+  # The live fixture references no situation; `situations` puts some in its
+  # references.
+  defp stored(situations \\ []) do
+    envelope =
+      @fixture_path
+      |> File.read!()
+      |> JSON.decode!()
+      |> put_in(["data", "references", "situations"], situations)
+
     RawArrivalResponse.build(%{
       request_id: @request_id,
       response: %{
         stop_id: "95_7",
         arrivals: nil,
-        envelope: @fixture_path |> File.read!() |> JSON.decode!(),
+        envelope: envelope,
         fetched_at: @fetched_at,
         host: "oba.example.test",
         http_status: 200,
@@ -75,12 +89,16 @@ defmodule Gobusgo.OneBusAway.ArrivalBatchTest do
   end
 
   describe "process/2 success" do
-    test "publishes one record under the stop's key" do
+    test "publishes the arrivals, then the situations, in one call under the stop's key" do
       %{destination: destination, content: content} = stored()
 
       assert {:ok, _result} = process(destination, content)
 
-      assert_received {:published, [%{topic: "oba.arrivals.state", key: "arrivals/95_7"}]}
+      assert_received {:published,
+                       [
+                         %{topic: "oba.arrivals.state", key: "arrivals/95_7"},
+                         %{topic: "oba.situations.state", key: "arrivals/95_7"}
+                       ]}
     end
 
     test "publishes the arrivals of the stored response, in the source's order" do
@@ -88,7 +106,7 @@ defmodule Gobusgo.OneBusAway.ArrivalBatchTest do
 
       {:ok, _result} = process(destination, content)
 
-      assert_received {:published, [%{value: value}]}
+      assert_received {:published, [%{value: value}, _situations]}
 
       assert {:ok, %{id: "95_7", request_id: @request_id, arrivals: arrivals}} =
                Records.decode(value)
@@ -107,8 +125,33 @@ defmodule Gobusgo.OneBusAway.ArrivalBatchTest do
                   stop_id: "95_7",
                   request_id: @request_id,
                   fetched_at: @fetched_at,
-                  arrival_count: 4
+                  arrival_count: 4,
+                  situation_count: 0,
+                  situation_rejected_count: 0
                 }}
+    end
+
+    test "publishes the situations the response references" do
+      %{destination: destination, content: content} = stored(source_situations())
+
+      assert {:ok, %{situation_count: 4}} = process(destination, content)
+      assert_received {:published, [_arrivals, %{value: value}]}
+
+      assert {:ok, %{id: "95_7", situations: situations}} = SituationRecords.decode(value)
+      assert Enum.map(situations, & &1.id) == Enum.map(source_situations(), & &1["id"])
+    end
+
+    test "logs once at warning when a situation is rejected" do
+      [first | rest] = source_situations()
+      %{destination: destination, content: content} = stored([Map.put(first, "id", "") | rest])
+
+      log =
+        capture_log(fn ->
+          assert {:ok, %{situation_count: 3, situation_rejected_count: 1}} =
+                   process(destination, content)
+        end)
+
+      assert length(String.split(log, "Situations rejected")) == 2
     end
 
     test "publishes the same record again for a repeated call" do

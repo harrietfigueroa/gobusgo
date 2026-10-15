@@ -165,7 +165,7 @@ Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096
 | `activeTripId`, `position`, `orientation`, `lastKnownOrientation`, `predicted`, `lastUpdateTime`, `lastLocationUpdateTime`, `serviceDate`, `scheduleDeviation`, stop and distance fields | In `tripStatus` | Always within a trip status |
 | `lastKnownLocation` | In `tripStatus` | Exactly when the vehicle carries `location`, with the same value |
 
-The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, `predicted`, `scheduleDeviation`, `nextStop`, and `nextStopTimeOffset` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `references` and `outOfRange` are kept in the envelope and not read.
+The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, `predicted`, `scheduleDeviation`, `nextStop`, and `nextStopTimeOffset` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `outOfRange`, and its `references` beyond the trips, the routes, and the situations, are kept in the envelope and not read; the situations are read as the section on situations below says.
 
 Orientation values, observed on 2026-10-05 in the newest stored response of each of the 12 agencies (1,635 vehicles, 817 with a trip status). The documentation gives `orientation` as degrees with 0 east, 90 north, 180 west, and 270 south (trip status element, checked 2026-10-04).
 
@@ -272,7 +272,7 @@ Shape of the live response, observed on 2026-10-06 about 19:15 Pacific in 224 re
 - A response held 2 arrivals at the middle and 25 at most; it was 5.7 KB at the middle and 77 KB at most, most of it the `tripStatus` of each arrival, and took 0.14 s at the middle.
 - For an upcoming arrival whose vehicle serves its trip, the predicted time was the scheduled time plus `tripStatus.scheduleDeviation` to the second for agencies `1`, `19`, `40`, `95`, and `97` (141 of 148). Agencies `3`, `20`, and `29` have predictions per stop, a middle difference of 77, 10, and 6 seconds.
 - A scheduled time was never `0`, and an arrival's `stopId` was always the stop asked for.
-- The response's `references`, `nearbyStopIds`, and `situationIds` are kept in the envelope and not read.
+- The response's `nearbyStopIds`, `situationIds`, and `references` beyond the situations are kept in the envelope and not read; the situations are read as the section on situations below says.
 
 Test fixtures under `test/fixtures/one_bus_away/arrivals_and_departures_for_stop*.json` are cut from the live response for the Seattle ferry terminal (`95_7`), whole: four arrivals, of which one has a usable predicted arrival, two have a predicted time about 19.7 hours early, and two have `predicted` `false`.
 
@@ -632,6 +632,30 @@ The arrivals at a stop go through the flow of the other datasets, one fetch whol
 - **View.** `Gobusgo.OneBusAway.ArrivalView` is a `Gobusgo.OneBusAway.FetchView` over `ArrivalBatch.Records`: the newest fetch per stop, read with `current_fetch/2` and announced as `{:fetch_view_switched, Gobusgo.OneBusAway.ArrivalView}`. It holds at most 2,000 stops.
 - **Expiry.** The view is the one fetch view started with `:fetch_age_ms_max`, 40 minutes: a response covers the 35 minutes after its fetch. Each `apply_records/2` call first removes the fetches older than that by the view's clock and announces the removal, and a record of a fetch that old is ignored, so a rebuild from the topic holds only the fetches still of use. A view that receives no records keeps what it holds, so a reader judges a fetch by its `fetched_at`.
 - **No tombstone.** A stop nobody opens again keeps its last fetch in the view until the view drops it at its age bound.
+
+## Situations
+
+OneBusAway calls a service alert a situation. It has no method for them: a response's `data.references.situations` holds the situations of what the response lists, and an element names them by `situationIds` (https://developer.onebusaway.org/api/where — checked 2026-10-15). The application reads them from the two responses it already stores, `vehicles-for-agency` and `arrivals-and-departures-for-stop`, with no request of its own, through the flow of the other datasets (decided in GOB-223 and GOB-224; the agencies' own GTFS-realtime alert feeds are deferred to GOB-225).
+
+What the responses carry, observed on 2026-10-15 in live responses of every agency and of 14 hub stops (GOB-223's comment holds the whole test):
+
+- A `vehicles-for-agency` response references exactly the situations its vehicles' `tripStatus.situationIds` name, and OneBusAway names a situation of a route on every vehicle of that route. A route with no vehicle running has no situation in it, and a situation of a route at named stops is in none.
+- An `arrivals-and-departures-for-stop` response references the situations of its arrivals and of its stop entry, those of a route at the stop included, and sometimes situations neither names. 6 of the 16 distinct situations at the 14 stops were in no vehicle response.
+- A situation's identifier prefix names the agency that publishes it, which can differ from the agency it affects: `3_` and `29_` situations affect Sound Transit routes.
+- `summary`, `description`, and `url` are objects with `lang` and `value`; `url` is absent from some and padded with white space in others. `activeWindows` holds windows of `from` and `to` in milliseconds, is empty for some, and leaves out `to` for others. `allAffects` names an agency and a route, and a stop for a route at a stop, with `""` for what it does not name; `tripId` and `directionId` were always `""`.
+- `severity` was `noImpact` for most, a full 2 Line closure included, and `severe` for one, so it does not rank them; `consequences`, `consequenceMessage`, and `publicationWindows` were empty. None of the four is read.
+
+`Gobusgo.OneBusAway.Situations.parse/1` is the pure function from a response's `data` to its situations, and both raw response parsers return them beside the fetch with the count it rejected. A situation that breaks a rule is rejected alone, so a malformed situation leaves the vehicles and the arrivals of its response as they are; the rules and bounds are in its module doc. An empty `activeWindows` reads as active while published, and a missing or zero `from` or `to` as an open end, GTFS-realtime's reading of `active_period`; whether OneBusAway means the same is unverified.
+
+| | Vehicle situations | Arrival situations |
+| --- | --- | --- |
+| Records | `VehicleBatch.SituationRecords` | `ArrivalBatch.SituationRecords` |
+| Published by | `VehicleBatch.process/2`, in the manifest's call | `ArrivalBatch.process/2`, in the arrivals record's call |
+| Key | `vehicles/<agency id>` | `arrivals/<stop id>` |
+| `type` | `gobusgo.agency.situations.processed.v1` | `gobusgo.stop.situations.processed.v1` |
+| View | `Gobusgo.OneBusAway.VehicleSituationView`, at most 64 agencies | `Gobusgo.OneBusAway.ArrivalSituationView`, at most 2,000 stops, each fetch dropped at 40 minutes as the arrivals view drops one |
+
+Both go to `oba.situations.state`; `Gobusgo.OneBusAway.SituationRecords` holds the record they share, whose `data` holds the identifier, `situations`, `dataSha256`, `destination`, `fetchedAt`, and `requestId`. Each view is a `FetchView`, fed by the one subscriber of the topic, which passes over the other source's records. A fetch replaces its identifier's situations whole, so a situation the next fetch no longer references leaves with it. A processor that rejects a situation logs `warning` `Situations rejected` with `destination` and `rejected_count`.
 
 ## Reconciliation
 

@@ -17,6 +17,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteRebuild
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.RetentionPolicy
   alias Gobusgo.S3.Credentials
@@ -47,6 +48,13 @@ defmodule Gobusgo.Application do
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @arrival_view_stop_count_max 2_000
   @arrival_view_fetch_age_ms_max 40 * 60 * 1_000
+
+  # The situation views are fetch views of the situations each response
+  # references: those of each agency's vehicle fetch, and those of each
+  # stop's arrivals fetch, which leave with the arrivals they came with.
+  @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
+  @vehicle_situation_view_agency_count_max 64
+  @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
   @impl Application
   def start(_type, _args) do
@@ -90,6 +98,17 @@ defmodule Gobusgo.Application do
              name: @arrival_view,
              pubsub: Gobusgo.PubSub,
              records: ArrivalBatch.Records,
+             id_count_max: @arrival_view_stop_count_max,
+             fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
+            {FetchView,
+             name: @vehicle_situation_view,
+             pubsub: Gobusgo.PubSub,
+             records: VehicleBatch.SituationRecords,
+             id_count_max: @vehicle_situation_view_agency_count_max},
+            {FetchView,
+             name: @arrival_situation_view,
+             pubsub: Gobusgo.PubSub,
+             records: ArrivalBatch.SituationRecords,
              id_count_max: @arrival_view_stop_count_max,
              fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
             {Demand, name: Demand, datasets: DemandKey.datasets()}
