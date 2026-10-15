@@ -8,11 +8,13 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   @moduledoc """
   One run of the route and stop tile archive: reads what a map page draws
   with no filter from the views, and builds and stores an archive of it when
-  it differs from what the current archive was built from.
+  its features differ from those the current archive was built from.
 
   The lines are those of `GobusgoWeb.RouteLines` and the stops those of
   `GobusgoWeb.StopMarkers` that a drawn route serves, encoded by
-  `GobusgoWeb.RouteStopTiles.Features`. tippecanoe reads them from two files
+  `GobusgoWeb.RouteStopTiles.Features`. The run hashes the encoded features
+  with SHA-256 and compares the hash with the current archive's, so data
+  fetched again unchanged builds nothing. tippecanoe reads them from two files
   of a working directory of their own, which the run removes, and writes the
   archive there, from zoom #{@zoom_min} to #{@zoom_max}, with its own limits
   on features and bytes per tile turned off, so that no feature is dropped.
@@ -20,7 +22,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   is at most #{@archive_bytes_max} bytes.
 
   A run returns `{:ok, :empty}` while the views hold no line, `{:ok,
-  :unchanged}` when the lines are those of the current archive, `{:ok,
+  :unchanged}` when the features are those of the current archive, `{:ok,
   build}` for an archive it stored and made the current one, and `{:error,
   reason}` for one it did not, which leaves the current archive as it was.
 
@@ -59,12 +61,10 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   @route_path_view Gobusgo.OneBusAway.RoutePathView
 
   @typedoc """
-  What an archive is built from: the version of every drawn line, the lines
-  themselves, and each drawn stop's marker with the identifiers of its
-  drawn routes.
+  What an archive is built from: the drawn lines, and each drawn stop's
+  marker with the identifiers of its drawn routes.
   """
   @type content :: %{
-          versions: RouteLines.versions(),
           lines: [RouteLines.line()],
           stops: [%{marker: StopMarkers.marker(), route_ids: [String.t(), ...]}]
         }
@@ -91,27 +91,50 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
     gather = Keyword.get(options, :gather, &gather/0)
     content = gather.()
 
-    cond do
-      content.versions == %{} ->
-        {:ok, :empty}
-
-      content.versions == RouteStopTiles.built_versions(server) ->
-        {:ok, :unchanged}
-
-      true ->
-        build_logged(content, server, options)
+    case content.lines do
+      [] -> {:ok, :empty}
+      [_line | _rest] -> build_changed(encode(content), server, options)
     end
   end
 
-  defp build_logged(content, server, options) do
+  defp build_changed(encoded, server, options) do
+    if encoded.content_sha256 == RouteStopTiles.built_content_sha256(server) do
+      {:ok, :unchanged}
+    else
+      build_logged(encoded, server, options)
+    end
+  end
+
+  # The text of each input file, one encoded feature per line, the counts,
+  # and the SHA-256 of the two texts, the bytes tippecanoe reads.
+  defp encode(content) do
+    %{routes: routes, skipped_count: skipped_count} = route_features(content.lines)
+    stops = for stop <- content.stops, {:ok, feature} = Features.stop(stop), do: feature
+    routes_text = IO.iodata_to_binary(lines(routes))
+    stops_text = IO.iodata_to_binary(lines(stops))
+
+    %{
+      routes_text: routes_text,
+      stops_text: stops_text,
+      route_count: length(routes),
+      route_skipped_count: skipped_count,
+      stop_count: length(stops),
+      content_sha256: :crypto.hash(:sha256, [routes_text, stops_text])
+    }
+  end
+
+  defp build_logged(encoded, server, options) do
     started_ms = System.monotonic_time(:millisecond)
     now = Keyword.get(options, :now, &DateTime.utc_now/0)
     destination = RouteStopTiles.destination(now.())
 
-    case build(%{content: content, destination: destination}, options) do
+    case build(%{encoded: encoded, destination: destination}, options) do
       {:ok, build} ->
         :ok =
-          RouteStopTiles.record(server, %{destination: destination, versions: content.versions})
+          RouteStopTiles.record(server, %{
+            destination: destination,
+            content_sha256: encoded.content_sha256
+          })
 
         Logger.info(
           "Route stop tiles built",
@@ -131,7 +154,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
     end
   end
 
-  defp build(%{content: content, destination: destination}, options) do
+  defp build(%{encoded: encoded, destination: destination}, options) do
     with {:ok, executable} <- executable(options) do
       work_dir =
         Path.join(
@@ -142,7 +165,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
       try do
         build_in(
           %{
-            content: content,
+            encoded: encoded,
             destination: destination,
             executable: executable,
             work_dir: work_dir
@@ -155,10 +178,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
     end
   end
 
-  defp build_in(%{content: content, destination: destination} = build, options) do
-    %{routes: routes, skipped_count: skipped_count} = route_features(content.lines)
-    stops = for stop <- content.stops, {:ok, feature} = Features.stop(stop), do: feature
-
+  defp build_in(%{encoded: encoded, destination: destination} = build, options) do
     paths = %{
       routes: Path.join(build.work_dir, "routes.geojsonl"),
       stops: Path.join(build.work_dir, "stops.geojsonl"),
@@ -166,8 +186,8 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
     }
 
     with :ok <- file_result(File.mkdir_p(build.work_dir)),
-         :ok <- file_result(File.write(paths.routes, lines(routes))),
-         :ok <- file_result(File.write(paths.stops, lines(stops))),
+         :ok <- file_result(File.write(paths.routes, encoded.routes_text)),
+         :ok <- file_result(File.write(paths.stops, encoded.stops_text)),
          :ok <-
            tippecanoe(%{executable: build.executable, paths: paths, work_dir: build.work_dir}),
          {:ok, archive} <- read_archive(paths.archive),
@@ -175,9 +195,9 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
       {:ok,
        %{
          destination: destination,
-         route_count: length(routes),
-         route_skipped_count: skipped_count,
-         stop_count: length(stops),
+         route_count: encoded.route_count,
+         route_skipped_count: encoded.route_skipped_count,
+         stop_count: encoded.stop_count,
          archive_bytes: byte_size(archive)
        }}
     end
@@ -275,7 +295,6 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
           do: RouteLines.line(%{version: version, path_fetch: path_fetch})
 
     %{
-      versions: versions,
       lines: lines,
       stops:
         stops(%{route_fetches: route_fetches, versions: versions, agency_names: agency_names})
