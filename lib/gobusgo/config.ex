@@ -14,7 +14,7 @@ defmodule Gobusgo.Config do
   @type revision :: String.t() | nil
   @type revision_error :: {:invalid, :revision}
 
-  @type one_bus_away :: %{base_url: String.t(), api_key: String.t()}
+  @type one_bus_away :: Gobusgo.Config.OneBusAway.t()
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
   @type ingestion :: %{scheduled: boolean()}
@@ -76,19 +76,25 @@ defmodule Gobusgo.Config do
   """
   @spec fetch_one_bus_away(Keyword.t()) :: {:ok, one_bus_away()} | {:error, one_bus_away_error()}
   def fetch_one_bus_away(env) when is_list(env) do
-    Enum.reduce_while(@one_bus_away_keys, {:ok, %{}}, fn key, {:ok, settings} ->
-      case Keyword.get(env, key) do
-        value when is_binary(value) ->
-          if String.trim(value) == "" do
-            {:halt, {:error, {:missing, key}}}
-          else
-            {:cont, {:ok, Map.put(settings, key, value)}}
-          end
+    found =
+      Enum.reduce_while(@one_bus_away_keys, {:ok, %{}}, fn key, {:ok, settings} ->
+        case Keyword.get(env, key) do
+          value when is_binary(value) ->
+            if String.trim(value) == "" do
+              {:halt, {:error, {:missing, key}}}
+            else
+              {:cont, {:ok, Map.put(settings, key, value)}}
+            end
 
-        nil ->
-          {:halt, {:error, {:missing, key}}}
-      end
-    end)
+          nil ->
+            {:halt, {:error, {:missing, key}}}
+        end
+      end)
+
+    case found do
+      {:ok, settings} -> {:ok, struct!(Gobusgo.Config.OneBusAway, settings)}
+      {:error, _missing} = error -> error
+    end
   end
 
   @doc "Reads the OneBusAway settings configured for the running application."

@@ -32,7 +32,10 @@ defmodule Gobusgo.OneBusAway.VehicleCycleTest do
   @stub_name VehicleCycle
   @gate Module.concat(__MODULE__, Gate)
   @tasks Module.concat(__MODULE__, Tasks)
-  @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
+  @settings %Gobusgo.Config.OneBusAway{
+    base_url: "https://oba.example.test",
+    api_key: "test-key-3f9a1c07be52"
+  }
 
   # The requests go through a gate of their own that refills at once, so
   # the tests neither wait on the application's gate nor spend its budget.

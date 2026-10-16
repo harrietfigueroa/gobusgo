@@ -36,7 +36,7 @@ defmodule Gobusgo.OneBusAway.ArrivalRecorderTest do
   @stub_name ArrivalRecorder
   @gate Module.concat(__MODULE__, Gate)
   @api_key "test-key-3f9a1c07be52"
-  @settings %{base_url: "https://oba.example.test", api_key: @api_key}
+  @settings %Gobusgo.Config.OneBusAway{base_url: "https://oba.example.test", api_key: @api_key}
   @request_id "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10"
   @event_id "0199c4a2-7e1b-7a3f-9d20-0000000000ff"
   @fetched_at ~U[2026-10-02 03:15:00.500000Z]

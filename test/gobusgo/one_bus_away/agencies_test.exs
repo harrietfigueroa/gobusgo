@@ -11,7 +11,7 @@ defmodule Gobusgo.OneBusAway.AgenciesTest do
   @stub_name Agencies
   @gate Module.concat(__MODULE__, Gate)
   @api_key "test-key-3f9a1c07be52"
-  @settings %{base_url: "https://oba.example.test", api_key: @api_key}
+  @settings %Gobusgo.Config.OneBusAway{base_url: "https://oba.example.test", api_key: @api_key}
   @fast_options [
     plug: {Req.Test, @stub_name},
     gate: @gate,

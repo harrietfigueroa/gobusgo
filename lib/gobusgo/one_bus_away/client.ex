@@ -17,7 +17,7 @@ defmodule Gobusgo.OneBusAway.Client do
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.RequestGate
 
-  @type settings :: %{base_url: String.t(), api_key: String.t()}
+  @type settings :: Gobusgo.Config.OneBusAway.t()
   @type response :: %{status: non_neg_integer(), body: binary()}
   @type failure :: {:transport, term()} | :deadline_exceeded | :rate_limited
 
@@ -50,8 +50,13 @@ defmodule Gobusgo.OneBusAway.Client do
   the least time left in which a request is still worth starting.
   """
   @spec get(settings(), String.t(), Keyword.t()) :: {:ok, response()} | {:error, failure()}
-  def get(%{base_url: base_url, api_key: api_key}, path, options)
+  def get(%{base_url: base_url, api_key: api_key} = settings, path, options)
       when is_binary(base_url) and is_binary(api_key) and is_binary(path) and is_list(options) do
+    Assert.condition(
+      is_struct(settings, Gobusgo.Config.OneBusAway),
+      "settings must be a Gobusgo.Config.OneBusAway"
+    )
+
     options =
       Keyword.validate!(options,
         params: [],
