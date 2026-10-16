@@ -25,7 +25,7 @@ The Transit Data Terms of Use are at https://www.soundtransit.org/help-contacts/
 
 Every request carries the `key` query parameter. The key is read from configuration at runtime (environment variable `ONEBUSAWAY_API_KEY`) and never committed, logged, or written to documentation. The documentation's `key=TEST` example value is not a credential for this project.
 
-Because the key travels in the query string, the HTTP client must redact `key` from URLs in serialized errors and logs. The AGENTS.md rule on stripping auth headers on cross-origin redirects does not apply to a query-string key; instead, do not follow redirects to a different origin, so the key never reaches an origin this integration did not name.
+Because the key travels in the query string, the HTTP client must redact `key` from URLs in serialized errors and logs. The AGENTS.md rule on stripping auth headers on cross-origin redirects does not apply to a query-string key; instead, do not follow redirects to a different origin, so the key never reaches an origin this integration did not name. The settings are a `Gobusgo.Config.OneBusAway` struct, whose inspected form leaves the key out, so a crash report or a log property that holds the settings carries no key (GOB-53); `Gobusgo.OneBusAway.Client.get/3` refuses settings of any other shape, and the tests build the struct. The struct guards `inspect/1` alone: Erlang's own formatting, such as `:sys.get_state/1` or `~p`, prints every field.
 
 ## Request conventions
 

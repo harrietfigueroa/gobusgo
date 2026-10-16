@@ -10,7 +10,16 @@ defmodule Gobusgo.ConfigTest do
       env = [base_url: "https://oba.example.test", api_key: "secret"]
 
       assert Config.fetch_one_bus_away(env) ==
-               {:ok, %{base_url: "https://oba.example.test", api_key: "secret"}}
+               {:ok, %Config.OneBusAway{base_url: "https://oba.example.test", api_key: "secret"}}
+    end
+
+    test "leaves the API key out of the inspected settings" do
+      env = [base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"]
+      {:ok, settings} = Config.fetch_one_bus_away(env)
+
+      inspected = inspect(settings, limit: :infinity)
+      refute inspected =~ "test-key-3f9a1c07be52"
+      assert inspected =~ "https://oba.example.test"
     end
 
     for key <- [:base_url, :api_key] do

@@ -14,7 +14,10 @@ defmodule Gobusgo.OneBusAway.ClientTest do
   @moduletag capture_log: true
 
   @stub_name Client
-  @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
+  @settings %Gobusgo.Config.OneBusAway{
+    base_url: "https://oba.example.test",
+    api_key: "test-key-3f9a1c07be52"
+  }
   @path "/api/where/example.json"
 
   defp start_gate(limits) do
@@ -58,6 +61,21 @@ defmodule Gobusgo.OneBusAway.ClientTest do
     started_at_ms = System.monotonic_time(:millisecond)
     result = function.()
     {result, System.monotonic_time(:millisecond) - started_at_ms}
+  end
+
+  describe "get/3 settings" do
+    test "refuses settings that are not the settings struct, with the key out of the message" do
+      settings = Map.from_struct(@settings)
+      gate = start_gate([])
+      stub_status(200)
+
+      exception =
+        assert_raise AssertionError, fn ->
+          Client.get(settings, @path, plug: {Req.Test, @stub_name}, gate: gate, max_retries: 0)
+        end
+
+      refute Exception.message(exception) =~ @settings.api_key
+    end
   end
 
   describe "get/3 query parameters" do
@@ -107,7 +125,11 @@ defmodule Gobusgo.OneBusAway.ClientTest do
         )
 
       {:ok, {_address, port}} = ThousandIsland.listener_info(server)
-      %{base_url: "http://localhost:#{port}", api_key: "test-key-3f9a1c07be52"}
+
+      %Gobusgo.Config.OneBusAway{
+        base_url: "http://localhost:#{port}",
+        api_key: "test-key-3f9a1c07be52"
+      }
     end
 
     for {name, ip, transport_options} <- [
@@ -230,7 +252,7 @@ defmodule Gobusgo.OneBusAway.ClientTest do
            "oba.example.test"}
         ] do
       test "returns the host name alone for #{name}" do
-        settings = %{base_url: unquote(base_url), api_key: "test-key"}
+        settings = %Gobusgo.Config.OneBusAway{base_url: unquote(base_url), api_key: "test-key"}
 
         assert Client.host(settings) == unquote(expected)
       end
@@ -238,14 +260,17 @@ defmodule Gobusgo.OneBusAway.ClientTest do
 
     test "raises for a base URL without a host" do
       assert_raise AssertionError, ~r/host/, fn ->
-        Client.host(%{base_url: "not a url", api_key: "test-key"})
+        Client.host(%Gobusgo.Config.OneBusAway{base_url: "not a url", api_key: "test-key"})
       end
     end
 
     test "keeps the base URL out of the raised message" do
       exception =
         assert_raise AssertionError, fn ->
-          Client.host(%{base_url: "user:secret-3f9a", api_key: "test-key"})
+          Client.host(%Gobusgo.Config.OneBusAway{
+            base_url: "user:secret-3f9a",
+            api_key: "test-key"
+          })
         end
 
       refute exception.message =~ "secret-3f9a"

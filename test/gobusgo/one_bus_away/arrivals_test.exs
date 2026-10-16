@@ -15,7 +15,7 @@ defmodule Gobusgo.OneBusAway.ArrivalsTest do
   @stub_name Arrivals
   @gate Module.concat(__MODULE__, Gate)
   @api_key "test-key-3f9a1c07be52"
-  @settings %{base_url: "https://oba.example.test", api_key: @api_key}
+  @settings %Gobusgo.Config.OneBusAway{base_url: "https://oba.example.test", api_key: @api_key}
   @fetched_at ~U[2026-10-07 02:19:53.123456Z]
   @stop_id "95_7"
   @fast_options [

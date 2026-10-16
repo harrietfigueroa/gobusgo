@@ -21,7 +21,10 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderLocalFileTest do
   @fixture_path Path.expand("../../fixtures/one_bus_away/agencies_with_coverage.json", __DIR__)
   @stub_name AgencyRecorderLocalFile
   @gate Module.concat(__MODULE__, Gate)
-  @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
+  @settings %Gobusgo.Config.OneBusAway{
+    base_url: "https://oba.example.test",
+    api_key: "test-key-3f9a1c07be52"
+  }
 
   # The requests go through a gate of their own that refills at once, so
   # the tests neither wait on the application's gate nor spend its budget.

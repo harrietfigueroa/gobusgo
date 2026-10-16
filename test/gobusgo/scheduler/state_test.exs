@@ -166,7 +166,8 @@ defmodule Gobusgo.Scheduler.StateTest do
         :ok = Demand.register(demand, DemandKey.vehicles())
 
         specs =
-          Sources.specs(%{base_url: "https://oba.example.test", api_key: "test-key"},
+          Sources.specs(
+            %Gobusgo.Config.OneBusAway{base_url: "https://oba.example.test", api_key: "test-key"},
             demand: demand,
             vehicle_cycle_options: [],
             route_cycle_options: [],

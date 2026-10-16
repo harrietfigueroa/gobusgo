@@ -41,7 +41,10 @@ defmodule Gobusgo.OneBusAway.ArrivalCycleTest do
   @stub_name ArrivalCycle
   @gate Module.concat(__MODULE__, Gate)
   @tasks Module.concat(__MODULE__, Tasks)
-  @settings %{base_url: "https://oba.example.test", api_key: "test-key-3f9a1c07be52"}
+  @settings %Gobusgo.Config.OneBusAway{
+    base_url: "https://oba.example.test",
+    api_key: "test-key-3f9a1c07be52"
+  }
   @now ~U[2026-10-07 02:30:00Z]
   @fresh DateTime.add(@now, -60, :second)
   @stale DateTime.add(@now, -600, :second)
