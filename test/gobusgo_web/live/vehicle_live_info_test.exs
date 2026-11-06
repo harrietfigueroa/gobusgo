@@ -267,6 +267,19 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert text =~ AppInfo.location()
     end
 
+    test "says how a favorite stop is kept, in a section of its own" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-favorite-stop")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.favorite_stop()
+    end
+
     test "links the terms the data is provided under" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       %{name: name, url: url} = AppInfo.terms()

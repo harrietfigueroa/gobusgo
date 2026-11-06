@@ -72,6 +72,10 @@ defmodule GobusgoWeb.AppInfoPanel do
           <h3 class="font-semibold">Your location</h3>
           <p>{AppInfo.location()}</p>
         </section>
+        <section id="app-info-favorite-stop" class="flex flex-col gap-2">
+          <h3 class="font-semibold">Your favorite stop</h3>
+          <p>{AppInfo.favorite_stop()}</p>
+        </section>
         <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />

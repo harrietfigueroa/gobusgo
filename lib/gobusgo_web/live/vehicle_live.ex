@@ -117,6 +117,12 @@ defmodule GobusgoWeb.VehicleLive do
   recorder, `Gobusgo.Usage`, whose record of the page's connection holds the
   last one. A refused filter is not named.
 
+  Under the filter's controls, on a page with a basemap, the page renders a
+  hidden panel for the rider's favorite stop and leaves its content to the
+  `FavoriteStop` hook: the browser keeps the favorite and opens its stop
+  with `stop-arrivals:open`, as for a stop's popup, so the page serves the
+  favorite's arrivals with no state of its own for it.
+
   Over the map, beside the info button, the page shows the service alerts
   of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
   `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
@@ -378,6 +384,16 @@ defmodule GobusgoWeb.VehicleLive do
           This filter is not valid.
           <.link patch="/vehicles" class="underline">Remove the filter</.link>
         </p>
+
+        <section
+          id="favorite-stop"
+          phx-hook="FavoriteStop"
+          phx-update="ignore"
+          aria-label="Favorite stop"
+          class="surface w-xs max-w-[calc(100vw-1rem)] px-3 py-2 text-sm shadow"
+          hidden
+        >
+        </section>
       </div>
 
       <.map_elements

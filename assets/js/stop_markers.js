@@ -7,6 +7,9 @@ import {
   riderPopupClassName
 } from "./rider_popups"
 import {alertLines} from "./service_alerts"
+import {appendParagraph, writeArrivals} from "./stop_arrivals"
+import {changeEventName as favoriteChangeEventName, setFavorite, storedFavorite} from "./favorite_stop"
+import {holdStop, popupHolder, releaseStop} from "./stop_holds"
 import {
   addSource,
   changeEventName,
@@ -50,14 +53,9 @@ const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left
 const measuredSide = "above"
 const notSupplied = "Not supplied"
 const titleClassName = "popup-title"
-const arrivalsHeading = "Arrivals"
-const arrivalsWaiting = "Waiting for this stop's arrivals"
-const arrivalsNone = "No arrivals soon"
-const arrivalsRefused = "No arrivals for this stop"
-const arrivalsBusy = "Too many stops open; close one to see this stop's arrivals"
-const arrivalNow = "now"
-const arrivalScheduledNote = " (scheduled)"
-const arrivalUnnamed = "Arrival"
+const favoriteButtonClassName = "mt-1 text-left underline"
+const favoriteText = "★ Your favorite stop"
+const notFavoriteText = "☆ Make this your favorite stop"
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its popup shows, the routes and the agencies each one text. A text
@@ -151,81 +149,53 @@ function popupContent(stop) {
   return content
 }
 
-function appendParagraph(element, text) {
-  const paragraph = document.createElement("p")
-  paragraph.textContent = text
-  element.appendChild(paragraph)
-}
-
-// One arrival as a line: where it goes, and how soon. A time that is the
-// schedule and no prediction says so.
-function arrivalText({route, headsign, minutes, predicted}) {
-  const names = []
-
-  if (typeof route === "string") {
-    names.push(route)
-  }
-
-  if (typeof headsign === "string") {
-    names.push(`to ${headsign}`)
-  }
-
-  const name = names.length === 0 ? arrivalUnnamed : names.join(" ")
-  const time = minutes === 0 ? arrivalNow : `${minutes} min`
-  const note = predicted ? "" : arrivalScheduledNote
-
-  return `${name}: ${time}${note}`
-}
-
-// The heading of a stop's arrivals, with the age of the fetch they come
-// from once it is a minute old.
-function arrivalsHeadingText(ageMinutes) {
-  if (ageMinutes >= 1) {
-    return `${arrivalsHeading} (as of ${ageMinutes} min ago)`
-  } else {
-    return arrivalsHeading
-  }
-}
-
-// The lines a popup shows for what the server says of its stop's arrivals.
-function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
-  switch (status) {
-    case "waiting":
-      return [arrivalsWaiting]
-    case "refused":
-      return [arrivalsRefused]
-    case "busy":
-      return [arrivalsBusy]
-    case "arrivals":
-      if (arrivals.length === 0) {
-        return [arrivalsHeadingText(ageMinutes), arrivalsNone]
-      } else {
-        return [arrivalsHeadingText(ageMinutes), ...arrivals.map(arrivalText)]
-      }
-    default:
-      throw new Error(`unknown arrivals status: ${status}`)
-  }
-}
-
-// Writes a stop's arrivals into its popup as text nodes: the names come
-// from outside the application and are never parsed as HTML.
-function writeArrivals(element, shown) {
-  element.replaceChildren()
-
-  for (const line of arrivalsLines(shown)) {
-    appendParagraph(element, line)
-  }
-}
-
 // A popup's content with the element its stop's arrivals are written into,
 // which says that it is waiting for them.
 function popupElements(stop) {
   const content = popupContent(stop)
+  const favoriteButton = favoriteButtonOf(stop)
   const arrivalsElement = document.createElement("div")
   writeArrivals(arrivalsElement, {status: "waiting"})
-  content.appendChild(arrivalsElement)
+  content.append(favoriteButton, arrivalsElement)
 
-  return {content, arrivalsElement}
+  return {content, favoriteButton, arrivalsElement}
+}
+
+function isFavoriteStop(stopId) {
+  const favorite = storedFavorite()
+  return favorite !== null && favorite.stopId === stopId
+}
+
+// The button that makes a popup's stop the rider's favorite, or removes it
+// when it is the favorite already. A stop the source names no name for is
+// stored under its identifier.
+function favoriteButtonOf(stop) {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = favoriteButtonClassName
+  button.addEventListener("click", () => {
+    if (isFavoriteStop(stop.id)) {
+      setFavorite(null)
+    } else {
+      setFavorite({stopId: stop.id, name: suppliedName(stop)})
+    }
+  })
+
+  showFavorite({button, isFavorite: isFavoriteStop(stop.id)})
+  return button
+}
+
+function suppliedName(stop) {
+  if (typeof stop.name === "string" && stop.name !== "") {
+    return stop.name
+  } else {
+    return stop.id
+  }
+}
+
+function showFavorite({button, isFavorite}) {
+  button.textContent = isFavorite ? favoriteText : notFavoriteText
+  button.setAttribute("aria-pressed", String(isFavorite))
 }
 
 // The options of a stop's popup. One that opens by itself stands on the
@@ -278,6 +248,7 @@ export const StopMarkers = {
     this.popupSizes = new Map()
     this.tipLength = null
     this.zoom = null
+    this.push = (event, payload) => { this.pushEvent(event, payload) }
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
@@ -315,9 +286,20 @@ export const StopMarkers = {
 
     this.onRiderPopupChange = () => { this.scheduleFollow() }
 
+    // A favorite set from one popup, or removed from the panel, changes the
+    // button of every open popup.
+    this.onFavoriteChange = (event) => {
+      const {favorite} = event.detail
+
+      for (const [stopId, open] of this.openPopups) {
+        showFavorite({button: open.favoriteButton, isFavorite: favorite !== null && favorite.stopId === stopId})
+      }
+    }
+
     window.addEventListener(readyEventName, this.onBasemapReady)
     window.addEventListener(changeEventName, this.onChange)
     window.addEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
+    window.addEventListener(favoriteChangeEventName, this.onFavoriteChange)
 
     // Arrivals of a stop whose popup has closed are dropped.
     this.handleEvent("stop-arrivals:arrivals", (shown) => {
@@ -341,17 +323,17 @@ export const StopMarkers = {
 
   // Opens a stop's popup and tells the page, which answers with the stop's
   // arrivals and sends them again whenever they change, until the popup
-  // closes.
+  // closes and nothing else holds the stop.
   // `auto` says the popup opens by itself, for a view that shows few stops,
   // and `side` is then the side of its stop it stands on; a popup the rider
   // opens has a null `side`.
   openPopup({stop, auto, side}) {
-    const {content, arrivalsElement} = popupElements(stop)
-    const open = {popup: null, content, arrivalsElement, auto, side, closedByRider: true}
+    const {content, favoriteButton, arrivalsElement} = popupElements(stop)
+    const open = {popup: null, content, favoriteButton, arrivalsElement, auto, side, closedByRider: true}
 
     this.openPopups.set(stop.id, open)
     this.showPopup({stop, open})
-    this.pushEvent("stop-arrivals:open", {stop_id: stop.id})
+    holdStop({pushEvent: this.push, stopId: stop.id, holder: popupHolder})
 
     if (auto === false) {
       announceRiderPopupChange()
@@ -371,7 +353,7 @@ export const StopMarkers = {
     popup.on("close", () => {
       if (this.openPopups.get(stopId) === open && open.popup === popup) {
         this.openPopups.delete(stopId)
-        this.pushEvent("stop-arrivals:close", {stop_id: stopId})
+        releaseStop({pushEvent: this.push, stopId, holder: popupHolder})
 
         if (open.auto) {
           if (open.closedByRider) {
@@ -630,6 +612,7 @@ export const StopMarkers = {
     window.removeEventListener(readyEventName, this.onBasemapReady)
     window.removeEventListener(changeEventName, this.onChange)
     window.removeEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
+    window.removeEventListener(favoriteChangeEventName, this.onFavoriteChange)
     window.clearTimeout(this.followTimer)
   }
 }

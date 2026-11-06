@@ -161,6 +161,20 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "favorite_stop/0" do
+    test "says the browser remembers the favorite stop" do
+      assert AppInfo.favorite_stop() =~ "Your browser remembers your favorite stop"
+    end
+
+    test "says the server learns the stop only to fetch its arrivals" do
+      assert AppInfo.favorite_stop() =~ "only to fetch its arrivals"
+    end
+
+    test "says no usage record holds the stop" do
+      assert AppInfo.favorite_stop() =~ "no usage record holds it"
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =
