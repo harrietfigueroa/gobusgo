@@ -162,16 +162,16 @@ defmodule GobusgoWeb.AppInfoTest do
   end
 
   describe "favorite_stop/0" do
-    test "says the browser remembers the favorite stop" do
-      assert AppInfo.favorite_stop() =~ "Your browser remembers your favorite stop"
+    test "says the browser remembers the favorite stops" do
+      assert AppInfo.favorite_stop() =~ "Your browser remembers your favorite stops"
     end
 
-    test "says the server learns the stop only to fetch its arrivals" do
-      assert AppInfo.favorite_stop() =~ "only to fetch its arrivals"
+    test "says the server learns each stop only to fetch its arrivals" do
+      assert AppInfo.favorite_stop() =~ "each stop only to fetch its arrivals"
     end
 
-    test "says no usage record holds the stop" do
-      assert AppInfo.favorite_stop() =~ "no usage record holds it"
+    test "says no usage record holds the stops" do
+      assert AppInfo.favorite_stop() =~ "no usage record holds them"
     end
   end
 

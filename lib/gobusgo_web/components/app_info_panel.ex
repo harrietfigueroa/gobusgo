@@ -73,7 +73,7 @@ defmodule GobusgoWeb.AppInfoPanel do
           <p>{AppInfo.location()}</p>
         </section>
         <section id="app-info-favorite-stop" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Your favorite stop</h3>
+          <h3 class="font-semibold">Your favorite stops</h3>
           <p>{AppInfo.favorite_stop()}</p>
         </section>
         <.recorded />

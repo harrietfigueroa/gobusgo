@@ -8,7 +8,7 @@ defmodule GobusgoWeb.AppInfo do
   What the info panel of a map page says about the application: what it is,
   that it is independent of the agencies, how it uses OneBusAway data,
   how it uses the rider's location,
-  how it keeps a favorite stop,
+  how it keeps favorite stops,
   what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
@@ -88,9 +88,9 @@ defmodule GobusgoWeb.AppInfo do
               "not receive it. The browser remembers only that you used the button, so " <>
               "that the map centers on you again on your next visit."
 
-  @favorite_stop "Your browser remembers your favorite stop. While a page is open, " <>
-                   "Gobusgo's server learns the stop only to fetch its arrivals, as for any " <>
-                   "stop you open, and no usage record holds it."
+  @favorite_stop "Your browser remembers your favorite stops. While a page is open, " <>
+                   "Gobusgo's server learns each stop only to fetch its arrivals, as for " <>
+                   "any stop you open, and no usage record holds them."
 
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
@@ -189,7 +189,7 @@ defmodule GobusgoWeb.AppInfo do
   @spec location() :: String.t()
   def location, do: @location
 
-  @doc "The statement of how a map page keeps a rider's favorite stop."
+  @doc "The statement of how a map page keeps a rider's favorite stops."
   @spec favorite_stop() :: String.t()
   def favorite_stop, do: @favorite_stop
 

@@ -8,7 +8,14 @@ import {
 } from "./rider_popups"
 import {alertLines} from "./service_alerts"
 import {appendParagraph, writeArrivals} from "./stop_arrivals"
-import {changeEventName as favoriteChangeEventName, setFavorite, storedFavorite} from "./favorite_stop"
+import {
+  addFavorite,
+  changeEventName as favoriteChangeEventName,
+  favoriteCountMax,
+  favoritesFullText,
+  removeFavorite,
+  storedFavorites
+} from "./favorite_stop"
 import {holdStop, popupHolder, releaseStop} from "./stop_holds"
 import {
   addSource,
@@ -41,9 +48,6 @@ const hasLabel = ["!=", ["get", "label"], ""]
 // The zoom from which a screen holds few enough stops that their popups
 // stand apart.
 const autoOpenZoomMin = 16
-// The most stops on screen whose popups open by themselves, which is the
-// most stops the server keeps open for one page.
-const autoOpenStopCountMax = 5
 // The room between two popups, and between a popup and a rider's.
 const popupGapPixels = 4
 // MapLibre names the edge of a popup that touches its point, which is the
@@ -109,9 +113,9 @@ function labelFilter() {
 
 // The stops whose popups are open by themselves in a view at `zoom` that
 // shows the stops of `visibleStopIds`: all of them in a view zoomed in
-// close that shows few, and none in any other view.
-export function autoOpenStopIds({zoom, visibleStopIds}) {
-  if (zoom >= autoOpenZoomMin && visibleStopIds.length <= autoOpenStopCountMax) {
+// close that shows at most `countMax`, and none in any other view.
+export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
+  if (zoom >= autoOpenZoomMin && visibleStopIds.length <= countMax) {
     return visibleStopIds
   } else {
     return []
@@ -162,26 +166,26 @@ function popupElements(stop) {
 }
 
 function isFavoriteStop(stopId) {
-  const favorite = storedFavorite()
-  return favorite !== null && favorite.stopId === stopId
+  return storedFavorites().some((favorite) => favorite.stopId === stopId)
 }
 
-// The button that makes a popup's stop the rider's favorite, or removes it
-// when it is the favorite already. A stop the source names no name for is
-// stored under its identifier.
+// The button that makes a popup's stop one of the rider's favorites, or
+// removes it when it is one already. A stop the source names no name for is
+// stored under its identifier. A rider with every favorite taken removes one
+// before adding another.
 function favoriteButtonOf(stop) {
   const button = document.createElement("button")
   button.type = "button"
   button.className = favoriteButtonClassName
   button.addEventListener("click", () => {
     if (isFavoriteStop(stop.id)) {
-      setFavorite(null)
+      removeFavorite(stop.id)
     } else {
-      setFavorite({stopId: stop.id, name: suppliedName(stop)})
+      addFavorite({stopId: stop.id, name: suppliedName(stop)})
     }
   })
 
-  showFavorite({button, isFavorite: isFavoriteStop(stop.id)})
+  showFavorite({button, stopId: stop.id, favorites: storedFavorites()})
   return button
 }
 
@@ -193,8 +197,19 @@ function suppliedName(stop) {
   }
 }
 
-function showFavorite({button, isFavorite}) {
-  button.textContent = isFavorite ? favoriteText : notFavoriteText
+function showFavorite({button, stopId, favorites}) {
+  const isFavorite = favorites.some((favorite) => favorite.stopId === stopId)
+  const isFull = isFavorite === false && favorites.length >= favoriteCountMax()
+
+  if (isFavorite) {
+    button.textContent = favoriteText
+  } else if (isFull) {
+    button.textContent = favoritesFullText(favoriteCountMax())
+  } else {
+    button.textContent = notFavoriteText
+  }
+
+  button.disabled = isFull
   button.setAttribute("aria-pressed", String(isFavorite))
 }
 
@@ -249,6 +264,9 @@ export const StopMarkers = {
     this.tipLength = null
     this.zoom = null
     this.push = (event, payload) => { this.pushEvent(event, payload) }
+    // The most stops on screen whose popups open by themselves, which the
+    // page's element carries.
+    this.autoOpenCountMax = Number(this.el.dataset.autoOpenCountMax)
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
@@ -286,13 +304,13 @@ export const StopMarkers = {
 
     this.onRiderPopupChange = () => { this.scheduleFollow() }
 
-    // A favorite set from one popup, or removed from the panel, changes the
-    // button of every open popup.
+    // A favorite added from one popup, or removed from the panel, changes
+    // the button of every open popup.
     this.onFavoriteChange = (event) => {
-      const {favorite} = event.detail
+      const {favorites} = event.detail
 
       for (const [stopId, open] of this.openPopups) {
-        showFavorite({button: open.favoriteButton, isFavorite: favorite !== null && favorite.stopId === stopId})
+        showFavorite({button: open.favoriteButton, stopId, favorites})
       }
     }
 
@@ -494,7 +512,8 @@ export const StopMarkers = {
       }
     }
 
-    const wanted = autoOpenStopIds({zoom, visibleStopIds}).filter((stopId) => this.opensByItself(stopId))
+    const wanted = autoOpenStopIds({zoom, visibleStopIds, countMax: this.autoOpenCountMax})
+      .filter((stopId) => this.opensByItself(stopId))
     const sidesByStop = this.popupSides(wanted)
 
     // The closings go first, so the page never holds more stops open than

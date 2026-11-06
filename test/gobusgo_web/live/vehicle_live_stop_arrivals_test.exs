@@ -22,6 +22,7 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
+  alias GobusgoWeb.VehicleLive.OpenStops
 
   @moduletag :tmp_dir
   @moduletag capture_log: true
@@ -271,19 +272,21 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
     end
 
     test "is answered with busy beyond the stops one page has open", %{now: now} do
-      stop_ids = for index <- 1..6, do: "1_#{index}"
+      open_count_max = OpenStops.open_count_max()
+      stop_ids = for index <- 1..(open_count_max + 1), do: "1_#{index}"
       apply_stops(stop_ids, now)
       view = open_page()
 
-      for stop_id <- Enum.take(stop_ids, 5) do
+      for stop_id <- Enum.take(stop_ids, open_count_max) do
         open_stop(view, stop_id)
         assert_push_event(view, @event, %{stop_id: ^stop_id, status: :waiting})
       end
 
-      open_stop(view, "1_6")
+      beyond = List.last(stop_ids)
+      open_stop(view, beyond)
 
-      assert_push_event(view, @event, %{stop_id: "1_6", status: :busy})
-      assert open_stop_ids() == Enum.take(stop_ids, 5)
+      assert_push_event(view, @event, %{stop_id: ^beyond, status: :busy})
+      assert Enum.sort(open_stop_ids()) == Enum.sort(Enum.take(stop_ids, open_count_max))
     end
 
     test "again sends the arrivals again", %{now: now} do

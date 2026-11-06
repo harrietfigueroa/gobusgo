@@ -9,6 +9,8 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias GobusgoWeb.VehicleLive.OpenStops
+
   @moduletag :tmp_dir
   @moduletag capture_log: true
 
@@ -40,7 +42,7 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
       write_manifest(tmp_dir)
     end
 
-    test "renders the favorite stop's panel hidden, for its hook to fill" do
+    test "renders the favorite stops' panel hidden, for its hook to fill" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       panel = panel(view)
 
@@ -58,6 +60,37 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(view, "div:has(> #vehicle-filter) > #{@panel}")
+    end
+
+    test "hands the panel's hook the most favorites a rider keeps" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> panel() |> LazyHTML.attribute("data-favorite-count-max") ==
+               [Integer.to_string(OpenStops.favorite_count_max())]
+    end
+
+    test "hands the stops' hook the most popups that open by themselves" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      [count] =
+        view
+        |> element("#stop-markers")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("data-auto-open-count-max")
+
+      assert count == Integer.to_string(OpenStops.auto_open_count_max())
+    end
+  end
+
+  describe "OpenStops.open_count_max/0" do
+    test "is room for every favorite and every popup that opens by itself" do
+      assert OpenStops.open_count_max() ==
+               OpenStops.favorite_count_max() + OpenStops.auto_open_count_max()
+    end
+
+    test "keeps six favorites" do
+      assert OpenStops.favorite_count_max() == 6
     end
   end
 

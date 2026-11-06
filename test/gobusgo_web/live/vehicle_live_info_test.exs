@@ -267,7 +267,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert text =~ AppInfo.location()
     end
 
-    test "says how a favorite stop is kept, in a section of its own" do
+    test "says how favorite stops are kept, in a section of its own" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       text =
