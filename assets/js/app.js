@@ -2,6 +2,7 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
+import {FavoriteStop} from "./favorite_stop"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {LocalTime} from "./service_alerts"
@@ -34,6 +35,7 @@ function client() {
 const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     Basemap,
+    FavoriteStop,
     LocalTime,
     RouteLines,
     RouteStopTiles,

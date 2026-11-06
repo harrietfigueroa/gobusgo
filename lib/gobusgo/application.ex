@@ -111,7 +111,10 @@ defmodule Gobusgo.Application do
              records: ArrivalBatch.SituationRecords,
              id_count_max: @arrival_view_stop_count_max,
              fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
-            {Demand, name: Demand, datasets: DemandKey.datasets()}
+            {Demand,
+             name: Demand,
+             datasets: DemandKey.datasets(),
+             holder_item_count_max: GobusgoWeb.VehicleLive.OpenStops.open_count_max()}
           ] ++
           usage_children(recorded) ++
           [

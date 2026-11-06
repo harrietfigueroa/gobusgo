@@ -117,6 +117,13 @@ defmodule GobusgoWeb.VehicleLive do
   recorder, `Gobusgo.Usage`, whose record of the page's connection holds the
   last one. A refused filter is not named.
 
+  Under the filter's controls, on a page with a basemap, the page renders a
+  hidden panel for the rider's favorite stops, at most
+  `GobusgoWeb.VehicleLive.OpenStops.favorite_count_max/0`, and leaves its
+  content to the `FavoriteStop` hook: the browser keeps the favorites and
+  opens their stops with `stop-arrivals:open`, as for a stop's popup, so the
+  page serves the favorites' arrivals with no state of its own for them.
+
   Over the map, beside the info button, the page shows the service alerts
   of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
   `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
@@ -378,6 +385,17 @@ defmodule GobusgoWeb.VehicleLive do
           This filter is not valid.
           <.link patch="/vehicles" class="underline">Remove the filter</.link>
         </p>
+
+        <section
+          id="favorite-stop"
+          phx-hook="FavoriteStop"
+          phx-update="ignore"
+          aria-label="Favorite stops"
+          data-favorite-count-max={OpenStops.favorite_count_max()}
+          class="surface flex max-h-[50vh] w-xs max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-y-auto px-3 py-2 text-sm shadow"
+          hidden
+        >
+        </section>
       </div>
 
       <.map_elements
@@ -425,7 +443,13 @@ defmodule GobusgoWeb.VehicleLive do
     <%!-- The stops' element stands before the vehicles': hooks mount in
     document order and add their layers in that order, so the vehicles are
     drawn over the stops. --%>
-    <div id="stop-markers" phx-hook="StopMarkers" hidden></div>
+    <div
+      id="stop-markers"
+      phx-hook="StopMarkers"
+      data-auto-open-count-max={OpenStops.auto_open_count_max()}
+      hidden
+    >
+    </div>
 
     <div
       id="vehicle-markers"
