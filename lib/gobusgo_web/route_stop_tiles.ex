@@ -18,10 +18,10 @@ defmodule GobusgoWeb.RouteStopTiles do
   start finds the newest stored archive with `Gobusgo.Reader.discover/2`.
 
   The process also holds the SHA-256 of the features the current archive was
-  built from, so a build whose features are those of the current archive is
-  passed over, however recently the data behind them was fetched. The hash
-  is what the process of this node built, so the first build after a start
-  always runs.
+  built from and the time it was built, so a build whose features are those
+  of a current archive younger than its renewal age is passed over, however
+  recently the data behind them was fetched. Both are what the process of
+  this node built, so the first build after a start always runs.
 
   `spec/1` is the spec of the scheduler that checks every
   #{@check_interval_ms} ms whether to build, with #{@run_deadline_ms} ms for
@@ -78,17 +78,24 @@ defmodule GobusgoWeb.RouteStopTiles do
 
   @doc """
   The SHA-256 of the features the current archive was built from on this
-  node, or `nil`.
+  node and the time it was built, or `nil` while this node has built none.
   """
-  @spec built_content_sha256(server()) :: binary() | nil
-  def built_content_sha256(server), do: GenServer.call(server, :built_content_sha256)
+  @spec built(server()) :: %{content_sha256: binary(), built_at: DateTime.t()} | nil
+  def built(server), do: GenServer.call(server, :built)
 
   @doc """
-  Makes the archive at `build.destination`, built from the features whose
-  SHA-256 is `build.content_sha256`, the current one.
+  Makes the archive at `build.destination`, built at `build.built_at` from
+  the features whose SHA-256 is `build.content_sha256`, the current one.
   """
-  @spec record(server(), %{destination: String.t(), content_sha256: binary()}) :: :ok
-  def record(server, %{destination: destination, content_sha256: content_sha256} = build)
+  @spec record(server(), %{
+          destination: String.t(),
+          content_sha256: binary(),
+          built_at: DateTime.t()
+        }) :: :ok
+  def record(
+        server,
+        %{destination: destination, content_sha256: content_sha256, built_at: %DateTime{}} = build
+      )
       when is_binary(destination) and is_binary(content_sha256) do
     Assert.condition(String.starts_with?(destination, @prefix <> "/"), "an archive destination")
 
@@ -122,7 +129,7 @@ defmodule GobusgoWeb.RouteStopTiles do
 
   @impl GenServer
   def init(read_options) do
-    {:ok, %{destination: nil, content_sha256: nil}, {:continue, {:discover, read_options}}}
+    {:ok, %{destination: nil, built: nil}, {:continue, {:discover, read_options}}}
   end
 
   @impl GenServer
@@ -144,13 +151,10 @@ defmodule GobusgoWeb.RouteStopTiles do
 
   @impl GenServer
   def handle_call(:current_destination, _from, state), do: {:reply, state.destination, state}
-  def handle_call(:built_content_sha256, _from, state), do: {:reply, state.content_sha256, state}
+  def handle_call(:built, _from, state), do: {:reply, state.built, state}
 
-  def handle_call(
-        {:record, %{destination: destination, content_sha256: content_sha256}},
-        _from,
-        state
-      ) do
-    {:reply, :ok, %{state | destination: destination, content_sha256: content_sha256}}
+  def handle_call({:record, %{destination: destination} = build}, _from, state) do
+    built = Map.take(build, [:content_sha256, :built_at])
+    {:reply, :ok, %{state | destination: destination, built: built}}
   end
 end

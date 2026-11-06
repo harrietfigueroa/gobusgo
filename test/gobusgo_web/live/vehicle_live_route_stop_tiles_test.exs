@@ -90,7 +90,8 @@ defmodule GobusgoWeb.VehicleLiveRouteStopTilesTest do
     :ok =
       RouteStopTiles.record(RouteStopTiles, %{
         destination: destination,
-        content_sha256: :crypto.hash(:sha256, destination)
+        content_sha256: :crypto.hash(:sha256, destination),
+        built_at: DateTime.utc_now()
       })
   end
 

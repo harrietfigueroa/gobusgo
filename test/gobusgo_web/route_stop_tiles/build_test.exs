@@ -109,6 +109,31 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     assert run(context, @content, now: fn -> @later end) == {:ok, :unchanged}
   end
 
+  test "builds nothing for the content of a current archive younger than its renewal age",
+       context do
+    {:ok, _build} = run(context, @content)
+    renewal_at = DateTime.add(@built_at, Build.renewal_age_seconds())
+
+    assert run(context, @content, now: fn -> DateTime.add(renewal_at, -1) end) ==
+             {:ok, :unchanged}
+  end
+
+  test "builds again for the content of a current archive at its renewal age", context do
+    {:ok, _build} = run(context, @content)
+    renewal_at = DateTime.add(@built_at, Build.renewal_age_seconds())
+
+    assert {:ok, %{destination: destination}} =
+             run(context, @content, now: fn -> renewal_at end)
+
+    assert destination == RouteStopTiles.destination(renewal_at)
+  end
+
+  test "renews the current archive at least a day before retention can delete it" do
+    retention_seconds = Gobusgo.RetentionPolicy.route_stop_tiles_day_count() * 86_400
+
+    assert Build.renewal_age_seconds() <= retention_seconds - 86_400
+  end
+
   for {name, change} <- [
         {"a line's path",
          quote(do: put_in(@content, [:lines], [%{@line | polylines: ["_p~iF~ps|U_ulLnnqD"]}]))},

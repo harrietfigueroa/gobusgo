@@ -4,6 +4,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   @archive_bytes_max 16 * 1024 * 1024
   @zoom_min 5
   @zoom_max 14
+  @day_seconds 86_400
 
   @moduledoc """
   One run of the route and stop tile archive: reads what a map page draws
@@ -14,7 +15,10 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   `GobusgoWeb.StopMarkers` that a drawn route serves, encoded by
   `GobusgoWeb.RouteStopTiles.Features`. The run hashes the encoded features
   with SHA-256 and compares the hash with the current archive's, so data
-  fetched again unchanged builds nothing. tippecanoe reads them from two files
+  fetched again unchanged builds nothing while the current archive is younger
+  than `renewal_age_seconds/0`. At that age it builds the same features again,
+  a day or more before the retention of `Gobusgo.RetentionPolicy` can delete
+  the current archive. tippecanoe reads them from two files
   of a working directory of their own, which the run removes, and writes the
   archive there, from zoom #{@zoom_min} to #{@zoom_max}, with its own limits
   on features and bytes per tile turned off, so that no feature is dropped.
@@ -22,8 +26,9 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   is at most #{@archive_bytes_max} bytes.
 
   A run returns `{:ok, :empty}` while the views hold no line, `{:ok,
-  :unchanged}` when the features are those of the current archive, `{:ok,
-  build}` for an archive it stored and made the current one, and `{:error,
+  :unchanged}` when the features are those of a current archive younger than
+  its renewal age, `{:ok, build}` for an archive it stored and made the
+  current one, and `{:error,
   reason}` for one it did not, which leaves the current archive as it was.
 
   ## Logs
@@ -51,6 +56,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.RetentionPolicy
   alias Gobusgo.Writer
   alias GobusgoWeb.RouteLines
   alias GobusgoWeb.RouteStopTiles
@@ -84,24 +90,55 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
           | {:file, atom()}
           | {:write, Writer.error_reason()}
 
+  @doc """
+  The age at which the current archive is built again from unchanged
+  features: a day less than its retention, so the archive a page points at
+  is stored for a day or more after its renewal.
+  """
+  @spec renewal_age_seconds() :: pos_integer()
+  def renewal_age_seconds do
+    renewal_day_count = RetentionPolicy.route_stop_tiles_day_count() - 1
+
+    Assert.condition(
+      renewal_day_count >= 1,
+      "renewal before retention, got: #{renewal_day_count}"
+    )
+
+    renewal_day_count * @day_seconds
+  end
+
   @doc "Runs one build, as the module documentation describes."
   @spec run(Keyword.t()) :: {:ok, :empty | :unchanged | build()} | {:error, error()}
   def run(options) when is_list(options) do
     server = Keyword.fetch!(options, :server)
     gather = Keyword.get(options, :gather, &gather/0)
+    now = Keyword.get(options, :now, &DateTime.utc_now/0)
+    built_at = now.()
     content = gather.()
 
     case content.lines do
-      [] -> {:ok, :empty}
-      [_line | _rest] -> build_changed(encode(content), server, options)
+      [] ->
+        {:ok, :empty}
+
+      [_line | _rest] ->
+        build_due(%{encoded: encode(content), built_at: built_at}, server, options)
     end
   end
 
-  defp build_changed(encoded, server, options) do
-    if encoded.content_sha256 == RouteStopTiles.built_content_sha256(server) do
-      {:ok, :unchanged}
-    else
-      build_logged(encoded, server, options)
+  defp build_due(%{encoded: encoded, built_at: built_at} = run, server, options) do
+    case RouteStopTiles.built(server) do
+      %{content_sha256: content_sha256, built_at: current_built_at}
+      when content_sha256 == encoded.content_sha256 ->
+        age_seconds = DateTime.diff(built_at, current_built_at, :second)
+
+        if age_seconds < renewal_age_seconds() do
+          {:ok, :unchanged}
+        else
+          build_logged(run, server, options)
+        end
+
+      _changed_or_none ->
+        build_logged(run, server, options)
     end
   end
 
@@ -123,17 +160,17 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
     }
   end
 
-  defp build_logged(encoded, server, options) do
+  defp build_logged(%{encoded: encoded, built_at: built_at}, server, options) do
     started_ms = System.monotonic_time(:millisecond)
-    now = Keyword.get(options, :now, &DateTime.utc_now/0)
-    destination = RouteStopTiles.destination(now.())
+    destination = RouteStopTiles.destination(built_at)
 
     case build(%{encoded: encoded, destination: destination}, options) do
       {:ok, build} ->
         :ok =
           RouteStopTiles.record(server, %{
             destination: destination,
-            content_sha256: encoded.content_sha256
+            content_sha256: encoded.content_sha256,
+            built_at: built_at
           })
 
         Logger.info(

@@ -60,6 +60,10 @@ defmodule Gobusgo.RetentionPolicy do
   @spec usage_day_count() :: pos_integer()
   def usage_day_count, do: @usage_day_count
 
+  @doc "The days a route and stop tile archive is kept."
+  @spec route_stop_tiles_day_count() :: pos_integer()
+  def route_stop_tiles_day_count, do: @route_stop_tiles_day_count
+
   @doc """
   The spec of the scheduler that runs the cleanup. `options` are the options
   of `Gobusgo.Cleanup.run/2`. The spec passes `Gobusgo.Scheduler.assert_spec/1`.
