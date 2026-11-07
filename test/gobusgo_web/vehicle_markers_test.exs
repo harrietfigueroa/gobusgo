@@ -4,6 +4,7 @@ defmodule GobusgoWeb.VehicleMarkersTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.Assert.AssertionError
+  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.VehicleMarkers
 
   @fetched_at ~U[2026-10-02 03:15:00Z]
@@ -45,9 +46,12 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     }
   end
 
+  @route_colors %{"1_100479" => "#e11d48"}
+  @no_lookups %{stop_names: %{}, route_colors: %{}}
+
   defp marker(fields, stop_names \\ %{}) do
-    assert %{markers: [marker]} =
-             VehicleMarkers.agency_markers(fetch([vehicle(fields)]), stop_names)
+    lookups = %{stop_names: stop_names, route_colors: @route_colors}
+    assert %{markers: [marker]} = VehicleMarkers.agency_markers(fetch([vehicle(fields)]), lookups)
 
     marker
   end
@@ -73,6 +77,14 @@ defmodule GobusgoWeb.VehicleMarkersTest do
 
     test "is unknown for a vehicle with no report time supplied" do
       assert marker(%{"lastLocationUpdateTimeMs" => nil}).status == :unknown
+    end
+
+    test "is scheduled for a vehicle without real-time data, however recent its report" do
+      assert marker(%{"predicted" => false}).status == :scheduled
+    end
+
+    test "is judged by the report for a vehicle whose real-time availability is not supplied" do
+      assert marker(%{"predicted" => nil}).status == :reported
     end
   end
 
@@ -133,6 +145,52 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     test "comes from the orientation of the estimated position, never the last reported one" do
       assert marker(%{"orientation" => 180, "lastKnownOrientation" => 90}).heading == 270
     end
+
+    for {name, fields} <- [
+          {"without real-time data", %{"predicted" => false}},
+          {"that has never reported a location", %{"lastLocationUpdateTimeMs" => 0}}
+        ] do
+      test "is absent for a vehicle #{name}, whose orientation comes from the schedule" do
+        fields = Map.put(unquote(Macro.escape(fields)), "orientation", 90)
+
+        assert marker(fields).heading == nil
+      end
+    end
+  end
+
+  describe "agency_markers/2 color" do
+    for {name, fields} <- [
+          {"reported recently", %{}},
+          {"whose last report is stale",
+           %{"lastLocationUpdateTimeMs" => @fetched_at_ms - 600_000}},
+          {"with no report time supplied", %{"lastLocationUpdateTimeMs" => nil}}
+        ] do
+      test "is the route's color for a vehicle #{name}" do
+        fields = Map.put(unquote(Macro.escape(fields)), "routeId", "1_100479")
+
+        assert marker(fields).color == "#e11d48"
+      end
+    end
+
+    test "is the color of a route with none for a route the colors do not hold" do
+      assert marker(%{"routeId" => "1_404"}).color == RouteLines.default_color()
+    end
+
+    test "is the color of a route with none for a vehicle with no route" do
+      assert marker(%{"routeId" => nil}).color == RouteLines.default_color()
+    end
+
+    for {name, fields} <- [
+          {"without real-time data", %{"predicted" => false}},
+          {"that has never reported a location", %{"lastLocationUpdateTimeMs" => 0}}
+        ] do
+      test "is the schedule-only color for a vehicle #{name}, whatever its route" do
+        fields = Map.put(unquote(Macro.escape(fields)), "routeId", "1_100479")
+        scheduled = Enum.find(VehicleMarkers.statuses(), &(&1.status == :scheduled))
+
+        assert marker(fields).color == scheduled.color
+      end
+    end
   end
 
   describe "agency_markers/2 route" do
@@ -189,13 +247,18 @@ defmodule GobusgoWeb.VehicleMarkersTest do
       assert marker(fields).schedule == nil
     end
 
-    test "is kept for a vehicle whose last report is stale" do
-      fields = %{
-        "scheduleDeviationSeconds" => 180,
-        "lastLocationUpdateTimeMs" => @fetched_at_ms - 600_000
-      }
+    for {name, report_time_ms} <- [
+          {"whose last report is stale", @fetched_at_ms - 600_000},
+          {"with no report time supplied", nil}
+        ] do
+      test "is absent for a vehicle #{name}" do
+        fields = %{
+          "scheduleDeviationSeconds" => 180,
+          "lastLocationUpdateTimeMs" => unquote(report_time_ms)
+        }
 
-      assert %{status: :stale, schedule: "3 min late"} = marker(fields)
+        assert marker(fields).schedule == nil
+      end
     end
   end
 
@@ -250,6 +313,21 @@ defmodule GobusgoWeb.VehicleMarkersTest do
 
       assert marker(fields, @stop_names).next_stop == "Pine St & 3rd Ave, 2 min away"
     end
+
+    for {name, report_time_ms} <- [
+          {"whose last report is stale", @fetched_at_ms - 600_000},
+          {"with no report time supplied", nil}
+        ] do
+      test "is absent for a vehicle #{name}" do
+        fields = %{
+          "nextStopId" => "1_29247",
+          "nextStopTimeOffsetSeconds" => 140,
+          "lastLocationUpdateTimeMs" => unquote(report_time_ms)
+        }
+
+        assert marker(fields, @stop_names).next_stop == nil
+      end
+    end
   end
 
   describe "next_stop_ids/1" do
@@ -296,18 +374,18 @@ defmodule GobusgoWeb.VehicleMarkersTest do
       ]
 
       assert %{agency_id: "1", markers: [%{vehicle_id: "1_100"}], position_missing_count: 2} =
-               VehicleMarkers.agency_markers(fetch(vehicles), %{})
+               VehicleMarkers.agency_markers(fetch(vehicles), @no_lookups)
     end
 
     test "keeps the fetch's vehicle order" do
       vehicles = for id <- ["1_300", "1_100", "1_200"], do: vehicle(%{"id" => id})
 
-      assert %{markers: markers} = VehicleMarkers.agency_markers(fetch(vehicles), %{})
+      assert %{markers: markers} = VehicleMarkers.agency_markers(fetch(vehicles), @no_lookups)
       assert Enum.map(markers, & &1.vehicle_id) == ["1_300", "1_100", "1_200"]
     end
 
     test "returns no markers and a zero count for a fetch with no vehicles" do
-      assert VehicleMarkers.agency_markers(fetch([]), %{}) == %{
+      assert VehicleMarkers.agency_markers(fetch([]), @no_lookups) == %{
                agency_id: "1",
                markers: [],
                position_missing_count: 0
@@ -317,21 +395,36 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     test "raises for a vehicle identifier the fetch holds no vehicle for" do
       fetch = %{fetch([]) | vehicle_ids: ["1_100"]}
 
-      assert_raise AssertionError, fn -> VehicleMarkers.agency_markers(fetch, %{}) end
+      assert_raise AssertionError, fn -> VehicleMarkers.agency_markers(fetch, @no_lookups) end
     end
   end
 
   describe "statuses/0" do
-    test "defines every status once, each with a label, a description, and a color" do
+    test "defines every status once, each with a label, a description, and an opacity" do
       statuses = VehicleMarkers.statuses()
 
       assert Enum.map(statuses, & &1.status) == [:reported, :stale, :scheduled, :unknown]
 
       for definition <- statuses do
-        assert %{label: label, description: description, color: "#" <> _hex} = definition
+        assert %{label: label, description: description, opacity: opacity} = definition
         assert label != ""
         assert description != ""
+        assert opacity > 0
+        assert opacity <= 1
       end
+    end
+
+    test "gives the schedule-only status a color of its own and the others their route's" do
+      colors = Map.new(VehicleMarkers.statuses(), &{&1.status, &1.color})
+
+      assert %{reported: nil, stale: nil, unknown: nil, scheduled: "#" <> _hex} = colors
+    end
+
+    test "draws a stale or unknown marker fainter than a recent one" do
+      opacities = Map.new(VehicleMarkers.statuses(), &{&1.status, &1.opacity})
+
+      assert opacities.stale < opacities.reported
+      assert opacities.unknown < opacities.reported
     end
 
     test "names the stale threshold in the stale status's description" do

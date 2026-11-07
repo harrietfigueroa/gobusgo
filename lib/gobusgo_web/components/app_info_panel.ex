@@ -25,6 +25,10 @@ defmodule GobusgoWeb.AppInfoPanel do
   @panel_id "app-info"
   @show_event "gobusgo:show-modal"
 
+  # A route-colored status has no one color, so its swatch is a sample of
+  # route colors.
+  @route_color_sample "linear-gradient(135deg, #2563eb, #e11d48, #16a34a)"
+
   @doc """
   The button and the panel. `agencies` are the agencies the panel credits,
   each with a `name`, in display order.
@@ -90,14 +94,17 @@ defmodule GobusgoWeb.AppInfoPanel do
     ~H"""
     <section class="flex flex-col gap-2">
       <h3 class="font-semibold">How to read the map</h3>
-      <p>Each marker is one vehicle. Its color says how far to trust its position:</p>
+      <p>
+        Each marker is one vehicle, drawn in its route's color. How it is drawn says how far to
+        trust its position:
+      </p>
       <dl class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
         <div
           :for={status <- @statuses}
           id={"app-info-status-#{status.status}"}
           class="flex items-start gap-2"
         >
-          <span class="mt-1 h-3 w-3 shrink-0 rounded-full" style={"background-color: #{status.color}"}></span>
+          <span class="mt-1 h-3 w-3 shrink-0 rounded-full" style={swatch_style(status)}></span>
           <div>
             <dt class="font-medium">{status.label}</dt>
             <dd>{status.description}</dd>
@@ -111,6 +118,21 @@ defmodule GobusgoWeb.AppInfoPanel do
       </p>
     </section>
     """
+  end
+
+  @doc """
+  Returns the inline style of the legend's swatch for `definition`, a status
+  definition of `GobusgoWeb.VehicleMarkers`: its own color, or a sample of
+  route colors for a status drawn in its route's color, at its opacity.
+  """
+  @spec swatch_style(VehicleMarkers.status_definition()) :: String.t()
+  def swatch_style(%{color: nil, opacity: opacity}) when is_float(opacity) do
+    "background-image: #{@route_color_sample}; opacity: #{opacity}"
+  end
+
+  def swatch_style(%{color: color, opacity: opacity})
+      when is_binary(color) and is_float(opacity) do
+    "background-color: #{color}; opacity: #{opacity}"
   end
 
   defp data_use(assigns) do

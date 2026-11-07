@@ -22,7 +22,7 @@ const pointedTipInsetPixels = 2
 const markerRadiusPixels = 6
 const markerStrokeWidthPixels = 1.5
 const markerStrokeColor = "#ffffff"
-const statusColorFallback = "#000000"
+const statusOpacityFallback = 1
 const positionNote = "Marker position: the source's estimate"
 const notSupplied = "Not supplied"
 const titleClassName = "popup-title"
@@ -42,6 +42,7 @@ function featureCollection(markersByAgency) {
         properties: {
           vehicleId: marker.vehicle_id,
           heading: marker.heading,
+          color: marker.color,
           routeId: marker.route_id,
           route: marker.route,
           headsign: marker.headsign,
@@ -58,10 +59,10 @@ function featureCollection(markersByAgency) {
   return {type: "FeatureCollection", features}
 }
 
-// The paint expression that gives each marker the color of its status.
-function statusColor(statuses) {
-  const cases = statuses.flatMap(({status, color}) => [status, color])
-  return ["match", ["get", "status"], ...cases, statusColorFallback]
+// The paint expression that gives each marker the opacity of its status.
+function statusOpacity(statuses) {
+  const cases = statuses.flatMap(({status, opacity}) => [status, opacity])
+  return ["match", ["get", "status"], ...cases, statusOpacityFallback]
 }
 
 // The image of a pointed marker in one color: the round marker's circle,
@@ -195,11 +196,16 @@ export const VehicleMarkers = {
   attach(map, maplibre) {
     map.addSource(sourceName, {type: "geojson", data: featureCollection(this.markersByAgency)})
 
-    for (const {status, color} of this.statuses) {
-      map.addImage(pointedImagePrefix + status, pointedImage(color), {
-        pixelRatio: pointedImagePixelRatio
-      })
-    }
+    // A pointed marker's image is made the first time a marker of its color
+    // is drawn, since the colors are the routes' and not known in advance.
+    map.on("styleimagemissing", ({id}) => {
+      if (id.startsWith(pointedImagePrefix)) {
+        const color = id.slice(pointedImagePrefix.length)
+        map.addImage(id, pointedImage(color), {pixelRatio: pointedImagePixelRatio})
+      }
+    })
+
+    const opacity = statusOpacity(this.statuses)
 
     map.addLayer({
       id: roundLayerName,
@@ -208,9 +214,11 @@ export const VehicleMarkers = {
       filter: ["!", hasHeading],
       paint: {
         "circle-radius": markerRadiusPixels,
-        "circle-color": statusColor(this.statuses),
+        "circle-color": ["get", "color"],
+        "circle-opacity": opacity,
         "circle-stroke-color": markerStrokeColor,
-        "circle-stroke-width": markerStrokeWidthPixels
+        "circle-stroke-width": markerStrokeWidthPixels,
+        "circle-stroke-opacity": opacity
       }
     })
 
@@ -222,11 +230,12 @@ export const VehicleMarkers = {
       source: sourceName,
       filter: hasHeading,
       layout: {
-        "icon-image": ["concat", pointedImagePrefix, ["get", "status"]],
+        "icon-image": ["concat", pointedImagePrefix, ["get", "color"]],
         "icon-rotate": ["get", "heading"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true
-      }
+      },
+      paint: {"icon-opacity": opacity}
     })
 
     // A label is left out where it would cover another label, so a crowded

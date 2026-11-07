@@ -5,6 +5,9 @@ defmodule GobusgoWeb.VehicleMarkers do
   @seconds_per_minute 60
   @minutes_per_hour 60
   @degrees_per_turn 360
+  @faded_opacity 0.45
+  @scheduled_color "#9ca3af"
+  @unbacked_statuses [:stale, :unknown]
 
   # The source gives an orientation as an angle in degrees where 0 is east
   # and 90 is north, so north is this many degrees.
@@ -24,9 +27,17 @@ defmodule GobusgoWeb.VehicleMarkers do
     * `:reported` — the vehicle reported a location at most
       #{div(@report_age_ms_max, @ms_per_minute)} minutes before the fetch.
     * `:stale` — the vehicle's last report is older than that.
-    * `:scheduled` — the vehicle has never reported a location; its report
-      time is the source's `0`.
+    * `:scheduled` — the source has no real-time data for the vehicle's
+      trip, `predicted` is `false`, or the vehicle has never reported a
+      location, its report time being the source's `0`.
     * `:unknown` — the source supplied no report time.
+
+  A marker's color is its route's, as `route_colors` gives it, so a vehicle
+  matches its route's line; a route the colors do not hold, and a vehicle
+  with no route, get the color of a route whose source supplies none. A
+  `:scheduled` marker is the schedule-only gray whatever its route. How
+  opaque a status draws its marker is in its definition, so a `:stale` or
+  `:unknown` marker shows fainter than a `:reported` one.
 
   The age of a report is the fetch time minus the report time, so a fetch's
   markers stay the same however long the fetch is shown. A vehicle with no
@@ -35,9 +46,11 @@ defmodule GobusgoWeb.VehicleMarkers do
   A marker's heading is the way the source says the vehicle is heading at
   that position, from `orientation`, in whole degrees clockwise from north:
   `0` is north and `90` is east. An orientation of `0` is east like any
-  other angle. A vehicle with no orientation supplied has no heading. The
-  last reported orientation is never read, because it goes with the last
-  reported location and no marker stands there.
+  other angle. A vehicle with no orientation supplied has no heading, and
+  neither has a `:scheduled` one, whose orientation the source takes from
+  the schedule's shape rather than from the vehicle. The last reported
+  orientation is never read, because it goes with the last reported
+  location and no marker stands there.
 
   A marker's route is the name `route_name/1` gives its vehicle, and its
   headsign is the destination the vehicle's trip shows to riders. Either is
@@ -45,16 +58,18 @@ defmodule GobusgoWeb.VehicleMarkers do
 
   A marker's schedule says how far the vehicle is from its trip's schedule,
   in whole minutes, a deviation under one minute either way reading as on
-  time. A `:scheduled` marker has none, because the source gives a vehicle
-  that has never reported a deviation that no report backs. A marker's next
-  stop names the stop the vehicle reaches next and the whole minutes to it
-  as of the fetch: the name alone without a time at zero or later, the time
-  alone for a stop with no name supplied. Either is `nil` when the vehicle
-  has neither part.
+  time. A `:scheduled` marker has none, because the source gives such a
+  vehicle a deviation that no report backs. A marker's next stop names the
+  stop the vehicle reaches next and the whole minutes to it as of the
+  fetch: the name alone without a time at zero or later, the time alone for
+  a stop with no name supplied. Either is `nil` when the vehicle has
+  neither part. A `:stale` or `:unknown` marker has neither a schedule nor
+  a next stop, because a report of no known recent time backs neither.
   """
 
   alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.VehicleView.State
+  alias GobusgoWeb.RouteLines
 
   @type status :: :reported | :stale | :scheduled | :unknown
 
@@ -62,11 +77,13 @@ defmodule GobusgoWeb.VehicleMarkers do
           status: status(),
           label: String.t(),
           description: String.t(),
-          color: String.t()
+          color: String.t() | nil,
+          opacity: float()
         }
 
   @typedoc """
-  One vehicle on the map. `heading` is in degrees clockwise from north, at
+  One vehicle on the map. `color` is the CSS color it is drawn in. `heading`
+  is in degrees clockwise from north, at
   least 0 and below #{@degrees_per_turn}, or `nil` for a vehicle with no
   heading. `location_age` and `real_time` are the texts a page shows for
   the age of the last report and for whether the source has real-time data
@@ -80,6 +97,7 @@ defmodule GobusgoWeb.VehicleMarkers do
           vehicle_id: String.t(),
           lat: number(),
           lon: number(),
+          color: String.t(),
           heading: non_neg_integer() | nil,
           route_id: String.t() | nil,
           route: String.t() | nil,
@@ -105,27 +123,33 @@ defmodule GobusgoWeb.VehicleMarkers do
       status: :reported,
       label: "Reported recently",
       description:
-        "Location reported at most #{div(@report_age_ms_max, @ms_per_minute)} minutes before the fetch.",
-      color: "#15803d"
+        "Location reported at most #{div(@report_age_ms_max, @ms_per_minute)} minutes before the fetch. Drawn in the color of its route.",
+      color: nil,
+      opacity: 1.0
     },
     %{
       status: :stale,
       label: "Stale",
       description:
-        "Last location report is more than #{div(@report_age_ms_max, @ms_per_minute)} minutes older than the fetch.",
-      color: "#b45309"
+        "Last location report is more than #{div(@report_age_ms_max, @ms_per_minute)} minutes older than the fetch. Drawn faded in the color of its route, with no lateness or next stop.",
+      color: nil,
+      opacity: @faded_opacity
     },
     %{
       status: :scheduled,
       label: "Schedule only",
-      description: "The vehicle has never reported a location.",
-      color: "#6d28d9"
+      description:
+        "No real-time data: the position comes from the schedule. Drawn gray, with no heading.",
+      color: @scheduled_color,
+      opacity: 1.0
     },
     %{
       status: :unknown,
       label: "Report time not supplied",
-      description: "The source gave no time for the last location report.",
-      color: "#475569"
+      description:
+        "The source gave no time for the last location report. Drawn faded in the color of its route, with no lateness or next stop.",
+      color: nil,
+      opacity: @faded_opacity
     }
   ]
 
@@ -140,15 +164,19 @@ defmodule GobusgoWeb.VehicleMarkers do
   Returns the markers of `fetch`, one agency's current fetch, in the fetch's
   vehicle order, and the count of its vehicles that have no position.
   `stop_names` gives the name of a stop by its identifier; a next stop it
-  lacks is shown without a name. Raises `Gobusgo.Assert.AssertionError` when
-  the fetch names a vehicle it does not hold.
+  lacks is shown without a name. `route_colors` gives the CSS color of a
+  route by its identifier. Raises `Gobusgo.Assert.AssertionError` when the
+  fetch names a vehicle it does not hold.
   """
-  @spec agency_markers(State.fetch(), %{String.t() => String.t()}) :: t()
-  def agency_markers(
-        %{agency_id: agency_id, fetched_at: %DateTime{} = fetched_at} = fetch,
-        stop_names
-      )
-      when is_binary(agency_id) and is_map(stop_names) do
+  @spec agency_markers(State.fetch(), %{
+          stop_names: %{String.t() => String.t()},
+          route_colors: %{String.t() => String.t()}
+        }) :: t()
+  def agency_markers(%{agency_id: agency_id, fetched_at: %DateTime{} = fetched_at} = fetch, %{
+        stop_names: stop_names,
+        route_colors: route_colors
+      })
+      when is_binary(agency_id) and is_map(stop_names) and is_map(route_colors) do
     %{vehicle_ids: vehicle_ids, vehicles: vehicles} = fetch
     fetched_at_ms = DateTime.to_unix(fetched_at, :millisecond)
 
@@ -162,7 +190,8 @@ defmodule GobusgoWeb.VehicleMarkers do
         marker(Map.fetch!(vehicles, vehicle_id), %{
           agency_id: agency_id,
           fetched_at_ms: fetched_at_ms,
-          stop_names: stop_names
+          stop_names: stop_names,
+          route_colors: route_colors
         })
       end
 
@@ -202,30 +231,47 @@ defmodule GobusgoWeb.VehicleMarkers do
   defp marker(%{"id" => vehicle_id, "position" => %{"lat" => lat, "lon" => lon}} = vehicle, %{
          agency_id: agency_id,
          fetched_at_ms: fetched_at_ms,
-         stop_names: stop_names
+         stop_names: stop_names,
+         route_colors: route_colors
        }) do
     report = report(vehicle["lastLocationUpdateTimeMs"], fetched_at_ms)
-    status = status(report)
+    status = status(%{report: report, predicted: vehicle["predicted"]})
 
     %{
       id: agency_id <> "/" <> vehicle_id,
       vehicle_id: vehicle_id,
       lat: lat,
       lon: lon,
-      heading: heading(vehicle["orientation"]),
+      color: color(%{status: status, route_colors: route_colors, route_id: vehicle["routeId"]}),
+      heading: marker_heading(vehicle["orientation"], status),
       route_id: vehicle["routeId"],
       route: route_name(vehicle),
       headsign: vehicle["tripHeadsign"],
       schedule: schedule(vehicle["scheduleDeviationSeconds"], status),
-      next_stop:
-        next_stop(
-          Map.get(stop_names, vehicle["nextStopId"]),
-          vehicle["nextStopTimeOffsetSeconds"]
-        ),
+      next_stop: marker_next_stop(%{vehicle: vehicle, stop_names: stop_names, status: status}),
       status: status,
       location_age: location_age(report),
       real_time: yes_no(vehicle["predicted"])
     }
+  end
+
+  defp color(%{status: :scheduled}), do: @scheduled_color
+
+  defp color(%{route_colors: route_colors, route_id: route_id}) do
+    case Map.fetch(route_colors, route_id) do
+      {:ok, color} -> color
+      :error -> RouteLines.default_color()
+    end
+  end
+
+  defp marker_heading(_orientation, :scheduled), do: nil
+  defp marker_heading(orientation, _status), do: heading(orientation)
+
+  # A stale or unknown report backs no next stop, as it backs no lateness.
+  defp marker_next_stop(%{status: status}) when status in @unbacked_statuses, do: nil
+
+  defp marker_next_stop(%{vehicle: vehicle, stop_names: stop_names}) do
+    next_stop(Map.get(stop_names, vehicle["nextStopId"]), vehicle["nextStopTimeOffsetSeconds"])
   end
 
   # A report time later than the fetch time, which two clocks that disagree
@@ -256,10 +302,11 @@ defmodule GobusgoWeb.VehicleMarkers do
     heading
   end
 
-  defp status(:not_supplied), do: :unknown
-  defp status(:never), do: :scheduled
-  defp status({:age_ms, age_ms}) when age_ms <= @report_age_ms_max, do: :reported
-  defp status({:age_ms, _age_ms}), do: :stale
+  defp status(%{predicted: false}), do: :scheduled
+  defp status(%{report: :not_supplied}), do: :unknown
+  defp status(%{report: :never}), do: :scheduled
+  defp status(%{report: {:age_ms, age_ms}}) when age_ms <= @report_age_ms_max, do: :reported
+  defp status(%{report: {:age_ms, _age_ms}}), do: :stale
 
   defp location_age(:not_supplied), do: @not_supplied
   defp location_age(:never), do: @no_location_reported
@@ -278,6 +325,7 @@ defmodule GobusgoWeb.VehicleMarkers do
 
   defp schedule(nil, _status), do: nil
   defp schedule(_deviation_seconds, :scheduled), do: nil
+  defp schedule(_deviation_seconds, status) when status in @unbacked_statuses, do: nil
 
   defp schedule(deviation_seconds, _status) when is_integer(deviation_seconds) do
     minutes = div(abs(deviation_seconds), @seconds_per_minute)

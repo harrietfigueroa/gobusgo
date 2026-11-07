@@ -16,6 +16,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
   alias Gobusgo.OneBusAway.RouteSchedule
   alias Gobusgo.OneBusAway.Sources
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.VehicleMarkers
 
   @moduletag :tmp_dir
@@ -172,16 +173,33 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                AppInfo.disclaimer()
     end
 
-    for %{status: status, label: label, description: description, color: color} <-
+    for %{status: status, label: label, description: description} = definition <-
           VehicleMarkers.statuses() do
-      test "explains the #{status} status with its color" do
+      test "explains the #{status} status with its swatch" do
         {:ok, view, _html} = live(build_conn(), "/vehicles")
         entry = @panel <> " #app-info-status-#{unquote(status)}"
+        swatch = AppInfoPanel.swatch_style(unquote(Macro.escape(definition)))
 
         assert view |> element(entry) |> render() =~ unquote(label)
         assert view |> element(entry) |> render() =~ unquote(description)
-        assert view |> element(entry) |> render() =~ unquote(color)
+        assert view |> element(entry) |> render() =~ swatch
       end
+    end
+
+    test "draws the schedule-only swatch in its own color" do
+      scheduled = Enum.find(VehicleMarkers.statuses(), &(&1.status == :scheduled))
+
+      assert AppInfoPanel.swatch_style(scheduled) =~ "background-color: #{scheduled.color}"
+    end
+
+    test "draws a route-colored swatch fainter for a stale status than a recent one" do
+      [reported, stale] =
+        for status <- [:reported, :stale] do
+          Enum.find(VehicleMarkers.statuses(), &(&1.status == status))
+        end
+
+      assert AppInfoPanel.swatch_style(reported) =~ "opacity: 1.0"
+      assert AppInfoPanel.swatch_style(stale) =~ "opacity: #{stale.opacity}"
     end
 
     test "has one legend entry per status" do

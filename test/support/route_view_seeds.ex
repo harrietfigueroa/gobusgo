@@ -19,6 +19,21 @@ defmodule Gobusgo.Test.RouteViewSeeds do
           fetched_at: DateTime.t()
         }) :: :ok
   def routes(view, %{agency_id: agency_id, route_ids: route_ids, fetched_at: fetched_at}) do
+    colored = for route_id <- route_ids, do: {route_id, nil}
+    colored_routes(view, %{agency_id: agency_id, routes: colored, fetched_at: fetched_at})
+  end
+
+  @doc """
+  Gives `view` a fetch, made at `fetched_at`, of the routes of `agency_id`
+  that `routes` names in order, each with its color: six hexadecimal digits
+  or `nil`.
+  """
+  @spec colored_routes(atom(), %{
+          agency_id: String.t(),
+          routes: [{String.t(), String.t() | nil}],
+          fetched_at: DateTime.t()
+        }) :: :ok
+  def colored_routes(view, %{agency_id: agency_id, routes: routes, fetched_at: fetched_at}) do
     record =
       RouteBatch.Records.build(%{
         agency_id: agency_id,
@@ -27,7 +42,7 @@ defmodule Gobusgo.Test.RouteViewSeeds do
         data_sha256: @data_sha256,
         request_id: @request_id,
         routes:
-          for id <- route_ids do
+          for {id, color} <- routes do
             %{
               id: id,
               agency_id: agency_id,
@@ -35,7 +50,7 @@ defmodule Gobusgo.Test.RouteViewSeeds do
               long_name: nil,
               description: nil,
               type: 3,
-              color: nil,
+              color: color,
               text_color: nil,
               url: nil
             }

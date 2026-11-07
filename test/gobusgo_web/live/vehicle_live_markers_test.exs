@@ -14,12 +14,14 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleView
+  alias Gobusgo.Test.RouteViewSeeds
 
   @moduletag :tmp_dir
   @moduletag capture_log: true
 
   @endpoint GobusgoWeb.Endpoint
   @event "vehicle-markers:agency"
+  @route_view Gobusgo.OneBusAway.RouteView
   @push_wait_ms 50
   @fetched_at ~U[2026-10-02 03:15:00Z]
   @bounds %{"south" => 47.0, "west" => -123.0, "north" => 48.0, "east" => -122.0}
@@ -44,7 +46,7 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
   end
 
   defp restart_view do
-    for view <- [VehicleView, StopView] do
+    for view <- [VehicleView, StopView, @route_view] do
       :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
       {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
     end
@@ -203,6 +205,21 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
           }
         ]
       })
+    end
+
+    test "is answered with a marker in its route's color, from the route view" do
+      RouteViewSeeds.colored_routes(@route_view, %{
+        agency_id: "1",
+        routes: [{"1_100479", "E11D48"}],
+        fetched_at: @fetched_at
+      })
+
+      apply_fetch([vehicle("1_a", %{route_id: "1_100479"})], %{agency_id: "1", sequence: 1})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{markers: [%{color: "#E11D48"}]})
     end
 
     test "is answered with a marker's heading, clockwise from north" do
