@@ -6,27 +6,27 @@ The General Bikeshare Feed Specification (GBFS) is the open format in which shar
 
 All links checked 2026-11-08.
 
-- GBFS 3.0: https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md
-- GBFS 2.2: https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md
-- GBFS 1.0: https://github.com/MobilityData/gbfs/blob/v1.0/gbfs.md
-- Files and their 404 rule: https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#files
-- Field types, timestamps among them: https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#field-types and https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#field-types
-- `vehicle_status`, with the identifier rotation rule: https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#vehicle_statusjson
-- `free_bike_status` in 2.2: https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#free_bike_statusjson
-- `free_bike_status` in 1.0: https://github.com/MobilityData/gbfs/blob/v1.0/gbfs.md#free_bike_statusjson
-- `vehicle_types` in 3.0: https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#vehicle_typesjson
-- The catalog of published systems, where Lime Seattle is `lime_seattle`: https://github.com/MobilityData/gbfs/blob/master/systems.csv
-- Lime's Public GBFS Terms: https://www.li.me/legal/public-gbfs-terms
+- GBFS 3.0: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md>
+- GBFS 2.2: <https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md>
+- GBFS 1.0: <https://github.com/MobilityData/gbfs/blob/v1.0/gbfs.md>
+- Files and their 404 rule: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#files>
+- Field types, timestamps among them: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#field-types> and <https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#field-types>
+- `vehicle_status`, with the identifier rotation rule: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#vehicle_statusjson>
+- `free_bike_status` in 2.2: <https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#free_bike_statusjson>
+- `free_bike_status` in 1.0: <https://github.com/MobilityData/gbfs/blob/v1.0/gbfs.md#free_bike_statusjson>
+- `vehicle_types` in 3.0: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#vehicle_typesjson>
+- The catalog of published systems, where Lime Seattle is `lime_seattle`: <https://github.com/MobilityData/gbfs/blob/master/systems.csv>
+- Lime's Public GBFS Terms: <https://www.li.me/legal/public-gbfs-terms>
 
 ## Lime Seattle
 
 The discovery file of each version, all answering 200 on 2026-11-08:
 
-- 3.0: https://data.lime.bike/api/partners/v3/gbfs/seattle/gbfs.json
-- 2.2: https://data.lime.bike/api/partners/v2/gbfs/seattle/gbfs.json
-- 1.0: https://data.lime.bike/api/partners/v1/gbfs/seattle/gbfs.json
+- 3.0: <https://data.lime.bike/api/partners/v3/gbfs/seattle/gbfs.json>
+- 2.2: <https://data.lime.bike/api/partners/v2/gbfs/seattle/gbfs.json>
+- 1.0: <https://data.lime.bike/api/partners/v1/gbfs/seattle/gbfs.json>
 
-The 3.0 manifest, https://data.lime.bike/api/partners/v3/manifest.json, lists 2.2 and 3.0 for `lime_seattle`; the 1.0 feed is published without a manifest entry, and no version publishes `gbfs_versions.json`. Each discovery file lists `system_information`, `station_information`, `station_status`, and the vehicle file, and 2.2 and 3.0 also list `vehicle_types`. The station files hold one placeholder station named "Seattle". Lime publishes no `geofencing_zones` and no `system_pricing_plans` in any version: both answer 404 under 3.0, and no discovery file lists them. The permit sends zones from SDOT to the operator and has pricing disclosed to SDOT and the rider, never through the feed (GOB-254), so the integration expects neither.
+The 3.0 manifest, <https://data.lime.bike/api/partners/v3/manifest.json>, lists 2.2 and 3.0 for `lime_seattle`; the 1.0 feed is published without a manifest entry, and no version publishes `gbfs_versions.json`. Each discovery file lists `system_information`, `station_information`, `station_status`, and the vehicle file, and 2.2 and 3.0 also list `vehicle_types`. The station files hold one placeholder station named "Seattle". Lime publishes no `geofencing_zones` and no `system_pricing_plans` in any version: both answer 404 under 3.0, and no discovery file lists them. The permit sends zones from SDOT to the operator and has pricing disclosed to SDOT and the rider, never through the feed (GOB-254), so the integration expects neither.
 
 Measured on 2026-11-08: about 12,700 vehicles, a vehicle file of 2.8 MB in 3.0 and 2.9 MB in 2.2, the 2.2 one about 460 KB compressed with gzip, `ttl` 60 seconds for the vehicle file and 86,400 for `vehicle_types`. Lime's files also carry a `vehicle_type` string GBFS does not define, which the client does not read.
 
@@ -34,7 +34,7 @@ Vehicle type identifiers differ between versions for the same vehicle: a standin
 
 ## Terms and use
 
-Lime's Public GBFS Terms govern the feed. The use gobusgo makes of it was settled on 2026-11-08 (GOB-253): public display with attribution in a free, non-commercial app, and raw responses kept for at most 10 minutes. The user read the terms and confirmed that use fits them; no agent has read their text, since li.me refuses automated fetches. The 3.0 `system_information` names the same terms as its `license_url`, and the 2.2 one names https://www.li.me/gbfs-terms. A use beyond the settled one needs the terms read again first.
+Lime's Public GBFS Terms govern the feed. The use gobusgo makes of it was settled on 2026-11-08 (GOB-253): public display with attribution in a free, non-commercial app, and raw responses kept for at most 10 minutes. The user read the terms and confirmed that use fits them; no agent has read their text, since li.me refuses automated fetches. The 3.0 `system_information` names the same terms as its `license_url`, and the 2.2 one names <https://www.li.me/gbfs-terms>. A use beyond the settled one needs the terms read again first.
 
 The feed's existence rests on one clause of Seattle's permit, which requires a public GBFS feed and names no version (Appendix E.1.1(b), GOB-254). Lime serves 1.0, 2.2, and 3.0 by choice, and the permit can end on 30 days' notice, so a version that disappears, or the whole feed, is a known outcome rather than a failure.
 
