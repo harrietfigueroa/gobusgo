@@ -64,6 +64,15 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
          },
          []
        ]},
+    "oba.schedules.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.OneBusAway.RawRouteScheduleResponse.StoredEvent,
+           processor: Gobusgo.OneBusAway.RouteScheduleBatch
+         },
+         []
+       ]},
     "oba.agencies-with-coverage.state" =>
       {Gobusgo.OneBusAway.AgencyView, :apply_records, [Gobusgo.OneBusAway.AgencyView]},
     "oba.vehicles-for-agency.state" =>
@@ -75,6 +84,9 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
       {Gobusgo.OneBusAway.StopView, :apply_records, [Gobusgo.OneBusAway.StopView]},
     "oba.arrivals.state" =>
       {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]},
+    "oba.schedules.state" =>
+      {Gobusgo.OneBusAway.RouteScheduleView, :apply_records,
+       [Gobusgo.OneBusAway.RouteScheduleView]},
     "oba.situations.state" =>
       {Gobusgo.OneBusAway.FetchView, :apply_records_to_each,
        [[Gobusgo.OneBusAway.VehicleSituationView, Gobusgo.OneBusAway.ArrivalSituationView]]}

@@ -8,10 +8,12 @@ defmodule Gobusgo.ApplicationTest do
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawArrivalResponse
+  alias Gobusgo.OneBusAway.RawRouteScheduleResponse
   alias Gobusgo.OneBusAway.RawVehicleResponse
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RouteDatasets
   alias Gobusgo.OneBusAway.RoutePathBatch
+  alias Gobusgo.OneBusAway.RouteScheduleBatch
   alias Gobusgo.OneBusAway.VehicleBatch
 
   defp subscribers do
@@ -26,12 +28,14 @@ defmodule Gobusgo.ApplicationTest do
         RawVehicleResponse.StoredEvent,
         RouteDatasets,
         RawArrivalResponse.StoredEvent,
+        RawRouteScheduleResponse.StoredEvent,
         AgencyBatch.Records,
         VehicleBatch.Records,
         RouteBatch.Records,
         RoutePathBatch.Records,
         RoutePathBatch.StopRecords,
-        ArrivalBatch.Records
+        ArrivalBatch.Records,
+        RouteScheduleBatch.Records
       ] do
     test "the topic of #{inspect(module)} has a subscriber" do
       assert Map.has_key?(subscribers(), unquote(module).topic())
@@ -54,6 +58,12 @@ defmodule Gobusgo.ApplicationTest do
              {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.OneBusAway.ArrivalView]}
   end
 
+  test "the schedule state topic hands its records to the route schedule view" do
+    assert subscribers()["oba.schedules.state"] ==
+             {Gobusgo.OneBusAway.RouteScheduleView, :apply_records,
+              [Gobusgo.OneBusAway.RouteScheduleView]}
+  end
+
   test "the supervision tree is running" do
     assert is_pid(Process.whereis(Gobusgo.Supervisor))
   end
@@ -69,6 +79,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.RouteView,
              Gobusgo.OneBusAway.RoutePathView,
              Gobusgo.OneBusAway.StopView,
+             Gobusgo.OneBusAway.RouteScheduleView,
              Gobusgo.OneBusAway.ArrivalView,
              Gobusgo.OneBusAway.VehicleSituationView,
              Gobusgo.OneBusAway.ArrivalSituationView,
