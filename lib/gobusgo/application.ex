@@ -15,6 +15,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.RouteRebuild
+  alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch
@@ -94,6 +95,8 @@ defmodule Gobusgo.Application do
              pubsub: Gobusgo.PubSub,
              route_count_max: @route_path_view_route_count_max,
              stop_count_max: @stop_view_stop_count_max},
+            {RouteScheduleView,
+             name: RouteScheduleView, route_count_max: @route_path_view_route_count_max},
             {FetchView,
              name: @arrival_view,
              pubsub: Gobusgo.PubSub,
