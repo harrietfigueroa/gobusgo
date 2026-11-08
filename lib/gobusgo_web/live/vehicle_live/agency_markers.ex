@@ -4,16 +4,21 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
   request each agency's markers came from, which is all a page keeps of
   them.
 
-  It reads the vehicle view and the stop view, and changes nothing: an
-  update is returned as the events to send and the requests then shown.
+  It reads the vehicle view, the stop view, and the route view, and changes
+  nothing: an update is returned as the events to send and the requests then
+  shown.
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleFilter
   alias Gobusgo.OneBusAway.VehicleView
+  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.VehicleLive.Filter
   alias GobusgoWeb.VehicleMarkers
+
+  @route_view Gobusgo.OneBusAway.RouteView
 
   @typedoc "The request the markers shown of each agency came from, by agency identifier."
   @type request_ids :: %{String.t() => String.t()}
@@ -110,7 +115,12 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
   end
 
   defp show(updates, kept) do
-    event = VehicleMarkers.agency_markers(kept, stop_names(VehicleMarkers.next_stop_ids(kept)))
+    stop_names = stop_names(VehicleMarkers.next_stop_ids(kept))
+    route_colors = route_colors(kept.agency_id)
+
+    event =
+      VehicleMarkers.agency_markers(kept, %{stop_names: stop_names, route_colors: route_colors})
+
     %{agency_id: agency_id, markers: markers} = event
 
     %{
@@ -129,6 +139,22 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
 
       false ->
         updates
+    end
+  end
+
+  # The CSS color of each route the route view holds for `agency_id`. A
+  # vehicle's route is one its own agency lists: every trip of the
+  # `vehicles-for-agency` responses of agencies `1` and `40` on 2026-11-07
+  # named a route of that agency, so one agency's routes suffice.
+  defp route_colors(agency_id) do
+    case FetchView.current_fetch(@route_view, agency_id) do
+      nil ->
+        %{}
+
+      %{routes: routes} ->
+        for {route_id, route} <- routes, into: %{} do
+          {route_id, RouteLines.css_color(route["color"])}
+        end
     end
   end
 

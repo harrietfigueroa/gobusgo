@@ -101,9 +101,15 @@ defmodule GobusgoWeb.RouteLines do
     }
   end
 
-  defp css_color(nil), do: @default_color
+  @doc """
+  Returns the CSS color of a route whose source supplies `color`, six
+  hexadecimal digits, or `#{@default_color}` for a route whose source
+  supplies none.
+  """
+  @spec css_color(String.t() | nil) :: String.t()
+  def css_color(nil), do: @default_color
 
-  defp css_color(color) when is_binary(color) do
+  def css_color(color) when is_binary(color) do
     Assert.condition(byte_size(color) == 6, "a route color is six hexadecimal digits")
     "#" <> color
   end
