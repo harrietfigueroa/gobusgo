@@ -82,23 +82,36 @@ function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
 // route and how soon, such as "E 2 min"; an empty text while it says of
 // none.
 export function nextArrivalText({status, arrivals}) {
+  const time = nextArrivalTimeText({status, arrivals})
+
+  if (time === "") {
+    return ""
+  }
+
+  const [{route}] = arrivals
+
+  if (typeof route === "string") {
+    return `${route} ${time}`
+  } else {
+    return time
+  }
+}
+
+// How soon the next arrival of what the server says of a stop's arrivals
+// comes, such as "2 min" or "now"; an empty text while it says of none.
+export function nextArrivalTimeText({status, arrivals}) {
   const hasArrival = status === "arrivals" && arrivals.length > 0
 
   if (hasArrival === false) {
     return ""
   }
 
-  const [{route, minutes}] = arrivals
-  let time = `${minutes} min`
+  const [{minutes}] = arrivals
 
   if (minutes === 0) {
-    time = ARRIVAL_NOW
-  }
-
-  if (typeof route === "string") {
-    return `${route} ${time}`
+    return ARRIVAL_NOW
   } else {
-    return time
+    return `${minutes} min`
   }
 }
 

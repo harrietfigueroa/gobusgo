@@ -14,6 +14,12 @@ defmodule GobusgoWeb.PanelSheet do
 
   Every panel is rendered whichever tab is open, so a hook inside a panel
   mounts once with the page and keeps running while its tab is closed.
+
+  With `detail`, the sheet also holds a details view, rendered hidden, which
+  the browser shows in place of the tabs and their panels and writes the
+  content of; its back button hides it again and so returns to the tab that
+  was open. Whether it is shown and what it holds are the browser's, across
+  patches as well.
   """
 
   use Phoenix.Component
@@ -28,8 +34,10 @@ defmodule GobusgoWeb.PanelSheet do
   text. `badge`, where given, is a text the tab shows beside its label, and
   `browser_badge_id`, where given, the identifier of an empty badge whose
   content a patch leaves to the browser. `summary` is the line above the
-  tabs.
+  tabs. `detail` adds the details view.
   """
+  attr :detail, :boolean, default: false
+
   slot :summary
 
   slot :tab, required: true do
@@ -116,6 +124,28 @@ defmodule GobusgoWeb.PanelSheet do
           {render_slot(tab)}
         </div>
       </div>
+
+      <section
+        :if={@detail}
+        id="panel-detail"
+        class="panel-sheet-detail"
+        aria-labelledby="panel-detail-title"
+        hidden
+        phx-mounted={JS.ignore_attributes(["hidden"])}
+      >
+        <button
+          id="panel-detail-back"
+          type="button"
+          class="panel-sheet-back"
+          aria-label="Back"
+          phx-mounted={JS.ignore_attributes(["aria-label"])}
+        >
+          <svg aria-hidden="true" class="panel-sheet-icon" viewBox="0 0 24 24">
+            <path d="M20 12 H5 M11 6 L5 12 L11 18" />
+          </svg>
+        </button>
+        <div id="panel-detail-content" class="panel-sheet-detail-content" phx-update="ignore"></div>
+      </section>
     </section>
     """
   end
