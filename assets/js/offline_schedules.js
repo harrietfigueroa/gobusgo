@@ -4,13 +4,15 @@
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, fetches one file at a time at low priority, and
-// runs again while the page stays open. Every file of a bundle is stored
-// before the index that names them, so a save that stops part way leaves the
-// previous complete bundle in use, and the files the new index no longer
-// names are deleted only after it is written. A file the browser evicted is
-// missing from the store and is fetched again by the next save.
+// runs again while the page stays open. Each file is stored under the key
+// its plan gives it, so content the store holds is never fetched again.
+// Every file of a bundle is stored before the index that names them, so a
+// save that stops part way leaves the previous complete bundle in use, and
+// the files the new index no longer names are deleted only after it is
+// written. A file the browser evicted is missing from the store and is
+// fetched again by the next save.
 
-import {IndexKind, PlanKind, StatusKind, bundleStatus, planBundle, stalePaths} from "./offline_bundle"
+import {IndexKind, PlanKind, StatusKind, bundleStatus, planBundle, staleKeys} from "./offline_bundle"
 
 const CACHE_NAME = "gobusgo-offline-schedules-v1"
 const INDEX_PATH = "/offline-schedules/index.json"
@@ -70,7 +72,7 @@ function tileArchivePath() {
   return archiveUrl
 }
 
-function pathOf(request) {
+function keyOf(request) {
   return new URL(request.url).pathname
 }
 
@@ -85,26 +87,31 @@ async function readIndex(cache) {
   return {kind: IndexKind.found, index}
 }
 
-async function storedPaths(cache) {
+async function storedKeys(cache) {
   const requests = await cache.keys()
-  return Array.from(requests, pathOf)
+  return Array.from(requests, keyOf)
 }
 
-// Stores `path` unless the store holds it already, and says whether it is stored.
-async function storeFile({cache, path, signal}) {
-  const stored = await cache.match(path)
+function fileKey(file) {
+  return file.key
+}
+
+// Stores `file` under its key unless the store holds that key already, and
+// says whether it is stored.
+async function storeFile({cache, file, signal}) {
+  const stored = await cache.match(file.key)
 
   if (stored !== undefined) {
     return true
   }
 
-  const response = await fetch(path, {signal, priority: "low"})
+  const response = await fetch(file.path, {signal, priority: "low"})
 
   if (!response.ok) {
     return false
   }
 
-  await cache.put(path, response)
+  await cache.put(file.key, response)
   return true
 }
 
@@ -124,28 +131,29 @@ async function save(signal) {
 
   const cache = await caches.open(CACHE_NAME)
 
-  for (const path of plan.paths) {
+  for (const file of plan.files) {
     if (signal.aborted) {
       return {kind: SaveKind.stopped}
     }
 
-    const isStored = await storeFile({cache, path, signal})
+    const isStored = await storeFile({cache, file, signal})
 
     if (!isStored) {
-      return {kind: SaveKind.failed, reason: path + " could not be fetched"}
+      return {kind: SaveKind.failed, reason: file.path + " could not be fetched"}
     }
   }
 
-  const index = {savedAtMs: Date.now(), formatVersion: plan.formatVersion, dates: plan.dates, paths: plan.paths}
+  const index = {savedAtMs: Date.now(), formatVersion: plan.formatVersion, dates: plan.dates, files: plan.files}
   const indexText = JSON.stringify(index)
   const indexResponse = new Response(indexText, {headers: {"content-type": "application/json"}})
   await cache.put(INDEX_PATH, indexResponse)
-  const present = await storedPaths(cache)
-  const keptPaths = [INDEX_PATH, ...plan.paths]
-  const stale = stalePaths({index: {paths: keptPaths}, storedPaths: present})
+  const present = await storedKeys(cache)
+  const planKeys = Array.from(plan.files, fileKey)
+  const keptKeys = [INDEX_PATH, ...planKeys]
+  const stale = staleKeys({keptKeys, storedKeys: present})
 
-  for (const path of stale) {
-    await cache.delete(path)
+  for (const key of stale) {
+    await cache.delete(key)
   }
 
   return {kind: SaveKind.saved}
@@ -206,8 +214,8 @@ function statusText({status, bytes}) {
 async function describe() {
   const cache = await caches.open(CACHE_NAME)
   const savedIndex = await readIndex(cache)
-  const present = await storedPaths(cache)
-  const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
+  const present = await storedKeys(cache)
+  const status = bundleStatus({savedIndex, presentKeys: present, nowMs: Date.now()})
   const bytes = await storedBytes(cache)
   return statusText({status, bytes})
 }
