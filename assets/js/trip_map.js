@@ -4,7 +4,7 @@
 // are added to each map the basemap announces, and are added again in the
 // map's theme once a style set anew has loaded, which drops them.
 
-import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
+import {FIT_EVENT_DATA, READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {sheetInsets} from "./panel_sheet"
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
@@ -150,7 +150,7 @@ export function createTripMap() {
         left: insets.left + FIT_MARGIN_PIXELS
       },
       maxZoom: FIT_ZOOM_MAX
-    })
+    }, FIT_EVENT_DATA)
   }
 
   function destroy() {

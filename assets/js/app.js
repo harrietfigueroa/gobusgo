@@ -5,6 +5,7 @@ import {Basemap} from "./basemap"
 import {ColorTheme, followSystemTheme} from "./color_theme"
 import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
+import {FollowLocation} from "./follow_location"
 import {InstallApp} from "./install_app"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
@@ -13,7 +14,6 @@ import {PanelSheet} from "./panel_sheet"
 import {registerServiceWorker} from "./release_update"
 import {LocalTime} from "./service_alerts"
 import {SharedVehicles, SharedVehicleToggle} from "./shared_vehicles"
-import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
 import {TripPlanner} from "./trip_planner"
 import {VehicleFilter} from "./vehicle_filter"
@@ -46,6 +46,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     ColorTheme,
     FavoriteStop,
     FilterBar,
+    FollowLocation,
     InstallApp,
     LocalTime,
     OfflineSchedules,
@@ -54,7 +55,6 @@ const liveSocket = new LiveSocket("/live", Socket, {
     RouteStopTiles,
     SharedVehicles,
     SharedVehicleToggle,
-    SnapToLocation,
     StopMarkers,
     TripPlanner,
     VehicleFilter,

@@ -58,11 +58,13 @@ defmodule GobusgoWeb.VehicleLive do
   extraction the page says that no basemap is available, and shows the
   sheet with its Settings tab and nothing else.
 
-  An element of its own mounts the hook that centers the map on the rider's
-  location. It carries the bounds of the whole archive and starts hidden;
-  the browser writes into it why a snap the rider asked for did not happen,
-  and a patch of the page leaves it as the browser has it. The rider's
-  position stays in the browser: no event of this page carries it.
+  An element of its own mounts the hook of the location button, which
+  follows the rider's location on the map. It carries the bounds of the
+  whole archive and is a polite live region that starts empty; the browser
+  writes into it each change of the button's state and why a follow the
+  rider asked for did not happen, and a patch of the page leaves it as the
+  browser has it. The rider's position stays in the browser: no event of
+  this page carries it.
 
   On the map the browser draws one marker per vehicle that has a position,
   from `GobusgoWeb.VehicleMarkers`. An element that shows nothing mounts the
@@ -711,13 +713,14 @@ defmodule GobusgoWeb.VehicleLive do
     <div id="route-lines" phx-hook="RouteLines" hidden></div>
 
     <p
-      id="snap-to-location"
-      phx-hook="SnapToLocation"
+      id="follow-location"
+      phx-hook="FollowLocation"
       phx-update="ignore"
       role="status"
-      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
+      aria-live="polite"
+      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow data-[shown=false]:pointer-events-none data-[shown=false]:opacity-0"
       data-bounds={JSON.encode!(@basemap.archive_bounds)}
-      hidden
+      data-shown="false"
     >
     </p>
     """

@@ -156,8 +156,22 @@ defmodule GobusgoWeb.AppInfoTest do
       assert AppInfo.location() =~ "asks you first"
     end
 
+    test "says the button keeps the map on the rider until the rider moves it" do
+      assert AppInfo.location() =~
+               "keeps the map on you as you move, until you move the map yourself"
+    end
+
     test "says what the browser remembers" do
-      assert AppInfo.location() =~ "remembers only that you used the button"
+      assert AppInfo.location() =~ "remembers only whether you left the button on"
+    end
+
+    test "states the whole text of the location button" do
+      assert AppInfo.location() ==
+               "The location button shows where you are on the map and keeps the map on you " <>
+                 "as you move, until you move the map yourself. Your browser asks you first, " <>
+                 "and your position never leaves your browser: Gobusgo's server does not " <>
+                 "receive it. The browser remembers only whether you left the button on, so " <>
+                 "the map follows you again on your next visit."
     end
   end
 

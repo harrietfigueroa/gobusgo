@@ -5,7 +5,7 @@
     "theme": "gobusgo:theme",
     "favoriteStops": "gobusgo:favorite-stops",
     "vehicleFilter": "gobusgo:vehicle-filter",
-    "snapToLocation": "gobusgo:snap-to-location",
+    "locationFollow": "gobusgo:snap-to-location",
     "offlineSchedules": "gobusgo:offline-schedules",
     "sharedVehicles": "gobusgo:shared-vehicles"
   },
