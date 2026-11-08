@@ -3,8 +3,9 @@
 // renders the alerts of each route into an element, and a popup reads it
 // when it opens, so the browser keeps none of them.
 
+import {OPEN_EVENT_NAME as PANEL_OPEN_EVENT_NAME} from "./panel_sheet"
+
 const ROUTES_ELEMENT_ID = "service-alert-routes"
-const SHOW_MODAL_EVENT_NAME = "gobusgo:show-modal"
 const LINE_CLASS_NAME = "popup-alert"
 const LINE_PREFIX = "⚠ Service alert: "
 // A popup shows at most this many alert lines, then a line with the count
@@ -49,11 +50,11 @@ function popupAlerts({routeIds, stopId}) {
   return [...alertsById.values()]
 }
 
-// Opens the alerts panel and, for an alert it lists, shows that alert with
-// its details open.
+// Opens the alerts panel's tab of the panel sheet and, for an alert it
+// lists, shows that alert with its details open.
 function openPanel(alertId) {
   const panel = document.getElementById(document.getElementById(ROUTES_ELEMENT_ID).dataset.panelId)
-  panel.dispatchEvent(new CustomEvent(SHOW_MODAL_EVENT_NAME, {bubbles: true}))
+  panel.dispatchEvent(new CustomEvent(PANEL_OPEN_EVENT_NAME, {bubbles: true}))
 
   const entry = [...panel.querySelectorAll("[data-alert-id]")]
     .find((element) => element.dataset.alertId === alertId)

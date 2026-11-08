@@ -1,5 +1,6 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
+import {sheetInsets} from "./panel_sheet"
 
 const PROTOCOL_NAME = "pmtiles"
 const SOURCE_NAME = "protomaps"
@@ -66,6 +67,17 @@ function cornerBounds({south, west, north, east}) {
   return [[west, south], [east, north]]
 }
 
+// The padding a fit leaves around its bounds, wider by what the panel
+// sheet covers of the map, so the fitted bounds stay in sight beside it.
+function fitPadding({left, bottom}) {
+  return {
+    top: FIT_PADDING_PIXELS,
+    right: FIT_PADDING_PIXELS,
+    bottom: FIT_PADDING_PIXELS + bottom,
+    left: FIT_PADDING_PIXELS + left
+  }
+}
+
 // The hook of the element the map is drawn in. The element's data
 // attributes hold the library's address, the basemap's sources, and the
 // bounds of the first view;
@@ -83,17 +95,20 @@ export const Basemap = {
       this.fitBounds = cornerBounds(event.bounds)
 
       if (this.map !== null) {
-        this.map.fitBounds(this.fitBounds, {padding: FIT_PADDING_PIXELS})
+        const padding = fitPadding(sheetInsets())
+        this.map.fitBounds(this.fitBounds, {padding})
       }
     })
 
     loadMaplibre(element.dataset.libraryUrl)
       .then((maplibre) => {
+        const padding = fitPadding(sheetInsets())
+
         this.map = new maplibre.Map({
           container: element,
           style: basemapStyle(element.dataset),
           bounds: this.fitBounds,
-          fitBoundsOptions: {padding: FIT_PADDING_PIXELS},
+          fitBoundsOptions: {padding},
           locale,
           attributionControl: false
         })

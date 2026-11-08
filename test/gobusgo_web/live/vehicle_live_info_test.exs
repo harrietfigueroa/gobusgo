@@ -1,11 +1,10 @@
 defmodule GobusgoWeb.VehicleLiveInfoTest do
   # Mounts the vehicle page with Phoenix.LiveViewTest and reads the info
-  # button and the panel it opens, with and without a basemap manifest in
-  # the test's temporary directory, which the test names as the basemap
+  # panel of the About tab, with and without a basemap manifest in the
+  # test's temporary directory, which the test names as the basemap
   # directory. The agency view fills the panel's credits. Both are global
-  # state, hence the non-async case. The browser opens and closes the panel,
-  # so these tests observe what the server renders: the button, the command
-  # it runs, and the panel's sections.
+  # state, hence the non-async case. The browser opens the tab, so these
+  # tests observe what the server renders: the tab and the panel's sections.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -23,7 +22,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
   @moduletag capture_log: true
 
   @endpoint GobusgoWeb.Endpoint
-  @button "#app-info-open"
+  @tab "#panel-tab-about"
   @panel "#app-info"
   @fetched_at ~U[2026-10-02 03:15:00Z]
   @bounds %{"south" => 47.0, "west" => -123.0, "north" => 48.0, "east" => -122.0}
@@ -93,71 +92,37 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     value
   end
 
-  describe "the info button" do
-    test "is shown without a basemap" do
+  describe "the About tab" do
+    test "holds the info panel without a basemap" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(view, "#no-basemap")
-      assert has_element?(view, @button)
-      assert has_element?(view, "dialog" <> @panel)
+      assert attribute(view, @tab, "aria-controls") == "panel-about"
+      assert has_element?(view, "#panel-about " <> @panel)
     end
 
-    test "is shown with a basemap", %{tmp_dir: tmp_dir} do
+    test "holds the info panel with a basemap", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @button)
-      assert has_element?(view, "dialog" <> @panel)
+      assert has_element?(view, "#panel-about " <> @panel)
     end
 
-    test "is shown with a refused filter", %{tmp_dir: tmp_dir} do
+    test "is offered with a refused filter", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency[x]=1")
 
       assert has_element?(view, "#filter-refused")
-      assert has_element?(view, @button)
-    end
-
-    test "has an accessible name and is a button a keyboard reaches" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      assert attribute(view, @button, "aria-label") == "About this map"
-      assert attribute(view, @button, "type") == "button"
-      assert has_element?(view, "button" <> @button)
-    end
-
-    test "opens the panel in the browser, with no event for the server" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      commands = view |> attribute(@button, "phx-click") |> JSON.decode!()
-
-      assert [["dispatch", %{"event" => "gobusgo:show-modal", "to" => @panel}]] = commands
+      assert has_element?(view, @tab)
     end
   end
 
   describe "the info panel" do
-    test "closes through a form of the dialog method, with no event for the server" do
+    test "sends the server no event" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @panel <> " form[method=dialog] button")
       refute has_element?(view, @panel <> " [phx-click]")
       refute has_element?(view, @panel <> " [phx-submit]")
-    end
-
-    test "keeps the open state the browser gives it when the page is patched" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      commands = view |> attribute(@panel, "phx-mounted") |> JSON.decode!()
-
-      assert [["ignore_attrs", %{"attrs" => ["open"]}]] = commands
-    end
-
-    test "is labeled by its heading" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      heading_id = attribute(view, @panel, "aria-labelledby")
-
-      assert has_element?(view, @panel <> " #" <> heading_id)
     end
 
     test "says what the app is" do

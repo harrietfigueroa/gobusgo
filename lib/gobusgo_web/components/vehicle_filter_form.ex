@@ -40,7 +40,7 @@ defmodule GobusgoWeb.VehicleFilterForm do
       phx-change="vehicle-filter:change"
       phx-submit="vehicle-filter:change"
       data-supplied={to_string(@supplied)}
-      class="surface max-h-[calc(100vh-1rem)] max-w-xs overflow-y-auto px-3 py-2 text-sm shadow"
+      class="text-sm"
     >
       <.agencies options={@agency_options} />
       <.routes options={@route_options} query={@route_query} />
