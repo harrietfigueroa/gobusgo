@@ -1,0 +1,6 @@
+# The toolchain the WebAssembly engine is built with. rustup reads this file
+# and installs the version and the target on first use.
+[toolchain]
+channel = "1.88.0"
+profile = "minimal"
+targets = ["wasm32-unknown-unknown"]
