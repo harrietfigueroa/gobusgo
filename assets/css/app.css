@@ -675,6 +675,58 @@
   opacity: 0.7;
 }
 
+/* A favorite's entry: a drag handle, its name, which centers the map on
+   the stop, and its move buttons, each a target of a map control's size. */
+.favorite-stop-handle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-height: var(--close-button-hit-size);
+  color: var(--panel-sheet-grip-color);
+  font-size: 1.25rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.favorite-stop-name {
+  flex-grow: 1;
+  min-height: var(--close-button-hit-size);
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.favorite-stop-name:hover {
+  text-decoration: underline;
+}
+
+.favorite-stop-move {
+  flex-shrink: 0;
+  width: var(--close-button-hit-size);
+  height: var(--close-button-hit-size);
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.favorite-stop-move:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.favorite-stop-dragging {
+  opacity: 0.6;
+}
+
+.favorite-stop-dragging .favorite-stop-handle {
+  cursor: grabbing;
+}
+
 .panel-detail-arrivals p:first-child {
   font-weight: 600;
 }
@@ -974,6 +1026,8 @@
 .panel-sheet-handle:focus-visible,
 .panel-sheet-back:focus-visible,
 .panel-detail-action:focus-visible,
+.favorite-stop-name:focus-visible,
+.favorite-stop-move:focus-visible,
 .panel-sheet-tab:focus-visible,
 .panel-sheet-panel:focus-visible {
   outline: 2px solid var(--close-button-focus-color);

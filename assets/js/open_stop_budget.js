@@ -4,6 +4,10 @@
 // by itself, so a stop the details view holds apart from those takes the
 // place of one such popup.
 
+// The zoom from which a screen holds few enough stops that their popups
+// open by themselves and stand apart.
+export const AUTO_OPEN_ZOOM_MIN = 16
+
 // The most stops on screen whose popups open by themselves, out of
 // `countMax`, while the details view holds `detailStopId`, or null for no
 // stop. A stop the view holds is in that room already when it is on screen,

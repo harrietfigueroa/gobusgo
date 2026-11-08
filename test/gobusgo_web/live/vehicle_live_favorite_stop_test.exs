@@ -1,14 +1,18 @@
 defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
   # Mounts the vehicle page with Phoenix.LiveViewTest over a basemap
-  # directory the test names, hence the non-async case. The browser keeps the
-  # favorite and writes the panel, so these tests observe the element the
-  # panel's hook mounts on: where the page renders it, and that the page
-  # leaves its content to the hook.
+  # directory the test names and the application's stop view, both global
+  # state, hence the non-async case. The browser keeps the favorite and
+  # writes the panel, so these tests observe the element the panel's hook
+  # mounts on, where the page renders it and that the page leaves its
+  # content to the hook, and what the page answers the hook's request for a
+  # favorite's position with.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Gobusgo.OneBusAway.RoutePathBatch.StopRecords
+  alias Gobusgo.OneBusAway.StopView
   alias GobusgoWeb.VehicleLive.OpenStops
 
   @moduletag :tmp_dir
@@ -36,6 +40,49 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
   defp panel(view) do
     view |> element(@panel) |> render() |> LazyHTML.from_fragment()
   end
+
+  defp restart_stop_view do
+    :ok = Supervisor.terminate_child(Gobusgo.Supervisor, StopView)
+    {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, StopView)
+  end
+
+  # Has the stop view hold the stop 1_431 at 47.6101, -122.3378.
+  defp apply_stop do
+    stop = %{
+      id: "1_431",
+      name: "3rd Ave & Pike St",
+      lat: 47.6101,
+      lon: -122.3378,
+      code: "431",
+      direction: "N",
+      location_type: 0,
+      parent: nil,
+      wheelchair_boarding: "UNKNOWN",
+      route_ids: ["1_100210"]
+    }
+
+    record =
+      StopRecords.build(%{
+        route_id: "1_100210",
+        destination: "raw/oba/stops-for-route/dt=2026-11-08/route=1_100210/file.json.gz",
+        fetched_at: ~U[2026-11-08 17:00:00Z],
+        data_sha256: String.duplicate("ab", 32),
+        request_id: "0199c4a2-7e1b-7a3f-9d20-000000000000",
+        route_path: %{
+          route_id: "1_100210",
+          stop_ids: ["1_431"],
+          polylines: [],
+          stop_groupings: [],
+          stops: [stop],
+          parent_stops: []
+        }
+      })
+
+    :ok = StopView.apply_records(StopView, [record.value])
+  end
+
+  defp request_position(view, params),
+    do: view |> element(@panel) |> render_hook("stop:position", params)
 
   describe "GET /vehicles with a basemap" do
     setup %{tmp_dir: tmp_dir} do
@@ -80,6 +127,39 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
         |> LazyHTML.attribute("data-auto-open-count-max")
 
       assert count == Integer.to_string(OpenStops.auto_open_count_max())
+    end
+  end
+
+  describe "a favorite's position" do
+    setup %{tmp_dir: tmp_dir} do
+      write_manifest(tmp_dir)
+      restart_stop_view()
+      on_exit(&restart_stop_view/0)
+    end
+
+    test "answers the position of a stop the stop view holds" do
+      apply_stop()
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      request_position(view, %{"stop_id" => "1_431"})
+
+      assert_reply(view, %{lat: 47.6101, lon: -122.3378})
+    end
+
+    test "refuses a stop the stop view does not hold" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      request_position(view, %{"stop_id" => "1_999"})
+
+      assert_reply(view, %{refused: true})
+    end
+
+    test "refuses a request that names no stop" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      request_position(view, %{"stop_id" => 431})
+
+      assert_reply(view, %{refused: true})
     end
   end
 

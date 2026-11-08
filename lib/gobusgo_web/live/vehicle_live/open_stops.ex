@@ -66,6 +66,17 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
     end
   end
 
+  @doc """
+  The position of `held_stop`, a stop of the stop view, or `refused` for
+  `nil`, a stop the view does not hold.
+  """
+  @spec position(StopView.State.held_stop() | nil) ::
+          %{lat: number(), lon: number()} | %{refused: true}
+  def position(nil), do: %{refused: true}
+
+  def position(%{stop: %{"lat" => lat, "lon" => lon}}) when is_number(lat) and is_number(lon),
+    do: %{lat: lat, lon: lon}
+
   @doc "Ends the calling process's registration of the stop."
   @spec release(String.t()) :: :ok
   def release(stop_id) when is_binary(stop_id) do
