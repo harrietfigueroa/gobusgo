@@ -37,7 +37,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
   }
   @west_map "#basemap-basemap-20261004-01"
   @east_map "#basemap-basemap-20261004-02"
-  @snap "#snap-to-location"
+  @follow "#follow-location"
 
   setup %{tmp_dir: tmp_dir} do
     configured = Application.fetch_env!(:gobusgo, :basemap)
@@ -83,10 +83,10 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert log =~ "Basemap manifest not usable"
     end
 
-    test "has no element for the snap to the rider's location" do
+    test "has no element for the location button" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      refute has_element?(view, @snap)
+      refute has_element?(view, @follow)
     end
   end
 
@@ -133,7 +133,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "stop-markers",
                "vehicle-markers",
                "route-lines",
-               "snap-to-location"
+               "follow-location"
              ]
     end
 
@@ -156,31 +156,54 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @west_map) == @west_bounds
     end
 
-    test "mounts the snap hook on a notice that starts hidden and that a patch leaves alone" do
+    test "mounts the location button's hook on a notice that a patch leaves alone" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert attribute(view, @snap, "phx-hook") == "SnapToLocation"
-      assert attribute(view, @snap, "phx-update") == "ignore"
-      assert attribute(view, @snap, "role") == "status"
-      assert has_element?(view, @snap <> "[hidden]")
+      assert attribute(view, @follow, "phx-hook") == "FollowLocation"
+      assert attribute(view, @follow, "phx-update") == "ignore"
     end
 
-    test "hands the snap hook the bounds of the whole archive" do
+    test "makes the notice a polite live region that stays in the page" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert bounds(view, @snap) == @west_bounds
+      assert attribute(view, @follow, "role") == "status"
+      assert attribute(view, @follow, "aria-live") == "polite"
+      refute has_element?(view, @follow <> "[hidden]")
     end
 
-    test "hands the snap hook the whole archive's bounds under a filter by one agency" do
+    test "starts the notice not shown" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @follow, "data-shown") == "false"
+    end
+
+    test "starts the notice empty" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view
+             |> element(@follow)
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.trim() == ""
+    end
+
+    test "hands the location button the bounds of the whole archive" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert bounds(view, @follow) == @west_bounds
+    end
+
+    test "hands the location button the whole archive's bounds under a filter by one agency" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
 
-      assert bounds(view, @snap) == @west_bounds
+      assert bounds(view, @follow) == @west_bounds
     end
 
-    test "hands the snap hook the bounds of the archive that holds the agency the address names" do
+    test "hands the location button the bounds of the archive that holds the agency the address names" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=east")
 
-      assert bounds(view, @snap) == @east_bounds
+      assert bounds(view, @follow) == @east_bounds
     end
 
     test "hands the map the address of the library at the version in use" do

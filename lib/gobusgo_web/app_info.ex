@@ -94,10 +94,11 @@ defmodule GobusgoWeb.AppInfo do
 
   @donation_label "Support gobusgo on Ko-fi"
 
-  @location "The location button centers the map on where you are. Your browser asks you " <>
-              "first, and your position never leaves your browser: Gobusgo's server does " <>
-              "not receive it. The browser remembers only that you used the button, so " <>
-              "that the map centers on you again on your next visit."
+  @location "The location button shows where you are on the map and keeps the map on you " <>
+              "as you move, until you move the map yourself. Your browser asks you first, " <>
+              "and your position never leaves your browser: Gobusgo's server does not " <>
+              "receive it. The browser remembers only whether you left the button on, so " <>
+              "the map follows you again on your next visit."
 
   @favorite_stop "Your browser remembers your favorite stops. While a page is open, " <>
                    "Gobusgo's server learns each stop only to fetch its arrivals, as for " <>
