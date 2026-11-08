@@ -80,6 +80,20 @@ defmodule GobusgoWeb.AppInfoPanel do
           <h3 class="font-semibold">Your favorite stops</h3>
           <p>{AppInfo.favorite_stop()}</p>
         </section>
+        <section
+          id="app-info-offline-schedules"
+          class="flex flex-col gap-2"
+          phx-hook="OfflineSchedules"
+          phx-update="ignore"
+        >
+          <h3 class="font-semibold">Offline schedules</h3>
+          <p>{AppInfo.offline_schedules()}</p>
+          <label class="flex items-center gap-2">
+            <input id="offline-schedules-enabled" type="checkbox" checked />
+            Save schedules for offline use
+          </label>
+          <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
+        </section>
         <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />

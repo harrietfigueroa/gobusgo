@@ -175,6 +175,21 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "offline_schedules/0" do
+    test "says the browser saves the region's schedules for today and tomorrow" do
+      assert AppInfo.offline_schedules() =~
+               "saves the schedules of the region for today and tomorrow"
+    end
+
+    test "says the saving waits for the page to load" do
+      assert AppInfo.offline_schedules() =~ "after the page has loaded"
+    end
+
+    test "says turning the setting off removes them" do
+      assert AppInfo.offline_schedules() =~ "turning this off removes them"
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =

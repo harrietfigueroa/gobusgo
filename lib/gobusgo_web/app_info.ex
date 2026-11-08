@@ -92,6 +92,12 @@ defmodule GobusgoWeb.AppInfo do
                    "Gobusgo's server learns each stop only to fetch its arrivals, as for " <>
                    "any stop you open, and no usage record holds them."
 
+  @offline_schedules "While a page is open, your browser saves the schedules of the region " <>
+                       "for today and tomorrow, with the map's stops and routes, so they stay " <>
+                       "on your device for offline use. It saves them after the page has " <>
+                       "loaded and updates them while you are online, and turning this off " <>
+                       "removes them."
+
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
   @components [
@@ -192,6 +198,10 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page keeps a rider's favorite stops."
   @spec favorite_stop() :: String.t()
   def favorite_stop, do: @favorite_stop
+
+  @doc "The statement of how a map page saves schedules for offline use."
+  @spec offline_schedules() :: String.t()
+  def offline_schedules, do: @offline_schedules
 
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()
