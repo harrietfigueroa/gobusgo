@@ -3,6 +3,7 @@ defmodule GobusgoWeb.StopMarkersTest do
   # and route fetches written here in the form the views return them.
   use ExUnit.Case, async: true
 
+  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.StopMarkers
 
   defp held_stop(overrides \\ %{}) do
@@ -33,7 +34,10 @@ defmodule GobusgoWeb.StopMarkersTest do
 
   defp marker(overrides) do
     StopMarkers.marker(
-      Map.merge(%{held_stop: held_stop(), route_names: %{}, route_agency_names: %{}}, overrides)
+      Map.merge(
+        %{held_stop: held_stop(), route_names: %{}, route_agency_names: %{}, route_colors: %{}},
+        overrides
+      )
     )
   end
 
@@ -89,6 +93,23 @@ defmodule GobusgoWeb.StopMarkersTest do
     end
   end
 
+  describe "route_colors/1" do
+    test "returns the CSS color of each route of every fetch" do
+      fetches = [
+        %{routes: %{"1_44" => %{"color" => "FDB71A"}}},
+        %{routes: %{"40_1" => %{"color" => "28813F"}}}
+      ]
+
+      assert StopMarkers.route_colors(fetches) == %{"1_44" => "#FDB71A", "40_1" => "#28813F"}
+    end
+
+    test "gives a route with no color the color of the route lines' default" do
+      fetches = [%{routes: %{"1_44" => %{"color" => nil}}}]
+
+      assert StopMarkers.route_colors(fetches) == %{"1_44" => RouteLines.default_color()}
+    end
+  end
+
   describe "drawn?/1" do
     for {name, route_ids, drawn} <- [
           {"a stop one of whose routes is drawn", ["1_45"], true},
@@ -122,8 +143,29 @@ defmodule GobusgoWeb.StopMarkersTest do
                code: "75403",
                direction: "SW",
                routes: ["44", "45"],
+               route_chips: [
+                 %{name: "44", color: RouteLines.default_color()},
+                 %{name: "45", color: RouteLines.default_color()}
+               ],
                agencies: []
              }
+    end
+
+    test "holds a chip per named route in the stop's order, in the route's color" do
+      route_names = %{"1_44" => "44", "1_45" => "45"}
+      route_colors = %{"1_44" => "#FDB71A", "1_45" => "#9C182F"}
+
+      assert marker(%{route_names: route_names, route_colors: route_colors}).route_chips == [
+               %{name: "44", color: "#FDB71A"},
+               %{name: "45", color: "#9C182F"}
+             ]
+    end
+
+    test "leaves out the chip of a route that has no name" do
+      route_colors = %{"1_44" => "#FDB71A", "1_45" => "#9C182F"}
+      marker = marker(%{route_names: %{"1_45" => "45"}, route_colors: route_colors})
+
+      assert marker.route_chips == [%{name: "45", color: "#9C182F"}]
     end
 
     test "leaves out a route that has no name" do

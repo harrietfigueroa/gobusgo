@@ -29,6 +29,7 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     code: nil,
     direction: "N",
     routes: ["10"],
+    route_chips: [%{name: "10", color: "#FDB71A"}],
     agencies: ["Metro"]
   }
   @content %{

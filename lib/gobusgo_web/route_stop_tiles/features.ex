@@ -18,7 +18,8 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
   point with `stopId`, `name`, `code`, `direction`, `routes` and `agencies`,
   the names of its routes and of their agencies joined by
   `#{@text_separator}`, `label`, the text a map shows beside the stop, and
-  `routeIds`, the identifiers of its drawn routes with
+  `routeChips`, each named route's name and CSS color as a JSON list of
+  pairs, and `routeIds`, the identifiers of its drawn routes with
   `#{@route_id_separator}` before, between, and after them, so that a map
   can test for one route with a substring. A vector tile's property holds no
   list, which is why each list is one text. A property a route or a stop
@@ -86,7 +87,8 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
         "routes" => Enum.join(marker.routes, @text_separator),
         "agencies" => Enum.join(marker.agencies, @text_separator),
         "routeIds" => route_ids_text(route_ids),
-        "label" => label(marker)
+        "label" => label(marker),
+        "routeChips" => route_chips_text(marker.route_chips)
       })
 
     {:ok,
@@ -96,6 +98,13 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
        "properties" => properties,
        "tippecanoe" => %{"minzoom" => @stop_zoom_min}
      })}
+  end
+
+  # A pair is a list rather than an object so that each stop's text repeats
+  # no key names; the archive holds one per stop.
+  defp route_chips_text(route_chips) do
+    pairs = for %{name: name, color: color} <- route_chips, do: [name, color]
+    JSON.encode!(pairs)
   end
 
   @doc """

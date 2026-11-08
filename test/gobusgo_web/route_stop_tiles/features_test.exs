@@ -24,6 +24,7 @@ defmodule GobusgoWeb.RouteStopTiles.FeaturesTest do
     code: "500",
     direction: "N",
     routes: ["10", "11"],
+    route_chips: [%{name: "10", color: "#FDB71A"}, %{name: "11", color: "#9C182F"}],
     agencies: ["Metro"]
   }
 
@@ -98,7 +99,8 @@ defmodule GobusgoWeb.RouteStopTiles.FeaturesTest do
                "routes" => "10, 11",
                "agencies" => "Metro",
                "routeIds" => ",1_100,1_110,",
-               "label" => "10 11\nN · Metro"
+               "label" => "10 11\nN · Metro",
+               "routeChips" => ~s([["10","#FDB71A"],["11","#9C182F"]])
              }
     end
 

@@ -6,8 +6,9 @@ defmodule GobusgoWeb.StopMarkers do
 
   A marker holds the stop's `id`, its position as `lat` and `lon`, its
   `name`, its `code` and `direction`, each `nil` when the source supplies
-  none, `routes`, the names of the routes that serve it, and `agencies`,
-  the names of the agencies of those routes.
+  none, `routes`, the names of the routes that serve it, `route_chips`,
+  each of those names with its route's CSS color, and `agencies`, the names
+  of the agencies of those routes.
 
   A stop is drawn when one of its routes is drawn, so a filter that hides a
   route's line hides the stops only that route serves, and a stop no route
@@ -15,6 +16,7 @@ defmodule GobusgoWeb.StopMarkers do
   """
 
   alias Gobusgo.OneBusAway.StopView
+  alias GobusgoWeb.RouteLines
 
   @type marker :: %{
           id: String.t(),
@@ -24,6 +26,7 @@ defmodule GobusgoWeb.StopMarkers do
           code: String.t() | nil,
           direction: String.t() | nil,
           routes: [String.t()],
+          route_chips: [%{name: String.t(), color: String.t()}],
           agencies: [String.t()]
         }
 
@@ -32,6 +35,9 @@ defmodule GobusgoWeb.StopMarkers do
 
   @typedoc "The name of the agency of each route whose agency has one, by route identifier."
   @type route_agency_names :: %{String.t() => String.t()}
+
+  @typedoc "The CSS color of each route, by route identifier."
+  @type route_colors :: %{String.t() => String.t()}
 
   @doc """
   Returns the name of every route of `route_fetches`, the current fetches
@@ -46,6 +52,18 @@ defmodule GobusgoWeb.StopMarkers do
         is_binary(name),
         into: %{} do
       {route_id, name}
+    end
+  end
+
+  @doc """
+  Returns the CSS color of every route of `route_fetches`, the current
+  fetches of the route view, the color of a route whose source supplies
+  none included.
+  """
+  @spec route_colors([map()]) :: route_colors()
+  def route_colors(route_fetches) when is_list(route_fetches) do
+    for %{routes: routes} <- route_fetches, {route_id, route} <- routes, into: %{} do
+      {route_id, RouteLines.css_color(route["color"])}
     end
   end
 
@@ -83,20 +101,26 @@ defmodule GobusgoWeb.StopMarkers do
   Returns the marker of `held_stop`, a stop of the stop view, with the name
   in `route_names` of each of its routes that has one, and the name in
   `route_agency_names` of each of their agencies that has one, once each,
-  both in the stop's order of routes.
+  both in the stop's order of routes. Each named route's chip carries its
+  color from `route_colors`, or the color of a route whose source supplies
+  none.
   """
   @spec marker(%{
           held_stop: StopView.State.held_stop(),
           route_names: route_names(),
-          route_agency_names: route_agency_names()
+          route_agency_names: route_agency_names(),
+          route_colors: route_colors()
         }) :: marker()
   def marker(%{
         held_stop: %{id: id, stop: stop},
         route_names: route_names,
-        route_agency_names: route_agency_names
+        route_agency_names: route_agency_names,
+        route_colors: route_colors
       })
-      when is_binary(id) and is_map(route_names) and is_map(route_agency_names) do
+      when is_binary(id) and is_map(route_names) and is_map(route_agency_names) and
+             is_map(route_colors) do
     %{"lat" => lat, "lon" => lon, "name" => name, "routeIds" => route_ids} = stop
+    named_route_ids = Enum.filter(route_ids, &is_map_key(route_names, &1))
 
     %{
       id: id,
@@ -105,8 +129,11 @@ defmodule GobusgoWeb.StopMarkers do
       name: name,
       code: stop["code"],
       direction: stop["direction"],
-      routes:
-        for(route_id <- route_ids, is_map_key(route_names, route_id), do: route_names[route_id]),
+      routes: for(route_id <- named_route_ids, do: route_names[route_id]),
+      route_chips:
+        for route_id <- named_route_ids do
+          %{name: route_names[route_id], color: route_color(route_colors, route_id)}
+        end,
       agencies:
         Enum.uniq(
           for(
@@ -116,5 +143,12 @@ defmodule GobusgoWeb.StopMarkers do
           )
         )
     }
+  end
+
+  defp route_color(route_colors, route_id) do
+    case Map.fetch(route_colors, route_id) do
+      {:ok, color} -> color
+      :error -> RouteLines.default_color()
+    end
   end
 end

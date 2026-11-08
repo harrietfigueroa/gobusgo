@@ -341,6 +341,7 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   defp stops(%{route_fetches: route_fetches, versions: versions, agency_names: agency_names}) do
     drawn = versions |> Map.keys() |> MapSet.new()
     route_names = StopMarkers.route_names(route_fetches)
+    route_colors = StopMarkers.route_colors(route_fetches)
 
     route_agency_names =
       StopMarkers.route_agency_names(%{route_fetches: route_fetches, agency_names: agency_names})
@@ -352,7 +353,8 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
         StopMarkers.marker(%{
           held_stop: held_stop,
           route_names: route_names,
-          route_agency_names: route_agency_names
+          route_agency_names: route_agency_names,
+          route_colors: route_colors
         })
 
       %{marker: marker, route_ids: route_ids}
