@@ -8,10 +8,16 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
   A view is a process registered under a name and a table of the same name.
   `apply_records/2` hands it record values, each one route's schedule on one
   service date as `Gobusgo.OneBusAway.RouteScheduleBatch.Records` builds
-  it; `schedule/3`, `service_dates/2`, and `counts/1` read the table and
-  never wait on the process. The table holds each route's fetch of one date
+  it; `schedule/3`, `service_dates/2`, `known_dates/1`, and `counts/1` read
+  the tables and never wait on the process. The table holds each route's fetch of one date
   as one entry, its schedule in the form `Gobusgo.OneBusAway.CompactSchedule`
   packs, so a reader sees a whole schedule or the one before it.
+
+  `note_attempt/2` tells the view that a date of a route need not be
+  fetched again: its response was recorded, or the route has no service
+  that date. The attempts live in a second table, so `known_dates/1`
+  returns a date whose response never reaches the view, and a date without
+  service, beside the dates the view holds.
 
   A record of another type is passed over and not counted. Any other value
   that is not a record is skipped. Each call logs `debug` when a current
@@ -99,6 +105,36 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
   end
 
   @doc """
+  Returns, for every route that has one, the dates `view` holds a schedule
+  of or has an attempt of, in date order. Returns `%{}` while the view is
+  not running.
+  """
+  @spec known_dates(atom()) :: %{String.t() => [Date.t()]}
+  def known_dates(view) when is_atom(view) do
+    keys =
+      for table <- [view, attempt_table(view)],
+          :ets.whereis(table) != :undefined,
+          key <- :ets.select(table, [{{:"$1", :_}, [], [:"$1"]}]),
+          do: key
+
+    keys
+    |> Enum.uniq()
+    |> Enum.group_by(fn {route_id, _date} -> route_id end, fn {_route_id, date} -> date end)
+    |> Map.new(fn {route_id, dates} -> {route_id, Enum.sort(dates, Date)} end)
+  end
+
+  @doc """
+  Notes in `view` that `attempt.service_date` of `attempt.route_id` need
+  not be fetched again, and returns once `known_dates/1` reflects it. Exits
+  when the view does not answer within #{@call_timeout_ms} ms.
+  """
+  @spec note_attempt(atom(), %{route_id: String.t(), service_date: Date.t()}) :: :ok
+  def note_attempt(view, %{route_id: route_id, service_date: %Date{}} = attempt)
+      when is_atom(view) and is_binary(route_id) do
+    GenServer.call(view, {:note_attempt, attempt}, @call_timeout_ms)
+  end
+
+  @doc """
   Returns the count of routes `view` holds a schedule of, of schedules, and
   of the trips and stop times they hold together. Every count is `0` while
   the view is not running.
@@ -141,10 +177,32 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
   @impl GenServer
   def init(%{name: name, route_count_max: route_count_max} = server) do
     table = :ets.new(name, [:named_table, :protected, :set, read_concurrency: true])
-    {:ok, server |> Map.put(:table, table) |> Map.put(:state, State.new(route_count_max))}
+
+    attempt_table =
+      :ets.new(attempt_table(name), [:named_table, :protected, :set, read_concurrency: true])
+
+    server =
+      server
+      |> Map.put(:table, table)
+      |> Map.put(:attempt_table, attempt_table)
+      |> Map.put(:state, State.new(route_count_max))
+
+    {:ok, server}
   end
 
   @impl GenServer
+  def handle_call({:note_attempt, attempt}, _from, %{attempt_table: attempt_table} = server) do
+    %{route_id: route_id, service_date: service_date} = attempt
+    {state, removed_dates} = State.attempt(server.state, attempt)
+
+    if Map.has_key?(State.attempts(state), route_id) do
+      true = :ets.insert(attempt_table, {{route_id, service_date}, true})
+    end
+
+    Enum.each(removed_dates, &:ets.delete(attempt_table, {route_id, &1}))
+    {:reply, :ok, %{server | state: state}}
+  end
+
   def handle_call({:apply_records, values}, _from, %{name: name} = server) do
     counts = %{switched: 0, invalid: 0}
     {state, counts} = Enum.reduce(values, {server.state, counts}, &apply_value(&1, &2, server))
@@ -165,6 +223,8 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
 
     {:reply, :ok, %{server | state: state}}
   end
+
+  defp attempt_table(view), do: Module.concat(view, Attempts)
 
   # The fetch is written before the dates that leave are deleted, so a
   # reader of the route finds a schedule throughout.

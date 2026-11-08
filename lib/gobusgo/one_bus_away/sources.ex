@@ -1,4 +1,5 @@
 defmodule Gobusgo.OneBusAway.Sources do
+  @route_schedule_request_count_max 20
   @vehicle_interval_ms_min 10_000
   @vehicle_interval_ms_max 60_000
   @vehicle_hold_ms 60_000
@@ -33,7 +34,10 @@ defmodule Gobusgo.OneBusAway.Sources do
   that ends before the run's deadline. The route source runs one
   `Gobusgo.OneBusAway.RouteCycle` every minute, which fetches the route data
   that is due and nothing when none is, with a budget that ends before the
-  run's deadline. The arrival source runs one
+  run's deadline. The route schedule source runs one
+  `Gobusgo.OneBusAway.RouteScheduleCycle` every minute, which fetches the
+  schedules that are due and nothing when none is, at most
+  #{@route_schedule_request_count_max} of them a run. The arrival source runs one
   `Gobusgo.OneBusAway.ArrivalCycle` every five seconds, which fetches the
   arrivals of one open stop that is due, so the source makes at most one
   request every five seconds (decided in GOB-158).
@@ -54,6 +58,7 @@ defmodule Gobusgo.OneBusAway.Sources do
   alias Gobusgo.OneBusAway.Client
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.RouteCycle
+  alias Gobusgo.OneBusAway.RouteScheduleCycle
   alias Gobusgo.OneBusAway.VehicleCycle
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Scheduler
@@ -65,6 +70,9 @@ defmodule Gobusgo.OneBusAway.Sources do
   @route_interval_ms 60_000
   @route_deadline_ms 55_000
   @route_budget_ms 50_000
+  @route_schedule_interval_ms 60_000
+  @route_schedule_deadline_ms 55_000
+  @route_schedule_budget_ms 50_000
   @arrival_interval_ms 5_000
   @arrival_deadline_ms 4_500
   @arrival_budget_ms 4_000
@@ -106,7 +114,9 @@ defmodule Gobusgo.OneBusAway.Sources do
   `options[:vehicle_cycle_options]` those of
   `Gobusgo.OneBusAway.VehicleCycle.run/2`,
   `options[:route_cycle_options]` those of
-  `Gobusgo.OneBusAway.RouteCycle.run/2`, and
+  `Gobusgo.OneBusAway.RouteCycle.run/2`,
+  `options[:route_schedule_cycle_options]` those of
+  `Gobusgo.OneBusAway.RouteScheduleCycle.run/2`, and
   `options[:arrival_cycle_options]` those of
   `Gobusgo.OneBusAway.ArrivalCycle.run/2`, each cycle's `:task_supervisor`
   among them. Every spec passes `Gobusgo.Scheduler.assert_spec/1`.
@@ -119,6 +129,7 @@ defmodule Gobusgo.OneBusAway.Sources do
         :demand,
         :vehicle_cycle_options,
         :route_cycle_options,
+        :route_schedule_cycle_options,
         :arrival_cycle_options,
         agency_record_options: []
       ])
@@ -135,6 +146,15 @@ defmodule Gobusgo.OneBusAway.Sources do
       Keyword.merge(
         [budget_ms: @route_budget_ms],
         Keyword.fetch!(options, :route_cycle_options)
+      )
+
+    route_schedule_cycle_options =
+      Keyword.merge(
+        [
+          budget_ms: @route_schedule_budget_ms,
+          request_count_max: @route_schedule_request_count_max
+        ],
+        Keyword.fetch!(options, :route_schedule_cycle_options)
       )
 
     arrival_cycle_options =
@@ -167,6 +187,12 @@ defmodule Gobusgo.OneBusAway.Sources do
         run: fn -> RouteCycle.run(settings, route_cycle_options) end,
         cadence: fixed_cadence(@route_interval_ms),
         deadline_ms: @route_deadline_ms
+      },
+      %{
+        name: Gobusgo.OneBusAway.RouteScheduleScheduler,
+        run: fn -> RouteScheduleCycle.run(settings, route_schedule_cycle_options) end,
+        cadence: fixed_cadence(@route_schedule_interval_ms),
+        deadline_ms: @route_schedule_deadline_ms
       },
       %{
         name: Gobusgo.OneBusAway.ArrivalScheduler,

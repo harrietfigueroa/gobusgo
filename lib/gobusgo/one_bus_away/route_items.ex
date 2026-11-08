@@ -52,7 +52,30 @@ defmodule Gobusgo.OneBusAway.RouteItems do
       "a read takes at most #{@agency_count_max} agencies, got: #{agency_count}"
     )
 
-    route_ids = route_ids(agency_ids, route_view)
+    route_ids = route_ids(%{agency_ids: agency_ids, route_view: route_view})
+
+    attempts(:routes, agency_ids, FetchView.attempt_times(route_view)) ++
+      attempts(:route_path, route_ids, FetchView.attempt_times(route_path_view))
+  end
+
+  @doc """
+  Returns the routes the current fetches of `agency_ids` in `route_view`
+  list, in identifier order and each once, at most #{@route_count_max}.
+  """
+  @spec route_ids(%{agency_ids: [String.t()], route_view: atom()}) :: [String.t()]
+  def route_ids(%{agency_ids: agency_ids, route_view: route_view})
+      when is_list(agency_ids) and is_atom(route_view) do
+    route_ids =
+      agency_ids
+      |> Enum.flat_map(fn agency_id ->
+        case FetchView.current_fetch(route_view, agency_id) do
+          nil -> []
+          %{route_ids: route_ids} -> route_ids
+        end
+      end)
+      |> Enum.uniq()
+      |> Enum.sort()
+
     route_count = length(route_ids)
 
     Assert.condition(
@@ -60,20 +83,7 @@ defmodule Gobusgo.OneBusAway.RouteItems do
       "a read takes at most #{@route_count_max} routes, got: #{route_count}"
     )
 
-    attempts(:routes, agency_ids, FetchView.attempt_times(route_view)) ++
-      attempts(:route_path, route_ids, FetchView.attempt_times(route_path_view))
-  end
-
-  defp route_ids(agency_ids, route_view) do
-    agency_ids
-    |> Enum.flat_map(fn agency_id ->
-      case FetchView.current_fetch(route_view, agency_id) do
-        nil -> []
-        %{route_ids: route_ids} -> route_ids
-      end
-    end)
-    |> Enum.uniq()
-    |> Enum.sort()
+    route_ids
   end
 
   defp attempts(kind, ids, attempt_times) do

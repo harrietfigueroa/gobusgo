@@ -58,13 +58,33 @@ defmodule Gobusgo.OneBusAway.RouteScheduleViewTest do
     assert RouteScheduleView.schedule(view, "19_41", ~D[2026-11-08]) == nil
   end
 
-  test "holds the latest two service dates of a route", %{view: view} do
-    values = [value(~D[2026-11-07]), value(~D[2026-11-08]), value(~D[2026-11-09])]
+  test "holds the latest three service dates of a route", %{view: view} do
+    values = Enum.map(6..9, &value(Date.new!(2026, 11, &1)))
 
     :ok = RouteScheduleView.apply_records(view, values)
 
-    assert RouteScheduleView.service_dates(view, "19_41") == [~D[2026-11-08], ~D[2026-11-09]]
-    assert RouteScheduleView.schedule(view, "19_41", ~D[2026-11-07]) == nil
+    assert RouteScheduleView.service_dates(view, "19_41") ==
+             [~D[2026-11-07], ~D[2026-11-08], ~D[2026-11-09]]
+
+    assert RouteScheduleView.schedule(view, "19_41", ~D[2026-11-06]) == nil
+  end
+
+  test "knows the dates it holds and the dates noted as attempted", %{view: view} do
+    :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-07])])
+    :ok = RouteScheduleView.note_attempt(view, %{route_id: "19_41", service_date: ~D[2026-11-08]})
+    :ok = RouteScheduleView.note_attempt(view, %{route_id: "1_A", service_date: ~D[2026-11-08]})
+
+    assert RouteScheduleView.known_dates(view) == %{
+             "19_41" => [~D[2026-11-07], ~D[2026-11-08]],
+             "1_A" => [~D[2026-11-08]]
+           }
+  end
+
+  test "knows a date once whether it is held, attempted, or both", %{view: view} do
+    :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-07])])
+    :ok = RouteScheduleView.note_attempt(view, %{route_id: "19_41", service_date: ~D[2026-11-07]})
+
+    assert RouteScheduleView.known_dates(view) == %{"19_41" => [~D[2026-11-07]]}
   end
 
   test "counts the routes, schedules, trips, and stop times it holds", %{view: view} do
@@ -84,6 +104,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleViewTest do
   test "reads as empty while the view is not running" do
     assert RouteScheduleView.schedule(NotRunning, "19_41", ~D[2026-11-07]) == nil
     assert RouteScheduleView.service_dates(NotRunning, "19_41") == []
+    assert RouteScheduleView.known_dates(NotRunning) == %{}
 
     assert RouteScheduleView.counts(NotRunning) ==
              %{route_count: 0, schedule_count: 0, trip_count: 0, stop_time_count: 0}

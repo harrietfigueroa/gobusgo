@@ -68,6 +68,17 @@ defmodule Gobusgo.OneBusAway.RawRouteScheduleResponseTest do
     end
   end
 
+  describe "service_date/1" do
+    test "reads the service date a destination names" do
+      assert RawRouteScheduleResponse.service_date(build().destination) == {:ok, ~D[2026-11-07]}
+    end
+
+    test "returns :error for a destination that names none" do
+      assert RawRouteScheduleResponse.service_date("raw/oba/schedule-for-route/x.json.gz") ==
+               :error
+    end
+  end
+
   describe "build/1 content" do
     test "holds the route and the service date beside the shared meta fields" do
       meta = JSON.decode!(build().content)["meta"]
