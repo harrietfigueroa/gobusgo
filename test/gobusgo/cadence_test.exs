@@ -402,4 +402,59 @@ defmodule Gobusgo.CadenceTest do
       end
     end
   end
+
+  describe "an on-demand policy" do
+    @on_demand {:on_demand, %{interval_ms: 60_000}}
+
+    test "pauses while nothing is viewed" do
+      assert Cadence.decision(@on_demand, %{viewer_count: 0}) == :paused
+    end
+
+    for viewer_count <- [1, 2, 500] do
+      test "decides its interval for #{viewer_count} viewers" do
+        assert Cadence.decision(@on_demand, %{viewer_count: unquote(viewer_count)}) ==
+                 {:interval, 60_000}
+      end
+    end
+
+    test "has its interval as its shortest" do
+      assert Cadence.interval_ms_min(@on_demand) == 60_000
+    end
+
+    test "can pause" do
+      assert Cadence.pauses?(@on_demand)
+    end
+
+    test "raises from interval_ms/2 when it pauses" do
+      assert_raise AssertionError, fn -> Cadence.interval_ms(@on_demand, %{viewer_count: 0}) end
+    end
+
+    for signals <- [%{}, %{viewer_count: -1}, %{viewer_count: 1.5}, %{viewer_count: nil}] do
+      test "refuses the signals #{inspect(signals)}" do
+        assert_raise AssertionError, fn ->
+          Cadence.decision(@on_demand, unquote(Macro.escape(signals)))
+        end
+      end
+    end
+
+    for policy <- [{:on_demand, %{interval_ms: 0}}, {:on_demand, %{}}, {:on_demand, 60_000}] do
+      test "refuses the policy #{inspect(policy)}" do
+        assert_raise AssertionError, fn ->
+          Cadence.assert_policy(unquote(Macro.escape(policy)))
+        end
+      end
+    end
+  end
+
+  describe "a policy that never pauses" do
+    for policy <- [{:fixed, 5_000}, @proportional] do
+      test "#{inspect(policy)} cannot pause" do
+        refute Cadence.pauses?(unquote(Macro.escape(policy)))
+      end
+    end
+
+    test "decides the interval interval_ms/2 returns" do
+      assert Cadence.decision(@proportional, %{item_count: 7}) == {:interval, 35_000}
+    end
+  end
 end

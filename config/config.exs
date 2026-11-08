@@ -36,6 +36,17 @@ config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
 
 config :gobusgo, Gobusgo.Publisher.InProcess,
   subscribers: %{
+    "gbfs.free-bike-status.response-stored" =>
+      {Gobusgo.OneBusAway.ResponseConsumer, :consume,
+       [
+         %{
+           event: Gobusgo.Gbfs.RawVehicleStatus.StoredEvent,
+           processor: Gobusgo.Gbfs.VehicleStatusBatch
+         },
+         []
+       ]},
+    "gbfs.free-bike-status.state" =>
+      {Gobusgo.Gbfs.VehicleStatusView, :apply_records, [Gobusgo.Gbfs.VehicleStatusView]},
     "gbfs.vehicle-types.state" =>
       {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.Gbfs.VehicleTypeView]},
     "oba.agencies-with-coverage.response-stored" =>

@@ -624,6 +624,104 @@ defmodule Gobusgo.SchedulerTest do
     end
   end
 
+  describe "a source that pauses while nothing is viewed" do
+    # The source runs every @interval_ms while its signals count a viewer
+    # and pauses while they count none, and the test sets the count, or -1
+    # for a read that fails.
+    defp on_demand_cadence(viewer_count) do
+      %{
+        policy: {:on_demand, %{interval_ms: @interval_ms}},
+        signals: fn ->
+          case :atomics.get(viewer_count, 1) do
+            -1 -> raise "signals failed"
+            count -> %{viewer_count: count}
+          end
+        end
+      }
+    end
+
+    defp start_on_demand_scheduler(context, viewer_count_initial) do
+      viewer_count = :atomics.new(1, signed: true)
+      :atomics.put(viewer_count, 1, viewer_count_initial)
+      start_scheduler(context, %{spec: %{cadence: on_demand_cadence(viewer_count)}})
+      viewer_count
+    end
+
+    defp end_viewed_run(context, viewer_count) do
+      run = await_run_start()
+      end_run(run, {:return, {:ok, :recorded}})
+      :atomics.put(viewer_count, 1, 0)
+      tick_after(context, 1)
+      Scheduler.status(context.name)
+    end
+
+    test "starts no run while nothing is viewed", context do
+      start_on_demand_scheduler(context, 0)
+      tick_after(context, @interval_ms * 3)
+
+      assert %{phase: :idle, paused: true} = Scheduler.status(context.name)
+      refute_received {:run_started, _run}
+    end
+
+    test "starts no run when its first read fails", context do
+      start_on_demand_scheduler(context, -1)
+      tick_after(context, @interval_ms)
+
+      assert %{paused: true, signals_failure_count: 2} = Scheduler.status(context.name)
+      refute_received {:run_started, _run}
+    end
+
+    test "starts a run on the first tick after the first viewer arrives", context do
+      viewer_count = start_on_demand_scheduler(context, 0)
+      tick_after(context, 1)
+      :atomics.put(viewer_count, 1, 1)
+      tick_after(context, 1)
+
+      await_run_start()
+      assert %{paused: false, interval_ms: @interval_ms} = Scheduler.status(context.name)
+    end
+
+    test "starts a run at once for a viewer who returns after the interval", context do
+      viewer_count = start_on_demand_scheduler(context, 1)
+      end_viewed_run(context, viewer_count)
+      tick_after(context, @interval_ms)
+      refute_received {:run_started, _run}
+
+      :atomics.put(viewer_count, 1, 1)
+      tick_after(context, 1)
+
+      await_run_start()
+    end
+
+    test "waits out the interval for a viewer who returns inside it", context do
+      viewer_count = start_on_demand_scheduler(context, 1)
+      end_viewed_run(context, viewer_count)
+      :atomics.put(viewer_count, 1, 1)
+      tick_after(context, @interval_ms - 2)
+      refute_received {:run_started, _run}
+
+      tick_after(context, 1)
+
+      await_run_start()
+    end
+
+    test "logs a pause and a resumption once each", context do
+      log =
+        capture_log([metadata: :all], fn ->
+          viewer_count = start_on_demand_scheduler(context, 1)
+          end_viewed_run(context, viewer_count)
+          tick_after(context, 1)
+          :atomics.put(viewer_count, 1, 1)
+          tick_after(context, 1)
+          tick_after(context, 1)
+          Scheduler.status(context.name)
+        end)
+
+      assert length(String.split(log, "[info] Scheduler paused")) == 2
+      assert length(String.split(log, "[info] Scheduler resumed")) == 3
+    end
+  end
+
   describe "signals that are not a map" do
     test "stop the scheduler, as the programmer error they are", context do
       Process.flag(:trap_exit, true)

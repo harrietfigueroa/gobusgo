@@ -8,6 +8,7 @@ defmodule Gobusgo.RetentionPolicy do
   @usage_day_count 3
   @route_stop_tiles_day_count 2
   @routing_snapshot_day_count 2
+  @shared_vehicle_day_count 1
   @cleanup_interval_ms 3_600_000
   @cleanup_deadline_ms 600_000
 
@@ -32,12 +33,17 @@ defmodule Gobusgo.RetentionPolicy do
     * the routing snapshot files, #{@routing_snapshot_day_count} days, longer
       than a file the manifest names goes unwritten, since a build writes
       every file again each day.
+    * the shared vehicle files of a GBFS system,
+      #{@shared_vehicle_day_count} day, a backstop:
+      `Gobusgo.Gbfs.VehicleStatusRetention` deletes each within ten minutes
+      of its fetch.
 
   The cleanup is one `Gobusgo.Cleanup.run/2` every #{@cleanup_interval_ms}
   ms, with #{@cleanup_deadline_ms} ms to finish.
   """
 
   alias Gobusgo.Cleanup
+  alias Gobusgo.Gbfs.RawVehicleStatus
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawArrivalResponse
   alias Gobusgo.OneBusAway.RawRoutePathResponse
@@ -63,7 +69,8 @@ defmodule Gobusgo.RetentionPolicy do
       },
       %{prefix: Usage.Records.prefix(), day_count: @usage_day_count},
       %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count},
-      %{prefix: Gobusgo.Routing.Snapshot.prefix(), day_count: @routing_snapshot_day_count}
+      %{prefix: Gobusgo.Routing.Snapshot.prefix(), day_count: @routing_snapshot_day_count},
+      %{prefix: RawVehicleStatus.destination_prefix(), day_count: @shared_vehicle_day_count}
     ]
 
     Enum.each(rules, &Retention.assert_rule/1)

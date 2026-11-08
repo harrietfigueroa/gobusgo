@@ -29,6 +29,9 @@ defmodule Gobusgo.Config do
   @type usage :: %{recorded: boolean()}
   @type usage_error :: {:invalid, :recorded}
 
+  @type shared_vehicles :: %{interval_ms: pos_integer()}
+  @type shared_vehicles_error :: {:invalid, :shared_vehicles_interval_ms}
+
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
   @type http_error :: {:invalid, :host | :port}
 
@@ -51,6 +54,11 @@ defmodule Gobusgo.Config do
           | {:missing, :region | :credentials_uri}
 
   @one_bus_away_keys [:base_url, :api_key]
+  # A shared vehicle feed declares a `ttl` of 60 seconds, so a shorter
+  # interval fetches the same file again.
+  @shared_vehicles_interval_ms_default 60_000
+  @shared_vehicles_interval_ms_min 60_000
+  @shared_vehicles_interval_ms_max 3_600_000
   @http_host_default "127.0.0.1"
   @http_port_default 4000
   @http_port_min 1
@@ -145,6 +153,36 @@ defmodule Gobusgo.Config do
   @spec usage() :: {:ok, usage()} | {:error, usage_error()}
   def usage do
     :gobusgo |> Application.get_env(:usage, []) |> fetch_usage()
+  end
+
+  @doc """
+  Returns the shared vehicle settings from `env`: `:interval_ms`, how often
+  the shared vehicle feeds are fetched while a page shows them, an integer
+  of milliseconds from #{@shared_vehicles_interval_ms_min} to
+  #{@shared_vehicles_interval_ms_max}. A missing value takes the default,
+  #{@shared_vehicles_interval_ms_default}.
+  """
+  @spec fetch_shared_vehicles(Keyword.t()) ::
+          {:ok, shared_vehicles()} | {:error, shared_vehicles_error()}
+  def fetch_shared_vehicles(env) when is_list(env) do
+    case Keyword.fetch(env, :interval_ms) do
+      :error ->
+        {:ok, %{interval_ms: @shared_vehicles_interval_ms_default}}
+
+      {:ok, interval_ms}
+      when is_integer(interval_ms) and interval_ms >= @shared_vehicles_interval_ms_min and
+             interval_ms <= @shared_vehicles_interval_ms_max ->
+        {:ok, %{interval_ms: interval_ms}}
+
+      {:ok, _other} ->
+        {:error, {:invalid, :shared_vehicles_interval_ms}}
+    end
+  end
+
+  @doc "Reads the shared vehicle settings configured for the running application."
+  @spec shared_vehicles() :: {:ok, shared_vehicles()} | {:error, shared_vehicles_error()}
+  def shared_vehicles do
+    :gobusgo |> Application.get_env(:shared_vehicles, []) |> fetch_shared_vehicles()
   end
 
   @doc """

@@ -7,12 +7,15 @@ defmodule Gobusgo.Scheduler.State do
 
   Every call takes the current time and the source's interval. The time is
   in milliseconds on a clock that never goes back, and the interval may
-  differ from one call to the next.
+  differ from one call to the next. A tick's time also says whether the
+  source is paused, as `paused: true`.
 
   A tick starts a run when none is in flight, the interval it is given has
-  elapsed since the last run started, and no backoff is pending. The first
-  tick starts a run. An interval that shortens while the source waits
-  therefore takes effect on the next tick.
+  elapsed since the last run started, no backoff is pending, and the source
+  is not paused. The first tick that is not paused starts a run. An interval
+  that shortens while the source waits therefore takes effect on the next
+  tick, and so does the end of a pause: the tick after it starts a run at
+  once when the interval has elapsed since the last run started.
 
   A tick during a run is skipped. Each interval that elapses during a run is
   counted as skipped, for the run and for all runs together.
@@ -30,7 +33,11 @@ defmodule Gobusgo.Scheduler.State do
 
   @type outcome :: :ok | :error | :crashed | :deadline_exceeded
   @type finished :: %{outcome: outcome(), finished_at: DateTime.t()}
-  @type time :: %{now_ms: integer(), interval_ms: pos_integer()}
+  @type time :: %{
+          required(:now_ms) => integer(),
+          required(:interval_ms) => pos_integer(),
+          optional(:paused) => boolean()
+        }
   @type decision :: :start | :skip
   @type t :: %{
           phase: :idle | :running,
@@ -77,6 +84,11 @@ defmodule Gobusgo.Scheduler.State do
   def tick(%{phase: :running} = state, time) do
     assert_time(state, time)
     {count_skipped_intervals(state, time), :skip}
+  end
+
+  def tick(%{phase: :idle} = state, %{paused: true} = time) do
+    assert_time(state, time)
+    {state, :skip}
   end
 
   def tick(%{phase: :idle} = state, %{now_ms: now_ms} = time) do
