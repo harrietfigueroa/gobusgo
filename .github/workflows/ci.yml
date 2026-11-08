@@ -10,7 +10,7 @@ permissions:
 
 # A run on main that has started is never canceled, because it publishes the image of its commit.
 # A group holds one waiting run, and a newer waiting run replaces it, so of the commits merged while a run is in progress only the newest gets an image.
-# https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency — checked 2026-10-13
+# https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency — checked 2026-11-08
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -202,7 +202,7 @@ jobs:
       REQUEST_SECONDS_MAX: 30
     steps:
       # A run that is started again after a later merge holds a commit behind the head of main, and a release of it moves production back.
-      # https://docs.github.com/en/rest/commits/commits#get-a-commit — checked 2026-10-13
+      # https://docs.github.com/en/rest/commits/commits#get-a-commit — checked 2026-11-08
       - id: head
         run: |
           status="$(curl --silent --show-error --max-time "$REQUEST_SECONDS_MAX" \
@@ -228,7 +228,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # The request follows no redirect, so the token goes to the API's host alone.
       # A 200 carries the run that was started, and it is the one status the documentation gives.
-      # https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — checked 2026-10-13
+      # https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — checked 2026-11-08
       - if: steps.head.outputs.current == 'true'
         run: |
           if [[ -z "$RELEASE_TOKEN" ]]; then
