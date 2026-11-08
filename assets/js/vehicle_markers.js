@@ -1,4 +1,5 @@
 import {readyEventName} from "./basemap"
+import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, riderPopupClassName} from "./rider_popups"
 import {alertLines} from "./service_alerts"
 
@@ -28,18 +29,43 @@ const notSupplied = "Not supplied"
 const titleClassName = "popup-title"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)"
+
+function point(coordinates) {
+  return {type: "Point", coordinates}
+}
 
 // Every agency's markers as one GeoJSON collection, a point per marker with
-// the texts its label and its popup show.
-function featureCollection(markersByAgency) {
+// the texts its label and its popup show, and the glides that bring markers
+// already drawn to their new positions. A marker in `drawn`, the positions
+// drawn now, that glides is placed where it is drawn and glides from there;
+// any other stands at its new position. `drawn` comes back as the positions
+// the collection draws, so a vehicle that leaves the fetch leaves it too.
+function placeMarkers({markersByAgency, drawn, startMs, reducedMotion}) {
   const features = []
+  const placed = new Map()
+  const gliding = new Map()
 
   for (const markers of markersByAgency.values()) {
     for (const marker of markers) {
+      const target = [marker.lon, marker.lat]
+      let position = target
+
+      if (drawn.has(marker.id)) {
+        const source = drawn.get(marker.id)
+
+        if (glides({source, target, reducedMotion})) {
+          position = source
+          gliding.set(marker.id, {source, target, startMs})
+        }
+      }
+
+      placed.set(marker.id, position)
       features.push({
         type: "Feature",
-        geometry: {type: "Point", coordinates: [marker.lon, marker.lat]},
+        geometry: point(position),
         properties: {
+          markerId: marker.id,
           vehicleId: marker.vehicle_id,
           heading: marker.heading,
           color: marker.color,
@@ -56,7 +82,7 @@ function featureCollection(markersByAgency) {
     }
   }
 
-  return {type: "FeatureCollection", features}
+  return {collection: {type: "FeatureCollection", features}, drawn: placed, gliding}
 }
 
 // The paint expression that gives each marker the opacity of its status.
@@ -175,10 +201,14 @@ export const VehicleMarkers = {
     this.statusLabels = new Map(statuses.map(({status, label}) => [status, label]))
     this.markersByAgency = new Map()
     this.map = null
+    this.drawn = new Map()
+    this.gliding = new Map()
+    this.frame = null
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
       this.map = null
+      this.stopGliding()
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => { this.attach(map, maplibre) })
     }
@@ -194,7 +224,18 @@ export const VehicleMarkers = {
   },
 
   attach(map, maplibre) {
-    map.addSource(sourceName, {type: "geojson", data: featureCollection(this.markersByAgency)})
+    this.stopGliding()
+
+    // A new map draws every marker at its position, with nothing to glide from.
+    const {collection, drawn} = placeMarkers({
+      markersByAgency: this.markersByAgency,
+      drawn: new Map(),
+      startMs: performance.now(),
+      reducedMotion: window.matchMedia(reducedMotionQuery).matches
+    })
+
+    this.drawn = drawn
+    map.addSource(sourceName, {type: "geojson", data: collection, promoteId: "markerId"})
 
     // A pointed marker's image is made the first time a marker of its color
     // is drawn, since the colors are the routes' and not known in advance.
@@ -282,11 +323,62 @@ export const VehicleMarkers = {
 
   draw() {
     if (this.map !== null) {
-      this.map.getSource(sourceName).setData(featureCollection(this.markersByAgency))
+      const {collection, drawn, gliding} = placeMarkers({
+        markersByAgency: this.markersByAgency,
+        drawn: this.drawn,
+        startMs: performance.now(),
+        reducedMotion: window.matchMedia(reducedMotionQuery).matches
+      })
+
+      this.drawn = drawn
+      this.gliding = gliding
+      this.map.getSource(sourceName).setData(collection)
+      this.requestGlideFrame()
     }
   },
 
+  requestGlideFrame() {
+    const isFrameDue = this.gliding.size > 0 && this.frame === null
+
+    if (isFrameDue) {
+      this.frame = requestAnimationFrame((frameMs) => { this.glideFrame(frameMs) })
+    }
+  },
+
+  // One frame moves each gliding marker, and nothing else, in the source.
+  // A glide ends after its duration, so the frames stop once every marker
+  // has arrived.
+  glideFrame(frameMs) {
+    this.frame = null
+    const update = []
+
+    for (const [markerId, glide] of this.gliding) {
+      const elapsedMs = frameMs - glide.startMs
+      const {position, ended} = glidePosition({...glide, elapsedMs})
+
+      update.push({id: markerId, newGeometry: point(position)})
+      this.drawn.set(markerId, position)
+
+      if (ended) {
+        this.gliding.delete(markerId)
+      }
+    }
+
+    this.map.getSource(sourceName).updateData({update})
+    this.requestGlideFrame()
+  },
+
+  stopGliding() {
+    if (this.frame !== null) {
+      cancelAnimationFrame(this.frame)
+      this.frame = null
+    }
+
+    this.gliding = new Map()
+  },
+
   destroyed() {
+    this.stopGliding()
     window.removeEventListener(readyEventName, this.onBasemapReady)
   }
 }
