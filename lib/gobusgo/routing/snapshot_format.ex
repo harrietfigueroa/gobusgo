@@ -1,12 +1,16 @@
 defmodule Gobusgo.Routing.SnapshotFormat do
   @magic "GBRT"
-  @version 1
+  @version 2
   @header_bytes 16
   @connection_bytes 24
   @transfer_bytes 12
+  @position_bytes 8
   @string_bytes_max 0xFFFF
+  @position_unknown -0x80000000
+  @lat_microdegrees_max 90_000_000
+  @lon_microdegrees_max 180_000_000
 
-  @kinds %{stops: 1, trips: 2, transfers: 3, connections: 4}
+  @kinds %{stops: 1, trips: 2, transfers: 3, connections: 4, positions: 5}
 
   @moduledoc """
   The packed binary files of a routing snapshot, format version #{@version}.
@@ -34,12 +38,17 @@ defmodule Gobusgo.Routing.SnapshotFormat do
       `u8` of flags, bit 0 set where riders may board at the departure stop
       and bit 1 where they may leave at the arrival stop, and a `u8` of
       zero.
+    * Positions: per stop, in the order of the stops file,
+      #{@position_bytes} bytes: the `i32` latitude and the `i32` longitude
+      in millionths of a degree, or #{@position_unknown} on both for a stop
+      with no known position.
 
-  `decode/1` refuses a file of another magic, version, or kind, and one
-  whose length does not fit its count.
+  `decode/1` refuses a file of another magic, version, or kind, one whose
+  length does not fit its count, and a position outside the range of its
+  axis or unknown on one axis only.
   """
 
-  @type kind :: :stops | :trips | :transfers | :connections
+  @type kind :: :stops | :trips | :transfers | :connections | :positions
 
   @type trip :: %{id: String.t(), route_id: String.t(), service_day_offset: 0 | 1}
   @type transfer :: %{
@@ -57,6 +66,7 @@ defmodule Gobusgo.Routing.SnapshotFormat do
           boarding: boolean(),
           alighting: boolean()
         }
+  @type position :: %{lat_microdegrees: integer(), lon_microdegrees: integer()} | :unknown
 
   @typedoc """
     * `:invalid_header` — the file does not start with this format's header
@@ -64,15 +74,19 @@ defmodule Gobusgo.Routing.SnapshotFormat do
     * `:unsupported_version` — the header names another format version.
     * `:invalid_length` — the records do not fill the file as the count
       says.
+    * `:invalid_position` — a position lies outside the range of its axis,
+      or is unknown on one axis only.
   """
-  @type decode_error :: :invalid_header | :unsupported_version | :invalid_length
+  @type decode_error ::
+          :invalid_header | :unsupported_version | :invalid_length | :invalid_position
 
   @doc "The format version this module writes and reads."
   @spec version() :: pos_integer()
   def version, do: @version
 
   @doc "Returns the file of `kind` that holds `records`, in their order."
-  @spec encode(kind(), [String.t()] | [trip()] | [transfer()] | [connection()]) :: binary()
+  @spec encode(kind(), [String.t()] | [trip()] | [transfer()] | [connection()] | [position()]) ::
+          binary()
   def encode(kind, records) when is_map_key(@kinds, kind) and is_list(records) do
     body = for record <- records, into: <<>>, do: encode_record(kind, record)
     header(kind, length(records)) <> body
@@ -102,6 +116,15 @@ defmodule Gobusgo.Routing.SnapshotFormat do
       connection.trip::little-32, connection.sequence::little-16, flags::8, 0::8>>
   end
 
+  defp encode_record(:positions, :unknown) do
+    <<@position_unknown::little-signed-32, @position_unknown::little-signed-32>>
+  end
+
+  defp encode_record(:positions, %{lat_microdegrees: lat, lon_microdegrees: lon})
+       when abs(lat) <= @lat_microdegrees_max and abs(lon) <= @lon_microdegrees_max do
+    <<lat::little-signed-32, lon::little-signed-32>>
+  end
+
   defp flag(true, bit), do: bit
   defp flag(false, _bit), do: 0
 
@@ -129,17 +152,18 @@ defmodule Gobusgo.Routing.SnapshotFormat do
   defp decode_records(kind, body, count) do
     case take(kind, body, count, []) do
       {:ok, records} -> {:ok, %{kind: kind, records: records}}
-      :error -> {:error, :invalid_length}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   defp take(_kind, <<>>, 0, records), do: {:ok, Enum.reverse(records)}
-  defp take(_kind, _rest, 0, _records), do: :error
+  defp take(_kind, _rest, 0, _records), do: {:error, :invalid_length}
 
   defp take(kind, body, count, records) do
     case decode_record(kind, body) do
       {:ok, record, rest} -> take(kind, rest, count - 1, [record | records])
-      :error -> :error
+      {:error, reason} -> {:error, reason}
+      :error -> {:error, :invalid_length}
     end
   end
 
@@ -179,6 +203,23 @@ defmodule Gobusgo.Routing.SnapshotFormat do
     }
 
     {:ok, connection, rest}
+  end
+
+  defp decode_record(
+         :positions,
+         <<@position_unknown::little-signed-32, @position_unknown::little-signed-32,
+           rest::binary>>
+       ) do
+    {:ok, :unknown, rest}
+  end
+
+  defp decode_record(:positions, <<lat::little-signed-32, lon::little-signed-32, rest::binary>>)
+       when abs(lat) <= @lat_microdegrees_max and abs(lon) <= @lon_microdegrees_max do
+    {:ok, %{lat_microdegrees: lat, lon_microdegrees: lon}, rest}
+  end
+
+  defp decode_record(:positions, <<_position::binary-size(@position_bytes), _rest::binary>>) do
+    {:error, :invalid_position}
   end
 
   defp decode_record(_kind, _body), do: :error

@@ -5,7 +5,8 @@
 // from a seeded generator, so every run routes the same ones. The clock is
 // the caller's `now`, in milliseconds.
 
-import {loadEngine} from "../engine/load.js"
+import {OriginKind} from "../../../assets/js/routing_engine.js"
+import {loadEngine} from "../../../assets/js/routing_journeys.js"
 
 export const QUERY_COUNT = 200
 export const REPEAT_COUNT = 50
@@ -32,7 +33,7 @@ export function queries(stopCount) {
     const source = Math.floor(next() * stopCount)
     const target = Math.floor(next() * stopCount)
     const departureS = (DEPARTURE_HOUR_MIN + next() * DEPARTURE_HOUR_SPAN) * HOUR_SECONDS
-    result.push({source, target, departureS: Math.floor(departureS)})
+    result.push({origin: {kind: OriginKind.stop, stop: source}, target, departureS: Math.floor(departureS)})
   }
 
   return result

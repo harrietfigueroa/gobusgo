@@ -1,13 +1,14 @@
 defmodule Gobusgo.Test.RoutingSnapshotFixture do
   @moduledoc """
   The records of the shared routing snapshot fixtures under
-  `test/fixtures/routing/v1/`: one file of each kind, and `expected.json`,
+  `test/fixtures/routing/v2/`: one file of each kind, and `expected.json`,
   the records as the JavaScript reader returns them. They cover a stop
   identifier outside ASCII, a trip of the previous service date, a time past
-  midnight, and every pair of the two flags.
+  midnight, every pair of the two flags, a stop with no position, and
+  positions at the extremes of each sign.
   """
 
-  @directory Path.expand("../fixtures/routing/v1", __DIR__)
+  @directory Path.expand("../fixtures/routing/v2", __DIR__)
 
   @doc "The directory the fixture files are in."
   @spec directory() :: String.t()
@@ -25,6 +26,11 @@ defmodule Gobusgo.Test.RoutingSnapshotFixture do
       transfers: [
         %{from_stop: 0, to_stop: 2, duration_s: 95},
         %{from_stop: 2, to_stop: 0, duration_s: 95}
+      ],
+      positions: [
+        %{lat_microdegrees: 47_608_013, lon_microdegrees: -122_335_167},
+        :unknown,
+        %{lat_microdegrees: -90_000_000, lon_microdegrees: 180_000_000}
       ],
       connections: [
         connection(%{
@@ -87,7 +93,13 @@ defmodule Gobusgo.Test.RoutingSnapshotFixture do
   @doc "The records as `expected.json` holds them, with the reader's field names."
   @spec expected() :: map()
   def expected do
-    %{stops: stops, trips: trips, transfers: transfers, connections: connections} = records()
+    %{
+      stops: stops,
+      trips: trips,
+      transfers: transfers,
+      positions: positions,
+      connections: connections
+    } = records()
 
     %{
       "stops" => stops,
@@ -109,6 +121,7 @@ defmodule Gobusgo.Test.RoutingSnapshotFixture do
             "durationS" => link.duration_s
           }
         ),
+      "positions" => Enum.map(positions, &expected_position/1),
       "connections" =>
         for connection <- connections do
           %{
@@ -122,6 +135,19 @@ defmodule Gobusgo.Test.RoutingSnapshotFixture do
             "alighting" => connection.alighting
           }
         end
+    }
+  end
+
+  # The JavaScript reader gives a stop with no position the `i32` minimum on
+  # both axes, the value the file holds for it.
+  defp expected_position(:unknown) do
+    %{"latMicrodegrees" => -2_147_483_648, "lonMicrodegrees" => -2_147_483_648}
+  end
+
+  defp expected_position(position) do
+    %{
+      "latMicrodegrees" => position.lat_microdegrees,
+      "lonMicrodegrees" => position.lon_microdegrees
     }
   end
 end

@@ -1,32 +1,41 @@
-// The JavaScript connection scan engine of the routing experiment.
-// Everything here is pure: an engine is built from a snapshot's decoded
-// columns and answers a query with its Pareto frontier over arrival time and
-// changes. The rules below are the experiment's shared specification: a
-// second engine that applies them comparison for comparison returns the same
-// frontiers.
+// The connection scan engine over the routing snapshots. Everything here is
+// pure: an engine is built from a snapshot's decoded columns and answers a
+// query with its Pareto frontier over arrival time and changes.
 //
 // The scan runs in rounds. Round k finds, at every stop, the earliest
 // arrival and the earliest time a rider can board with at most k rides. It
 // boards a trip only where the round before could board in time, so a round
 // adds exactly one ride, and a rider stays aboard a trip once boarded. A
-// rider can board on arrival at the origin or after a walk, and the
+// query starts from one origin stop, or from a set of start stops each
+// reached by a walk of its own from the rider's position. A rider can board
+// on arrival at the origin or a start stop or after a walk, and the
 // snapshot's minimum transfer after leaving a vehicle. One walking link may
-// leave the origin and one may follow each ride. Each label keeps the leg
-// that set it, and a walk keeps the ride it follows, so the legs read back
-// are the ones the scan used. A round's journey joins the frontier only when
-// it arrives strictly earlier than the round before, so no journey kept has
-// another that arrives at least as early with at most as many changes.
+// leave an origin stop, none leaves a start stop, and one may follow each
+// ride. Each label keeps the leg that set it, and a walk keeps the ride it
+// follows, so the legs read back are the ones the scan used. A round's
+// journey joins the frontier only when it arrives strictly earlier than the
+// round before, so no journey kept has another that arrives at least as
+// early with at most as many changes.
+//
+// The scan reads the connections from the first one departing at or after
+// the query and stops at the first one departing at or after the best
+// arrival, so a set of connections cut off at a later departure gives every
+// journey that arrives by that departure exactly as the whole set does.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition, unreachable} from "./assert.js"
 
 export const ROUNDS_MAX = 6
-export const LegKind = Object.freeze({ride: "ride", walk: "walk"})
+export const LegKind = Object.freeze({ride: "ride", walk: "walk", walkFromPosition: "walkFromPosition"})
+
+/** The kinds of a query's origin: one stop, or start stops with their walking times. */
+export const OriginKind = Object.freeze({stop: "stop", starts: "starts"})
 
 const UNREACHED = 0x7fffffff
 const PARENT_NONE = 0
 const PARENT_RIDE = 1
 const PARENT_WALK_AFTER_RIDE = 2
 const PARENT_WALK_FROM_ORIGIN = 3
+const PARENT_WALK_FROM_POSITION = 4
 const NOT_BOARDED = -1
 const LEG_COUNT_MAX = ROUNDS_MAX + ROUNDS_MAX + 1
 
@@ -207,7 +216,12 @@ function legs({engine, rounds, roundIndex, query}) {
     }
 
     if (kind === PARENT_WALK_FROM_ORIGIN) {
-      result.unshift({kind: LegKind.walk, fromStop: query.source, toStop: stop, durationS: label.c[stop]})
+      result.unshift({kind: LegKind.walk, fromStop: query.origin.stop, toStop: stop, durationS: label.c[stop]})
+      return result
+    }
+
+    if (kind === PARENT_WALK_FROM_POSITION) {
+      result.unshift({kind: LegKind.walkFromPosition, toStop: stop, durationS: label.c[stop]})
       return result
     }
 
@@ -240,20 +254,60 @@ function rideCount(journeyLegs) {
   return count
 }
 
-function originState({engine, query}) {
+function isStop({engine, stop}) {
+  const isIndex = Number.isInteger(stop) && stop >= 0
+  return isIndex && stop < engine.stopCount
+}
+
+function stopOriginState({engine, query}) {
+  const {stop} = query.origin
+  assertCondition(isStop({engine, stop}), "routing engine: the origin stop " + stop + " is not a stop of the snapshot")
   const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount)}
-  state.arrival.timeS[query.source] = query.departureS
-  state.ready.timeS[query.source] = query.departureS
-  walkFrom({engine, state, roundIndex: 0, stop: query.source, arrivalS: query.departureS, board: NOT_BOARDED, alight: NOT_BOARDED})
+  state.arrival.timeS[stop] = query.departureS
+  state.ready.timeS[stop] = query.departureS
+  walkFrom({engine, state, roundIndex: 0, stop, arrivalS: query.departureS, board: NOT_BOARDED, alight: NOT_BOARDED})
   return state
 }
 
+function startsOriginState({engine, query}) {
+  const {starts} = query.origin
+  assertCondition(starts.length >= 1, "routing engine: a query from start stops names none")
+  const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount)}
+
+  for (const start of starts) {
+    assertCondition(isStop({engine, stop: start.stop}), "routing engine: the start stop " + start.stop + " is not a stop of the snapshot")
+    assertCondition(Number.isInteger(start.walkS), "routing engine: a start stop's walk is not whole seconds: " + start.walkS)
+    assertCondition(start.walkS >= 0, "routing engine: a start stop's walk is negative: " + start.walkS)
+    const step = {stop: start.stop, timeS: query.departureS + start.walkS, kind: PARENT_WALK_FROM_POSITION, a: NOT_BOARDED, b: NOT_BOARDED, c: start.walkS, round: 0}
+    state.arrival.improve(step)
+    state.ready.improve(step)
+  }
+
+  return state
+}
+
+function originState({engine, query}) {
+  switch (query.origin.kind) {
+    case OriginKind.stop:
+      return stopOriginState({engine, query})
+    case OriginKind.starts:
+      return startsOriginState({engine, query})
+    default:
+      return unreachable(query.origin.kind, "routing engine: an origin of unknown kind")
+  }
+}
+
 /**
- * The Pareto frontier of journeys from `query.source` to `query.target`
+ * The Pareto frontier of journeys from `query.origin` to `query.target`
  * leaving at or after `query.departureS`, fewest changes first: each with
- * its arrival, its changes, and its legs.
+ * its arrival, its changes, and its legs. An origin is one stop,
+ * `{kind: OriginKind.stop, stop}`, or start stops each with the whole
+ * seconds of its walk from the rider's position,
+ * `{kind: OriginKind.starts, starts: [{stop, walkS}]}`.
  */
 export function route(engine, query) {
+  assertCondition(isStop({engine, stop: query.target}), "routing engine: the target " + query.target + " is not a stop of the snapshot")
+  assertCondition(Number.isInteger(query.departureS), "routing engine: the departure is not whole seconds: " + query.departureS)
   const rounds = [originState({engine, query})]
   const frontier = []
   let bestS = rounds[0].arrival.timeS[query.target]
