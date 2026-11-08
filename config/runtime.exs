@@ -60,6 +60,10 @@ config :gobusgo, :public,
 # The commit the application was built from, which the image build sets.
 config :gobusgo, :revision, revision: System.get_env("GOBUSGO_REVISION")
 
+# The routing snapshot files the local writer stores under `routing/` are
+# served from there.
+config :gobusgo, :routing, dir: Path.join(base_dir, "routing")
+
 config :gobusgo, :session,
   secret_key_base: System.get_env("SECRET_KEY_BASE"),
   required: config_env() == :prod

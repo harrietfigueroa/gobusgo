@@ -26,6 +26,10 @@ defmodule GobusgoWeb.Endpoint do
   from the tile directory, with ranges as the basemap archives are. Each
   archive's name is that of its own build, so a cache may keep it for a
   year.
+
+  The locally stored routing snapshot files are served under `/routing`,
+  from the routing directory. Each file's name holds the SHA-256 of its
+  content, so a cache may keep it for a year as immutable.
   """
 
   use Phoenix.Endpoint, otp_app: :gobusgo
@@ -45,6 +49,8 @@ defmodule GobusgoWeb.Endpoint do
   @basemap_archive_cache_seconds 3_600
   @tiles_path "/tiles"
   @tiles_cache_seconds 31_536_000
+  @routing_path "/routing"
+  @routing_cache_seconds 31_536_000
 
   # The salt separates the session's signing key from the other keys derived
   # from the secret; it is not itself a secret.
@@ -95,6 +101,12 @@ defmodule GobusgoWeb.Endpoint do
     gzip: false,
     cache_control_for_etags: "public, max-age=#{@tiles_cache_seconds}, immutable"
 
+  plug Plug.Static,
+    at: @routing_path,
+    from: {__MODULE__, :routing_dir, []},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@routing_cache_seconds}, immutable"
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
   plug Plug.Session, @session_options
@@ -104,6 +116,13 @@ defmodule GobusgoWeb.Endpoint do
   @spec basemap_dir() :: String.t()
   def basemap_dir do
     {:ok, %{dir: dir}} = Gobusgo.Config.basemap()
+    dir
+  end
+
+  @doc "The directory the locally stored routing snapshot files are served from."
+  @spec routing_dir() :: String.t()
+  def routing_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.routing()
     dir
   end
 
