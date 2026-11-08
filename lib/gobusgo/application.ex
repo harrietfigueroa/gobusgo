@@ -7,6 +7,8 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Assert
   alias Gobusgo.Config
   alias Gobusgo.Demand
+  alias Gobusgo.Gbfs.VehicleTypeRecords
+  alias Gobusgo.Gbfs.VehicleTypesCycle
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
@@ -26,7 +28,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
-  @ingestion_task_count_max 8
+  @ingestion_task_count_max 12
   @restart_count_max 3
   @restart_window_seconds 5
 
@@ -57,6 +59,11 @@ defmodule Gobusgo.Application do
   @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
   @vehicle_situation_view_agency_count_max 64
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
+
+  # The vehicle type view is a fetch view of each GBFS system's vehicle
+  # types at each version that publishes them.
+  @vehicle_type_view Gobusgo.Gbfs.VehicleTypeView
+  @vehicle_type_view_id_count_max 32
 
   @impl Application
   def start(_type, _args) do
@@ -116,6 +123,11 @@ defmodule Gobusgo.Application do
              records: ArrivalBatch.SituationRecords,
              id_count_max: @arrival_view_stop_count_max,
              fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
+            {FetchView,
+             name: @vehicle_type_view,
+             pubsub: Gobusgo.PubSub,
+             records: VehicleTypeRecords,
+             id_count_max: @vehicle_type_view_id_count_max},
             {Demand,
              name: Demand,
              datasets: DemandKey.datasets(),
@@ -136,6 +148,7 @@ defmodule Gobusgo.Application do
           [
             scheduler_supervisor(
               source_specs(scheduled) ++
+                gbfs_specs(scheduled) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
@@ -199,6 +212,11 @@ defmodule Gobusgo.Application do
     do: [Gobusgo.Routing.Snapshots.spec(server: Gobusgo.Routing.Snapshots)]
 
   defp routing_specs(false), do: []
+
+  # The GBFS feeds are public, so their sources need no settings and run
+  # wherever the sources are scheduled.
+  defp gbfs_specs(true), do: [VehicleTypesCycle.spec([])]
+  defp gbfs_specs(false), do: []
 
   defp source_specs(false), do: []
 

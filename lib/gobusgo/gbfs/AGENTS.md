@@ -1,6 +1,6 @@
 # GBFS integration
 
-The General Bikeshare Feed Specification (GBFS) is the open format in which shared bike and scooter operators publish where their vehicles are. Gobusgo reads it through one generic client, so any operator that publishes a feed is read the same way; today the one system it serves is Lime Seattle, the only operator Seattle's free-floating micromobility permit names (GOB-254). The client reads three files: the discovery file `gbfs.json`, the vehicle file (`free_bike_status` in 1.0 and 2.2, `vehicle_status` in 3.0), and `vehicle_types` (2.2 and 3.0). Nothing schedules or calls the client yet: GOB-256 adds the source that fetches the vehicles while a page shows them, and GOB-257 the daily fetch of the vehicle types.
+The General Bikeshare Feed Specification (GBFS) is the open format in which shared bike and scooter operators publish where their vehicles are. Gobusgo reads it through one generic client, so any operator that publishes a feed is read the same way; today the one system it serves is Lime Seattle, the only operator Seattle's free-floating micromobility permit names (GOB-254). The client reads three files: the discovery file `gbfs.json`, the vehicle file (`free_bike_status` in 1.0 and 2.2, `vehicle_status` in 3.0), and `vehicle_types` (2.2 and 3.0). `Gobusgo.Gbfs.VehicleTypesCycle` fetches the vehicle types once a day (GOB-257), as the "Vehicle types" section below holds; GOB-256 adds the source that fetches the vehicles while a page shows them.
 
 ## Documentation sources
 
@@ -15,6 +15,7 @@ All links checked 2026-11-08.
 - `free_bike_status` in 2.2: <https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#free_bike_statusjson>
 - `free_bike_status` in 1.0: <https://github.com/MobilityData/gbfs/blob/v1.0/gbfs.md#free_bike_statusjson>
 - `vehicle_types` in 3.0: <https://github.com/MobilityData/gbfs/blob/v3.0/gbfs.md#vehicle_typesjson>
+- `vehicle_types` in 2.2, with its form factors: <https://github.com/MobilityData/gbfs/blob/v2.2/gbfs.md#vehicle_typesjson-added-in-v21>
 - The catalog of published systems, where Lime Seattle is `lime_seattle`: <https://github.com/MobilityData/gbfs/blob/master/systems.csv>
 - Lime's Public GBFS Terms: <https://www.li.me/legal/public-gbfs-terms>
 
@@ -58,3 +59,11 @@ GBFS requires an operator to rotate a vehicle's identifier, `bike_id` or `vehicl
 ## Using the client from the rest of the codebase
 
 Call `fetch/3` from a scheduler source's run, never from a page or a request path, so the one flow of the root `AGENTS.md` holds. Store `body`, the file as received, through the writer when a raw response is to be kept, within the 10 minutes the terms allow. Read `version` beside the records, and fetch `vehicle_types` with `versions: [version]` of the vehicle fetch it is joined to. Handle `:not_published` as a feed that is gone and a failure as a fetch to try at the next run; neither is an exception.
+
+## Vehicle types
+
+`Gobusgo.Gbfs.Systems` names the systems read, Lime Seattle alone, each as `fetch/3` takes it with its catalog identifier beside it. `Gobusgo.Gbfs.VehicleTypesCycle` runs once a minute, with a deadline of 55 seconds and a budget of 50, and fetches `vehicle_types` for each system at each version that publishes it, 3.0 and 2.2 for Lime, each with `versions: [version]` and a 15-second deadline of its own. An item, one system at one version, is held in the view as `<system id>/<version>` and gets a slot of its own from `Gobusgo.OneBusAway.RouteSchedule`, a minute of the UTC day: it is due with no attempt in the view and once its slot has come since its last attempt, so the first cycle after a start fills the empty view and each item then refreshes once a day, as the file's `ttl` of 86,400 seconds asks. Fetching every version, rather than the one the vehicle source last answered at, gives the vehicles of whichever version answers their types with no dependency on that source.
+
+A fetched file is published as one record of `Gobusgo.Gbfs.VehicleTypeRecords` to `gbfs.vehicle-types.state`, which the in-process publisher hands to the fetch view `Gobusgo.Gbfs.VehicleTypeView`. A version whose discovery file or `vehicle_types` answers 404, or whose discovery file lists no `vehicle_types`, is `:not_published`: the cycle notes an attempt in the view, so the item waits for its slot, and the view keeps the types of that version it holds. A failed fetch notes nothing and is fetched again at the next cycle. No raw `vehicle_types` response is stored, so the 10-minute bound of the terms has nothing of this file to apply to: the file is a few hundred bytes and fetched again on its slot, and the view holds the parsed types alone.
+
+`Gobusgo.Gbfs.VehicleForms.lookup/2` is pure: from the view's current fetches and a vehicle's system, version, and type identifier it gives the vehicle's form factor, `:standing_scooter`, `:seated_scooter`, `:e_bike`, `:bike`, or `:other`, and its type's `max_range_meters`. A type the fetch of that system and version does not hold, a vehicle with no type, and every vehicle of a 1.0 fetch are `:other` with no range. 2.2 names one `scooter` form factor, which is read as a standing scooter, since 2.2 has no seated one.
