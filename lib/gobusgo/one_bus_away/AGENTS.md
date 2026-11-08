@@ -245,7 +245,7 @@ Test fixtures under `test/fixtures/one_bus_away/stops_for_route*.json` are cut f
 
 ## Route schedules: `schedule-for-route`
 
-`GET /api/where/schedule-for-route/<route id>.json?date=YYYY-MM-DD&key=<key>` (https://developer.onebusaway.org/api/where/methods/schedule-for-route — checked 2026-11-08). `date` is the service date and defaults to today; the requester always sends it. The route identifier is percent-encoded into the path. The method's alternate codes are `404` for a route the server does not know and `510` for a route with no schedules on the date, whose `text` the live server sends as `NoServiceThatDay`.
+`GET /api/where/schedule-for-route/<route id>.json?date=YYYY-MM-DD&key=<key>` (<https://developer.onebusaway.org/api/where/methods/schedule-for-route> — checked 2026-11-08). `date` is the service date and defaults to today; the requester always sends it. The route identifier is percent-encoded into the path. The method's alternate codes are `404` for a route the server does not know and `510` for a route with no schedules on the date, whose `text` the live server sends as `NoServiceThatDay`.
 
 `Gobusgo.OneBusAway.RouteSchedules.fetch_response/2` takes the route in `:route_id` and the date in `:service_date` and returns the schedule together with the whole decoded envelope, the route, the service date, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the other requesters. Code 510 is a known outcome: the response's `schedule` is `:no_service` and the call returns `{:ok, response}`. `Gobusgo.OneBusAway.RouteSchedules.parse/2` is the pure function from `data` and the route asked for to the schedule. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}`, `{:trip_count_exceeded, count}` above 2,000 trips, `{:duplicate_trip, id}`, `{:unreferenced_trip, id}`, and, each naming the trip, `{:stop_time_count_out_of_range, id}` for none or above 500, `{:stop_time_trip_mismatch, id}`, `{:time_out_of_range, id}` outside 0 to two service days, `{:arrival_after_departure, id}`, and `{:unordered_stop_times, id}`. The requester raises on those values.
 
@@ -265,7 +265,7 @@ Shape of the live response, observed on 2026-11-07, a Saturday, for all 391 rout
 
 Not observed: a stop time with boarding or alighting disabled, a non-empty `timeZone`, and a weekday's counts.
 
-Test fixtures under `test/fixtures/one_bus_away/schedule_for_route*.json` are cut from the live response for Intercity Transit route `19_41`, a night route whose trips all run past midnight: one trip of each direction, the references trimmed to them, and `references.stopTimes` emptied.
+The test fixture `test/fixtures/one_bus_away/schedule_for_route.json` is cut from the live response for Intercity Transit route `19_41`, a night route whose trips all run past midnight: one trip of each direction, the references trimmed to them, and `references.stopTimes` emptied. `test/fixtures/one_bus_away/schedule_for_route_no_service.json` is the envelope the live server sent for a route without service, with its `code` and `text`.
 
 ## Arrivals: `arrivals-and-departures-for-stop`
 
