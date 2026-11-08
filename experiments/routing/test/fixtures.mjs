@@ -1,5 +1,5 @@
-// Checks both engines against the hand-written journeys of
-// ../fixtures/journeys.json: each case's timetable is written as snapshot
+// Checks both engines against the hand-written journeys of the fixture
+// file: each case's timetable is written as snapshot
 // files, loaded into the JavaScript engine and the WebAssembly engine, and
 // every query's frontier, read back as readable legs, must equal the
 // expected one in both. Run it with `node test/fixtures.mjs` from the

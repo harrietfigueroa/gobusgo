@@ -1,6 +1,6 @@
 // Reads one snapshot of the benchmark data from disk, for the node runners:
-// the manifest written by ../scripts/build_snapshot.exs, and the stops,
-// transfers, and connection chunk files of one service date.
+// the manifest in the data directory, and the stops, transfers, and
+// connection chunk files of one service date.
 
 import {readFileSync} from "node:fs"
 

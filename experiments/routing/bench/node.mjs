@@ -1,6 +1,6 @@
 // One benchmark run of one engine in a fresh node process, printed as JSON:
 // its cold start, its warm and repeated query latencies, and the memory it
-// holds once loaded. Run by ./run.mjs, which starts one process per run so
+// holds once loaded. It is meant to run in a process of its own per run, so
 // every cold start is cold; run it alone with
 // `node --expose-gc bench/node.mjs javascript|wasm`.
 

@@ -1,9 +1,9 @@
 // The JavaScript connection scan engine of the routing experiment.
 // Everything here is pure: an engine is built from a snapshot's decoded
 // columns and answers a query with its Pareto frontier over arrival time and
-// changes. The Rust engine in ../rust implements the same rules, comparison
-// for comparison, and must return the same frontiers, which the fixtures
-// under ../fixtures check.
+// changes. The rules below are the experiment's shared specification: a
+// second engine that applies them comparison for comparison returns the same
+// frontiers.
 //
 // The scan runs in rounds. Round k finds, at every stop, the earliest
 // arrival and the earliest time a rider can board with at most k rides. It
