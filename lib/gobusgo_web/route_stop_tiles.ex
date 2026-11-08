@@ -61,6 +61,61 @@ defmodule GobusgoWeb.RouteStopTiles do
   end
 
   @doc """
+  The time the archive at `destination` was built, read from its name as
+  `destination/1` writes it, or `:unrecognized` for a name that holds none.
+  """
+  @spec built_at(String.t()) :: {:ok, DateTime.t()} | :unrecognized
+  def built_at(destination) when is_binary(destination) do
+    with [_name, date, time, fraction] <- Regex.run(name_pattern(), Path.basename(destination)),
+         {:ok, built_at, 0} <- DateTime.from_iso8601(iso8601(date, time, fraction)) do
+      {:ok, built_at}
+    else
+      _unrecognized -> :unrecognized
+    end
+  end
+
+  # `%f` of `Calendar.strftime/2` writes one to six digits, as many as the
+  # time's precision, and one `0` for a precision of none.
+  defp name_pattern do
+    ~r/\A#{@name_prefix}(\d{8})T(\d{6})(\d{1,6})Z#{Regex.escape(@extension)}\z/
+  end
+
+  defp iso8601(date, time, fraction) do
+    <<year::binary-4, month::binary-2, day::binary-2>> = date
+    <<hour::binary-2, minute::binary-2, second::binary-2>> = time
+    "#{year}-#{month}-#{day}T#{hour}:#{minute}:#{second}.#{fraction}Z"
+  end
+
+  @doc """
+  How fresh the archive at `destination` is at `now`: `:none` with no
+  destination, `{:current, age_seconds}` while its age is under
+  `GobusgoWeb.RouteStopTiles.Build.renewal_age_seconds/0`, `{:stale,
+  age_seconds}` from that age on, and `:unrecognized` for a name that holds
+  no build time. The age is `now` less the build time the name holds, so an
+  archive discovered after a start counts as one built on this node does.
+  """
+  @spec freshness(%{destination: String.t() | nil, now: DateTime.t()}) ::
+          :none | :unrecognized | {:current | :stale, integer()}
+  def freshness(%{destination: nil, now: %DateTime{}}), do: :none
+
+  def freshness(%{destination: destination, now: %DateTime{} = now})
+      when is_binary(destination) do
+    case built_at(destination) do
+      {:ok, built_at} ->
+        age_seconds = DateTime.diff(now, built_at, :second)
+
+        if age_seconds < Build.renewal_age_seconds() do
+          {:current, age_seconds}
+        else
+          {:stale, age_seconds}
+        end
+
+      :unrecognized ->
+        :unrecognized
+    end
+  end
+
+  @doc """
   Starts the process. `:name` registers it; `:read_options` go to
   `Gobusgo.Reader.discover/2`.
   """
