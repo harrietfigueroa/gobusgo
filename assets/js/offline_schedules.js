@@ -1,6 +1,6 @@
-// Saves the schedules of the region for offline use, as offline_bundle.js
-// plans them, in the browser's Cache API, and keeps the rider's setting for
-// it in local storage, on unless the rider turns it off.
+// Saves the schedules of the region for offline use in the browser's Cache
+// API, and keeps the rider's setting for it in local storage, on unless the
+// rider turns it off.
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, fetches one file at a time at low priority, and
