@@ -243,6 +243,30 @@ Not observed: nested `subGroups`, a non-empty `levels`, a grouping of another `t
 
 Test fixtures under `test/fixtures/one_bus_away/stops_for_route*.json` are cut from the live response for the West Seattle Water Taxi (`1_100336`), whole.
 
+## Route schedules: `schedule-for-route`
+
+`GET /api/where/schedule-for-route/<route id>.json?date=YYYY-MM-DD&key=<key>` (<https://developer.onebusaway.org/api/where/methods/schedule-for-route> — checked 2026-11-08). `date` is the service date and defaults to today; the requester always sends it. The route identifier is percent-encoded into the path. The method's alternate codes are `404` for a route the server does not know and `510` for a route with no schedules on the date, whose `text` the live server sends as `NoServiceThatDay`.
+
+`Gobusgo.OneBusAway.RouteSchedules.fetch_response/2` takes the route in `:route_id` and the date in `:service_date` and returns the schedule together with the whole decoded envelope, the route, the service date, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the other requesters. Code 510 is a known outcome: the response's `schedule` is `:no_service` and the call returns `{:ok, response}`. `Gobusgo.OneBusAway.RouteSchedules.parse/2` is the pure function from `data` and the route asked for to the schedule. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:route_mismatch, route_id}`, `{:trip_count_exceeded, count}` above 2,000 trips, `{:duplicate_trip, id}`, `{:unreferenced_trip, id}`, and, each naming the trip, `{:stop_time_count_out_of_range, id}` for none or above 500, `{:stop_time_trip_mismatch, id}`, `{:time_out_of_range, id}` outside 0 to two service days, `{:arrival_after_departure, id}`, and `{:unordered_stop_times, id}`. The requester raises on those values.
+
+A schedule holds `route_id`, `schedule_date_ms`, the start of the service date in milliseconds since the Unix epoch, `service_ids`, the services the source found running that date with calendar exceptions applied, and `trips`. A trip holds `id`, `direction_id`, `headsign`, `block_id`, `service_id`, `shape_id`, and its `stop_times` in the order it serves them, each with `stop_id`, `arrival_s`, `departure_s`, `arrival_enabled`, and `departure_enabled`. A field the source sends empty is `nil`.
+
+`Gobusgo.OneBusAway.RawRouteScheduleResponse` is the stored form, under `raw/oba/schedule-for-route/dt=<fetch date>/route=<route>/service-date=<service date>/`, so the responses of one service date are found by their names; its `meta` holds `routeId` and `serviceDate`. A response without service is never stored. `Gobusgo.OneBusAway.RouteScheduleRecorder.record/2` fetches, stores, and publishes a "response stored" event to `oba.schedules.response-stored`, keyed `oba/schedule-for-route/<route id>`, with `data.serviceDate` beside `data.routeId`; it returns `{:no_service, %{route_id: ..., service_date: ...}}` for code 510 and stores and publishes nothing for it. No subscriber takes that topic yet and nothing schedules the recorder: GOB-239 adds the processor and view, and GOB-240 the cycle.
+
+Shape of the live response, observed on 2026-11-07, a Saturday, for all 391 routes of the 12 agencies, one request a second; `parse/2` accepts every one with a schedule:
+
+- 272 routes had a schedule, 116 answered code 510, and 3 got a 429 while the application's own cycles ran on the same key.
+- The schedules held 495,676 stop times. The largest route had 234 trips, the longest trip 93 stop times, and every trip at least 2.
+- `arrivalTime` and `departureTime` are integers that fit seconds from the start of the service day, from 14,040 to 106,200, so a trip past midnight has times past 86,400; the method's page states no unit for them. No stop time arrived after it departed, and every trip's times rose stop by stop.
+- `scheduleDate` was 1,794,038,400,000 for every route: 2026-11-07 at midnight Pacific time, in milliseconds.
+- Every trip was referenced once in `references.trips`, every stop time named its own trip and a referenced stop, and every `arrivalEnabled` and `departureEnabled` was `true`.
+- `references.trips[].timeZone` was always empty, and `stopTripGroupings` held one or two groupings. `references.stopTimes` repeated every stop time of the entry and is not read.
+- The responses with a schedule were 4,055 to 3,491,078 bytes and 176.5 MB together, 9.7 MB compressed with gzip.
+
+Not observed: a stop time with boarding or alighting disabled, a non-empty `timeZone`, and a weekday's counts.
+
+The test fixture `test/fixtures/one_bus_away/schedule_for_route.json` is cut from the live response for Intercity Transit route `19_41`, a night route whose trips all run past midnight: one trip of each direction, the references trimmed to them, and `references.stopTimes` emptied. `test/fixtures/one_bus_away/schedule_for_route_no_service.json` is the envelope the live server sent for a route without service, with its `code` and `text`.
+
 ## Arrivals: `arrivals-and-departures-for-stop`
 
 `GET /api/where/arrivals-and-departures-for-stop/<stop id>.json?key=<key>`. The stop identifier is percent-encoded into the path. The method documents `minutesBefore`, default 5, and `minutesAfter`, default 35; the requester sends neither, so a response covers the default window. The method is unpaginated and its `data` holds one `entry` and no `limitExceeded`.
