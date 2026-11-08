@@ -27,21 +27,27 @@ const VERSION_TEXT = String(SCHEMA_VERSION)
 // and per write, and the add and the remove each read before they write.
 const THROWING_WARNING_COUNT = 14
 
+// Every key the module reads, each held as null until it is written, since
+// Storage's getItem answers null for a key it does not hold.
+// https://html.spec.whatwg.org/multipage/webstorage.html#dom-storage-getitem — checked 2026-11-08
+const storageKeys = Object.values(StorageKey)
+const absentPairs = Array.from(storageKeys, absentEntry)
+const absentEntries = Object.fromEntries(absentPairs)
+
+function absentEntry(key) {
+  return [key, null]
+}
+
 // A local storage double over a map of key to text, which counts the
-// writes of each key. A missing key reads as null, as Storage's getItem
-// returns it.
+// writes of each key.
 class MemoryStorage {
   constructor(entries) {
-    this.values = new Map(Object.entries(entries))
+    this.values = new Map(Object.entries({...absentEntries, ...entries}))
     this.writeCounts = new Map()
   }
 
   getItem(key) {
-    if (this.values.has(key)) {
-      return this.values.get(key)
-    } else {
-      return null
-    }
+    return this.values.get(key)
   }
 
   setItem(key, value) {
@@ -50,7 +56,7 @@ class MemoryStorage {
   }
 
   removeItem(key) {
-    this.values.delete(key)
+    this.values.set(key, null)
     this.countWrite(key)
   }
 
@@ -64,8 +70,17 @@ class MemoryStorage {
     }
   }
 
+  // The keys the double holds a text for, as Storage lists its keys.
   entries() {
-    return Object.fromEntries(this.values)
+    const held = {}
+
+    for (const [key, value] of this.values) {
+      if (value !== null) {
+        held[key] = value
+      }
+    }
+
+    return held
   }
 }
 
