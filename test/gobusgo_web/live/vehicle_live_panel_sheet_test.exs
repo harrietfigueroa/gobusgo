@@ -37,7 +37,7 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
     {"favorites", "Favorites"},
     {"filter", "Filter"},
     {"alerts", "Alerts"},
-    {"about", "About"}
+    {"settings", "Settings"}
   ]
 
   setup %{tmp_dir: tmp_dir} do
@@ -178,7 +178,7 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
   describe "with a basemap" do
     setup :write_manifest
 
-    test "offers the tabs Trip, Favorites, Filter, Alerts, and About, in that order" do
+    test "offers the tabs Trip, Favorites, Filter, Alerts, and Settings, in that order" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert tab_labels(view) == Enum.map(@tabs, &elem(&1, 1))
@@ -259,10 +259,10 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
       assert has_element?(view, "#panel-alerts #service-alerts-current")
     end
 
-    test "holds the info panel in the About tab" do
+    test "holds the info panel in the Settings tab" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, "#panel-about #app-info #app-info-disclaimer")
+      assert has_element?(view, "#panel-settings #app-info #app-info-disclaimer")
     end
 
     test "stands before the map's elements, so the stored filter is offered first" do
@@ -410,12 +410,12 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
       refute has_element?(view, "#panel-detail")
     end
 
-    test "offers the About tab alone" do
+    test "offers the Settings tab alone" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert tab_labels(view) == ["About"]
-      assert attribute(view, "#panel-tab-about", "aria-selected") == "true"
-      refute has_element?(view, "#panel-about[hidden]")
+      assert tab_labels(view) == ["Settings"]
+      assert attribute(view, "#panel-tab-settings", "aria-selected") == "true"
+      refute has_element?(view, "#panel-settings[hidden]")
       assert has_element?(view, "#no-basemap")
     end
   end

@@ -1,6 +1,6 @@
 defmodule GobusgoWeb.VehicleLiveInfoTest do
   # Mounts the vehicle page with Phoenix.LiveViewTest and reads the info
-  # panel of the About tab, with and without a basemap manifest in the
+  # panel of the Settings tab, with and without a basemap manifest in the
   # test's temporary directory, which the test names as the basemap
   # directory. The agency view fills the panel's credits. Both are global
   # state, hence the non-async case. The browser opens the tab, so these
@@ -22,7 +22,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
   @moduletag capture_log: true
 
   @endpoint GobusgoWeb.Endpoint
-  @tab "#panel-tab-about"
+  @tab "#panel-tab-settings"
   @panel "#app-info"
   @fetched_at ~U[2026-10-02 03:15:00Z]
   @bounds %{"south" => 47.0, "west" => -123.0, "north" => 48.0, "east" => -122.0}
@@ -92,20 +92,41 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     value
   end
 
-  describe "the About tab" do
+  # The ids of the elements `selector` matches, in document order.
+  defp ids(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query(selector)
+    |> Enum.flat_map(&LazyHTML.attribute(&1, "id"))
+  end
+
+  describe "the Settings tab" do
+    test "is named Settings" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element(@tab <> " [data-tab-label]") |> render() =~ ">Settings<"
+    end
+
+    test "draws the settings icon" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @tab <> " svg.panel-sheet-icon[aria-hidden=true]")
+    end
+
     test "holds the info panel without a basemap" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(view, "#no-basemap")
-      assert attribute(view, @tab, "aria-controls") == "panel-about"
-      assert has_element?(view, "#panel-about " <> @panel)
+      assert attribute(view, @tab, "aria-controls") == "panel-settings"
+      assert has_element?(view, "#panel-settings " <> @panel)
     end
 
     test "holds the info panel with a basemap", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, "#panel-about " <> @panel)
+      assert has_element?(view, "#panel-settings " <> @panel)
     end
 
     test "is offered with a refused filter", %{tmp_dir: tmp_dir} do
@@ -114,6 +135,57 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
 
       assert has_element?(view, "#filter-refused")
       assert has_element?(view, @tab)
+    end
+  end
+
+  describe "the info panel's order" do
+    test "puts the settings group before the About information" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert ids(view, @panel <> " > section") == ["app-info-settings", "app-info-about"]
+    end
+
+    test "holds installing the app, the theme, and offline schedules in the settings group, in that order" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert ids(view, "#app-info-settings > section") == [
+               "app-info-install",
+               "app-info-theme",
+               "app-info-offline-schedules"
+             ]
+    end
+
+    test "heads the settings group with a Settings heading" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element("#app-info-settings > h2") |> render() =~ ">Settings<"
+    end
+
+    test "heads the About information with an About heading" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element("#app-info-about > h2") |> render() =~ ">About<"
+    end
+
+    test "holds the About sections under the About heading, in their order" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert ids(view, "#app-info-about > section[id]") == [
+               "app-info-disclaimer",
+               "app-info-legend",
+               "app-info-data-use",
+               "app-info-location",
+               "app-info-favorite-stop",
+               "app-info-recorded",
+               "app-info-credits",
+               "app-info-licenses"
+             ]
+    end
+
+    test "holds what the app is under the About heading" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element("#app-info-about") |> render() =~ AppInfo.about()
     end
   end
 

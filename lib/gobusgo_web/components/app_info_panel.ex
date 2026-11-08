@@ -1,12 +1,14 @@
 defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
-  The info panel of a map page: what the application is, a disclaimer, how
-  to read the map, how OneBusAway data is used, how the rider's location is
-  used, how favorite stops are kept, how schedules are saved for offline
-  use, the theme setting, how to install the application where the browser
-  offers it, what is recorded of a connection, the credits,
-  the licenses, and the commit the application was built from where the
-  build names one, from `GobusgoWeb.AppInfo` and the statuses of
+  The info panel of a map page, in two groups. First the rider's settings,
+  under a Settings heading: how to install the application where the
+  browser offers it, the theme setting, and how schedules are saved for
+  offline use, with its setting and status line. Then, under an About
+  heading, what the application is, a disclaimer, how to read the map, how
+  OneBusAway data is used, how the rider's location is used, how favorite
+  stops are kept, what is recorded of a connection, the credits, the
+  licenses, and the commit the application was built from where the build
+  names one, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`. It sends the server no event.
   """
 
@@ -36,24 +38,14 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   def content(assigns) do
     ~H"""
-    <div id="app-info" class="flex flex-col gap-5">
-      <h2 class="text-base font-semibold">About Gobusgo</h2>
-      <div class="flex flex-col gap-5">
-        <p>{AppInfo.about()}</p>
-        <section id="app-info-disclaimer" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Disclaimer</h3>
-          <p>{AppInfo.disclaimer()}</p>
-        </section>
-        <.legend />
-        <.data_use />
-        <section id="app-info-location" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Your location</h3>
-          <p>{AppInfo.location()}</p>
-        </section>
-        <section id="app-info-favorite-stop" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Your favorite stops</h3>
-          <p>{AppInfo.favorite_stop()}</p>
-        </section>
+    <div id="app-info" class="flex flex-col gap-8">
+      <section
+        id="app-info-settings"
+        class="flex flex-col gap-5"
+        aria-labelledby="app-info-settings-title"
+      >
+        <h2 id="app-info-settings-title" class="text-base font-semibold">Settings</h2>
+        <.install_app />
         <.theme_setting />
         <section
           id="app-info-offline-schedules"
@@ -69,11 +61,28 @@ defmodule GobusgoWeb.AppInfoPanel do
           </label>
           <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
         </section>
-        <.install_app />
+      </section>
+      <section id="app-info-about" class="flex flex-col gap-5" aria-labelledby="app-info-about-title">
+        <h2 id="app-info-about-title" class="text-base font-semibold">About</h2>
+        <p>{AppInfo.about()}</p>
+        <section id="app-info-disclaimer" class="flex flex-col gap-2">
+          <h3 class="font-semibold">Disclaimer</h3>
+          <p>{AppInfo.disclaimer()}</p>
+        </section>
+        <.legend />
+        <.data_use />
+        <section id="app-info-location" class="flex flex-col gap-2">
+          <h3 class="font-semibold">Your location</h3>
+          <p>{AppInfo.location()}</p>
+        </section>
+        <section id="app-info-favorite-stop" class="flex flex-col gap-2">
+          <h3 class="font-semibold">Your favorite stops</h3>
+          <p>{AppInfo.favorite_stop()}</p>
+        </section>
         <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />
-      </div>
+      </section>
     </div>
     """
   end
@@ -143,7 +152,7 @@ defmodule GobusgoWeb.AppInfoPanel do
     assigns = assign(assigns, statuses: VehicleMarkers.statuses())
 
     ~H"""
-    <section class="flex flex-col gap-2">
+    <section id="app-info-legend" class="flex flex-col gap-2">
       <h3 class="font-semibold">How to read the map</h3>
       <p>
         Each marker is one vehicle, drawn in its route's color. How it is drawn says how far to
@@ -202,7 +211,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       )
 
     ~H"""
-    <section class="flex flex-col gap-2">
+    <section id="app-info-data-use" class="flex flex-col gap-2">
       <h3 class="font-semibold">How OneBusAway data is used</h3>
       <p :for={paragraph <- @paragraphs}>{paragraph}</p>
     </section>
@@ -238,7 +247,7 @@ defmodule GobusgoWeb.AppInfoPanel do
     assigns = assign(assigns, terms: AppInfo.terms())
 
     ~H"""
-    <section class="flex flex-col gap-2">
+    <section id="app-info-credits" class="flex flex-col gap-2">
       <h3 class="font-semibold">Credits</h3>
       <p>
         Transit data is provided on an "as is" basis by {agencies_text(@agencies)}, under the
@@ -264,7 +273,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       )
 
     ~H"""
-    <section class="flex flex-col gap-2">
+    <section id="app-info-licenses" class="flex flex-col gap-2">
       <h3 class="font-semibold">License</h3>
       <p>Gobusgo is offered under the {@app_license.name}. {@app_license.copyright}.</p>
       <p :if={@revision} id="app-info-revision">
