@@ -4,9 +4,9 @@ Gobusgo stores every destination of the writer, the reader, and the deleter as o
 
 ## Documentation sources
 
-- `PutObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html — checked 2026-11-08
+- `PutObject`: <https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html> — checked 2026-11-08
 - Conditional writes: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html — checked 2026-10-11
-- `GetObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html — checked 2026-11-08
+- `GetObject`: <https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html> — checked 2026-11-08
 - `HeadObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html — checked 2026-10-11
 - `DeleteObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html — checked 2026-10-11
 - `ListObjectsV2`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html — checked 2026-10-11
