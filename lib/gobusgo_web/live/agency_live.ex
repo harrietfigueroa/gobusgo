@@ -17,6 +17,7 @@ defmodule GobusgoWeb.AgencyLive do
   use Phoenix.LiveView
 
   alias Gobusgo.OneBusAway.AgencyView
+  alias GobusgoWeb.DonationButton
 
   @pubsub Gobusgo.PubSub
   @link_schemes ["http", "https"]
@@ -38,6 +39,7 @@ defmodule GobusgoWeb.AgencyLive do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
+    <DonationButton.button class="donation-button-page" />
     <main class="mx-auto max-w-5xl p-8">
       <h1 class="text-2xl font-semibold">Agencies</h1>
 

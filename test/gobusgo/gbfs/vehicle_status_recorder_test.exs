@@ -33,7 +33,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusRecorderTest do
 
   # The system of the test reads 3.0 alone, so a 404 there is a feed that
   # is gone.
-  defp system, do: %{Systems.lime_seattle() | discovery_urls: %{"3.0" => @discovery_url}}
+  defp system, do: %{hd(Systems.all()) | discovery_urls: %{"3.0" => @discovery_url}}
 
   defp serve(routes) do
     Req.Test.stub(@stub_name, fn conn ->

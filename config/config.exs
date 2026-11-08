@@ -47,6 +47,8 @@ config :gobusgo, Gobusgo.Publisher.InProcess,
        ]},
     "gbfs.free-bike-status.state" =>
       {Gobusgo.Gbfs.VehicleStatusView, :apply_records, [Gobusgo.Gbfs.VehicleStatusView]},
+    "gbfs.vehicle-types.state" =>
+      {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.Gbfs.VehicleTypeView]},
     "oba.agencies-with-coverage.response-stored" =>
       {Gobusgo.OneBusAway.ResponseConsumer, :consume,
        [

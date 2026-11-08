@@ -290,6 +290,38 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_donation_url/1" do
+    @donation_url "https://ko-fi.com/harrietwaters"
+
+    test "returns the configured address" do
+      assert Config.fetch_donation_url(url: @donation_url) == {:ok, @donation_url}
+    end
+
+    for {description, env} <- [
+          {"an empty environment", []},
+          {"a nil address", [url: nil]},
+          {"a blank address", [url: "  "]}
+        ] do
+      test "returns nil for #{description}" do
+        assert Config.fetch_donation_url(unquote(env)) == {:ok, nil}
+      end
+    end
+
+    for {description, value} <- [
+          {"an http address", "http://ko-fi.com/harrietwaters"},
+          {"an address with no scheme", "ko-fi.com/harrietwaters"},
+          {"an address with no host", "https:///harrietwaters"},
+          {"a javascript address", "javascript:alert(1)"},
+          {"an address with a space in it", "https://ko-fi.com/harriet waters"},
+          {"an address with a space before it", " https://ko-fi.com/harrietwaters"}
+        ] do
+      test "reports the address as invalid for #{description}" do
+        assert Config.fetch_donation_url(url: unquote(value)) ==
+                 {:error, {:invalid, :donation_url}}
+      end
+    end
+  end
+
   describe "fetch_secret_key_base/1" do
     @secret String.duplicate("s", 64)
 

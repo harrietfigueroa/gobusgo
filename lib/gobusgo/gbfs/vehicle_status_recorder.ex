@@ -92,7 +92,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusRecorder do
   def fetch_deadline_ms, do: @fetch_deadline_ms
 
   @doc "Fetches the vehicle file of `system`, stores it once, and announces it."
-  @spec record(Systems.t(), Keyword.t()) ::
+  @spec record(Systems.system(), Keyword.t()) ::
           {:ok, recorded() | not_published()} | {:error, error()}
   def record(%{id: system_id} = system, options) when is_list(options) do
     options =

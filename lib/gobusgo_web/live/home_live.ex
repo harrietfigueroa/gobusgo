@@ -6,9 +6,12 @@ defmodule GobusgoWeb.HomeLive do
 
   use Phoenix.LiveView
 
+  alias GobusgoWeb.DonationButton
+
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
+    <DonationButton.button class="donation-button-page" />
     <main class="mx-auto max-w-2xl p-8">
       <h1 class="text-2xl font-semibold">Gobusgo</h1>
       <p class="mt-2">The front end is running.</p>

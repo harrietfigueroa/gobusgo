@@ -10,6 +10,7 @@ defmodule GobusgoWeb.AppInfo do
   how it uses the rider's location,
   how it keeps favorite stops,
   how it keeps the theme,
+  what donations fund,
   what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
@@ -83,6 +84,15 @@ defmodule GobusgoWeb.AppInfo do
   @recorded_never "A record holds no IP address, no cookie, no identifier of you or your " <>
                     "device, and not the text your browser identifies itself with. Records " <>
                     "of different visits cannot be told to be from the same visitor."
+
+  # The data terms forbid an agency's name or mark in the name of an
+  # application or business, so the donation texts name Gobusgo alone.
+  # https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use — checked 2026-10-06
+  @donation "Gobusgo is free to use and independent. Donations go toward the cost of " <>
+              "running it: its server and the storage of the data it reads. A donation " <>
+              "buys no feature, no data, and no priority: every rider sees the same map."
+
+  @donation_label "Support gobusgo on Ko-fi"
 
   @location "The location button centers the map on where you are. Your browser asks you " <>
               "first, and your position never leaves your browser: Gobusgo's server does " <>
@@ -218,6 +228,14 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of what a usage record never holds."
   @spec recorded_never() :: String.t()
   def recorded_never, do: @recorded_never
+
+  @doc "The statement of what donations fund and what a donation does not buy."
+  @spec donation() :: String.t()
+  def donation, do: @donation
+
+  @doc "The accessible name of the donation button and the text of the donation link."
+  @spec donation_label() :: String.t()
+  def donation_label, do: @donation_label
 
   @doc "The statement of how a map page uses the rider's location."
   @spec location() :: String.t()

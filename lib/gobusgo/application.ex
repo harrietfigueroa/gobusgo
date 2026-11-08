@@ -10,6 +10,8 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Gbfs.VehicleStatusCycle
   alias Gobusgo.Gbfs.VehicleStatusRetention
   alias Gobusgo.Gbfs.VehicleStatusView
+  alias Gobusgo.Gbfs.VehicleTypeRecords
+  alias Gobusgo.Gbfs.VehicleTypesCycle
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
@@ -29,7 +31,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
-  @ingestion_task_count_max 10
+  @ingestion_task_count_max 12
   @restart_count_max 3
   @restart_window_seconds 5
 
@@ -63,6 +65,10 @@ defmodule Gobusgo.Application do
 
   # The shared vehicle view holds the newest fetch of each GBFS system.
   @vehicle_status_view_system_count_max 8
+  # The vehicle type view is a fetch view of each GBFS system's vehicle
+  # types at each version that publishes them.
+  @vehicle_type_view Gobusgo.Gbfs.VehicleTypeView
+  @vehicle_type_view_id_count_max 32
 
   @impl Application
   def start(_type, _args) do
@@ -76,7 +82,8 @@ defmodule Gobusgo.Application do
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),
          {:ok, _routing} <- Config.routing(),
-         {:ok, _revision} <- Config.revision() do
+         {:ok, _revision} <- Config.revision(),
+         {:ok, _donation_url} <- Config.donation_url() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.
@@ -127,6 +134,11 @@ defmodule Gobusgo.Application do
              name: VehicleStatusView,
              pubsub: Gobusgo.PubSub,
              system_count_max: @vehicle_status_view_system_count_max},
+            {FetchView,
+             name: @vehicle_type_view,
+             pubsub: Gobusgo.PubSub,
+             records: VehicleTypeRecords,
+             id_count_max: @vehicle_type_view_id_count_max},
             {Demand,
              name: Demand,
              datasets: DemandKey.datasets() ++ Gobusgo.Gbfs.DemandKey.datasets(),
@@ -147,7 +159,7 @@ defmodule Gobusgo.Application do
           [
             scheduler_supervisor(
               source_specs(scheduled) ++
-                shared_vehicle_specs(scheduled, shared_vehicles) ++
+                gbfs_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
@@ -212,11 +224,13 @@ defmodule Gobusgo.Application do
 
   defp routing_specs(false), do: []
 
-  # The shared vehicle feeds are public, so their sources need no settings
-  # and run wherever the sources are scheduled. The retention source deletes
-  # the stored files whether or not the vehicle source runs.
-  defp shared_vehicle_specs(true, shared_vehicles) do
+  # The GBFS feeds are public, so their sources need no settings and run
+  # wherever the sources are scheduled. The retention source deletes the
+  # stored shared vehicle files whether or not the shared vehicle source
+  # runs.
+  defp gbfs_specs(true, shared_vehicles) do
     [
+      VehicleTypesCycle.spec([]),
       VehicleStatusCycle.spec(shared_vehicles,
         demand: Demand,
         cycle_options: [view: VehicleStatusView]
@@ -225,7 +239,7 @@ defmodule Gobusgo.Application do
     ]
   end
 
-  defp shared_vehicle_specs(false, _shared_vehicles), do: []
+  defp gbfs_specs(false, _shared_vehicles), do: []
 
   defp source_specs(false), do: []
 

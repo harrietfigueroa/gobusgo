@@ -14,37 +14,43 @@ defmodule GobusgoWeb.Layouts do
 
   alias GobusgoWeb.Endpoint
 
-  @theme_setting_key "gobusgo:theme"
+  # The key and the stored themes are those of assets/js/stored_settings.js,
+  # which reads them from the same file, read when this module is compiled.
+  @stored_settings_path Path.expand("../../../assets/js/stored_settings.json", __DIR__)
+  @external_resource @stored_settings_path
+
+  %{"keys" => %{"theme" => theme_setting_key}, "storedThemes" => stored_themes} =
+    @stored_settings_path |> File.read!() |> JSON.decode!()
+
+  @theme_setting_key theme_setting_key
+  @stored_themes stored_themes
   # The page backgrounds of the light and the dark theme in assets/css/app.css.
   @theme_color_light "#ffffff"
   @theme_color_dark "#0f172a"
 
   # Runs before the stylesheet applies, so the first paint is in the theme
-  # the rider's setting resolves to: "light" or "dark" as stored, and with
-  # no stored value, or storage that throws, the system's preference.
+  # the rider's setting resolves to: a stored theme as stored, and with any
+  # other stored value, no stored value, or storage that throws, the
+  # system's preference.
   @theme_script """
   (function () {
     var setting = null;
     try {
-      setting = window.localStorage.getItem("#{@theme_setting_key}");
+      setting = window.localStorage.getItem(#{JSON.encode!(@theme_setting_key)});
     } catch (error) {
       setting = null;
     }
+    var storedThemes = #{JSON.encode!(@stored_themes)};
     var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var isSystemDark = setting !== "light" && systemDark;
     var theme = "light";
-    if (setting === "dark") {
-      theme = "dark";
-    } else if (isSystemDark) {
+    if (storedThemes.indexOf(setting) !== -1) {
+      theme = setting;
+    } else if (systemDark) {
       theme = "dark";
     }
     document.documentElement.dataset.theme = theme;
   })();
   """
-
-  @doc "The local storage key that holds the rider's theme setting."
-  @spec theme_setting_key() :: String.t()
-  def theme_setting_key, do: @theme_setting_key
 
   @doc "The HTML document around the page in `assigns.inner_content`."
   attr :inner_content, :any, required: true
