@@ -4,7 +4,8 @@ defmodule GobusgoWeb.VehicleLive.Filter do
   `:refused` for one it does not, which keeps no agency and selects nothing.
 
   A filter comes from a page's address, from what a browser stored, or from
-  a change of the page's form. A change that names agencies keeps only the
+  a change of the page's filter bar, which adds a value to a field or
+  removes one. A change that names agencies keeps only the
   routes one of those agencies lists, and no route field when it lists none
   of them.
 
@@ -45,9 +46,9 @@ defmodule GobusgoWeb.VehicleLive.Filter do
   def stored(params) when is_map(params), do: :refused
 
   @doc """
-  The filter a change of the form to `raw` stands for. `route_fetches` are
-  the fetches of the route view, each with the `id` of its agency and its
-  `route_ids`.
+  The filter a change of the page's filter to `raw` stands for.
+  `route_fetches` are the fetches of the route view, each with the `id` of
+  its agency and its `route_ids`.
   """
   @spec changed(%{raw: Filter.raw(), route_fetches: [map()]}) :: t()
   def changed(%{raw: raw, route_fetches: route_fetches})
@@ -56,6 +57,36 @@ defmodule GobusgoWeb.VehicleLive.Filter do
       :refused -> :refused
       filter -> listed_routes_filter(filter, route_fetches)
     end
+  end
+
+  @doc """
+  The filter a change that adds `value` to the field `field` of `filter`
+  stands for, judged as `changed/1` judges a change. A value added to a
+  refused filter starts from the filter of every vehicle.
+  """
+  @spec added(%{filter: t(), field: String.t(), value: term(), route_fetches: [map()]}) :: t()
+  def added(%{filter: filter, field: field, value: value, route_fetches: route_fetches})
+      when is_binary(field) do
+    raw = Map.update(base(filter), field, [value], &[value | &1])
+    changed(%{raw: raw, route_fetches: route_fetches})
+  end
+
+  @doc """
+  The filter a change that removes `value` from the field `field` of
+  `filter` stands for, judged as `changed/1` judges a change. A field left
+  with no value is absent. A value removed from a refused filter leaves the
+  filter of every vehicle.
+  """
+  @spec removed(%{filter: t(), field: String.t(), value: term(), route_fetches: [map()]}) :: t()
+  def removed(%{filter: filter, field: field, value: value, route_fetches: route_fetches})
+      when is_binary(field) do
+    raw =
+      case base(filter) do
+        %{^field => values} = base -> Map.put(base, field, List.delete(values, value))
+        base -> base
+      end
+
+    changed(%{raw: raw, route_fetches: route_fetches})
   end
 
   @doc "The agencies `filter` names, none for a filter with no agency field."
@@ -80,6 +111,10 @@ defmodule GobusgoWeb.VehicleLive.Filter do
   def keeps_agency?(filter, agency_id) when is_map(filter) and is_binary(agency_id) do
     VehicleFilter.keeps_agency?(%{filter: filter, agency_id: agency_id})
   end
+
+  # A refused filter keeps nothing, so a change made to it starts afresh.
+  defp base(:refused), do: %{}
+  defp base(filter) when is_map(filter), do: filter
 
   # A filter left with no route names none, since a field of a filter
   # accepts at least one value.

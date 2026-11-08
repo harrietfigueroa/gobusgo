@@ -3,6 +3,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
 import {FavoriteStop} from "./favorite_stop"
+import {FilterBar} from "./filter_bar"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineSchedules} from "./offline_schedules"
@@ -38,6 +39,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     Basemap,
     FavoriteStop,
+    FilterBar,
     LocalTime,
     OfflineSchedules,
     PanelSheet,

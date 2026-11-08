@@ -64,6 +64,81 @@ defmodule GobusgoWeb.VehicleLive.FilterTest do
     end
   end
 
+  describe "added/1" do
+    for {name, filter, field, value, added} <- [
+          {"an agency is added to the agencies", %{"agency" => ["40"]}, "agency", "1",
+           %{"agency" => ["1", "40"]}},
+          {"a route is added to a filter of an agency", %{"agency" => ["1"]}, "route", "1_200",
+           %{"agency" => ["1"], "route" => ["1_200"]}},
+          {"an added agency keeps the routes one of the agencies lists",
+           %{"route" => ["1_100", "40_300"]}, "agency", "40",
+           %{"agency" => ["40"], "route" => ["40_300"]}},
+          {"a value the filter names already leaves it as it is", %{"route" => ["1_100"]},
+           "route", "1_100", %{"route" => ["1_100"]}},
+          {"a value added to a refused filter starts a filter of its own", :refused, "agency",
+           "1", %{"agency" => ["1"]}},
+          {"a field the contract does not know is refused", %{}, "color", "red", :refused},
+          {"a value that is not text is refused", %{}, "agency", 1, :refused}
+        ] do
+      test name do
+        added =
+          Filter.added(%{
+            filter: unquote(Macro.escape(filter)),
+            field: unquote(field),
+            value: unquote(Macro.escape(value)),
+            route_fetches: @route_fetches
+          })
+
+        assert added == unquote(Macro.escape(added))
+      end
+    end
+
+    test "more values than the contract accepts are refused" do
+      count = Gobusgo.Filter.value_count_max()
+      filter = %{"route" => Enum.map(1..count, &"1_#{&1}")}
+
+      added =
+        Filter.added(%{
+          filter: filter,
+          field: "route",
+          value: "1_0",
+          route_fetches: @route_fetches
+        })
+
+      assert added == :refused
+    end
+  end
+
+  describe "removed/1" do
+    for {name, filter, field, value, removed} <- [
+          {"a route is removed from the routes", %{"route" => ["1_100", "1_200"]}, "route",
+           "1_100", %{"route" => ["1_200"]}},
+          {"the last value of a field removes the field", %{"agency" => ["1"]}, "agency", "1",
+           %{}},
+          {"a removed agency keeps the routes the agencies left list",
+           %{"agency" => ["1", "40"], "route" => ["1_100", "40_300"]}, "agency", "40",
+           %{"agency" => ["1"], "route" => ["1_100"]}},
+          {"the last agency removed keeps every route",
+           %{"agency" => ["1"], "route" => ["1_100"]}, "agency", "1", %{"route" => ["1_100"]}},
+          {"a value the filter does not name leaves it as it is", %{"route" => ["1_100"]},
+           "route", "1_200", %{"route" => ["1_100"]}},
+          {"a value removed from a refused filter leaves the filter of every vehicle", :refused,
+           "agency", "1", %{}}
+        ] do
+      test name do
+        removed =
+          Filter.removed(%{
+            filter: unquote(Macro.escape(filter)),
+            field: unquote(field),
+            value: unquote(Macro.escape(value)),
+            route_fetches: @route_fetches
+          })
+
+        assert removed == unquote(Macro.escape(removed))
+      end
+    end
+  end
+
   describe "what a filter names" do
     for {name, filter, agency_ids, route_ids, single_agency_id} <- [
           {"a filter of both fields", %{"agency" => ["1"], "route" => ["1_100"]}, ["1"],
