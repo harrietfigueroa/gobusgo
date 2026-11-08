@@ -2,8 +2,8 @@
 // draws. On each map the basemap announces it adds a button under the zoom
 // buttons that cycles Off, Following, and Located over the page's shared
 // position watch: Following keeps the map on the rider, and Located draws
-// the dot and leaves the map where the rider moved it. The rules live in
-// `follow_state.js`; this hook carries them out on the map and the notice.
+// the dot and leaves the map where the rider moved it. This hook carries
+// out the imported rules on the map and the notice.
 //
 // A position never leaves the browser: no event to the server carries one,
 // and the browser stores only a flag that the button was left on. The
