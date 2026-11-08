@@ -1,9 +1,9 @@
 // The panel sheet of a map page: which tab is open and whether the sheet is
 // expanded, held in the browser alone. The server renders the first tab
 // open and the sheet collapsed and leaves the attributes that carry the
-// state to this hook across patches. The details view of `panel_detail.js`
-// stands in place of the tabs while it shows an item, and its back button
-// returns to the tab that was open.
+// state to this hook across patches. The sheet's details view stands in
+// place of the tabs while it shows an item, and its back button returns to
+// the tab that was open.
 
 import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
