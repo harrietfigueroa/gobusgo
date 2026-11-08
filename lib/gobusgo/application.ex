@@ -10,6 +10,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Gbfs.VehicleStatusCycle
   alias Gobusgo.Gbfs.VehicleStatusRetention
   alias Gobusgo.Gbfs.VehicleStatusView
+  alias Gobusgo.Gbfs.VehicleTiles
   alias Gobusgo.Gbfs.VehicleTypeRecords
   alias Gobusgo.Gbfs.VehicleTypesCycle
   alias Gobusgo.OneBusAway.AgencyView
@@ -82,6 +83,7 @@ defmodule Gobusgo.Application do
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),
          {:ok, _routing} <- Config.routing(),
+         {:ok, _shared_vehicle_tiles} <- Config.shared_vehicle_tiles(),
          {:ok, _revision} <- Config.revision(),
          {:ok, _donation_url} <- Config.donation_url() do
       # A scheduler starts its runs under the task supervisor, so the task
@@ -139,6 +141,7 @@ defmodule Gobusgo.Application do
              pubsub: Gobusgo.PubSub,
              records: VehicleTypeRecords,
              id_count_max: @vehicle_type_view_id_count_max},
+            {VehicleTiles, name: VehicleTiles, pubsub: Gobusgo.PubSub},
             {Demand,
              name: Demand,
              datasets: DemandKey.datasets() ++ Gobusgo.Gbfs.DemandKey.datasets(),
@@ -233,7 +236,7 @@ defmodule Gobusgo.Application do
       VehicleTypesCycle.spec([]),
       VehicleStatusCycle.spec(shared_vehicles,
         demand: Demand,
-        cycle_options: [view: VehicleStatusView]
+        cycle_options: [view: VehicleStatusView, tile_options: [server: VehicleTiles]]
       ),
       VehicleStatusRetention.spec([])
     ]

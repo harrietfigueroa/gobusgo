@@ -33,6 +33,10 @@
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
+// - `gobusgo:shared-vehicles`: the text "on" while the rider keeps the shared
+//   scooter and bike layer on. No key is off, the default, and any other
+//   text reads as off. Losing it turns the layer off. Its absence is its
+//   default, so it is a key of version 1 with no migration of its own.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
 //   above, as decimal text, now "1".
 //
@@ -68,6 +72,7 @@ export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: 
 
 const LOCATION_FOLLOW_STORED = "true"
 const OFFLINE_SCHEDULES_OFF = "off"
+const SHARED_VEHICLES_SHOWN = "on"
 const UNVERSIONED = 0
 
 // The kinds of a stored entry read back as a favorite.
@@ -231,6 +236,20 @@ export function openStoredSettings({storage, warn}) {
       })
     },
 
+    /** Whether the rider keeps the shared scooter and bike layer on; off is the default. */
+    readSharedVehiclesShown() {
+      return guarded({description: "Shared vehicles setting not readable", fallback: false, operation: readSharedVehiclesShownFrom})
+    },
+
+    /** Stores whether the shared scooter and bike layer is on; off is stored as no key. */
+    writeSharedVehiclesShown(shown) {
+      guarded({
+        description: "Shared vehicles setting not stored",
+        fallback: undefined,
+        operation: (reached) => { writeSharedVehiclesShownTo({reached, shown}) }
+      })
+    },
+
     /** The stored favorites, each once, at most `countMax` of them. */
     listFavorites,
 
@@ -319,6 +338,18 @@ function writeOfflineSchedulesEnabledTo({reached, enabled}) {
     reached.removeItem(StorageKey.offlineSchedules)
   } else {
     reached.setItem(StorageKey.offlineSchedules, OFFLINE_SCHEDULES_OFF)
+  }
+}
+
+function readSharedVehiclesShownFrom(reached) {
+  return reached.getItem(StorageKey.sharedVehicles) === SHARED_VEHICLES_SHOWN
+}
+
+function writeSharedVehiclesShownTo({reached, shown}) {
+  if (shown) {
+    reached.setItem(StorageKey.sharedVehicles, SHARED_VEHICLES_SHOWN)
+  } else {
+    reached.removeItem(StorageKey.sharedVehicles)
   }
 }
 

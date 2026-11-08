@@ -6,6 +6,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetentionTest do
 
   alias Gobusgo.Gbfs.RawVehicleStatus
   alias Gobusgo.Gbfs.VehicleStatusRetention
+  alias Gobusgo.Gbfs.VehicleTileSet
   alias Gobusgo.RequestId
   alias Gobusgo.Scheduler
 
@@ -103,6 +104,67 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetentionTest do
 
     assert {:ok, %{unrecognized_count: 1}} = run(tmp_dir)
     assert stored?(tmp_dir, destination)
+  end
+
+  describe "the files that publish a fetch" do
+    defp publish(tmp_dir, fetched_at) do
+      vehicle = %{
+        id: "bike-1",
+        position: %{lat: 47.6114, lon: -122.337},
+        vehicle_type_id: nil,
+        current_range_meters: nil,
+        is_disabled: false,
+        is_reserved: false,
+        last_reported: nil
+      }
+
+      set =
+        VehicleTileSet.build(%{
+          fetched: %{
+            kind: :fetched,
+            id: "lime_seattle",
+            version: "2.2",
+            last_updated: fetched_at,
+            ttl: 60,
+            vehicles: [vehicle],
+            data_sha256: String.duplicate("0", 64),
+            destination: "raw/gbfs/free-bike-status/test",
+            fetched_at: fetched_at,
+            request_id: RequestId.generate()
+          },
+          type_fetches: []
+        })
+
+      for file <- [set.index | set.files] do
+        :ok = Gobusgo.Writer.write(file, base_dir: tmp_dir)
+        file.destination
+      end
+    end
+
+    test "deletes every file of a fetch past the deletion age", %{tmp_dir: tmp_dir} do
+      age_ms = VehicleStatusRetention.deletion_age_ms() + 1
+      destinations = publish(tmp_dir, DateTime.add(@now, -age_ms, :millisecond))
+
+      {:ok, %{deleted_count: deleted_count}} = run(tmp_dir)
+
+      assert deleted_count == length(destinations)
+      refute Enum.any?(destinations, &stored?(tmp_dir, &1))
+    end
+
+    test "keeps the files of a fetch within the deletion age", %{tmp_dir: tmp_dir} do
+      destinations = publish(tmp_dir, DateTime.add(@now, -60_000, :millisecond))
+
+      assert {:ok, %{deleted_count: 0}} = run(tmp_dir)
+      assert Enum.all?(destinations, &stored?(tmp_dir, &1))
+    end
+
+    test "removes the directory of a fetch it empties", %{tmp_dir: tmp_dir} do
+      [index | _files] = publish(tmp_dir, ~U[2026-11-07 23:50:00Z])
+
+      {:ok, _counts} = run(tmp_dir)
+
+      refute File.exists?(Path.join(tmp_dir, Path.dirname(index)))
+    end
   end
 
   test "finds nothing to delete in an empty store", %{tmp_dir: tmp_dir} do

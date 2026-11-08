@@ -1,0 +1,16 @@
+{
+  "bounds": {
+    "south": 47606000,
+    "west": -122344000,
+    "north": 47636000,
+    "east": -122300000
+  },
+  "vehicles": [
+    {"lat": 47.62, "lon": -122.32, "currentRangeMeters": 34247, "formFactor": "standing_scooter"},
+    {"lat": 47.61, "lon": -122.31, "currentRangeMeters": 3782, "formFactor": "e_bike"},
+    {"lat": 47.606, "lon": -122.344, "currentRangeMeters": null, "formFactor": "bike"},
+    {"lat": 47.636, "lon": -122.3, "currentRangeMeters": 900000, "formFactor": "seated_scooter"},
+    {"lat": 47.63, "lon": -122.33, "currentRangeMeters": 0, "formFactor": "other"}
+  ],
+  "decodedRangesMeters": [34250, 3780, null, 655340, 0]
+}

@@ -85,6 +85,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.ArrivalSituationView,
              Gobusgo.Gbfs.VehicleStatusView,
              Gobusgo.Gbfs.VehicleTypeView,
+             Gobusgo.Gbfs.VehicleTiles,
              Gobusgo.Demand,
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,

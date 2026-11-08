@@ -71,6 +71,10 @@ config :gobusgo, :session,
   secret_key_base: System.get_env("SECRET_KEY_BASE"),
   required: config_env() == :prod
 
+# The shared vehicle files the local writer stores under `shared-vehicles/`
+# are served from there.
+config :gobusgo, :shared_vehicle_tiles, dir: Path.join(base_dir, "shared-vehicles")
+
 # The tile archives the local writer stores under `tiles/` are served from
 # there.
 config :gobusgo, :tiles, dir: Path.join(base_dir, "tiles")
