@@ -8,7 +8,9 @@ on:
 permissions:
   contents: read
 
-# A run on main is never canceled, because it publishes the image of its commit.
+# A run on main that has started is never canceled, because it publishes the image of its commit.
+# A group holds one waiting run, and a newer waiting run replaces it, so of the commits merged while a run is in progress only the newest gets an image.
+# https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency — checked 2026-11-08
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -182,3 +184,75 @@ jobs:
           package-name: ${{ github.event.repository.name }}
           package-type: container
           min-versions-to-keep: 10
+
+  # The job asks the infrastructure repository for a release of this commit and ends, so the outcome of the release is in that repository's runs alone.
+  release:
+    name: release
+    # The repository variable is the pause: any value but true skips the job.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      API_VERSION: "2026-03-10"
+      RELEASE_REPOSITORY: harrietfigueroa/gobusgo-infra
+      RELEASE_WORKFLOW: application-release.yml
+      REQUEST_SECONDS_MAX: 30
+    steps:
+      # A run that is started again after a later merge holds a commit behind the head of main, and a release of it moves production back.
+      # https://docs.github.com/en/rest/commits/commits#get-a-commit — checked 2026-11-08
+      - id: head
+        run: |
+          status="$(curl --silent --show-error --max-time "$REQUEST_SECONDS_MAX" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header "X-GitHub-Api-Version: $API_VERSION" \
+            --output head.json \
+            --write-out '%{http_code}' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/main")"
+          if [[ "$status" != "200" ]]; then
+            echo "::error::The head of main cannot be read: GitHub answered $status."
+            exit 1
+          fi
+          head="$(jq --raw-output '.sha' head.json)"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$head" == "$GITHUB_SHA" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "No release was asked for: \`$GITHUB_SHA\` is behind \`$head\`, the head of \`main\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The request follows no redirect, so the token goes to the API's host alone.
+      # A 200 carries the run that was started, and it is the one status the documentation gives.
+      # https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — checked 2026-11-08
+      - if: steps.head.outputs.current == 'true'
+        run: |
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "::error::The secret PRODUCTION_RELEASE_TOKEN is empty."
+            exit 1
+          fi
+          body="$(jq --null-input --compact-output --arg commit "$GITHUB_SHA" '{ref: "main", inputs: {commit: $commit}}')"
+          status="$(curl --silent --show-error --max-time "$REQUEST_SECONDS_MAX" \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $RELEASE_TOKEN" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Api-Version: $API_VERSION" \
+            --data "$body" \
+            --output response.json \
+            --write-out '%{http_code}' \
+            "$GITHUB_API_URL/repos/$RELEASE_REPOSITORY/actions/workflows/$RELEASE_WORKFLOW/dispatches")"
+          if [[ "$status" != "200" ]]; then
+            message="$(jq --raw-output '.message // empty' response.json || true)"
+            echo "::error::No release was started: $RELEASE_REPOSITORY answered $status to the request ($message). A 401 means the token in PRODUCTION_RELEASE_TOKEN has expired or was revoked, and a 403 or 404 that it lacks the Actions write permission on that repository."
+            exit 1
+          fi
+          run_url="$(jq --raw-output '.html_url' response.json)"
+          [[ "$run_url" == "$GITHUB_SERVER_URL/$RELEASE_REPOSITORY/actions/runs/"* ]]
+          echo "Asked for a release of \`$GITHUB_SHA\`: $run_url" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RELEASE_TOKEN: ${{ secrets.PRODUCTION_RELEASE_TOKEN }}

@@ -271,7 +271,7 @@ docker rm gobusgo
 
 ### Published image
 
-Every merge to `main` publishes the image to GitHub Container Registry, once the other CI jobs pass on the merged commit. CI's `publish` job builds it for `linux/arm64` and pushes it to `ghcr.io/harrietfigueroa/gobusgo` under one tag, the full SHA of the commit it was built from. No tag moves and there is no `latest`: a run that is started again leaves the tag of its commit as it is. The job's summary shows the image's digest.
+A merge to `main` publishes the image to GitHub Container Registry, once the other CI jobs pass on the merged commit. Of the commits merged while a run on `main` is in progress, only the newest gets a run, and so an image. CI's `publish` job builds it for `linux/arm64` and pushes it to `ghcr.io/harrietfigueroa/gobusgo` under one tag, the full SHA of the commit it was built from. No tag moves and there is no `latest`: a run that is started again leaves the tag of its commit as it is. The job's summary shows the image's digest.
 
 The package is private. The job signs in with the workflow's own token and keeps the 10 newest images, deleting the older ones. To pull one, sign in with a personal access token that has the `read:packages` scope:
 
@@ -281,6 +281,23 @@ docker pull ghcr.io/harrietfigueroa/gobusgo:<commit SHA>
 ```
 
 A pull request builds the image for the same platform and publishes nothing.
+
+### Production release
+
+While the repository variable `PRODUCTION_DEPLOY_ENABLED` is `true`, CI's `release` job follows `publish`: it asks the [infrastructure repository](https://github.com/harrietfigueroa/gobusgo-infra) to release the commit, by starting that repository's `Application release` workflow with the commit's SHA, and ends. A merge to `main` is then running in production about six minutes later, and the application is down for about a minute of that. The job's summary links the release's run, which is where a release that fails shows; the commit here stays green.
+
+Pause the releases, and resume them:
+
+```sh
+gh variable set PRODUCTION_DEPLOY_ENABLED --body false
+gh variable set PRODUCTION_DEPLOY_ENABLED --body true
+```
+
+While they are paused a merge publishes its image and releases nothing, and the `release` job shows as skipped. To take a bad commit out of production, pause, start the infrastructure repository's `Application deploy` workflow with the last good commit, fix or revert on `main`, and resume: the next merge is released.
+
+The job signs in with the repository secret `PRODUCTION_RELEASE_TOKEN`, a fine-grained personal access token limited to the infrastructure repository with the Actions permission at write. The token expires. A job that fails with a 401 names it, and a new token goes in with `gh secret set PRODUCTION_RELEASE_TOKEN`.
+
+A run that is started again for a commit that is no longer the head of `main` asks for no release.
 
 ## Usage records
 
