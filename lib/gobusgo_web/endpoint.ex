@@ -31,6 +31,11 @@ defmodule GobusgoWeb.Endpoint do
   from the routing directory. Each file's name holds the SHA-256 of its
   content, so a cache may keep it for a year as immutable.
 
+  The locally stored shared vehicle files are served under
+  `/shared-vehicles`, from the shared vehicle directory, as the gzip
+  streams they are stored as. Each file's name holds a hash of its
+  content, so a cache may keep it as immutable, for a minute.
+
   The web app manifest, its icons under `/icons`, and the service worker
   are served at the root. A cache has to revalidate the service worker on
   every use, so a browser that checks for a new release never gets an old
@@ -57,6 +62,10 @@ defmodule GobusgoWeb.Endpoint do
   @tiles_cache_seconds 31_536_000
   @routing_path "/routing"
   @routing_cache_seconds 31_536_000
+  @shared_vehicles_path "/shared-vehicles"
+  # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
+  # so a cache keeps a shared vehicle file a minute, well inside them.
+  @shared_vehicles_cache_seconds 60
 
   # The salt separates the session's signing key from the other keys derived
   # from the secret; it is not itself a secret.
@@ -121,6 +130,12 @@ defmodule GobusgoWeb.Endpoint do
     gzip: false,
     cache_control_for_etags: "public, max-age=#{@routing_cache_seconds}, immutable"
 
+  plug Plug.Static,
+    at: @shared_vehicles_path,
+    from: {__MODULE__, :shared_vehicles_dir, []},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@shared_vehicles_cache_seconds}, immutable"
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
   plug Plug.Session, @session_options
@@ -137,6 +152,13 @@ defmodule GobusgoWeb.Endpoint do
   @spec routing_dir() :: String.t()
   def routing_dir do
     {:ok, %{dir: dir}} = Gobusgo.Config.routing()
+    dir
+  end
+
+  @doc "The directory the locally stored shared vehicle files are served from."
+  @spec shared_vehicles_dir() :: String.t()
+  def shared_vehicles_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.shared_vehicle_tiles()
     dir
   end
 

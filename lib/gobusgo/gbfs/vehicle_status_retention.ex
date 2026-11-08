@@ -7,8 +7,10 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetention do
 
   @moduledoc """
   Keeps every stored GBFS vehicle file for at most #{@stored_age_ms_max} ms,
-  the time Lime's terms allow a raw response to be kept (GOB-253).
-  `Gobusgo.Retention` counts whole days and a bucket's lifecycle rules do
+  the time Lime's terms allow a raw response to be kept (GOB-253). The
+  files that publish a fetch to the browser, of
+  `Gobusgo.Gbfs.VehicleTileSet`, are deleted with the fetch they belong to,
+  by the same age. `Gobusgo.Retention` counts whole days and a bucket's lifecycle rules do
   too, so this module deletes by the fetch time each destination names.
 
   `run/1` deletes, through `Gobusgo.Deleter`, every stored file of every
@@ -29,12 +31,13 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetention do
   ## Bounds
 
   A run lists the partitions of the last #{@partition_day_count} UTC days of
-  each system, the days that the day rule of `Gobusgo.RetentionPolicy` can
-  leave in place, each through `Gobusgo.OneBusAway.StoredListing`, and
-  deletes at most #{@deletion_count_max} files; what it leaves is counted as
-  a backlog for the next run. A destination whose name is not one
-  `Gobusgo.Gbfs.RawVehicleStatus` builds is counted and kept, and the day
-  rule removes it.
+  each system, of the stored files and of the published ones, the days that
+  the day rules of `Gobusgo.RetentionPolicy` can leave in place, each
+  through `Gobusgo.OneBusAway.StoredListing`, and deletes at most
+  #{@deletion_count_max} files; what it leaves is counted as a backlog for
+  the next run. A destination whose name is not one
+  `Gobusgo.Gbfs.RawVehicleStatus` or `Gobusgo.Gbfs.VehicleTileSet` builds is
+  counted and kept, and the day rule removes it.
 
   ## Results and logs
 
@@ -62,6 +65,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetention do
   alias Gobusgo.Deleter
   alias Gobusgo.Gbfs.RawVehicleStatus
   alias Gobusgo.Gbfs.Systems
+  alias Gobusgo.Gbfs.VehicleTileSet
   alias Gobusgo.OneBusAway.StoredListing
   alias Gobusgo.Scheduler
 
@@ -150,24 +154,49 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetention do
     today = DateTime.to_date(now)
 
     prefixes =
-      for system_id <- system_ids, day_index <- 0..(@partition_day_count - 1)//1 do
-        RawVehicleStatus.partition_prefix(system_id, Date.add(today, -day_index))
+      for dataset <- datasets(),
+          system_id <- system_ids,
+          day_index <- 0..(@partition_day_count - 1)//1 do
+        {dataset, dataset.partition_prefix.(system_id, Date.add(today, -day_index))}
       end
 
-    Enum.reduce(prefixes, %{destinations: [], failed_count: 0}, fn prefix, listing ->
+    Enum.reduce(prefixes, %{destinations: [], failed_count: 0}, fn {dataset, prefix}, listing ->
       case StoredListing.list(prefix, read_options) do
-        {:ok, destinations} -> %{listing | destinations: destinations ++ listing.destinations}
-        :error -> %{listing | failed_count: listing.failed_count + 1}
+        {:ok, destinations} ->
+          tagged = for destination <- destinations, do: {dataset, destination}
+          %{listing | destinations: tagged ++ listing.destinations}
+
+        :error ->
+          %{listing | failed_count: listing.failed_count + 1}
       end
     end)
   end
 
+  # The stored vehicle files and the files that publish them, each with how
+  # its partitions are named, how a name gives its fetch time, and the
+  # prefix within which a deletion removes the directories it empties.
+  defp datasets do
+    [
+      %{
+        partition_prefix: &RawVehicleStatus.partition_prefix/2,
+        parse_destination: &RawVehicleStatus.parse_destination/1,
+        within: RawVehicleStatus.destination_prefix() <> "/"
+      },
+      %{
+        partition_prefix: &VehicleTileSet.partition_prefix/2,
+        parse_destination: &VehicleTileSet.parse_destination/1,
+        within: VehicleTileSet.prefix() <> "/"
+      }
+    ]
+  end
+
   defp expired(destinations, deleted_before) do
-    Enum.reduce(destinations, {[], 0}, fn destination, {expired, unrecognized_count} ->
-      case RawVehicleStatus.parse_destination(destination) do
+    Enum.reduce(destinations, {[], 0}, fn {dataset, destination} = tagged,
+                                          {expired, unrecognized_count} ->
+      case dataset.parse_destination.(destination) do
         {:ok, %{fetched_at: fetched_at}} ->
           if DateTime.before?(fetched_at, deleted_before) do
-            {[destination | expired], unrecognized_count}
+            {[tagged | expired], unrecognized_count}
           else
             {expired, unrecognized_count}
           end
@@ -180,10 +209,10 @@ defmodule Gobusgo.Gbfs.VehicleStatusRetention do
 
   # A file another run deleted first is gone, which is what this run wants.
   defp delete_each(destinations, delete_options) do
-    within = RawVehicleStatus.destination_prefix() <> "/"
+    Enum.count(destinations, fn {dataset, destination} ->
+      request = %{destination: destination, within: dataset.within}
 
-    Enum.count(destinations, fn destination ->
-      case Deleter.delete(%{destination: destination, within: within}, delete_options) do
+      case Deleter.delete(request, delete_options) do
         :ok -> false
         {:error, :not_found} -> false
         {:error, _reason} -> true

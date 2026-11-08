@@ -130,6 +130,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "panel-sheet",
                "basemap-basemap-20261004-01",
                "route-stop-tiles",
+               "shared-vehicles-layer",
                "stop-markers",
                "vehicle-markers",
                "route-lines",

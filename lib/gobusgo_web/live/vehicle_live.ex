@@ -167,6 +167,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.Assert
   alias Gobusgo.Basemap
   alias Gobusgo.Demand
+  alias Gobusgo.Gbfs.VehicleTiles
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
@@ -184,11 +185,13 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.RouteStopTiles
   alias GobusgoWeb.ServiceAlerts
   alias GobusgoWeb.ServiceAlertsPanel
+  alias GobusgoWeb.SharedVehicleToggle
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
   alias GobusgoWeb.VehicleLive.OpenStops
   alias GobusgoWeb.VehicleLive.Routes
+  alias GobusgoWeb.VehicleLive.SharedVehicles
   alias GobusgoWeb.VehicleLive.Trip
   alias GobusgoWeb.VehicleMarkers
 
@@ -202,6 +205,13 @@ defmodule GobusgoWeb.VehicleLive do
   @stop_arrivals_event "stop-arrivals:arrivals"
   @trip_filter_ended_event "trip:filter-ended"
   @routing_manifest_url "/api/routing/manifest"
+  @shared_vehicles_hidden %{
+    shown: false,
+    generation: 0,
+    shown_at_ms: nil,
+    indexes: [],
+    status: nil
+  }
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -221,7 +231,8 @@ defmodule GobusgoWeb.VehicleLive do
         kept_route_ids: :every,
         open_stops: %{},
         viewer_monitor: nil,
-        service_alerts: %{current: [], upcoming: [], routes: %{}}
+        service_alerts: %{current: [], upcoming: [], routes: %{}},
+        shared_vehicles: @shared_vehicles_hidden
       )
 
     case connected?(socket) do
@@ -334,6 +345,23 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply, register_viewer(socket, attempt_count)}
   end
 
+  def handle_info({:vehicle_tiles_switched, VehicleTiles}, socket) do
+    {:noreply, refresh_shared_vehicles(socket)}
+  end
+
+  # A check of an earlier showing of the layer, or of a layer turned off,
+  # schedules nothing more.
+  def handle_info({:shared_vehicles_check, generation}, socket) do
+    case socket.assigns.shared_vehicles do
+      %{shown: true, generation: ^generation} ->
+        schedule_shared_vehicles_check(generation)
+        {:noreply, refresh_shared_vehicles(socket)}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
   @impl Phoenix.LiveView
   def handle_event("vehicle-filter:query", params, socket) do
     filter_query = RouteOptions.query(Map.get(params, VehicleFilterForm.query_param()))
@@ -383,6 +411,20 @@ defmodule GobusgoWeb.VehicleLive do
 
   def handle_event("vehicle-markers:ready", _params, socket) do
     {:noreply, push_every_agency(socket)}
+  end
+
+  def handle_event("shared-vehicles:show", _params, socket) do
+    case socket.assigns.shared_vehicles do
+      %{shown: true} -> {:noreply, socket}
+      %{shown: false} -> {:noreply, show_shared_vehicles(socket)}
+    end
+  end
+
+  def handle_event("shared-vehicles:hide", _params, socket) do
+    case socket.assigns.shared_vehicles do
+      %{shown: true} -> {:noreply, hide_shared_vehicles(socket)}
+      %{shown: false} -> {:noreply, socket}
+    end
   end
 
   def handle_event("trip:names", params, socket) do
@@ -521,6 +563,10 @@ defmodule GobusgoWeb.VehicleLive do
             query={@filter_query}
             supplied={@filter_supplied}
           />
+          <SharedVehicleToggle.toggle
+            shown={@shared_vehicles.shown}
+            status={@shared_vehicles.status}
+          />
         </:tab>
 
         <:tab
@@ -543,6 +589,7 @@ defmodule GobusgoWeb.VehicleLive do
         basemap={@basemap}
         tile_archive_url={@tile_archive_url}
         kept_route_ids={@kept_route_ids}
+        shared_vehicles={@shared_vehicles}
       />
     </main>
     """
@@ -615,6 +662,7 @@ defmodule GobusgoWeb.VehicleLive do
   attr :basemap, :map, required: true
   attr :tile_archive_url, :string, required: true
   attr :kept_route_ids, :any, required: true
+  attr :shared_vehicles, :map, required: true
 
   defp map_elements(assigns) do
     ~H"""
@@ -641,9 +689,22 @@ defmodule GobusgoWeb.VehicleLive do
     >
     </div>
 
-    <%!-- The stops' element stands before the vehicles': hooks mount in
-    document order and add their layers in that order, so the vehicles are
-    drawn over the stops. --%>
+    <%!-- The shared vehicles' element stands before the stops' and the
+    stops' before the vehicles': hooks mount in document order and add their
+    layers in that order, so the vehicles are drawn over the stops and both
+    over the shared vehicles. --%>
+    <div
+      id="shared-vehicles-layer"
+      phx-hook="SharedVehicles"
+      data-indexes={JSON.encode!(@shared_vehicles.indexes)}
+      data-zoom-min={SharedVehicles.zoom_min()}
+      data-range-low-meters={SharedVehicles.range_low_meters()}
+      data-fetch-age-ms-max={SharedVehicles.fetch_age_ms_max()}
+      data-form-colors={JSON.encode!(SharedVehicles.form_colors())}
+      hidden
+    >
+    </div>
+
     <div
       id="stop-markers"
       phx-hook="StopMarkers"
@@ -720,11 +781,18 @@ defmodule GobusgoWeb.VehicleLive do
 
     case viewer_registration() do
       :ok ->
-        socket |> assign(viewer_monitor: monitor) |> register_open_stops()
+        socket
+        |> assign(viewer_monitor: monitor)
+        |> register_open_stops()
+        |> register_shared_vehicles()
 
       {:error, refusal} ->
         Logger.warning("Vehicle page not counted as a viewer", refusal: refusal)
-        socket |> assign(viewer_monitor: monitor) |> register_open_stops()
+
+        socket
+        |> assign(viewer_monitor: monitor)
+        |> register_open_stops()
+        |> register_shared_vehicles()
 
       :registry_unavailable ->
         Process.demonitor(monitor, [:flush])
@@ -739,6 +807,56 @@ defmodule GobusgoWeb.VehicleLive do
         socket
     end
   end
+
+  # Turns the layer on: the page holds the shared vehicles key and follows
+  # the indexes. A key the registry refuses or does not answer for leaves the
+  # layer on, and the page holds the key again when the registry restarts.
+  defp show_shared_vehicles(socket) do
+    _held = SharedVehicles.hold()
+    :ok = VehicleTiles.subscribe(%{server: VehicleTiles, pubsub: @pubsub})
+    generation = socket.assigns.shared_vehicles.generation + 1
+    schedule_shared_vehicles_check(generation)
+    shown = %{shown: true, generation: generation, shown_at_ms: monotonic_ms()}
+
+    socket
+    |> assign(shared_vehicles: Map.merge(socket.assigns.shared_vehicles, shown))
+    |> refresh_shared_vehicles()
+  end
+
+  defp hide_shared_vehicles(socket) do
+    :ok = SharedVehicles.release()
+    :ok = VehicleTiles.unsubscribe(%{server: VehicleTiles, pubsub: @pubsub})
+    generation = socket.assigns.shared_vehicles.generation
+    assign(socket, shared_vehicles: %{@shared_vehicles_hidden | generation: generation})
+  end
+
+  # Holds the key again for a layer that is on, with a registry that has
+  # just started holding nothing.
+  defp register_shared_vehicles(%{assigns: %{shared_vehicles: %{shown: true}}} = socket) do
+    _held = SharedVehicles.hold()
+    socket
+  end
+
+  defp register_shared_vehicles(socket), do: socket
+
+  defp refresh_shared_vehicles(%{assigns: %{shared_vehicles: %{shown: false}}} = socket),
+    do: socket
+
+  defp refresh_shared_vehicles(socket) do
+    shared_vehicles = socket.assigns.shared_vehicles
+    indexes = SharedVehicles.indexes(DateTime.utc_now())
+    shown_ms_ago = monotonic_ms() - shared_vehicles.shown_at_ms
+    status = SharedVehicles.status(%{indexes: indexes, shown_ms_ago: shown_ms_ago})
+    assign(socket, shared_vehicles: %{shared_vehicles | indexes: indexes, status: status})
+  end
+
+  defp schedule_shared_vehicles_check(generation) do
+    message = {:shared_vehicles_check, generation}
+    _timer = Process.send_after(self(), message, SharedVehicles.check_interval_ms())
+    :ok
+  end
+
+  defp monotonic_ms, do: System.monotonic_time(:millisecond)
 
   # A registry that is down or does not answer in time exits the call.
   defp viewer_registration do

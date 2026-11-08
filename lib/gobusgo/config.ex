@@ -11,6 +11,8 @@ defmodule Gobusgo.Config do
   @type tiles_error :: {:missing, :dir}
   @type routing :: %{dir: String.t()}
   @type routing_error :: {:missing, :dir}
+  @type shared_vehicle_tiles :: %{dir: String.t()}
+  @type shared_vehicle_tiles_error :: {:missing, :dir}
 
   @typedoc "The full commit the application was built from, or `nil` for a build that names none."
   @type revision :: String.t() | nil
@@ -235,6 +237,15 @@ defmodule Gobusgo.Config do
   def fetch_routing(env) when is_list(env), do: fetch_dir(env)
 
   @doc """
+  Returns the shared vehicle tile settings from `env`: `:dir`, the directory
+  the locally stored shared vehicle files are served from. A nil or blank
+  value counts as missing.
+  """
+  @spec fetch_shared_vehicle_tiles(Keyword.t()) ::
+          {:ok, shared_vehicle_tiles()} | {:error, shared_vehicle_tiles_error()}
+  def fetch_shared_vehicle_tiles(env) when is_list(env), do: fetch_dir(env)
+
+  @doc """
   Returns the commit the application was built from, from `env`:
   `:revision`, a full commit name of 40 lowercase hexadecimal digits. A nil
   or blank value is `{:ok, nil}`, a build that names no commit.
@@ -286,6 +297,13 @@ defmodule Gobusgo.Config do
   @spec routing() :: {:ok, routing()} | {:error, routing_error()}
   def routing do
     :gobusgo |> Application.get_env(:routing, []) |> fetch_routing()
+  end
+
+  @doc "Reads the shared vehicle tile settings configured for the running application."
+  @spec shared_vehicle_tiles() ::
+          {:ok, shared_vehicle_tiles()} | {:error, shared_vehicle_tiles_error()}
+  def shared_vehicle_tiles do
+    :gobusgo |> Application.get_env(:shared_vehicle_tiles, []) |> fetch_shared_vehicle_tiles()
   end
 
   @doc "Reads the tile settings configured for the running application."
