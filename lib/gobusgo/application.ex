@@ -68,6 +68,7 @@ defmodule Gobusgo.Application do
          {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),
+         {:ok, _routing} <- Config.routing(),
          {:ok, _revision} <- Config.revision() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
@@ -126,6 +127,7 @@ defmodule Gobusgo.Application do
             {Task.Supervisor,
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
             {GobusgoWeb.RouteStopTiles, name: GobusgoWeb.RouteStopTiles},
+            {Gobusgo.Routing.Snapshots, name: Gobusgo.Routing.Snapshots},
             {GobusgoWeb.Endpoint,
              [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
@@ -134,7 +136,8 @@ defmodule Gobusgo.Application do
           [
             scheduler_supervisor(
               source_specs(scheduled) ++
-                tile_specs(scheduled) ++ cleanup_specs(scheduled, storage)
+                tile_specs(scheduled) ++
+                routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
           ]
 
@@ -189,6 +192,13 @@ defmodule Gobusgo.Application do
   # scheduled, which is where the views are filled.
   defp tile_specs(true), do: [GobusgoWeb.RouteStopTiles.spec(server: GobusgoWeb.RouteStopTiles)]
   defp tile_specs(false), do: []
+
+  # The routing snapshots are built from the schedule view wherever the
+  # sources are scheduled, which is where the view is filled.
+  defp routing_specs(true),
+    do: [Gobusgo.Routing.Snapshots.spec(server: Gobusgo.Routing.Snapshots)]
+
+  defp routing_specs(false), do: []
 
   defp source_specs(false), do: []
 

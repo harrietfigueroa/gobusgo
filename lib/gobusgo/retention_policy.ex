@@ -7,6 +7,7 @@ defmodule Gobusgo.RetentionPolicy do
   @route_schedule_day_count 3
   @usage_day_count 3
   @route_stop_tiles_day_count 2
+  @routing_snapshot_day_count 2
   @cleanup_interval_ms 3_600_000
   @cleanup_deadline_ms 600_000
 
@@ -27,7 +28,10 @@ defmodule Gobusgo.RetentionPolicy do
       holds, so a start rebuilds them;
     * the usage records of page connections, #{@usage_day_count} days.
     * the route and stop tile archives, #{@route_stop_tiles_day_count} days,
-      longer than a page that loaded an archive stays open.
+      longer than a page that loaded an archive stays open;
+    * the routing snapshot files, #{@routing_snapshot_day_count} days, longer
+      than a file the manifest names goes unwritten, since a build writes
+      every file again each day.
 
   The cleanup is one `Gobusgo.Cleanup.run/2` every #{@cleanup_interval_ms}
   ms, with #{@cleanup_deadline_ms} ms to finish.
@@ -58,7 +62,8 @@ defmodule Gobusgo.RetentionPolicy do
         day_count: @route_schedule_day_count
       },
       %{prefix: Usage.Records.prefix(), day_count: @usage_day_count},
-      %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count}
+      %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count},
+      %{prefix: Gobusgo.Routing.Snapshot.prefix(), day_count: @routing_snapshot_day_count}
     ]
 
     Enum.each(rules, &Retention.assert_rule/1)

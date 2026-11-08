@@ -87,6 +87,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.RequestGate,
              Gobusgo.IngestionTaskSupervisor,
              GobusgoWeb.RouteStopTiles,
+             Gobusgo.Routing.Snapshots,
              GobusgoWeb.Endpoint,
              Gobusgo.SchedulerSupervisor
            ]

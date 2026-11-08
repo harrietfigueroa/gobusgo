@@ -88,6 +88,39 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
   end
 
   @doc """
+  Returns the current fetch of every route `view` holds a schedule of on
+  `service_date`, in route order. Returns `[]` while the view is not
+  running.
+  """
+  @spec schedules_on(atom(), Date.t()) :: [Records.decoded()]
+  def schedules_on(view, %Date{} = service_date) when is_atom(view) do
+    case :ets.whereis(view) do
+      :undefined ->
+        []
+
+      table ->
+        table
+        |> :ets.select([{{{:_, service_date}, :"$1"}, [], [:"$1"]}])
+        |> Enum.sort_by(& &1.id)
+    end
+  end
+
+  @doc """
+  Returns every service date `view` holds a schedule of for any route, in
+  date order. Returns `[]` while the view is not running.
+  """
+  @spec held_dates(atom()) :: [Date.t()]
+  def held_dates(view) when is_atom(view) do
+    case :ets.whereis(view) do
+      :undefined ->
+        []
+
+      table ->
+        table |> :ets.select([{{{:_, :"$1"}, :_}, [], [:"$1"]}]) |> Enum.uniq() |> Enum.sort(Date)
+    end
+  end
+
+  @doc """
   Returns the service dates `view` holds a schedule of `route_id` for, in
   date order. Returns `[]` while the view is not running.
   """

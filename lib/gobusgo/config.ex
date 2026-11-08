@@ -9,6 +9,8 @@ defmodule Gobusgo.Config do
   @type basemap_error :: {:missing, :dir}
   @type tiles :: %{dir: String.t()}
   @type tiles_error :: {:missing, :dir}
+  @type routing :: %{dir: String.t()}
+  @type routing_error :: {:missing, :dir}
 
   @typedoc "The full commit the application was built from, or `nil` for a build that names none."
   @type revision :: String.t() | nil
@@ -183,6 +185,14 @@ defmodule Gobusgo.Config do
   def fetch_tiles(env) when is_list(env), do: fetch_dir(env)
 
   @doc """
+  Returns the routing settings from `env`: `:dir`, the directory the locally
+  stored routing snapshot files are served from. A nil or blank value counts
+  as missing.
+  """
+  @spec fetch_routing(Keyword.t()) :: {:ok, routing()} | {:error, routing_error()}
+  def fetch_routing(env) when is_list(env), do: fetch_dir(env)
+
+  @doc """
   Returns the commit the application was built from, from `env`:
   `:revision`, a full commit name of 40 lowercase hexadecimal digits. A nil
   or blank value is `{:ok, nil}`, a build that names no commit.
@@ -206,6 +216,12 @@ defmodule Gobusgo.Config do
   @spec revision() :: {:ok, revision()} | {:error, revision_error()}
   def revision do
     :gobusgo |> Application.get_env(:revision, []) |> fetch_revision()
+  end
+
+  @doc "Reads the routing settings configured for the running application."
+  @spec routing() :: {:ok, routing()} | {:error, routing_error()}
+  def routing do
+    :gobusgo |> Application.get_env(:routing, []) |> fetch_routing()
   end
 
   @doc "Reads the tile settings configured for the running application."
