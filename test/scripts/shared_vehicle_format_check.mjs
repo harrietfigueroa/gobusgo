@@ -1,9 +1,8 @@
-// Checks the shared vehicle reader against the block fixture that
-// `Gobusgo.Gbfs.VehicleTileFormatTest` encodes from the vehicles of
-// `shared_vehicle_block.json`, so the Elixir writer and the JavaScript
-// reader agree byte for byte, then against broken copies of it, and reads
-// the index fixture whose keys `Gobusgo.Gbfs.VehicleTileSetTest` checks
-// against a built index. Run it with
+// Checks the shared vehicle reader against the shared block fixture, whose
+// bytes the Elixir encoder writes, and the values its JSON companion
+// expects, so the writer and the reader agree byte for byte; then against
+// broken copies of the block, and against the index fixture and broken
+// copies of it. Run it with
 // `node test/scripts/shared_vehicle_format_check.mjs`; it exits non-zero on
 // the first case that differs.
 
