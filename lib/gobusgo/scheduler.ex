@@ -16,20 +16,28 @@ defmodule Gobusgo.Scheduler do
       the start of the next, is decided. `:policy` is a policy of
       `Gobusgo.Cadence` whose shortest interval is at least
       #{@evaluation_period_ms}, and `:signals` is a function of no arguments
-      that returns the signals the policy decides from, a map.
+      that returns the signals the policy decides from, a map. A policy
+      that pauses starts no run while it decides to pause.
     * `:deadline_ms`: the longest a run may take before it is killed, under
       the policy's shortest interval, so a run at the fastest cadence ends
       before the next is due.
 
   The scheduler ticks when it starts and every #{@evaluation_period_ms} ms
   after that, whatever the interval. Each tick reads the signals, asks
-  `Gobusgo.Cadence.interval_ms/2` for the interval, reads the monotonic
+  `Gobusgo.Cadence.decision/2` for the interval, reads the monotonic
   clock, and hands the time and the interval to the rules, so a run starts
   within #{@evaluation_period_ms} ms of the interval elapsing since the last
   run started, and the first tick starts the first run. The end of a run
   reads the signals and asks for the interval the same way. A failed run
   delays the next one by a backoff, a duration the rules size from the
   interval.
+
+  A source whose policy pauses starts paused, so it makes no run before a
+  read of its signals decides an interval. While its policy decides to
+  pause, a tick starts nothing; once it decides an interval again, the next
+  tick starts a run when that interval has elapsed since the last run
+  started, which a first run after a start always has. A paused source
+  keeps the interval it last had, for the backoff and the counts.
 
   The signals function runs in a process of its own, which the scheduler
   waits on for `:signals_wait_ms` and then kills, so a function that stalls
@@ -51,7 +59,9 @@ defmodule Gobusgo.Scheduler do
   a start or after a read that worked, and `info`
   `Scheduler interval changed` for a read that decides another interval
   than the scheduler had, with `interval_ms_before` and `interval_ms_after`.
-  A read that decides the interval the scheduler has logs nothing.
+  A read that decides the interval the scheduler has logs nothing. A read
+  that pauses a running source logs `info` `Scheduler paused`, and one that
+  ends a pause logs `info` `Scheduler resumed`, each with the source.
 
   When it stops, the scheduler waits for the run in flight, then kills it.
   State is in memory and a restart begins with nothing counted.
@@ -82,6 +92,7 @@ defmodule Gobusgo.Scheduler do
           run_skipped_interval_count: non_neg_integer(),
           last_outcome: State.finished() | nil,
           interval_ms: pos_integer(),
+          paused: boolean(),
           signals_failure_count: non_neg_integer()
         }
 
@@ -186,8 +197,9 @@ defmodule Gobusgo.Scheduler do
   Returns the status of `scheduler`: whether a run is in flight, the failures
   in a row, the intervals skipped during runs, when the last run started and
   a pending backoff ends on the scheduler's clock, how the last run ended,
-  the interval the source runs at as `interval_ms`, and the failed reads of
-  the signals in a row as `signals_failure_count`. Exits when the scheduler
+  the interval the source runs at as `interval_ms`, whether its policy has
+  paused it as `paused`, and the failed reads of the signals in a row as
+  `signals_failure_count`. Exits when the scheduler
   does not answer within #{@call_timeout_ms} ms.
   """
   @spec status(atom()) :: status()
@@ -210,6 +222,7 @@ defmodule Gobusgo.Scheduler do
        monotonic_time_ms: options.monotonic_time_ms,
        signals_wait_ms: options.signals_wait_ms,
        interval_ms: Cadence.interval_ms_min(spec.cadence.policy),
+       paused: Cadence.pauses?(spec.cadence.policy),
        signals_failure_count: 0,
        state: State.new(),
        run: nil
@@ -221,6 +234,7 @@ defmodule Gobusgo.Scheduler do
     status =
       Map.merge(server.state, %{
         interval_ms: server.interval_ms,
+        paused: server.paused,
         signals_failure_count: server.signals_failure_count
       })
 
@@ -310,24 +324,17 @@ defmodule Gobusgo.Scheduler do
     %{server | state: state, run: nil}
   end
 
-  defp time(%{interval_ms: interval_ms, monotonic_time_ms: monotonic_time_ms}) do
+  defp time(%{interval_ms: interval_ms, paused: paused, monotonic_time_ms: monotonic_time_ms}) do
     now_ms = monotonic_time_ms.()
     Assert.condition(is_integer(now_ms), "the clock must return an integer")
-    %{now_ms: now_ms, interval_ms: interval_ms}
+    %{now_ms: now_ms, interval_ms: interval_ms, paused: paused}
   end
 
   defp read_interval(%{spec: %{cadence: cadence} = spec} = server) do
     case read_signals(cadence.signals, server.signals_wait_ms) do
       {:ok, signals} ->
-        interval_ms = Cadence.interval_ms(cadence.policy, signals)
-
-        Assert.condition(
-          interval_ms >= @evaluation_period_ms,
-          "an interval must be at least #{@evaluation_period_ms}, got: #{interval_ms}"
-        )
-
-        log_interval_change(spec, %{before: server.interval_ms, after: interval_ms})
-        %{server | interval_ms: interval_ms, signals_failure_count: 0}
+        server = apply_decision(server, Cadence.decision(cadence.policy, signals))
+        %{server | signals_failure_count: 0}
 
       {:error, reason} ->
         if server.signals_failure_count == 0 do
@@ -341,6 +348,27 @@ defmodule Gobusgo.Scheduler do
 
         %{server | signals_failure_count: server.signals_failure_count + 1}
     end
+  end
+
+  defp apply_decision(%{spec: spec, paused: false} = server, :paused) do
+    Logger.info("Scheduler paused", source: inspect(spec.name))
+    %{server | paused: true}
+  end
+
+  defp apply_decision(%{paused: true} = server, :paused), do: server
+
+  defp apply_decision(%{spec: spec} = server, {:interval, interval_ms}) do
+    Assert.condition(
+      interval_ms >= @evaluation_period_ms,
+      "an interval must be at least #{@evaluation_period_ms}, got: #{interval_ms}"
+    )
+
+    if server.paused do
+      Logger.info("Scheduler resumed", source: inspect(spec.name))
+    end
+
+    log_interval_change(spec, %{before: server.interval_ms, after: interval_ms})
+    %{server | interval_ms: interval_ms, paused: false}
   end
 
   defp log_interval_change(_spec, %{before: interval_ms, after: interval_ms}), do: :ok

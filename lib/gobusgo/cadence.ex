@@ -4,12 +4,12 @@ defmodule Gobusgo.Cadence do
 
   @moduledoc """
   How often a poller polls: the interval a policy decides from the signals
-  it is given. Everything here is pure: the caller reads the signals and
-  passes them in, and nothing here reads a process or a clock, so a policy
-  is tested with values alone.
+  it is given, or that it does not poll at all. Everything here is pure:
+  the caller reads the signals and passes them in, and nothing here reads a
+  process or a clock, so a policy is tested with values alone.
 
   A policy is a tagged tuple, and each kind of policy is one clause of
-  `interval_ms/2`, `interval_ms_min/1`, and `assert_policy/1`:
+  `decision/2`, `interval_ms_min/1`, `pauses?/1`, and `assert_policy/1`:
 
     * `{:fixed, interval_ms}`: always `interval_ms`, whatever the signals.
     * `{:steps, steps_policy}`: the interval of a step table from the count
@@ -32,6 +32,14 @@ defmodule Gobusgo.Cadence do
       inside the bounds `parameters` holds. No item decides the shortest
       interval. Its signal is `:item_count`, how many items share the
       interval, a non-negative integer.
+    * `{:on_demand, %{interval_ms: interval_ms}}`: `interval_ms` while
+      something is viewed, and paused while nothing is. Its signal is
+      `:viewer_count`, a non-negative integer, and the policy pauses at a
+      count of zero. It is the one kind of policy that pauses.
+
+  `decision/2` returns `{:interval, interval_ms}`, or `:paused` for a policy
+  that pauses and signals under which it does. `interval_ms/2` is the
+  interval of a policy's decision, for a caller whose policy never pauses.
 
   The signals are a map of what a policy decides from, and a policy reads
   the keys it knows. Signals without a key a policy reads, or with a value
@@ -61,6 +69,8 @@ defmodule Gobusgo.Cadence do
           {:fixed, pos_integer()}
           | {:steps, steps_policy()}
           | {:proportional, proportional_policy()}
+          | {:on_demand, %{interval_ms: pos_integer()}}
+  @type decision :: {:interval, pos_integer()} | :paused
   @type signals :: map()
   @type bounds :: %{
           required(:interval_ms_min) => pos_integer(),
@@ -73,24 +83,46 @@ defmodule Gobusgo.Cadence do
   def step_count_max, do: @step_count_max
 
   @doc """
-  Returns the interval `policy` decides from `signals`, in milliseconds: a
-  positive integer, never under `interval_ms_min(policy)`. `signals` must be
-  a map. Raises an assertion error for a policy of an unknown shape.
+  Returns what `policy` decides from `signals`: `{:interval, interval_ms}`,
+  a positive integer of milliseconds never under `interval_ms_min(policy)`,
+  or `:paused`, which only a policy for which `pauses?/1` is true decides.
+  `signals` must be a map. Raises an assertion error for a policy of an
+  unknown shape.
+  """
+  @spec decision(policy(), signals()) :: decision()
+  def decision(policy, signals) do
+    assert_policy(policy)
+    Assert.condition(is_map(signals), "signals must be a map, got: #{inspect(signals)}")
+
+    case decide(policy, signals) do
+      :paused ->
+        Assert.condition(pauses?(policy), "a policy that does not pause decided to pause")
+        :paused
+
+      interval_ms ->
+        assert_interval(interval_ms, "the decided interval")
+        interval_ms_min = interval_ms_min(policy)
+
+        Assert.condition(
+          interval_ms >= interval_ms_min,
+          "the decided interval must be at least #{interval_ms_min}, got: #{interval_ms}"
+        )
+
+        {:interval, interval_ms}
+    end
+  end
+
+  @doc """
+  Returns the interval `policy` decides from `signals`, in milliseconds, as
+  `decision/2` decides it. Raises an assertion error where `decision/2`
+  does, and for a decision to pause.
   """
   @spec interval_ms(policy(), signals()) :: pos_integer()
   def interval_ms(policy, signals) do
-    assert_policy(policy)
-    Assert.condition(is_map(signals), "signals must be a map, got: #{inspect(signals)}")
-    interval_ms = decide(policy, signals)
-    assert_interval(interval_ms, "the decided interval")
-    interval_ms_min = interval_ms_min(policy)
-
-    Assert.condition(
-      interval_ms >= interval_ms_min,
-      "the decided interval must be at least #{interval_ms_min}, got: #{interval_ms}"
-    )
-
-    interval_ms
+    case decision(policy, signals) do
+      {:interval, interval_ms} -> interval_ms
+      :paused -> raise Assert.AssertionError, message: "the policy decided to pause"
+    end
   end
 
   @doc """
@@ -101,7 +133,19 @@ defmodule Gobusgo.Cadence do
   def interval_ms_min({:fixed, interval_ms}), do: interval_ms
   def interval_ms_min({:steps, %{interval_ms_min: interval_ms_min}}), do: interval_ms_min
   def interval_ms_min({:proportional, %{interval_ms_min: interval_ms_min}}), do: interval_ms_min
+  def interval_ms_min({:on_demand, %{interval_ms: interval_ms}}), do: interval_ms
   def interval_ms_min(policy), do: Assert.unreachable(policy)
+
+  @doc """
+  Whether `policy` can decide to pause. Raises an assertion error for a
+  policy of an unknown shape.
+  """
+  @spec pauses?(policy()) :: boolean()
+  def pauses?({:fixed, _interval_ms}), do: false
+  def pauses?({:steps, _steps_policy}), do: false
+  def pauses?({:proportional, _parameters}), do: false
+  def pauses?({:on_demand, _parameters}), do: true
+  def pauses?(policy), do: Assert.unreachable(policy)
 
   @doc """
   Returns `:ok` for a policy of a known shape whose values are valid, and
@@ -130,6 +174,9 @@ defmodule Gobusgo.Cadence do
     assert_bounds(parameters)
     assert_interval(item_spacing_ms, "item_spacing_ms")
   end
+
+  def assert_policy({:on_demand, %{interval_ms: interval_ms}}),
+    do: assert_interval(interval_ms, "interval_ms")
 
   def assert_policy(policy), do: Assert.unreachable(policy)
 
@@ -201,6 +248,22 @@ defmodule Gobusgo.Cadence do
       Integer.floor_div(parameters.interval_ms_max, parameters.item_spacing_ms) + 1
 
     clamp(min(item_count, item_count_saturated) * parameters.item_spacing_ms, parameters)
+  end
+
+  defp decide({:on_demand, %{interval_ms: interval_ms}}, signals) do
+    Assert.condition(
+      is_map_key(signals, :viewer_count),
+      "an on-demand policy needs the signal viewer_count, got: #{inspect(Map.keys(signals))}"
+    )
+
+    viewer_count = signals.viewer_count
+    assert_count(viewer_count, "viewer_count")
+
+    if viewer_count >= 1 do
+      interval_ms
+    else
+      :paused
+    end
   end
 
   defp decide(policy, _signals), do: Assert.unreachable(policy)

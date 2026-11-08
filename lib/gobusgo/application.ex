@@ -7,6 +7,9 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Assert
   alias Gobusgo.Config
   alias Gobusgo.Demand
+  alias Gobusgo.Gbfs.VehicleStatusCycle
+  alias Gobusgo.Gbfs.VehicleStatusRetention
+  alias Gobusgo.Gbfs.VehicleStatusView
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
@@ -26,7 +29,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
-  @ingestion_task_count_max 8
+  @ingestion_task_count_max 10
   @restart_count_max 3
   @restart_window_seconds 5
 
@@ -58,6 +61,9 @@ defmodule Gobusgo.Application do
   @vehicle_situation_view_agency_count_max 64
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
+  # The shared vehicle view holds the newest fetch of each GBFS system.
+  @vehicle_status_view_system_count_max 8
+
   @impl Application
   def start(_type, _args) do
     with {:ok, %{ip: ip, port: port}} <- Config.http(),
@@ -65,6 +71,7 @@ defmodule Gobusgo.Application do
          {:ok, public_host} <- Config.public_host(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
+         {:ok, shared_vehicles} <- Config.shared_vehicles(),
          {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),
@@ -116,9 +123,13 @@ defmodule Gobusgo.Application do
              records: ArrivalBatch.SituationRecords,
              id_count_max: @arrival_view_stop_count_max,
              fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
+            {VehicleStatusView,
+             name: VehicleStatusView,
+             pubsub: Gobusgo.PubSub,
+             system_count_max: @vehicle_status_view_system_count_max},
             {Demand,
              name: Demand,
-             datasets: DemandKey.datasets(),
+             datasets: DemandKey.datasets() ++ Gobusgo.Gbfs.DemandKey.datasets(),
              holder_item_count_max: GobusgoWeb.VehicleLive.OpenStops.open_count_max()}
           ] ++
           usage_children(recorded) ++
@@ -136,6 +147,7 @@ defmodule Gobusgo.Application do
           [
             scheduler_supervisor(
               source_specs(scheduled) ++
+                shared_vehicle_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
@@ -199,6 +211,21 @@ defmodule Gobusgo.Application do
     do: [Gobusgo.Routing.Snapshots.spec(server: Gobusgo.Routing.Snapshots)]
 
   defp routing_specs(false), do: []
+
+  # The shared vehicle feeds are public, so their sources need no settings
+  # and run wherever the sources are scheduled. The retention source deletes
+  # the stored files whether or not the vehicle source runs.
+  defp shared_vehicle_specs(true, shared_vehicles) do
+    [
+      VehicleStatusCycle.spec(shared_vehicles,
+        demand: Demand,
+        cycle_options: [view: VehicleStatusView]
+      ),
+      VehicleStatusRetention.spec([])
+    ]
+  end
+
+  defp shared_vehicle_specs(false, _shared_vehicles), do: []
 
   defp source_specs(false), do: []
 

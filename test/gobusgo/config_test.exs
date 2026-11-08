@@ -153,6 +153,26 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_shared_vehicles/1" do
+    test "takes an interval of 60 seconds when none is configured" do
+      assert Config.fetch_shared_vehicles([]) == {:ok, %{interval_ms: 60_000}}
+    end
+
+    for interval_ms <- [60_000, 120_000, 3_600_000] do
+      test "returns the configured interval of #{interval_ms} ms" do
+        assert Config.fetch_shared_vehicles(interval_ms: unquote(interval_ms)) ==
+                 {:ok, %{interval_ms: unquote(interval_ms)}}
+      end
+    end
+
+    for interval_ms <- [59_999, 3_600_001, 0, 60_000.0, "60000", nil] do
+      test "reports the interval #{inspect(interval_ms)} as invalid" do
+        assert Config.fetch_shared_vehicles(interval_ms: unquote(interval_ms)) ==
+                 {:error, {:invalid, :shared_vehicles_interval_ms}}
+      end
+    end
+  end
+
   describe "fetch_usage/1" do
     for recorded <- [true, false] do
       test "returns recorded as #{recorded} when it is configured so" do
