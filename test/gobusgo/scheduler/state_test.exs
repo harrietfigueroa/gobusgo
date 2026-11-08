@@ -158,6 +158,7 @@ defmodule Gobusgo.Scheduler.StateTest do
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
           {Gobusgo.OneBusAway.VehicleScheduler, 10_000},
           {Gobusgo.OneBusAway.RouteScheduler, 60_000},
+          {Gobusgo.OneBusAway.RouteScheduleScheduler, 60_000},
           {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do
       test "#{inspect(name)} starts a run every #{interval_ms} ms" do
@@ -171,6 +172,7 @@ defmodule Gobusgo.Scheduler.StateTest do
             demand: demand,
             vehicle_cycle_options: [],
             route_cycle_options: [],
+            route_schedule_cycle_options: [],
             arrival_cycle_options: []
           )
 

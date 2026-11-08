@@ -58,6 +58,23 @@ defmodule Gobusgo.OneBusAway.RawRouteScheduleResponse do
   """
   @type parse_error :: RawResponse.parse_error()
 
+  @doc """
+  Returns the service date `destination`, a destination of this dataset,
+  names in its `#{@service_date_segment_prefix}` segment, or `:error` for a
+  destination that names none.
+  """
+  @spec service_date(String.t()) :: {:ok, Date.t()} | :error
+  def service_date(destination) when is_binary(destination) do
+    segment = destination |> Path.dirname() |> Path.basename()
+
+    with @service_date_segment_prefix <> text <- segment,
+         {:ok, service_date} <- Date.from_iso8601(text) do
+      {:ok, service_date}
+    else
+      _other -> :error
+    end
+  end
+
   @doc "The prefix every destination of this dataset starts with."
   @spec destination_prefix() :: String.t()
   def destination_prefix, do: @destination_prefix

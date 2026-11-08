@@ -15,6 +15,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.RouteRebuild
+  alias Gobusgo.OneBusAway.RouteScheduleRebuild
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
@@ -160,7 +161,10 @@ defmodule Gobusgo.Application do
   # The views are rebuilt wherever the sources are scheduled, from whatever
   # the reader holds.
   defp rebuild_children(true) do
-    [{RouteRebuild, task_supervisor: Gobusgo.IngestionTaskSupervisor}]
+    [
+      {RouteRebuild, task_supervisor: Gobusgo.IngestionTaskSupervisor},
+      {RouteScheduleRebuild, task_supervisor: Gobusgo.IngestionTaskSupervisor}
+    ]
   end
 
   defp rebuild_children(false), do: []
@@ -195,6 +199,7 @@ defmodule Gobusgo.Application do
           demand: Demand,
           vehicle_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
           route_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
+          route_schedule_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor],
           arrival_cycle_options: [task_supervisor: Gobusgo.IngestionTaskSupervisor]
         )
 

@@ -28,6 +28,7 @@ defmodule Gobusgo.RetentionPolicyTest do
           {"raw/oba/agencies-with-coverage", 30},
           {"raw/oba/routes-for-agency", 30},
           {"raw/oba/stops-for-route", 30},
+          {"raw/oba/schedule-for-route", 3},
           {"usage/page-connections", 3},
           {"tiles/route-stops", 2}
         ] do
@@ -36,10 +37,10 @@ defmodule Gobusgo.RetentionPolicyTest do
       end
     end
 
-    test "holds seven rules, each one Retention accepts" do
+    test "holds eight rules, each one Retention accepts" do
       rules = RetentionPolicy.rules()
 
-      assert length(rules) == 7
+      assert length(rules) == 8
       assert Enum.all?(rules, &(Retention.assert_rule(&1) == :ok))
     end
 

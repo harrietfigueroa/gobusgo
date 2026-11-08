@@ -1,6 +1,6 @@
 defmodule Gobusgo.OneBusAway.RouteRebuild do
   @day_count 2
-  @page_count_max 20
+  @page_count_max Gobusgo.OneBusAway.StoredListing.page_count_max()
   @process_count_max 8
   @process_timeout_ms 10_000
   @deadline_ms 60_000
@@ -58,7 +58,7 @@ defmodule Gobusgo.OneBusAway.RouteRebuild do
   alias Gobusgo.OneBusAway.RawRouteResponse
   alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RoutePathBatch
-  alias Gobusgo.Reader
+  alias Gobusgo.OneBusAway.StoredListing
 
   @datasets [
     %{name: :routes, prefix: RawRouteResponse.destination_prefix(), processor: RouteBatch},
@@ -163,7 +163,7 @@ defmodule Gobusgo.OneBusAway.RouteRebuild do
       Enum.reduce(dates, {%{}, 0}, fn date, {by_item, undiscovered_day_count} ->
         prefix = RawResponse.partition_prefix(dataset.prefix, date)
 
-        case list_partition(prefix, read_options) do
+        case StoredListing.list(prefix, read_options) do
           {:ok, destinations} ->
             of_day =
               destinations
@@ -182,36 +182,6 @@ defmodule Gobusgo.OneBusAway.RouteRebuild do
 
   # The segments between the date and the name: the item the response is of.
   defp item(destination), do: destination |> Path.dirname() |> Path.basename()
-
-  defp list_partition(prefix, read_options) do
-    start = {:more, nil, []}
-
-    1..@page_count_max//1
-    |> Enum.reduce_while(start, fn _page, {:more, cursor, pages} ->
-      request = %{
-        prefix: prefix,
-        limit: Reader.discovery_limit_max(),
-        order: :ascending,
-        cursor: cursor
-      }
-
-      case Reader.discover(request, read_options) do
-        {:ok, %{destinations: destinations, cursor: nil}} ->
-          {:halt, {:done, [destinations | pages]}}
-
-        {:ok, %{destinations: destinations, cursor: next}} ->
-          {:cont, {:more, next, [destinations | pages]}}
-
-        {:error, _reason} ->
-          {:halt, :error}
-      end
-    end)
-    |> case do
-      {:done, pages} -> {:ok, Enum.concat(pages)}
-      {:more, _cursor, _pages} -> :error
-      :error -> :error
-    end
-  end
 
   defp log(result, elapsed_ms) do
     properties = [

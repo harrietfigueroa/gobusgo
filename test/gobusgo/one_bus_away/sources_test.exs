@@ -122,6 +122,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
           demand: @demand,
           vehicle_cycle_options: [task_supervisor: @tasks],
           route_cycle_options: [task_supervisor: @tasks],
+          route_schedule_cycle_options: [task_supervisor: @tasks],
           arrival_cycle_options: [task_supervisor: @tasks]
         ],
         options
@@ -130,26 +131,35 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
   end
 
   defp agency_discovery(record_options) do
-    assert [spec, _vehicles, _routes, _arrivals] = specs(agency_record_options: record_options)
+    assert [spec, _vehicles, _routes, _schedules, _arrivals] =
+             specs(agency_record_options: record_options)
+
     spec
   end
 
   defp vehicles(cycle_options) do
-    assert [_agencies, spec, _routes, _arrivals] =
+    assert [_agencies, spec, _routes, _schedules, _arrivals] =
              specs(vehicle_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
   end
 
   defp routes(cycle_options) do
-    assert [_agencies, _vehicles, spec, _arrivals] =
+    assert [_agencies, _vehicles, spec, _schedules, _arrivals] =
              specs(route_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
   end
 
+  defp schedules(cycle_options) do
+    assert [_agencies, _vehicles, _routes, spec, _arrivals] =
+             specs(route_schedule_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
+
+    spec
+  end
+
   defp arrivals(cycle_options) do
-    assert [_agencies, _vehicles, _routes, spec] =
+    assert [_agencies, _vehicles, _routes, _schedules, spec] =
              specs(arrival_cycle_options: [task_supervisor: @tasks] ++ cycle_options)
 
     spec
@@ -203,6 +213,7 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
           {Gobusgo.OneBusAway.AgencyScheduler, 60_000},
           {Gobusgo.OneBusAway.VehicleScheduler, 60_000},
           {Gobusgo.OneBusAway.RouteScheduler, 60_000},
+          {Gobusgo.OneBusAway.RouteScheduleScheduler, 60_000},
           {Gobusgo.OneBusAway.ArrivalScheduler, 5_000}
         ] do
       test "has #{inspect(name)} run every #{interval_ms} ms" do
@@ -350,6 +361,20 @@ defmodule Gobusgo.OneBusAway.SourcesTest do
     test "holds the route source, every minute" do
       assert %{name: Gobusgo.OneBusAway.RouteScheduler, cadence: %{policy: {:fixed, 60_000}}} =
                routes([])
+    end
+
+    test "gives the route schedule source a deadline inside its interval" do
+      spec = schedules([])
+
+      assert %{name: Gobusgo.OneBusAway.RouteScheduleScheduler} = spec
+      assert spec.deadline_ms >= 1
+      assert spec.deadline_ms < Cadence.interval_ms_min(spec.cadence.policy)
+    end
+
+    test "runs the route schedule source with nothing due before any route is held" do
+      spec = schedules(agency_ids: fn -> [] end)
+
+      assert {:ok, %{due_count: 0, route_count: 0}} = spec.run.()
     end
 
     test "gives the route source a deadline inside its interval" do
