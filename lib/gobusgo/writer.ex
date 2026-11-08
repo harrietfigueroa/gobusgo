@@ -23,6 +23,15 @@ defmodule Gobusgo.Writer do
   #{Compression.content_bytes_max()} bytes, and the backend stores it as one
   gzip stream. Every other destination stores the content unchanged.
 
+  A request may name `reader_keep_seconds`, a positive integer: how long a
+  reader that fetches the content may keep it and use it again without
+  asking. A write is create-only, so the content a destination holds never
+  changes while it exists, and a reader may keep it unchanged for that whole
+  time. A backend whose content readers fetch stores the time with the
+  content and answers each fetch of it with the time; a backend with no
+  place to keep it stores the content as it stores any other. A request
+  that names none says nothing of how long a reader may keep the content.
+
   Results:
 
     * `:ok` — the content is stored at the destination.
@@ -42,7 +51,11 @@ defmodule Gobusgo.Writer do
   alias Gobusgo.Assert
   alias Gobusgo.Destination
 
-  @type request :: %{destination: String.t(), content: binary()}
+  @type request :: %{
+          required(:destination) => String.t(),
+          required(:content) => binary(),
+          optional(:reader_keep_seconds) => pos_integer()
+        }
 
   @type error_reason ::
           :already_exists
@@ -90,6 +103,7 @@ defmodule Gobusgo.Writer do
       when is_binary(destination) and is_binary(content) and is_list(options) do
     {backend, backend_options} = Keyword.pop_lazy(options, :backend, &configured_backend/0)
     Assert.condition(is_atom(backend), "backend must be a module, got: #{inspect(backend)}")
+    assert_reader_keep_seconds(request)
 
     case stored_content(destination, content) do
       {:ok, stored} ->
@@ -101,6 +115,15 @@ defmodule Gobusgo.Writer do
         {:error, reason}
     end
   end
+
+  defp assert_reader_keep_seconds(%{reader_keep_seconds: seconds}) do
+    Assert.condition(
+      is_integer(seconds) and seconds > 0,
+      "reader_keep_seconds must be a positive integer, got: #{inspect(seconds)}"
+    )
+  end
+
+  defp assert_reader_keep_seconds(_request), do: :ok
 
   defp stored_content(destination, content) do
     if Compression.compressed?(destination) do

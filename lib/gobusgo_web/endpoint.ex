@@ -23,9 +23,11 @@ defmodule GobusgoWeb.Endpoint do
   names the archives in use.
 
   The locally stored route and stop tile archives are served under `/tiles`,
-  from the tile directory, with ranges as the basemap archives are. Each
-  archive's name is that of its own build, so a cache may keep it for a
-  year.
+  from the tile directory, with ranges as the basemap archives are. A cache
+  may keep an archive as immutable for
+  `GobusgoWeb.RouteStopTiles.reader_keep_seconds/0`, the time the archive's
+  build stores it with, and a file that is not there falls through to the
+  router with no such header.
 
   The locally stored routing snapshot files are served under `/routing`,
   from the routing directory. Each file's name holds the SHA-256 of its
@@ -59,7 +61,7 @@ defmodule GobusgoWeb.Endpoint do
   @basemap_manifest_name "manifest.json"
   @basemap_archive_cache_seconds 3_600
   @tiles_path "/tiles"
-  @tiles_cache_seconds 31_536_000
+  @tiles_cache_seconds GobusgoWeb.RouteStopTiles.reader_keep_seconds()
   @routing_path "/routing"
   @routing_cache_seconds 31_536_000
   @shared_vehicles_path "/shared-vehicles"

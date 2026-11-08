@@ -40,6 +40,13 @@ defmodule Gobusgo.Writer.LocalFileTest do
       assert File.read!(Path.join(tmp_dir, "bin")) == content
     end
 
+    test "writes content a reader may keep as it writes any other", %{tmp_dir: tmp_dir} do
+      request = %{destination: "a.pmtiles", content: "x", reader_keep_seconds: 3_600}
+
+      assert Writer.write(request, backend: LocalFile, base_dir: tmp_dir) == :ok
+      assert File.read!(Path.join(tmp_dir, "a.pmtiles")) == "x"
+    end
+
     test "writes empty content", %{tmp_dir: tmp_dir} do
       assert write(tmp_dir, "empty", "") == :ok
       assert File.read!(Path.join(tmp_dir, "empty")) == ""

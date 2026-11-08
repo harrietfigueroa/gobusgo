@@ -10,7 +10,8 @@ defmodule Gobusgo.Test.FakeS3 do
   `options/1` are the backend options that reach it. `answer_next/2` makes
   the bucket answer its next requests with given statuses and leave its
   objects as they are, and `requests/1` returns what it was asked, the
-  oldest first.
+  oldest first. `cache_control/2` is the `Cache-Control` an object was
+  stored with, which S3 keeps with the object and answers it with.
   """
 
   import ExUnit.Callbacks, only: [start_supervised!: 1]
@@ -20,7 +21,7 @@ defmodule Gobusgo.Test.FakeS3 do
   @doc "Starts an empty bucket."
   @spec start() :: pid()
   def start do
-    {Agent, fn -> %{objects: %{}, statuses: [], requests: []} end}
+    {Agent, fn -> %{objects: %{}, cache_controls: %{}, statuses: [], requests: []} end}
     |> Supervisor.child_spec(id: make_ref())
     |> start_supervised!()
   end
@@ -53,6 +54,21 @@ defmodule Gobusgo.Test.FakeS3 do
   @doc "The body the bucket holds under `key`, or `nil`."
   @spec get(pid(), String.t()) :: binary() | nil
   def get(bucket, key), do: Agent.get(bucket, & &1.objects[key])
+
+  @doc """
+  The `Cache-Control` the object under `key` was stored with, `:none` for an
+  object stored with none, and `:absent` for a key that holds no object.
+  """
+  @spec cache_control(pid(), String.t()) :: String.t() | :none | :absent
+  def cache_control(bucket, key) do
+    Agent.get(bucket, fn state ->
+      case state do
+        %{cache_controls: %{^key => cache_control}} -> cache_control
+        %{objects: %{^key => _body}} -> :none
+        _absent -> :absent
+      end
+    end)
+  end
 
   @doc "Makes the bucket answer one request with each of `statuses`, in order."
   @spec answer_next(pid(), [pos_integer()]) :: :ok
@@ -99,13 +115,14 @@ defmodule Gobusgo.Test.FakeS3 do
 
   defp answer(%{method: "PUT"} = conn, bucket, %{key: key, body: body}) do
     conditional = Plug.Conn.get_req_header(conn, "if-none-match") == ["*"]
+    cache_controls = Plug.Conn.get_req_header(conn, "cache-control")
 
     stored =
       Agent.get_and_update(bucket, fn state ->
         if conditional and is_map_key(state.objects, key) do
           {false, state}
         else
-          {true, put_in(state.objects[key], body)}
+          {true, store(state, %{key: key, body: body, cache_controls: cache_controls})}
         end
       end)
 
@@ -119,6 +136,15 @@ defmodule Gobusgo.Test.FakeS3 do
   defp answer(%{method: "DELETE"} = conn, bucket, %{key: key}) do
     Agent.update(bucket, &%{&1 | objects: Map.delete(&1.objects, key)})
     Plug.Conn.send_resp(conn, 204, "")
+  end
+
+  defp store(state, %{key: key, body: body, cache_controls: cache_controls}) do
+    state = put_in(state.objects[key], body)
+
+    case cache_controls do
+      [cache_control] -> put_in(state.cache_controls[key], cache_control)
+      [] -> %{state | cache_controls: Map.delete(state.cache_controls, key)}
+    end
   end
 
   defp error(code), do: "<Error><Code>#{code}</Code></Error>"

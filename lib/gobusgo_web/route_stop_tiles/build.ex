@@ -23,7 +23,8 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   archive there, from zoom #{@zoom_min} to #{@zoom_max}, with its own limits
   on features and bytes per tile turned off, so that no feature is dropped.
   It has #{@tippecanoe_deadline_ms} ms. An archive is stored only when it
-  is at most #{@archive_bytes_max} bytes.
+  is at most #{@archive_bytes_max} bytes, for a reader to keep for
+  `GobusgoWeb.RouteStopTiles.reader_keep_seconds/0`.
 
   A run returns `{:ok, :empty}` while the views hold no line, `{:ok,
   :unchanged}` when the features are those of a current archive younger than
@@ -299,6 +300,8 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
   end
 
   defp write(request, options) do
+    request = Map.put(request, :reader_keep_seconds, RouteStopTiles.reader_keep_seconds())
+
     case Writer.write(request, Keyword.get(options, :write_options, [])) do
       :ok -> :ok
       {:error, reason} -> {:error, {:write, reason}}

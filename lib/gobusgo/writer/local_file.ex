@@ -3,6 +3,10 @@ defmodule Gobusgo.Writer.LocalFile do
   `Gobusgo.Writer` backend that stores destinations as files under a base
   directory. The standard library is the only dependency.
 
+  A file has no place to keep a request's `reader_keep_seconds`, so the
+  backend writes such a request's content as it writes any other and stores
+  nothing of the time; whatever serves the files states it to their readers.
+
   ## Options
 
     * `:base_dir` — absolute directory the destinations live under. Defaults

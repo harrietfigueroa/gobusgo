@@ -18,6 +18,11 @@ defmodule Gobusgo.Writer.S3 do
   appears whole or not at all. Content is at most #{@content_bytes_max}
   bytes.
 
+  A request that names `reader_keep_seconds` sends `Cache-Control: public,
+  max-age=<seconds>, immutable` with the object, which S3 stores with the
+  object and answers a `GetObject` of it with. A request that names none
+  sends no `Cache-Control`.
+
   The request is sent once per answer: a network fault is not retried,
   because the object may be stored and a second request would then answer
   that it exists. Such a write returns `:io_failure` with the object stored
@@ -48,7 +53,7 @@ defmodule Gobusgo.Writer.S3 do
   def content_bytes_max, do: @content_bytes_max
 
   @impl Gobusgo.Writer
-  def write(%{destination: destination, content: content}, options)
+  def write(%{destination: destination, content: content} = write_request, options)
       when is_binary(destination) and is_binary(content) and is_list(options) do
     {prefix, client_options} = pop_prefix(options)
 
@@ -58,7 +63,7 @@ defmodule Gobusgo.Writer.S3 do
         method: :put,
         key: Key.from_destination(prefix, destination),
         query: [],
-        headers: [{"if-none-match", "*"}],
+        headers: [{"if-none-match", "*"} | cache_control_headers(write_request)],
         body: content,
         bytes_max: @response_bytes_max,
         repeatable: false
@@ -67,6 +72,17 @@ defmodule Gobusgo.Writer.S3 do
       request |> Client.request(client_options) |> outcome()
     end
   end
+
+  # A destination is create-only, so its object never changes: `immutable`
+  # tells a reader to keep it for the whole time without revalidating.
+  # https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html — checked 2026-11-08
+  # https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html — checked 2026-11-08
+  defp cache_control_headers(%{reader_keep_seconds: seconds}) do
+    Assert.condition(is_integer(seconds) and seconds > 0, "positive, got: #{inspect(seconds)}")
+    [{"cache-control", "public, max-age=#{seconds}, immutable"}]
+  end
+
+  defp cache_control_headers(_request), do: []
 
   defp pop_prefix(options), do: {Key.prefix(options), Keyword.delete(options, :prefix)}
 
