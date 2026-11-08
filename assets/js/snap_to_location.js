@@ -1,4 +1,6 @@
 import {READY_EVENT_NAME} from "./basemap"
+import {OutcomeKind, errorOutcome} from "./position_watch"
+import {permissionGranted} from "./rider_position"
 
 const STORAGE_KEY = "gobusgo:snap-to-location"
 const STORED_VALUE = "true"
@@ -30,23 +32,6 @@ function writeStored() {
   }
 }
 
-// Whether the browser gives a position with no prompt. A browser without
-// the Permissions API, and one that refuses the query, reads as one that
-// prompts.
-export async function permissionGranted() {
-  if (navigator.permissions === undefined) {
-    return false
-  }
-
-  try {
-    const status = await navigator.permissions.query({name: "geolocation"})
-    return status.state === "granted"
-  } catch (error) {
-    console.warn("Location permission not readable", error)
-    return false
-  }
-}
-
 function inside({south, west, north, east}, {latitude, longitude}) {
   const isWithinLatitude = latitude >= south && latitude <= north
   const isWithinLongitude = longitude >= west && longitude <= east
@@ -63,11 +48,11 @@ function camera(map) {
   }
 }
 
-// GeolocationPositionError names code 1 PERMISSION_DENIED; 2 and 3 are a
-// position that is unavailable and one that timed out.
-// https://developer.mozilla.org/en-US/docs/Web/API/GeolocationPositionError/code — checked 2026-10-09
+// The control's error event is the browser's GeolocationPositionError.
 function errorText(error) {
-  if (error.code === error.PERMISSION_DENIED) {
+  const outcome = errorOutcome(error.code)
+
+  if (outcome.kind === OutcomeKind.denied) {
     return DENIED_TEXT
   } else {
     return UNAVAILABLE_TEXT
