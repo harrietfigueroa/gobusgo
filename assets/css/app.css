@@ -61,6 +61,9 @@
   --filter-kind-color: #475569;
   --trip-origin-color: #16a34a;
   --trip-destination-color: #dc2626;
+  /* MapLibre's location dot is #1da1f2, which the cone repeats. */
+  --rider-heading-color: rgb(29 161 242);
+  --rider-heading-size: 72px;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -106,6 +109,7 @@
   --filter-kind-color: #94a3b8;
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
+  --rider-heading-color: rgb(56 189 248);
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -893,6 +897,32 @@
 
 .trip-dot-to {
   background-color: var(--trip-destination-color);
+}
+
+/* The cone on the rider's dot: a wedge centered on the top, fading out from
+   the dot, whose width in degrees and turn the location hook sets. */
+.rider-heading-cone {
+  width: var(--rider-heading-size);
+  height: var(--rider-heading-size);
+  pointer-events: none;
+}
+
+.rider-heading-cone-shape {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from calc(var(--rider-heading-width) / -2),
+    var(--rider-heading-color) 0deg var(--rider-heading-width),
+    transparent var(--rider-heading-width)
+  );
+  mask-image: radial-gradient(circle closest-side, rgb(0 0 0 / 0.85) 15%, transparent 100%);
+  transition-property: transform;
+  transition-timing-function: ease-out;
+}
+
+.rider-heading-cone-shape[hidden] {
+  display: none;
 }
 
 .trip-field-label {

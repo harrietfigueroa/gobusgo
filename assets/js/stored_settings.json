@@ -7,7 +7,9 @@
     "vehicleFilter": "gobusgo:vehicle-filter",
     "locationFollow": "gobusgo:snap-to-location",
     "offlineSchedules": "gobusgo:offline-schedules",
-    "sharedVehicles": "gobusgo:shared-vehicles"
+    "sharedVehicles": "gobusgo:shared-vehicles",
+    "showDirection": "gobusgo:show-direction",
+    "motionPermission": "gobusgo:motion-permission"
   },
   "storedThemes": ["light", "dark"]
 }

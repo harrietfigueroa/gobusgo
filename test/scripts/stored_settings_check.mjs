@@ -27,7 +27,7 @@ const COUNT_PAST_MAX = COUNT_MAX + 1
 const VERSION_TEXT = String(SCHEMA_VERSION)
 // Under storage that throws: one warning for the migration, one per read
 // and per write, and the add and the remove each read before they write.
-const THROWING_WARNING_COUNT = 14
+const THROWING_WARNING_COUNT = 18
 
 // Every key the module reads, each held as null until it is written, since
 // Storage's getItem answers null for a key it does not hold.
@@ -222,6 +222,53 @@ for (const writeCase of offlineWriteCases) {
   const {settings} = settingsOver(storage)
   settings.writeOfflineSchedulesEnabled(writeCase.enabled)
   deepStrictEqual(storage.entries()[StorageKey.offlineSchedules], writeCase.stored, `offline write: ${writeCase.enabled}`)
+}
+
+const showDirectionCases = [
+  {name: "off", entries: {[StorageKey.showDirection]: "off"}, isShown: false},
+  {name: "another text", entries: {[StorageKey.showDirection]: "on"}, isShown: true},
+  {name: "a missing key", entries: {}, isShown: true}
+]
+
+deepStrictEqual(StorageKey.showDirection, "gobusgo:show-direction", "the direction setting's key")
+
+for (const showCase of showDirectionCases) {
+  const {settings} = settingsOver(new MemoryStorage(showCase.entries))
+  const isShown = settings.readShowDirection()
+  deepStrictEqual(isShown, showCase.isShown, `direction setting read: ${showCase.name}`)
+}
+
+const showDirectionWriteCases = [
+  {isShown: false, stored: "off"},
+  {isShown: true, stored: undefined}
+]
+
+for (const writeCase of showDirectionWriteCases) {
+  const storage = new MemoryStorage({[StorageKey.showDirection]: "off"})
+  const {settings} = settingsOver(storage)
+  settings.writeShowDirection(writeCase.isShown)
+  deepStrictEqual(storage.entries()[StorageKey.showDirection], writeCase.stored, `direction setting write: ${writeCase.isShown}`)
+}
+
+const motionDenialCases = [
+  {name: "denied", entries: {[StorageKey.motionPermission]: "denied"}, isDenied: true},
+  {name: "another text", entries: {[StorageKey.motionPermission]: "granted"}, isDenied: false},
+  {name: "a missing key", entries: {}, isDenied: false}
+]
+
+deepStrictEqual(StorageKey.motionPermission, "gobusgo:motion-permission", "the motion denial's key")
+
+for (const denialCase of motionDenialCases) {
+  const {settings} = settingsOver(new MemoryStorage(denialCase.entries))
+  const isDenied = settings.readMotionPermissionDenied()
+  deepStrictEqual(isDenied, denialCase.isDenied, `motion denial read: ${denialCase.name}`)
+}
+
+{
+  const storage = new MemoryStorage({})
+  const {settings} = settingsOver(storage)
+  settings.writeMotionPermissionDenied()
+  deepStrictEqual(storage.entries()[StorageKey.motionPermission], "denied", "motion denial stored")
 }
 
 const sharedVehicleCases = [
@@ -455,11 +502,15 @@ for (const throwingCase of throwingCases) {
   const followed = settings.readLocationFollow()
   const enabled = settings.readOfflineSchedulesEnabled()
   const favorites = settings.listFavorites(COUNT_MAX)
+  const isShown = settings.readShowDirection()
+  const isDenied = settings.readMotionPermissionDenied()
   settings.writeTheme(ThemeSetting.dark)
   settings.writeVehicleFilter(filter)
   settings.removeVehicleFilter()
   settings.writeLocationFollow(true)
   settings.writeOfflineSchedulesEnabled(false)
+  settings.writeShowDirection(false)
+  settings.writeMotionPermissionDenied()
   const added = settings.addFavorite({favorite: favoriteA, countMax: COUNT_MAX})
   const removed = settings.removeFavorite({stopId: favoriteA.stopId, countMax: COUNT_MAX})
 
@@ -468,6 +519,8 @@ for (const throwingCase of throwingCases) {
   deepStrictEqual(followed, false, `${throwingCase.name}: location button`)
   deepStrictEqual(enabled, true, `${throwingCase.name}: offline`)
   deepStrictEqual(favorites, [], `${throwingCase.name}: favorites`)
+  deepStrictEqual(isShown, true, `${throwingCase.name}: direction setting`)
+  deepStrictEqual(isDenied, false, `${throwingCase.name}: motion denial`)
   deepStrictEqual(added, {kind: FavoriteChangeKind.changed, favorites: [favoriteA]}, `${throwingCase.name}: add`)
   deepStrictEqual(removed, {kind: FavoriteChangeKind.unchanged}, `${throwingCase.name}: remove`)
   deepStrictEqual(warnings.length, THROWING_WARNING_COUNT, `${throwingCase.name}: warnings`)

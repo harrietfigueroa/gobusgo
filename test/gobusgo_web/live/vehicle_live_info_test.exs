@@ -145,13 +145,14 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert ids(view, @panel <> " > section") == ["app-info-settings", "app-info-about"]
     end
 
-    test "holds installing the app, the theme, and offline schedules in the settings group, in that order" do
+    test "holds installing the app, the theme, offline schedules, and the direction in the settings group, in that order" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert ids(view, "#app-info-settings > section") == [
                "app-info-install",
                "app-info-theme",
-               "app-info-offline-schedules"
+               "app-info-offline-schedules",
+               "app-info-show-direction"
              ]
     end
 
@@ -391,6 +392,41 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                view,
                @panel <>
                  ~s( #app-info-offline-schedules[phx-hook="OfflineSchedules"][phx-update="ignore"])
+             )
+    end
+
+    test "says what Show my direction draws, in a section of its own" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-show-direction")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.show_direction()
+    end
+
+    test "offers the Show my direction setting, checked until the browser reads the rider's" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view
+             |> element(@panel <> " #app-info-show-direction label")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text() =~ "Show my direction"
+
+      assert has_element?(view, @panel <> " #show-direction-enabled[type=checkbox][checked]")
+    end
+
+    test "hands the Show my direction section to its hook, which the server leaves alone" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(
+               view,
+               @panel <>
+                 ~s( #app-info-show-direction[phx-hook="ShowDirection"][phx-update="ignore"])
              )
     end
 
