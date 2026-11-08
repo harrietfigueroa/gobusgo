@@ -23,7 +23,11 @@ const lightMapColors = Object.freeze({
   stopHalo: "#ffffff",
   vehicleStroke: "#ffffff",
   vehicleLabel: "#0f172a",
-  vehicleHalo: "#ffffff"
+  vehicleHalo: "#ffffff",
+  tripCasing: "#ffffff",
+  tripWalk: "#475569",
+  tripOrigin: "#16a34a",
+  tripDestination: "#dc2626"
 })
 
 const darkMapColors = Object.freeze({
@@ -34,7 +38,11 @@ const darkMapColors = Object.freeze({
   stopHalo: "#0f172a",
   vehicleStroke: "#e2e8f0",
   vehicleLabel: "#e2e8f0",
-  vehicleHalo: "#0f172a"
+  vehicleHalo: "#0f172a",
+  tripCasing: "#e2e8f0",
+  tripWalk: "#cbd5e1",
+  tripOrigin: "#22c55e",
+  tripDestination: "#f87171"
 })
 
 const settings = Object.values(ThemeSetting)

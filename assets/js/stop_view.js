@@ -13,6 +13,7 @@ import {
   removeFavorite,
   storedFavorites
 } from "./favorite_stop"
+import {tripEndButtons} from "./trip_ends"
 
 const NOT_SUPPLIED = "Not supplied"
 const CHIP_ROW_CLASS_NAME = "panel-detail-chips"
@@ -96,8 +97,8 @@ function favoriteButtonOf(stop) {
 
 // The view of `stop`, with its favorite button and the element its
 // arrivals are written into, which says that it is waiting for them. The
-// actions row holds the favorite button and room for more actions on the
-// stop. The current alerts of the stop's routes, those of a route as a
+// actions row holds the favorite button and the stop's "From here" and
+// "To here". The current alerts of the stop's routes, those of a route as a
 // whole and those that name the stop, stand between the actions and the
 // arrivals.
 export function stopViewElements(stop) {
@@ -128,6 +129,10 @@ export function stopViewElements(stop) {
   actions.className = ACTIONS_CLASS_NAME
   const favoriteButton = favoriteButtonOf(stop)
   actions.append(favoriteButton)
+
+  for (const tripButton of tripEndButtons({stopId: stop.id, name: suppliedName(stop), className: ACTION_CLASS_NAME})) {
+    actions.append(tripButton)
+  }
 
   const alerts = document.createElement("div")
   alerts.className = ALERTS_CLASS_NAME

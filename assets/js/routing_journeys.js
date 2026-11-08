@@ -25,7 +25,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {LegKind, OriginKind, createEngine, route} from "./routing_engine.js"
-import {DecodeKind, FORMAT_VERSION, decodeConnections, decodePositions, decodeStops, decodeTransfers, decodeTrips} from "./routing_snapshot.js"
+import {DecodeKind, FORMAT_VERSION, POSITION_UNKNOWN_MICRODEGREES, decodeConnections, decodePositions, decodeStops, decodeTransfers, decodeTrips} from "./routing_snapshot.js"
 import {startsNear} from "./routing_walk.js"
 
 /** How long past the earliest arrival a journey with fewer changes is still shown. */
@@ -34,6 +34,9 @@ export const WINDOW_SECONDS = 45 * 60
 const FETCH_TIMEOUT_MS = 20 * 1000
 const CHUNK_COUNT_MAX = 48
 const SECOND_MS = 1000
+const MICRODEGREES_PER_DEGREE = 1000000
+// A sequence below every hop's, which a trip's first hop, at 0, follows.
+const SEQUENCE_BEFORE_FIRST = -1
 const NO_ARRIVAL_S = Number.POSITIVE_INFINITY
 const RoutedKind = Object.freeze({routed: "routed"})
 const CONNECTION_COLUMNS = Object.freeze({
@@ -383,12 +386,37 @@ async function scanByWindow({entry, tables, query, fetchFile, boundS}) {
   return {kind: DecodeKind.decoded, scan, chunkCount: loaded.length, byteCount}
 }
 
+// The stops a ride passes, by index, from the one it boards at to the one
+// it leaves at. The connections are in departure order, and a trip's
+// connections depart in its stops' order, so the ride's are the trip's
+// connections from its boarding connection to its alighting one.
+function rideStops({leg, connections}) {
+  const trip = connections.trip[leg.boardConnection]
+  const stops = [connections.departureStop[leg.boardConnection]]
+  let sequence = SEQUENCE_BEFORE_FIRST
+
+  for (let index = leg.boardConnection; index <= leg.alightConnection; index++) {
+    if (connections.trip[index] === trip) {
+      assertCondition(connections.sequence[index] > sequence, "routing journeys: a ride's connections are out of sequence at " + index)
+      sequence = connections.sequence[index]
+      stops.push(connections.arrivalStop[index])
+    }
+  }
+
+  return stops
+}
+
 function journeyLeg({leg, connections, tables}) {
   switch (leg.kind) {
     case LegKind.ride: {
       const trip = tables.trips[connections.trip[leg.boardConnection]]
+      const stops = rideStops({leg, connections})
+      const stopIds = Array.from(stops, function stopIdOf(stop) {
+        return tables.stops[stop]
+      })
 
       return {
+        stopIds,
         kind: LegKind.ride,
         tripId: trip.id,
         routeId: trip.routeId,
@@ -408,9 +436,48 @@ function journeyLeg({leg, connections, tables}) {
   }
 }
 
+// The identifiers of every stop `legs` name, a ride's passed stops among them.
+function legStopIds(legs) {
+  const stopIds = new Set()
+
+  for (const leg of legs) {
+    if (leg.kind === LegKind.ride) {
+      for (const stopId of leg.stopIds) {
+        stopIds.add(stopId)
+      }
+    } else if (leg.kind === LegKind.walk) {
+      stopIds.add(leg.fromStopId)
+      stopIds.add(leg.toStopId)
+    } else {
+      stopIds.add(leg.toStopId)
+    }
+  }
+
+  return stopIds
+}
+
+// The position in degrees of each stop of `stopIds` whose position the
+// snapshot knows, by identifier.
+function stopPositionsOf({stopIds, stopIndex, tables}) {
+  const positions = {}
+
+  for (const stopId of stopIds) {
+    const stop = stopIndex.get(stopId)
+    const latMicrodegrees = tables.positions.latMicrodegrees[stop]
+
+    if (latMicrodegrees !== POSITION_UNKNOWN_MICRODEGREES) {
+      const lat = latMicrodegrees / MICRODEGREES_PER_DEGREE
+      const lon = tables.positions.lonMicrodegrees[stop] / MICRODEGREES_PER_DEGREE
+      positions[stopId] = {lat, lon}
+    }
+  }
+
+  return positions
+}
+
 // Every frontier journey of one snapshot, as identifiers, with the service
-// date its times count from.
-function candidatesOf({scan, tables, serviceDate}) {
+// date its times count from and the positions of the stops it names.
+function candidatesOf({scan, tables, stopIndex, serviceDate}) {
   const {frontier, connections} = scan
   const candidates = []
 
@@ -422,7 +489,8 @@ function candidatesOf({scan, tables, serviceDate}) {
       legs.push(converted)
     }
 
-    candidates.push({serviceDate, arrivalS: journey.arrivalS, changes: journey.changes, legs})
+    const stopPositions = stopPositionsOf({stopIds: legStopIds(legs), stopIndex, tables})
+    candidates.push({serviceDate, arrivalS: journey.arrivalS, changes: journey.changes, legs, stopPositions})
   }
 
   return candidates
@@ -465,7 +533,7 @@ async function routeSnapshot({entry, departureS, from, toStopId, fetchFile, boun
     return scanned
   }
 
-  const candidates = candidatesOf({scan: scanned.scan, tables, serviceDate: entry.serviceDate})
+  const candidates = candidatesOf({scan: scanned.scan, tables, stopIndex, serviceDate: entry.serviceDate})
   const loaded = {chunkCount: scanned.chunkCount, byteCount: tables.byteCount + scanned.byteCount}
   return {kind: RoutedKind.routed, candidates, loaded}
 }
@@ -571,8 +639,11 @@ function answerOf(parts) {
  *
  * Found journeys arrive by the earliest arrival plus WINDOW_SECONDS, fewest
  * changes first, each with the service date its times count from, its
- * arrival, its changes, whether it is the earliest, and its legs by
- * identifier; `loaded` counts the chunks and the bytes fetched.
+ * arrival, its changes, whether it is the earliest, its legs by
+ * identifier, a ride's with every stop it passes in `stopIds`, and in
+ * `stopPositions` the position in degrees of each stop it names whose
+ * position the snapshot knows; `loaded` counts the chunks and the bytes
+ * fetched.
  *
  * Where `serviceDate` has no journey, or its earliest arrives after the
  * date's last connection departs, the query goes on into the snapshot whose
