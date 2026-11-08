@@ -27,6 +27,8 @@
   --route-chip-count-color: #0f172a;
   --route-chip-outline: none;
   --map-control-size: 44px;
+  /* MapLibre sets its controls 10px in from the map's edges. */
+  --donation-button-inset: 10px;
   --panel-sheet-radius: 16px;
   --panel-sheet-radius-wide: 12px;
   --panel-sheet-margin: 12px;
@@ -392,6 +394,61 @@
 .theme-option:has(:checked) {
   background-color: var(--theme-option-checked-fill);
   font-weight: 600;
+}
+
+/* The donation button is a map control's size at every width, so its hit
+   area is a finger's on a coarse pointer, and draws its symbol in the
+   page's text color, which each theme sets. */
+.donation-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--map-control-size);
+  height: var(--map-control-size);
+  box-shadow: var(--control-shadow);
+}
+
+.donation-button:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 2px;
+}
+
+.donation-symbol {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.donation-symbol-heart {
+  fill: currentColor;
+  stroke-width: 1;
+}
+
+/* A page without a map holds the button in its flow, above its content. */
+.donation-button-page {
+  margin: var(--donation-button-inset) 0 0 var(--donation-button-inset);
+}
+
+/* Over a map the button stands in the map's top left corner, at the inset
+   MapLibre gives its controls in the other corners, and under the panel
+   sheet. From the md breakpoint up the sheet is a panel along the left,
+   so the corner is the map's beside it. */
+.donation-button-map {
+  position: fixed;
+  top: var(--donation-button-inset);
+  left: var(--donation-button-inset);
+  z-index: 10;
+}
+
+@media (width >= 48rem) {
+  .donation-button-map {
+    left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
+  }
 }
 
 /* The attribution stands above the part of the map the panel sheet

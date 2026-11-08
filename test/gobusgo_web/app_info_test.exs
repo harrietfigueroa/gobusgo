@@ -161,6 +161,32 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "donation/0" do
+    test "says Gobusgo is free and independent" do
+      assert AppInfo.donation() =~ "Gobusgo is free to use and independent"
+    end
+
+    test "says donations go toward its running costs" do
+      assert AppInfo.donation() =~ "Donations go toward the cost of running it"
+    end
+
+    test "says a donation buys no feature, data, or priority" do
+      assert AppInfo.donation() =~ "A donation buys no feature, no data, and no priority"
+    end
+
+    test "names no agency" do
+      refute AppInfo.donation() =~ "agenc"
+      refute AppInfo.donation() =~ "Transit"
+      refute AppInfo.donation() =~ "Metro"
+    end
+  end
+
+  describe "donation_label/0" do
+    test "is Support gobusgo on Ko-fi" do
+      assert AppInfo.donation_label() == "Support gobusgo on Ko-fi"
+    end
+  end
+
   describe "favorite_stop/0" do
     test "says the browser remembers the favorite stops" do
       assert AppInfo.favorite_stop() =~ "Your browser remembers your favorite stops"

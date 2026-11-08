@@ -170,6 +170,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.Usage
   alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
+  alias GobusgoWeb.DonationButton
   alias GobusgoWeb.FilterBar
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
@@ -450,7 +451,9 @@ defmodule GobusgoWeb.VehicleLive do
   def render(assigns) do
     ~H"""
     <main>
-      <p :if={@basemap == nil} id="no-basemap" class="p-8">No basemap yet.</p>
+      <DonationButton.button class="donation-button-map" />
+
+      <p :if={@basemap == nil} id="no-basemap" class="px-8 pt-16 pb-8">No basemap yet.</p>
 
       <%!-- The sheet stands before the map's elements: hooks mount in document
       order, so the stored filter is offered before the map asks for its

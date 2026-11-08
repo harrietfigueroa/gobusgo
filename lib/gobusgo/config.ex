@@ -16,6 +16,10 @@ defmodule Gobusgo.Config do
   @type revision :: String.t() | nil
   @type revision_error :: {:invalid, :revision}
 
+  @typedoc "The address a page links for donations, or `nil` for an application that links none."
+  @type donation_url :: String.t() | nil
+  @type donation_url_error :: {:invalid, :donation_url}
+
   @type one_bus_away :: Gobusgo.Config.OneBusAway.t()
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
@@ -212,6 +216,28 @@ defmodule Gobusgo.Config do
     end
   end
 
+  @doc """
+  Returns the address a page links for donations, from `env`: `:url`, an
+  `https` address with a host. A nil or blank value is `{:ok, nil}`, an
+  application that links no donation page.
+  """
+  @spec fetch_donation_url(Keyword.t()) :: {:ok, donation_url()} | {:error, donation_url_error()}
+  def fetch_donation_url(env) when is_list(env) do
+    case text(env, :url) do
+      nil ->
+        {:ok, nil}
+
+      url ->
+        if donation_url?(url), do: {:ok, url}, else: {:error, {:invalid, :donation_url}}
+    end
+  end
+
+  @doc "Reads the donation address configured for the running application."
+  @spec donation_url() :: {:ok, donation_url()} | {:error, donation_url_error()}
+  def donation_url do
+    :gobusgo |> Application.get_env(:donation, []) |> fetch_donation_url()
+  end
+
   @doc "Reads the commit the running application was built from."
   @spec revision() :: {:ok, revision()} | {:error, revision_error()}
   def revision do
@@ -395,6 +421,16 @@ defmodule Gobusgo.Config do
 
   defp check(true, _error), do: :ok
   defp check(false, error), do: {:error, error}
+
+  # `URI.new/1` refuses an address with a space or another character an
+  # address cannot hold.
+  defp donation_url?(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: "https", host: host}} when is_binary(host) and host != "" -> true
+      {:ok, %URI{}} -> false
+      {:error, _part} -> false
+    end
+  end
 
   defp public_host?(host) do
     byte_size(host) <= @public_host_bytes_max and

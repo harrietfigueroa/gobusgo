@@ -43,6 +43,9 @@ end
 # responses.
 config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")
 
+# The address the pages link for donations; unset, they link none.
+config :gobusgo, :donation, url: System.get_env("GOBUSGO_DONATION_URL")
+
 config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),
   port: System.get_env("GOBUSGO_HTTP_PORT")
