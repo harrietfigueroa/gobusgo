@@ -6,10 +6,9 @@ defmodule GobusgoWeb.VehicleLive do
   The page at `/vehicles`: a map of the vehicles of every agency's current
   fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines and the stops of
   the route and stop tile archive, with the panel sheet of
-  `GobusgoWeb.PanelSheet` over it. The sheet's tabs are Trip, which holds a
-  line in place of trip planning, Favorites, Filter, Alerts, and About; a
-  page with no basemap offers About alone. Above the tabs a line names the
-  filter the map shows. The Filter tab's badge counts the agencies and the
+  `GobusgoWeb.PanelSheet` over it. The sheet's tabs are Trip, Favorites,
+  Filter, Alerts, and About; a page with no basemap offers About alone.
+  Above the tabs a line names the filter the map shows. The Filter tab's badge counts the agencies and the
   routes the filter names and the Alerts tab's the current alerts, and the
   Favorites tab's badge is the browser's to write. A page with a basemap
   also gives the sheet its details view, where the browser shows the stop
@@ -130,6 +129,21 @@ defmodule GobusgoWeb.VehicleLive do
   opens their stops with `stop-arrivals:open`, as for a stop's popup, so the
   page serves the favorites' arrivals with no state of its own for them.
 
+  In the Trip tab, on a page with a basemap, the page renders an empty
+  element for the trip planner, with the address of the routing manifest,
+  and leaves its content to the `TripPlanner` hook, which routes in the
+  browser and keeps the rider's position there. The page answers
+  `trip:names`, the stops and the routes of the journeys the browser
+  shows, from `GobusgoWeb.VehicleLive.Trip`, with the names the stop view
+  and the route view hold. `trip:filter` names the routes of the selected
+  journey: while a trip is open the page shows that filter in place of the
+  rider's, with no agency, and neither puts it in the address nor has the
+  browser store it; the line above the tabs names the trip's routes.
+  `trip:clear` brings back the rider's filter. A change of the filter bar,
+  or another filter in the address, ends the trip's filter, which the page
+  tells the browser with `trip:filter-ended`; the change is stored and put
+  in the address as any change is.
+
   In the Alerts tab the page shows the service alerts
   of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
   `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
@@ -151,6 +165,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
+  alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Usage
   alias GobusgoWeb.AppInfoPanel
@@ -168,6 +183,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.VehicleLive.Filter
   alias GobusgoWeb.VehicleLive.OpenStops
   alias GobusgoWeb.VehicleLive.Routes
+  alias GobusgoWeb.VehicleLive.Trip
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
@@ -178,6 +194,8 @@ defmodule GobusgoWeb.VehicleLive do
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
   @vehicle_markers_event "vehicle-markers:agency"
   @stop_arrivals_event "stop-arrivals:arrivals"
+  @trip_filter_ended_event "trip:filter-ended"
+  @routing_manifest_url "/api/routing/manifest"
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -186,6 +204,8 @@ defmodule GobusgoWeb.VehicleLive do
         manifest: read_manifest(),
         basemap: nil,
         filter: nil,
+        rider_filter: nil,
+        trip: nil,
         filter_supplied: false,
         agencies: agencies(),
         filter_query: "",
@@ -215,17 +235,27 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def handle_params(params, _uri, socket) do
-    %{manifest: manifest, basemap: shown, filter: shown_filter} = socket.assigns
+    %{manifest: manifest, basemap: shown, filter: shown_filter, rider_filter: shown_rider_filter} =
+      socket.assigns
+
     raw = Filter.raw(params)
-    filter = Filter.normalize(raw)
+    rider_filter = Filter.normalize(raw)
+
+    # Another filter in the address ends a trip's filter, as an edit does.
+    socket =
+      case rider_filter do
+        ^shown_rider_filter -> socket
+        _changed -> end_trip_filter(socket)
+      end
 
     socket =
-      assign(socket,
-        filter: filter,
+      socket
+      |> assign(
+        rider_filter: rider_filter,
         filter_supplied: raw != %{},
-        kept_route_ids: Routes.kept_ids(filter),
         tile_archive_url: tile_archive_url()
       )
+      |> assign_shown_filter()
 
     basemap =
       case manifest do
@@ -234,11 +264,11 @@ defmodule GobusgoWeb.VehicleLive do
 
         manifest ->
           manifest
-          |> BasemapSources.view(Filter.single_agency_id(filter))
-          |> fit_routes(socket)
+          |> BasemapSources.view(Filter.single_agency_id(rider_filter))
+          |> fit_routes(rider_filter)
       end
 
-    record_filter(socket, filter)
+    record_filter(socket, rider_filter)
 
     {:noreply,
      socket
@@ -349,6 +379,39 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply, push_every_agency(socket)}
   end
 
+  def handle_event("trip:names", params, socket) do
+    case Trip.names_request(params) do
+      :refused ->
+        {:reply, %{refused: true}, socket}
+
+      request ->
+        names =
+          Trip.names(%{
+            request: request,
+            held_stops: held_stops(request.stop_ids),
+            route_fetches: FetchView.current(@route_view)
+          })
+
+        {:reply, names, socket}
+    end
+  end
+
+  def handle_event("trip:filter", %{"route_ids" => route_ids}, socket) do
+    case Trip.filter(route_ids) do
+      :refused ->
+        {:noreply, socket}
+
+      filter ->
+        {:noreply, show_trip(socket, %{filter: filter, route_ids: Enum.uniq(route_ids)})}
+    end
+  end
+
+  # An event whose parameters name no routes is the browser's error and
+  # changes nothing.
+  def handle_event("trip:filter", _params, socket), do: {:noreply, socket}
+
+  def handle_event("trip:clear", _params, socket), do: {:noreply, show_trip(socket, nil)}
+
   def handle_event("stop-arrivals:open", %{"stop_id" => stop_id}, socket)
       when is_binary(stop_id) do
     case OpenStops.open(stop_id) do
@@ -394,11 +457,21 @@ defmodule GobusgoWeb.VehicleLive do
       markers and lines. --%>
       <PanelSheet.sheet detail={@basemap != nil}>
         <:summary :if={@basemap != nil}>
-          <.filter_summary filter={@filter} tokens={@filter_bar.tokens} />
+          <.filter_summary filter={@filter} tokens={@filter_bar.tokens} trip={@trip} />
         </:summary>
 
         <:tab :if={@basemap != nil} name="trip" label="Trip">
-          <p class="text-slate-600">Trip planning will appear here.</p>
+          <section
+            id="trip-planner"
+            phx-hook="TripPlanner"
+            phx-update="ignore"
+            aria-label="Plan a trip"
+            data-manifest-url={routing_manifest_url()}
+            data-name-count-max={Trip.name_count_max()}
+            data-route-count-max={Trip.route_count_max()}
+            class="trip-planner"
+          >
+          </section>
         </:tab>
 
         <:tab
@@ -461,14 +534,27 @@ defmodule GobusgoWeb.VehicleLive do
 
   attr :filter, :any, required: true
   attr :tokens, :list, required: true
+  attr :trip, :any, required: true
 
   # The line that names the filter the map shows: its agencies by the agency
   # view's names, then its routes by the route view's, an agency or a route
-  # a view does not hold by its identifier.
+  # a view does not hold by its identifier. A trip's filter is named as the
+  # trip's routes, in the order the journey rides them.
   defp filter_summary(%{filter: :refused} = assigns) do
     ~H"""
     <p id="filter-refused">
       This filter is not valid. <.link patch="/vehicles" class="underline">Remove the filter</.link>
+    </p>
+    """
+  end
+
+  defp filter_summary(%{trip: %{route_ids: route_ids}} = assigns) do
+    names = Map.new(for %{field: "route", id: id, name: name} <- assigns.tokens, do: {id, name})
+    assigns = assign(assigns, route_names: for(id <- route_ids, do: Map.get(names, id, id)))
+
+    ~H"""
+    <p id="filter-trip" class="panel-sheet-summary-line">
+      Showing the trip's routes: {Enum.join(@route_names, ", ")}
     </p>
     """
   end
@@ -494,6 +580,8 @@ defmodule GobusgoWeb.VehicleLive do
     </p>
     """
   end
+
+  defp routing_manifest_url, do: @routing_manifest_url
 
   defp filter_count(filter),
     do: length(Filter.agency_ids(filter)) + length(Filter.route_ids(filter))
@@ -689,13 +777,13 @@ defmodule GobusgoWeb.VehicleLive do
   # Under a filter that names routes, the view fitted to the stops of the
   # routes it keeps. A filter whose routes have no stop in the stop view
   # leaves the view as it is.
-  defp fit_routes(view, socket) do
-    case Filter.route_ids(socket.assigns.filter) do
+  defp fit_routes(view, filter) do
+    case Filter.route_ids(filter) do
       [] ->
         view
 
       [_route_id | _rest] ->
-        positions = Routes.stop_positions(socket.assigns.kept_route_ids)
+        positions = Routes.stop_positions(Routes.kept_ids(filter))
 
         case MapExtent.bounds(%{positions: positions, within: view.archive_bounds}) do
           nil -> view
@@ -725,7 +813,8 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   # A change of the filter bar that leaves another accepted filter than the
-  # page shows goes into the address, and the browser stores it.
+  # page shows goes into the address, and the browser stores it. It ends a
+  # trip's filter, so the address's filter is the one shown after it.
   defp apply_filter_change(socket, changed) do
     shown_filter = socket.assigns.filter
 
@@ -738,9 +827,52 @@ defmodule GobusgoWeb.VehicleLive do
 
       filter ->
         socket
+        |> end_trip_filter()
         |> push_event("vehicle-filter:store", %{filter: filter})
         |> push_patch(to: path(filter))
     end
+  end
+
+  # Ends the trip's filter and tells the browser, whose trip stays open.
+  # The filter shown is the caller's to assign.
+  defp end_trip_filter(%{assigns: %{trip: nil}} = socket), do: socket
+
+  defp end_trip_filter(socket) do
+    socket |> assign(trip: nil) |> push_event(@trip_filter_ended_event, %{})
+  end
+
+  # The filter the page shows, a trip's while one is open and the rider's
+  # otherwise, with the routes it keeps.
+  defp assign_shown_filter(socket) do
+    filter =
+      case socket.assigns.trip do
+        nil -> socket.assigns.rider_filter
+        %{filter: trip_filter} -> trip_filter
+      end
+
+    assign(socket, filter: filter, kept_route_ids: Routes.kept_ids(filter))
+  end
+
+  # Shows `trip`, or the rider's own filter for `nil`, and sends what it
+  # changes; neither the address nor the stored filter changes.
+  defp show_trip(socket, trip) do
+    shown_filter = socket.assigns.filter
+
+    socket
+    |> assign(trip: trip)
+    |> assign_shown_filter()
+    |> assign_filter_bar(FetchView.current(@route_view))
+    |> assign_service_alerts()
+    |> push_filter_change(shown_filter)
+  end
+
+  # The stops of `stop_ids` that the stop view holds, by identifier.
+  defp held_stops(stop_ids) do
+    for stop_id <- stop_ids,
+        held_stop = StopView.stop(StopView, stop_id),
+        held_stop != nil,
+        into: %{},
+        do: {stop_id, held_stop}
   end
 
   # The tokens and the suggestions of the page's filter, of the text in the

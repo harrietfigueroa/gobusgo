@@ -57,6 +57,8 @@
   --filter-suggestion-height-min: 44px;
   --filter-suggestion-active-fill: #dcfce7;
   --filter-kind-color: #475569;
+  --trip-origin-color: #16a34a;
+  --trip-destination-color: #dc2626;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -100,6 +102,8 @@
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
+  --trip-origin-color: #22c55e;
+  --trip-destination-color: #f87171;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -721,6 +725,195 @@
   background-color: var(--filter-suggestion-active-fill);
 }
 
+/* The Trip tab: the two ends beside the swap button, then the journeys,
+   each a button that selects it, with the steps of the selected one under
+   it. */
+.trip-planner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trip-ends {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.trip-fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trip-field,
+.trip-swap,
+.trip-menu-item,
+.trip-journey {
+  border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  cursor: pointer;
+}
+
+.trip-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--close-button-hit-size);
+  padding: 0 10px;
+  text-align: left;
+}
+
+.trip-field[aria-expanded="true"] {
+  border-color: var(--surface-border-color);
+}
+
+.trip-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.trip-dot-from {
+  background-color: var(--trip-origin-color);
+}
+
+.trip-dot-to {
+  background-color: var(--trip-destination-color);
+}
+
+.trip-field-label {
+  flex: none;
+  width: 2.5rem;
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
+}
+
+.trip-field-value {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trip-field-empty {
+  color: var(--filter-kind-color);
+  font-weight: 400;
+}
+
+.trip-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trip-menu[hidden] {
+  display: none;
+}
+
+.trip-menu-item {
+  min-height: var(--close-button-hit-size);
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.trip-swap {
+  flex: none;
+  width: var(--close-button-hit-size);
+  font-size: 1.125rem;
+}
+
+.trip-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-status:empty,
+.trip-window:empty {
+  display: none;
+}
+
+.trip-window {
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
+}
+
+.trip-journeys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-journey {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.trip-journey[aria-pressed="true"] {
+  border: 2px solid var(--surface-border-color);
+}
+
+.trip-journey-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trip-journey-badge {
+  color: var(--filter-kind-color);
+}
+
+.trip-journey-earliest {
+  color: var(--panel-sheet-selected-color);
+  font-weight: 600;
+}
+
+.trip-journey-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+.trip-journey-summary .route-chip {
+  font-weight: 700;
+}
+
+.trip-journey-walk,
+.trip-journey-changes {
+  color: var(--filter-kind-color);
+}
+
+.trip-journey-changes {
+  margin-left: auto;
+}
+
+.trip-journey-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 4px 0 12px;
+  border-left: 2px solid var(--panel-sheet-rule-color);
+  font-size: 0.8125rem;
+}
+
+.trip-clear[hidden] {
+  display: none;
+}
+
+.trip-field:focus-visible,
+.trip-swap:focus-visible,
+.trip-menu-item:focus-visible,
+.trip-journey:focus-visible,
 .panel-sheet-handle:focus-visible,
 .panel-sheet-back:focus-visible,
 .panel-detail-action:focus-visible,

@@ -33,7 +33,7 @@ function writeStored() {
 // Whether the browser gives a position with no prompt. A browser without
 // the Permissions API, and one that refuses the query, reads as one that
 // prompts.
-async function permissionGranted() {
+export async function permissionGranted() {
   if (navigator.permissions === undefined) {
     return false
   }
