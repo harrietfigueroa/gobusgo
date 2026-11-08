@@ -103,6 +103,28 @@ defmodule GobusgoWeb.AppInfo do
            "or dark setting of your device while the page is open. Gobusgo's server never " <>
            "learns it."
 
+  # Safari has no install prompt, so its offers say where its own menu adds
+  # the page.
+  @install_offers [
+    %{
+      kind: "prompt",
+      text:
+        "Install Gobusgo to open it from your home screen or your apps, in a window of its own."
+    },
+    %{
+      kind: "appleHomeScreen",
+      text:
+        "To install Gobusgo, tap Share, then Add to Home Screen. It opens from your Home " <>
+          "Screen in a window of its own."
+    },
+    %{
+      kind: "appleDock",
+      text:
+        "To install Gobusgo, choose File › Add to Dock in Safari. It opens from your Dock " <>
+          "in a window of its own."
+    }
+  ]
+
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
   @components [
@@ -212,6 +234,14 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page keeps a rider's theme setting."
   @spec theme() :: String.t()
   def theme, do: @theme
+
+  @doc """
+  The ways a map page offers to install the application, each with its
+  `kind` and its `text`; the browser shows the one its own install offer
+  calls for, or none.
+  """
+  @spec install_offers() :: [%{kind: String.t(), text: String.t()}, ...]
+  def install_offers, do: @install_offers
 
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()

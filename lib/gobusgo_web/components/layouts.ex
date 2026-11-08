@@ -2,8 +2,10 @@ defmodule GobusgoWeb.Layouts do
   @moduledoc """
   The layouts browser pages render inside. `root/1` is the HTML document:
   the head with the CSRF token, the commit the application was built from
-  where the build names one, the script that draws the page in the rider's
-  theme, and the built assets, and the page as the body.
+  where the build names one, the web app manifest, the icon a home screen
+  draws, the theme color of each color scheme, the script that draws the
+  page in the rider's theme, and the built assets, and the page as the body
+  with the offer to reload into a new release.
   """
 
   use Phoenix.Component
@@ -13,6 +15,9 @@ defmodule GobusgoWeb.Layouts do
   alias GobusgoWeb.Endpoint
 
   @theme_setting_key "gobusgo:theme"
+  # The page backgrounds of the light and the dark theme in assets/css/app.css.
+  @theme_color_light "#ffffff"
+  @theme_color_dark "#0f172a"
 
   # Runs before the stylesheet applies, so the first paint is in the theme
   # the rider's setting resolves to: "light" or "dark" as stored, and with
@@ -46,7 +51,14 @@ defmodule GobusgoWeb.Layouts do
 
   def root(assigns) do
     {:ok, revision} = Gobusgo.Config.revision()
-    assigns = assign(assigns, revision: revision, theme_script: @theme_script)
+
+    assigns =
+      assign(assigns,
+        revision: revision,
+        theme_script: @theme_script,
+        theme_color_light: @theme_color_light,
+        theme_color_dark: @theme_color_dark
+      )
 
     # `revision` is the WHATWG MetaExtensions name for the revision a version
     # control system reports.
@@ -60,6 +72,12 @@ defmodule GobusgoWeb.Layouts do
         <meta name="csrf-token" content={get_csrf_token()} />
         <meta :if={@revision} name="revision" content={@revision} />
         <title>Gobusgo</title>
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: light)"
+          content={@theme_color_light}
+        />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content={@theme_color_dark} />
         <script>
           <%= Phoenix.HTML.raw(@theme_script) %>
         </script>
@@ -71,9 +89,20 @@ defmodule GobusgoWeb.Layouts do
           src={Endpoint.static_path("/assets/js/app.js")}
         >
         </script>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>
       <body class="bg-white text-slate-900">
         {@inner_content}
+        <div
+          id="release-update"
+          class="surface fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 px-4 py-2"
+          role="status"
+          hidden
+        >
+          <p>A new version of Gobusgo is ready.</p>
+          <button type="button" class="font-semibold underline" data-release-reload>Reload</button>
+        </div>
       </body>
     </html>
     """

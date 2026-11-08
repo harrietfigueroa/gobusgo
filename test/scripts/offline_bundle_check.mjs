@@ -1,11 +1,12 @@
 // Checks the offline bundle plan and status as pure functions of a manifest
 // and a saved index written out by hand: which service dates and files a
-// bundle holds, and what a rider is told about a saved one. Run it with
+// bundle holds, what a rider is told about a saved one, and the sentence
+// that says whether the browser keeps it. Run it with
 // `node test/scripts/offline_bundle_check.mjs`; it exits non-zero on the
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {IndexKind, PlanKind, StatusKind, bundleStatus, planBundle, stalePaths} from "../../assets/js/offline_bundle.js"
+import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "../../assets/js/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -78,4 +79,9 @@ deepStrictEqual(bundleStatus({savedIndex: {kind: IndexKind.none}, presentPaths: 
 deepStrictEqual(bundleStatus({savedIndex, presentPaths: morning.paths, nowMs: pastEveryDateMs}), {kind: StatusKind.notSaved})
 
 deepStrictEqual(stalePaths({index: {paths: ["/a", "/b"]}, storedPaths: ["/a", "/old", "/b"]}), ["/old"])
+
+// Each answer to the request to keep storage gets its own sentence.
+deepStrictEqual(persistenceText(PersistenceKind.granted), "Your browser keeps them until you remove them.")
+deepStrictEqual(persistenceText(PersistenceKind.notGranted), "Your browser can remove them when the device runs short of space.")
+deepStrictEqual(persistenceText(PersistenceKind.unknown), "Your browser does not say whether it keeps them.")
 console.log("offline bundle: every case holds")

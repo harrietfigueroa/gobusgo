@@ -33,3 +33,4 @@ gobusgo-*.tar
 # Built assets
 /priv/static/assets/
 /priv/static/cache_manifest.json
+/priv/static/sw.js

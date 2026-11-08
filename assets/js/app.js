@@ -5,10 +5,12 @@ import {Basemap} from "./basemap"
 import {ColorTheme, followSystemTheme} from "./color_theme"
 import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
+import {InstallApp} from "./install_app"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineSchedules} from "./offline_schedules"
 import {PanelSheet} from "./panel_sheet"
+import {registerServiceWorker} from "./release_update"
 import {LocalTime} from "./service_alerts"
 import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
@@ -42,6 +44,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     ColorTheme,
     FavoriteStop,
     FilterBar,
+    InstallApp,
     LocalTime,
     OfflineSchedules,
     PanelSheet,
@@ -57,6 +60,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
 
 followSystemTheme()
 liveSocket.connect()
+registerServiceWorker()
 
 // Exposed for debugging from the browser console, such as liveSocket.enableDebug().
 window.liveSocket = liveSocket

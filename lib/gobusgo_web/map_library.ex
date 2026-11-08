@@ -1,6 +1,7 @@
 defmodule GobusgoWeb.MapLibrary do
   @package_name "maplibre-gl"
   @entry_file "maplibre-gl.mjs"
+  @module_files ["maplibre-gl.mjs", "maplibre-gl-shared.mjs", "maplibre-gl-worker.mjs"]
   @built_path "/assets/vendor"
 
   @moduledoc """
@@ -44,4 +45,14 @@ defmodule GobusgoWeb.MapLibrary do
   @doc "Returns the address of the file a page imports to load the library at `version`."
   @spec url(String.t()) :: String.t()
   def url(version), do: "#{@built_path}/#{directory(version)}/#{@entry_file}"
+
+  @doc """
+  Returns the addresses of the library's module files at `version`: the one
+  a page imports, and the two it loads from beside it.
+  """
+  @spec module_paths(String.t()) :: [String.t(), ...]
+  def module_paths(version) do
+    directory = directory(version)
+    Enum.map(@module_files, &"#{@built_path}/#{directory}/#{&1}")
+  end
 end

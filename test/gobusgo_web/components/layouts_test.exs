@@ -50,9 +50,47 @@ defmodule GobusgoWeb.LayoutsTest do
     assert script =~ "document.documentElement.dataset.theme"
   end
 
+  test "links the web app manifest" do
+    assert head(~s(link[rel="manifest"])) |> LazyHTML.attribute("href") == [
+             "/manifest.webmanifest"
+           ]
+  end
+
+  test "links the icon a home screen draws" do
+    assert head(~s(link[rel="apple-touch-icon"])) |> LazyHTML.attribute("href") == [
+             "/icons/apple-touch-icon.png"
+           ]
+  end
+
+  test "names a theme color for a light and for a dark color scheme" do
+    media = head(~s(meta[name="theme-color"])) |> LazyHTML.attribute("media")
+
+    assert Enum.sort(media) == ["(prefers-color-scheme: dark)", "(prefers-color-scheme: light)"]
+  end
+
+  test "names the manifest's theme color for a light color scheme" do
+    manifest = "priv/static/manifest.webmanifest" |> File.read!() |> JSON.decode!()
+    light = head(~s{meta[name="theme-color"][media="(prefers-color-scheme: light)"]})
+
+    assert LazyHTML.attribute(light, "content") == [manifest["theme_color"]]
+  end
+
+  test "has a reload offer for a new release, hidden until the browser shows it" do
+    offer = LazyHTML.from_document(html_response(get(build_conn(), "/"), 200))
+    offer = LazyHTML.query(offer, "body #release-update[hidden] button[data-release-reload]")
+
+    assert Enum.count(offer) == 1
+  end
+
   test "reads the theme setting under the key the browser's hook stores it under" do
     hook = File.read!("assets/js/color_theme.js")
 
     assert hook =~ ~s(const SETTING_KEY = "#{Layouts.theme_setting_key()}")
+  end
+
+  test "reads the theme setting in the offline screen under the key the browser's hook stores it under" do
+    worker = File.read!("assets/js/service_worker.js")
+
+    assert worker =~ ~s(const THEME_SETTING_KEY = "#{Layouts.theme_setting_key()}")
   end
 end

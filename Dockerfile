@@ -33,6 +33,10 @@ RUN mix assets.tools
 
 COPY assets assets
 COPY lib lib
+# The web app manifest and its icons are checked in where the endpoint
+# serves them; the rest of priv/static is built here.
+COPY priv/static/manifest.webmanifest priv/static/manifest.webmanifest
+COPY priv/static/icons priv/static/icons
 RUN mix compile
 
 # Downloads the vendored front-end packages that assets/vendor.lock.json pins

@@ -292,6 +292,41 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
+    test "hands the install section to its hook, hidden until the browser offers an install" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(
+               view,
+               @panel <>
+                 ~s( #app-info-install[hidden][phx-hook="InstallApp"][phx-update="ignore"])
+             )
+    end
+
+    for %{kind: kind, text: text} <- AppInfo.install_offers() do
+      test "holds the #{kind} install offer, hidden until the browser picks it" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+        offer =
+          view
+          |> element(
+            @panel <> ~s( #app-info-install [data-install-kind="#{unquote(kind)}"][hidden])
+          )
+          |> render()
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.text()
+
+        assert offer =~ unquote(text)
+      end
+    end
+
+    test "offers an install button inside the browser's install offer" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view
+             |> element(@panel <> ~s( #app-info-install [data-install-kind="prompt"] button))
+             |> render() =~ "Install app"
+    end
+
     test "says how the theme is kept, in a section of its own" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
