@@ -41,6 +41,9 @@
   --panel-sheet-badge-fill: #0f172a;
   --panel-sheet-alert-badge-fill: #b45309;
   --panel-sheet-selected-color: #15803d;
+  --popup-selected-text-color: #ffffff;
+  --panel-detail-action-fill: #ffffff;
+  --panel-detail-action-pressed-fill: #dcfce7;
   --filter-bar-height-min: 44px;
   --filter-bar-fill: #ffffff;
   --filter-token-height: 28px;
@@ -201,9 +204,9 @@
   font-weight: 600;
 }
 
-/* A popup's compact row of route numbers is a button that shows or hides
-   the popup's details. A chip without a color of its own counts the
-   routes the row leaves out. */
+/* A popup's compact row of route numbers is a button that opens the
+   popup's item in the panel sheet's details view. A chip without a color
+   of its own counts the routes the row leaves out. */
 .route-chip-row {
   flex-wrap: wrap;
   gap: var(--route-chip-gap);
@@ -227,6 +230,30 @@
   color: var(--route-chip-count-color);
   padding: 0 0.4em;
   line-height: 1.5;
+}
+
+/* The note beside a popup's route numbers: a stop's next arrival or a
+   vehicle's lateness. */
+.route-chip-note {
+  margin-left: 2px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.route-chip-note[hidden] {
+  display: none;
+}
+
+/* The popup of the item the details view shows is filled with the surface
+   border's color, its tip with it, and its chips ringed to stand apart. */
+.popup-selected .maplibregl-popup-content,
+.popup-selected .maplibregl-popup-tip {
+  background-color: var(--surface-border-color);
+  color: var(--popup-selected-text-color);
+}
+
+.popup-selected .route-chip {
+  box-shadow: 0 0 0 1px var(--popup-selected-text-color);
 }
 
 /* A popup's alert line is one line of the popup's width, cut with an
@@ -403,6 +430,96 @@
   padding: 12px 16px;
 }
 
+/* The details view stands in place of the summary, the tabs, and the
+   panels while it shows an item: a back button beside the item's title,
+   and the item's content under them. */
+.panel-sheet:has(> .panel-sheet-detail:not([hidden])) > :is(.panel-sheet-summary, .panel-sheet-tabs, .panel-sheet-body) {
+  display: none;
+}
+
+.panel-sheet-detail {
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--close-button-hit-size) minmax(0, 1fr);
+  align-content: start;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
+.panel-sheet-detail[hidden] {
+  display: none;
+}
+
+.panel-sheet-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--close-button-hit-size);
+  height: var(--close-button-hit-size);
+  border-radius: var(--surface-radius);
+  cursor: pointer;
+}
+
+.panel-sheet-detail-content {
+  display: contents;
+}
+
+.panel-sheet-detail-content > :not(h2) {
+  grid-column: 1 / -1;
+}
+
+.panel-sheet-detail-content > div {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panel-sheet-detail-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.panel-detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--route-chip-gap);
+  font-weight: 700;
+}
+
+.panel-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.panel-detail-action {
+  min-height: var(--close-button-hit-size);
+  padding: 4px 8px;
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-detail-action[aria-pressed="true"] {
+  background-color: var(--panel-detail-action-pressed-fill);
+  color: var(--panel-sheet-selected-color);
+}
+
+.panel-detail-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.panel-detail-arrivals p:first-child {
+  font-weight: 600;
+}
+
 /* The filter bar holds its tokens and its text box in one box, as one text
    field, and its suggestions under it. */
 .filter-bar {
@@ -507,6 +624,8 @@
 }
 
 .panel-sheet-handle:focus-visible,
+.panel-sheet-back:focus-visible,
+.panel-detail-action:focus-visible,
 .panel-sheet-tab:focus-visible,
 .panel-sheet-panel:focus-visible {
   outline: 2px solid var(--close-button-focus-color);
@@ -517,6 +636,11 @@
    the sheet is expanded or dragged, and always on a wide one. */
 @media (width < 48rem) {
   .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
+    display: none;
+  }
+
+  /* A collapsed sheet keeps the details view's back button and title. */
+  .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-detail-content > :not(h2) {
     display: none;
   }
 

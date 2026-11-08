@@ -3,6 +3,14 @@ import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {compactPopupContent} from "./route_chips"
 import {alertLines} from "./service_alerts"
+import {
+  CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
+  DetailKind,
+  showDetail,
+  showsDetail,
+  updateDetail
+} from "./panel_detail"
+import {revealOnMap} from "./panel_sheet"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -28,7 +36,10 @@ const MARKER_STROKE_COLOR = "#ffffff"
 const STATUS_OPACITY_FALLBACK = 1
 const POSITION_NOTE = "Marker position: the source's estimate"
 const NOT_SUPPLIED = "Not supplied"
-const TITLE_CLASS_NAME = "popup-title"
+const FACTS_CLASS_NAME = "panel-detail-facts"
+const ALERTS_CLASS_NAME = "panel-detail-alerts"
+// The class of the popup of the vehicle the details view shows.
+const SELECTED_POPUP_CLASS_NAME = "popup-selected"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
@@ -63,28 +74,44 @@ function placeMarkers({markersByAgency, drawn, startMs, reducedMotion}) {
       }
 
       placed.set(marker.id, position)
-      features.push({
-        type: "Feature",
-        geometry: point(position),
-        properties: {
-          markerId: marker.id,
-          vehicleId: marker.vehicle_id,
-          heading: marker.heading,
-          color: marker.color,
-          routeId: marker.route_id,
-          route: marker.route,
-          headsign: marker.headsign,
-          schedule: marker.schedule,
-          nextStop: marker.next_stop,
-          status: marker.status,
-          locationAge: marker.location_age,
-          realTime: marker.real_time
-        }
-      })
+      features.push({type: "Feature", geometry: point(position), properties: markerProperties(marker)})
     }
   }
 
   return {collection: {type: "FeatureCollection", features}, drawn: placed, gliding}
+}
+
+// The texts a marker's label, popup, and view show, as its feature holds
+// them.
+function markerProperties(marker) {
+  return {
+    markerId: marker.id,
+    vehicleId: marker.vehicle_id,
+    heading: marker.heading,
+    color: marker.color,
+    routeId: marker.route_id,
+    route: marker.route,
+    headsign: marker.headsign,
+    schedule: marker.schedule,
+    nextStop: marker.next_stop,
+    status: marker.status,
+    locationAge: marker.location_age,
+    realTime: marker.real_time
+  }
+}
+
+const MarkerLookupKind = Object.freeze({found: "found", missing: "missing"})
+
+// The marker of `markerId` among `markers`, or missing where they do not
+// hold it.
+function findMarker({markers, markerId}) {
+  const marker = markers.find((candidate) => candidate.id === markerId)
+
+  if (marker === undefined) {
+    return {kind: MarkerLookupKind.missing}
+  } else {
+    return {kind: MarkerLookupKind.found, marker}
+  }
 }
 
 function statusCase({status, opacity}) {
@@ -169,10 +196,30 @@ function appendParagraphs(content, lines) {
   }
 }
 
-// A popup's content is built as text nodes: the vehicle identifier comes
+// The view's title: the route and where it goes, or the vehicle for one
+// with neither.
+function vehicleViewTitle(properties) {
+  const names = []
+
+  if (typeof properties.route === "string") {
+    names.push(properties.route)
+  }
+
+  if (typeof properties.headsign === "string") {
+    names.push(`to ${properties.headsign}`)
+  }
+
+  if (names.length === 0) {
+    return `Vehicle ${properties.vehicleId}`
+  } else {
+    return names.join(" ")
+  }
+}
+
+// A vehicle's view is built as text nodes: the vehicle identifier comes
 // from outside the application and is never parsed as HTML. The current
 // alerts of the vehicle's route stand under its route and headsign.
-function popupContent(properties, statusLabels) {
+function vehicleViewContent(properties, statusLabels) {
   const tripLines = [
     `Vehicle ${properties.vehicleId}`,
     `Route: ${suppliedText(properties.route)}`,
@@ -193,34 +240,50 @@ function popupContent(properties, statusLabels) {
   }
 
   const content = document.createElement("div")
+  const trip = document.createElement("div")
+  trip.className = FACTS_CLASS_NAME
+  appendParagraphs(trip, tripLines)
 
-  appendParagraphs(content, tripLines)
+  const alerts = document.createElement("div")
+  alerts.className = ALERTS_CLASS_NAME
 
   for (const alertLine of alertLines({routeIds, stopId: null})) {
-    content.append(alertLine)
+    alerts.append(alertLine)
   }
 
-  appendParagraphs(content, detailLines)
+  const details = document.createElement("div")
+  details.className = FACTS_CLASS_NAME
+  appendParagraphs(details, detailLines)
 
-  content.firstElementChild.className = TITLE_CLASS_NAME
+  content.append(trip, alerts, details)
   return content
 }
 
-// A vehicle's popup opens as its route's number in its marker's color.
-function compactVehicleContent(properties, statusLabels) {
+// A vehicle's popup is its route's number in its marker's color, with its
+// lateness beside it where the marker has one. A click on it hands the
+// vehicle to `onSelect`.
+function compactVehicleContent({properties, onSelect}) {
   const chips = []
+  let noteText = ""
 
   if (typeof properties.route === "string") {
     chips.push({name: properties.route, color: properties.color})
   }
 
-  return compactPopupContent({
+  if (typeof properties.schedule === "string") {
+    noteText = properties.schedule
+  }
+
+  const {content} = compactPopupContent({
     chips,
     countMax: 1,
     emptyText: `Vehicle ${properties.vehicleId}`,
-    label: `Vehicle ${properties.vehicleId}: show details`,
-    details: popupContent(properties, statusLabels)
+    noteText,
+    label: `Vehicle ${properties.vehicleId}: show the vehicle`,
+    onSelect
   })
+
+  return content
 }
 
 function statusLabelEntry({status, label}) {
@@ -241,6 +304,25 @@ export const VehicleMarkers = {
     this.drawn = new Map()
     this.gliding = new Map()
     this.frame = null
+    // The marker the details view shows, or null while it shows none, and
+    // the texts it was last written from.
+    this.viewMarkerId = null
+    this.viewText = ""
+    // The rider's popup of a vehicle, with its marker, or null while none
+    // is open.
+    this.riderPopup = null
+
+    // The view moving to a stop, or closing, unmarks the vehicle's popup.
+    this.onDetailChange = () => {
+      const isViewLeft = this.viewMarkerId !== null && showsDetail({kind: DetailKind.vehicle, id: this.viewMarkerId}) === false
+
+      if (isViewLeft) {
+        this.viewMarkerId = null
+        this.markSelected()
+      }
+    }
+
+    window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
@@ -255,6 +337,7 @@ export const VehicleMarkers = {
     this.handleEvent("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
       this.markersByAgency.set(agencyId, markers)
       this.draw()
+      this.updateView(markers)
     })
 
     this.pushEvent("vehicle-markers:ready", {})
@@ -341,15 +424,31 @@ export const VehicleMarkers = {
     const canvas = map.getCanvas()
 
     for (const layerName of markerLayerNames) {
+      // A click on a vehicle opens its compact popup and shows the vehicle
+      // in the details view.
       map.on("click", layerName, (event) => {
         const [feature] = event.features
+        const {properties} = feature
+        const lngLat = feature.geometry.coordinates
+        const onSelect = () => { this.selectVehicle({properties, lngLat}) }
 
         const popup = new maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
-          .setLngLat(feature.geometry.coordinates)
-          .setDOMContent(compactVehicleContent(feature.properties, this.statusLabels))
+          .setLngLat(lngLat)
+          .setDOMContent(compactVehicleContent({properties, onSelect}))
 
-        popup.on("close", announceRiderPopupChange)
+        const riderPopup = {popup, markerId: properties.markerId}
+
+        popup.on("close", () => {
+          if (this.riderPopup === riderPopup) {
+            this.riderPopup = null
+          }
+
+          announceRiderPopupChange()
+        })
+
         popup.addTo(map)
+        this.riderPopup = riderPopup
+        this.selectVehicle({properties, lngLat})
         announceRiderPopupChange()
       })
 
@@ -373,6 +472,62 @@ export const VehicleMarkers = {
       this.gliding = gliding
       this.map.getSource(SOURCE_NAME).setData(collection)
       this.requestGlideFrame()
+    }
+  },
+
+  // Shows the vehicle of `properties` in the details view, marks its popup,
+  // and moves the map so the vehicle, at `lngLat`, stands beside the sheet.
+  selectVehicle({properties, lngLat}) {
+    this.viewMarkerId = properties.markerId
+    this.viewText = JSON.stringify(properties)
+    showDetail({
+      kind: DetailKind.vehicle,
+      id: properties.markerId,
+      title: vehicleViewTitle(properties),
+      content: vehicleViewContent(properties, this.statusLabels)
+    })
+    this.markSelected()
+
+    if (this.map !== null) {
+      revealOnMap({map: this.map, lngLat})
+    }
+  },
+
+  // Writes the view of the vehicle it shows from `markers`, one agency's
+  // latest fetch, where they hold that vehicle. A vehicle no fetch holds
+  // any more keeps the view it has.
+  updateView(markers) {
+    if (this.viewMarkerId === null) {
+      return
+    }
+
+    const lookup = findMarker({markers, markerId: this.viewMarkerId})
+
+    if (lookup.kind === MarkerLookupKind.missing) {
+      return
+    }
+
+    // A fetch that leaves the vehicle's texts as they were leaves the view,
+    // and the focus in it, as it is.
+    const properties = markerProperties(lookup.marker)
+    const viewText = JSON.stringify(properties)
+
+    if (viewText !== this.viewText) {
+      this.viewText = viewText
+
+      updateDetail({
+        kind: DetailKind.vehicle,
+        id: properties.markerId,
+        title: vehicleViewTitle(properties),
+        content: vehicleViewContent(properties, this.statusLabels)
+      })
+    }
+  },
+
+  markSelected() {
+    if (this.riderPopup !== null) {
+      const isSelected = this.riderPopup.markerId === this.viewMarkerId
+      this.riderPopup.popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
     }
   },
 
@@ -419,5 +574,6 @@ export const VehicleMarkers = {
   destroyed() {
     this.stopGliding()
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
   }
 }

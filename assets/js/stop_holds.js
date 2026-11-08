@@ -1,10 +1,12 @@
 // The stops the page has open for the server, and what in the page holds
-// each one: a stop's popup, the favorite stop's panel, or both. The page
-// registers an open stop in the demand registry once however many hold it,
-// so a stop is closed for the server only when its last holder lets go.
+// each one: a stop's popup, the favorite stop's panel, the details view of
+// the panel sheet, or several of them. The page registers an open stop in
+// the demand registry once however many hold it, so a stop is closed for
+// the server only when its last holder lets go.
 
 export const POPUP_HOLDER = "popup"
 export const FAVORITE_HOLDER = "favorite"
+export const VIEW_HOLDER = "view"
 
 const OPEN_EVENT_NAME = "stop-arrivals:open"
 const CLOSE_EVENT_NAME = "stop-arrivals:close"
