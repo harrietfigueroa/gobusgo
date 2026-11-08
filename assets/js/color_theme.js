@@ -1,39 +1,19 @@
 // Keeps the page in the theme the rider's setting resolves to. The setting
-// is kept in local storage, with Match system kept as no value, and the
+// is kept by the stored settings module, and the
 // theme is the `data-theme` attribute of the document's root element, which
 // the root layout's head first sets before the page is drawn. A change of
 // the theme is announced on the window with the "gobusgo:theme-change"
 // event, whose detail holds the theme.
 
-import {parseSetting, resolveTheme, settingStatusText, Theme, ThemeSetting} from "./theme"
+import {parseSetting, resolveTheme, settingStatusText, Theme} from "./theme"
+import {storedSettings} from "./stored_settings"
 
-const SETTING_KEY = "gobusgo:theme"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 
 export const CHANGE_EVENT_NAME = "gobusgo:theme-change"
 
-// The rider's setting. Storage that throws, as in a private window, reads
-// as the default, Match system.
 function storedSetting() {
-  try {
-    const stored = window.localStorage.getItem(SETTING_KEY)
-    return parseSetting(stored)
-  } catch (error) {
-    console.warn("Theme setting not readable", error)
-    return ThemeSetting.system
-  }
-}
-
-function storeSetting(setting) {
-  try {
-    if (setting === ThemeSetting.system) {
-      window.localStorage.removeItem(SETTING_KEY)
-    } else {
-      window.localStorage.setItem(SETTING_KEY, setting)
-    }
-  } catch (error) {
-    console.warn("Theme setting not stored", error)
-  }
+  return storedSettings.readTheme()
 }
 
 function systemDark() {
@@ -98,7 +78,7 @@ export const ColorTheme = {
 
     this.el.addEventListener("change", (event) => {
       const chosen = parseSetting(event.target.value)
-      storeSetting(chosen)
+      storedSettings.writeTheme(chosen)
       applySetting(chosen)
       writeStatus(this.el)
     })

@@ -7,8 +7,6 @@ defmodule GobusgoWeb.LayoutsTest do
 
   import Phoenix.ConnTest
 
-  alias GobusgoWeb.Layouts
-
   @endpoint GobusgoWeb.Endpoint
   @revision "43402796c905c22db533043dee878950c74d5791"
 
@@ -46,8 +44,18 @@ defmodule GobusgoWeb.LayoutsTest do
     [script] = head("script:not([src])") |> Enum.map(&LazyHTML.text/1)
 
     assert script_index < stylesheet_index
-    assert script =~ ~s{localStorage.getItem("#{Layouts.theme_setting_key()}")}
     assert script =~ "document.documentElement.dataset.theme"
+  end
+
+  test "reads the theme setting under the key and with the stored themes of the stored settings module" do
+    %{"keys" => %{"theme" => key}, "storedThemes" => stored_themes} =
+      "assets/js/stored_settings.json" |> File.read!() |> JSON.decode!()
+
+    [script] = head("script:not([src])") |> Enum.map(&LazyHTML.text/1)
+
+    assert script =~ ~s{localStorage.getItem(#{JSON.encode!(key)})}
+    assert script =~ "var storedThemes = #{JSON.encode!(stored_themes)};"
+    assert script =~ "storedThemes.indexOf(setting) !== -1"
   end
 
   test "links the web app manifest" do
@@ -80,17 +88,5 @@ defmodule GobusgoWeb.LayoutsTest do
     offer = LazyHTML.query(offer, "body #release-update[hidden] button[data-release-reload]")
 
     assert Enum.count(offer) == 1
-  end
-
-  test "reads the theme setting under the key the browser's hook stores it under" do
-    hook = File.read!("assets/js/color_theme.js")
-
-    assert hook =~ ~s(const SETTING_KEY = "#{Layouts.theme_setting_key()}")
-  end
-
-  test "reads the theme setting in the offline screen under the key the browser's hook stores it under" do
-    worker = File.read!("assets/js/service_worker.js")
-
-    assert worker =~ ~s(const THEME_SETTING_KEY = "#{Layouts.theme_setting_key()}")
   end
 end

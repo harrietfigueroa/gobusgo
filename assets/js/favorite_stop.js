@@ -1,16 +1,16 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {appendParagraph, nextArrivalText, writeArrivals} from "./stop_arrivals"
 import {tripEndButtons} from "./trip_ends"
+import {FavoriteChangeKind, storedSettings} from "./stored_settings"
 
-// The rider's favorite stops, which this browser keeps in its local storage
-// as each stop's identifier and name, in the order they were added, and the
+// The rider's favorite stops, which the stored settings module keeps as
+// each stop's identifier and name, in the order they were added, and the
 // panel that shows each one's next arrivals whatever the page's filter keeps
 // and wherever its map is, with the next arrival at the first favorite in
 // the badge of the Favorites tab. Each favorite's stop is open for the
 // server while the panel shows it, as an open popup's stop is, so its
 // arrivals come with the "stop-arrivals:arrivals" event.
 
-const STORAGE_KEY = "gobusgo:favorite-stops"
 const ELEMENT_ID = "favorite-stop"
 const BADGE_ID = "favorite-stop-badge"
 const EMPTY_TEXT = "No favorite stops yet. Open a stop on the map and choose “☆ Make this your favorite stop”."
@@ -21,9 +21,6 @@ const REMOVE_LABEL_PREFIX = "Remove favorite stop"
 const ACTIONS_CLASS_NAME = "panel-detail-actions"
 const ACTION_CLASS_NAME = "panel-detail-action"
 const ENTRY_CLASS_NAME ="flex flex-col gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
-
-// The kinds of a stored entry read back as a favorite.
-const EntryKind = Object.freeze({favorite: "favorite", malformed: "malformed"})
 
 // The most favorites a rider keeps, which the panel's element carries, or
 // none on a page that has no panel.
@@ -43,97 +40,31 @@ export function favoritesFullText(countMax) {
 }
 
 // The favorites this browser stored, at most the most a rider keeps, each
-// once. Reading throws where storage is blocked, such as a private window,
-// and parsing throws for text that is not JSON; both read as no favorite,
-// and an entry of another shape is left out.
+// once.
 export function storedFavorites() {
-  let parsed
-
-  try {
-    const text = window.localStorage.getItem(STORAGE_KEY)
-
-    if (text === null) {
-      parsed = []
-    } else {
-      parsed = JSON.parse(text)
-    }
-  } catch (error) {
-    console.warn("Stored favorite stops not readable", error)
-    return []
-  }
-
-  return favoritesOf(parsed)
+  return storedSettings.listFavorites(favoriteCountMax())
 }
 
-function favoritesOf(value) {
-  const favorites = []
-
-  if (Array.isArray(value) === false) {
-    return favorites
-  }
-
-  for (const entry of value.slice(0, favoriteCountMax())) {
-    const read = favoriteOf(entry)
-
-    if (read.kind === EntryKind.favorite) {
-      const isNew = favorites.every((kept) => kept.stopId !== read.favorite.stopId)
-
-      if (isNew) {
-        favorites.push(read.favorite)
-      }
-    }
-  }
-
-  return favorites
-}
-
-function favoriteOf(value) {
-  const isObject = typeof value === "object" && value !== null
-  const hasStopIdText = isObject && typeof value.stopId === "string"
-  const hasStopId = hasStopIdText && value.stopId !== ""
-  const isFavorite = hasStopId && typeof value.name === "string"
-
-  if (isFavorite) {
-    return {kind: EntryKind.favorite, favorite: {stopId: value.stopId, name: value.name}}
-  } else {
-    return {kind: EntryKind.malformed}
-  }
-}
-
-// Stores `favorites` and announces them on the window with the
+// Announces a change of the favorites on the window with the
 // "gobusgo:favorite-stops-change" event.
-function storeFavorites(favorites) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites))
-  } catch (error) {
-    console.warn("Favorite stops not stored", error)
+function announceChange(change) {
+  if (change.kind === FavoriteChangeKind.changed) {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {favorites: change.favorites}}))
   }
-
-  window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {favorites}}))
 }
 
 // Adds `favorite`, a stop's identifier and name, after the rider's other
 // favorites. A stop that is a favorite already, or a favorite beyond the
 // most a rider keeps, changes nothing.
 export function addFavorite(favorite) {
-  const favorites = storedFavorites()
-  const isNew = favorites.every((kept) => kept.stopId !== favorite.stopId)
-  const hasRoom = favorites.length < favoriteCountMax()
-  const isAddable = isNew && hasRoom
-
-  if (isAddable) {
-    storeFavorites([...favorites, favorite])
-  }
+  const change = storedSettings.addFavorite({favorite, countMax: favoriteCountMax()})
+  announceChange(change)
 }
 
 // Removes the favorite of the stop `stopId`.
 export function removeFavorite(stopId) {
-  const favorites = storedFavorites()
-  const kept = favorites.filter((favorite) => favorite.stopId !== stopId)
-
-  if (kept.length < favorites.length) {
-    storeFavorites(kept)
-  }
+  const change = storedSettings.removeFavorite({stopId, countMax: favoriteCountMax()})
+  announceChange(change)
 }
 
 // What the panel shows of the server's answer for a favorite: its first
