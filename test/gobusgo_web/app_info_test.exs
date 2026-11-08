@@ -231,6 +231,67 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "shared_vehicles/1" do
+    @shared_vehicle_facts %{
+      operators: ["Lime"],
+      vehicle_file_names: ["vehicle_status", "free_bike_status", "free_bike_status"],
+      interval_ms: 60_000,
+      types_period_minutes: 1_440,
+      stored_age_ms_max: 600_000
+    }
+
+    defp shared_vehicles_text(facts \\ %{}) do
+      @shared_vehicle_facts |> Map.merge(facts) |> AppInfo.shared_vehicles() |> Enum.join(" ")
+    end
+
+    test "names each vehicle file once" do
+      assert shared_vehicles_text() =~ "vehicle_status or free_bike_status,"
+    end
+
+    test "says the vehicle types are requested once a day" do
+      assert shared_vehicles_text() =~ "vehicle types once a day"
+    end
+
+    test "says a request carries no key and no data about the rider" do
+      assert shared_vehicles_text() =~ "no key and no data about you"
+    end
+
+    for {interval_ms, text} <- [{60_000, "every 60 seconds"}, {300_000, "every 300 seconds"}] do
+      test "says the vehicles are requested #{text} for an interval of #{interval_ms} ms" do
+        assert shared_vehicles_text(%{interval_ms: unquote(interval_ms)}) =~
+                 "#{unquote(text)} for every page that shows it together"
+      end
+    end
+
+    test "says nothing is requested while no page shows the layer" do
+      assert shared_vehicles_text() =~ "never while no page shows it"
+    end
+
+    test "says what a page shows" do
+      assert shared_vehicles_text() =~ "position, its form factor, and its remaining range"
+    end
+
+    for {age_ms, text} <- [{600_000, "at most 10 minutes"}, {300_000, "at most 5 minutes"}] do
+      test "says responses are kept #{text} for an age of #{age_ms} ms" do
+        assert shared_vehicles_text(%{stored_age_ms_max: unquote(age_ms)}) =~ unquote(text)
+      end
+    end
+
+    test "says nothing kept is keyed on a vehicle's identifier" do
+      assert shared_vehicles_text() =~ "Nothing it keeps is keyed on a vehicle's identifier"
+    end
+
+    test "says the browser downloads tiles from gobusgo and never the operator's feed" do
+      assert shared_vehicles_text() =~ "from Gobusgo, never Lime's feed"
+    end
+
+    test "refuses a kept age that is no whole count of minutes" do
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        shared_vehicles_text(%{stored_age_ms_max: 90_000})
+      end
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =

@@ -21,8 +21,9 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
   ## A run
 
   `run/1` records each system of `Gobusgo.Gbfs.Systems.all/0` one after
-  another through `Gobusgo.Gbfs.VehicleStatusRecorder`, and logs each
-  outcome:
+  another through `Gobusgo.Gbfs.VehicleStatusRecorder`, then, with
+  `:tile_options`, publishes the system's new view entry to the browser
+  through `Gobusgo.Gbfs.VehicleTiles.Build`, and logs each outcome:
 
     * `info` `Shared vehicles recorded`, with the system, the version, the
       count of vehicles, and the request.
@@ -44,6 +45,9 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
       once-only log.
     * `:record_options`: options for
       `Gobusgo.Gbfs.VehicleStatusRecorder.record/2`.
+    * `:tile_options`: options for `Gobusgo.Gbfs.VehicleTiles.Build.run/2`,
+      which publishes each system's view entry to the browser after a fetch
+      that changes it, or `nil`, the default, to publish nothing.
   """
 
   require Logger
@@ -54,6 +58,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
   alias Gobusgo.Gbfs.Systems
   alias Gobusgo.Gbfs.VehicleStatusRecorder
   alias Gobusgo.Gbfs.VehicleStatusView
+  alias Gobusgo.Gbfs.VehicleTiles
   alias Gobusgo.Scheduler
 
   @type counts :: %{
@@ -95,13 +100,18 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
     spec
   end
 
+  @doc "The longest one run takes, in milliseconds."
+  @spec run_deadline_ms() :: pos_integer()
+  def run_deadline_ms, do: @run_deadline_ms
+
   @doc "Records the shared vehicles of every system once."
   @spec run(Keyword.t()) :: {:ok, counts()} | {:error, counts()}
   def run(options) when is_list(options) do
-    options = Keyword.validate!(options, [:view, record_options: []])
+    options = Keyword.validate!(options, [:view, record_options: [], tile_options: nil])
     view = Keyword.fetch!(options, :view)
     Assert.condition(is_atom(view), "view must be an atom, got: #{inspect(view)}")
     record_options = Keyword.fetch!(options, :record_options)
+    tile_options = Keyword.fetch!(options, :tile_options)
     counts = %{recorded_count: 0, not_published_count: 0, failed_count: 0}
 
     counts =
@@ -109,6 +119,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
         entry_before = VehicleStatusView.current(view, system.id)
         outcome = VehicleStatusRecorder.record(system, record_options)
         log(%{system_id: system.id, outcome: outcome, entry_before: entry_before})
+        publish_tiles(%{system_id: system.id, outcome: outcome, tile_options: tile_options})
         count(counts, outcome)
       end)
 
@@ -117,6 +128,18 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycle do
     else
       {:error, counts}
     end
+  end
+
+  # A recorded fetch and a feed found not published both change the view's
+  # entry, which the tiles follow; a failed fetch leaves both as they were.
+  # A tile failure is logged by the build and leaves the run's outcome to
+  # the fetch.
+  defp publish_tiles(%{tile_options: nil}), do: :ok
+  defp publish_tiles(%{outcome: {:error, _reason}}), do: :ok
+
+  defp publish_tiles(%{system_id: system_id, tile_options: tile_options}) do
+    _published = VehicleTiles.Build.run(system_id, tile_options)
+    :ok
   end
 
   defp count(counts, {:ok, %{kind: :recorded}}),

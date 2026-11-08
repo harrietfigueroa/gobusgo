@@ -174,6 +174,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                "app-info-disclaimer",
                "app-info-legend",
                "app-info-data-use",
+               "app-info-shared-vehicles",
                "app-info-location",
                "app-info-favorite-stop",
                "app-info-recorded",
@@ -186,6 +187,35 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert view |> element("#app-info-about") |> render() =~ AppInfo.about()
+    end
+  end
+
+  describe "the info panel's shared scooters and bikes" do
+    test "credits Lime with a link to its Public GBFS Terms" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, "#app-info-shared-vehicles-lime_seattle a", "href") ==
+               "https://www.li.me/legal/public-gbfs-terms"
+    end
+
+    # The texts are built from the facts the source, the recorder, and the
+    # retention run on, so the panel says what the configuration does.
+    test "states the facts the source and the retention run on" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      section = view |> element("#app-info-shared-vehicles") |> render()
+
+      for paragraph <- AppInfo.shared_vehicles(AppInfoPanel.shared_vehicle_facts()) do
+        assert section =~ Phoenix.HTML.html_escape(paragraph) |> Phoenix.HTML.safe_to_string()
+      end
+    end
+
+    test "reads the configured interval, the vehicle type cadence, and the kept age" do
+      facts = AppInfoPanel.shared_vehicle_facts()
+      {:ok, %{interval_ms: interval_ms}} = Gobusgo.Config.shared_vehicles()
+
+      assert {facts.interval_ms, facts.types_period_minutes, facts.stored_age_ms_max} ==
+               {interval_ms, RouteSchedule.period_minutes(),
+                Gobusgo.Gbfs.VehicleStatusRetention.stored_age_ms_max()}
     end
   end
 

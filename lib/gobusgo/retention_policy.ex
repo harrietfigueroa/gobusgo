@@ -36,7 +36,8 @@ defmodule Gobusgo.RetentionPolicy do
     * the shared vehicle files of a GBFS system,
       #{@shared_vehicle_day_count} day, a backstop:
       `Gobusgo.Gbfs.VehicleStatusRetention` deletes each within ten minutes
-      of its fetch.
+      of its fetch. The files that publish a fetch to the browser have the
+      same backstop and are deleted with their fetch.
 
   The cleanup is one `Gobusgo.Cleanup.run/2` every #{@cleanup_interval_ms}
   ms, with #{@cleanup_deadline_ms} ms to finish.
@@ -44,6 +45,7 @@ defmodule Gobusgo.RetentionPolicy do
 
   alias Gobusgo.Cleanup
   alias Gobusgo.Gbfs.RawVehicleStatus
+  alias Gobusgo.Gbfs.VehicleTileSet
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RawArrivalResponse
   alias Gobusgo.OneBusAway.RawRoutePathResponse
@@ -70,7 +72,8 @@ defmodule Gobusgo.RetentionPolicy do
       %{prefix: Usage.Records.prefix(), day_count: @usage_day_count},
       %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count},
       %{prefix: Gobusgo.Routing.Snapshot.prefix(), day_count: @routing_snapshot_day_count},
-      %{prefix: RawVehicleStatus.destination_prefix(), day_count: @shared_vehicle_day_count}
+      %{prefix: RawVehicleStatus.destination_prefix(), day_count: @shared_vehicle_day_count},
+      %{prefix: VehicleTileSet.prefix(), day_count: @shared_vehicle_day_count}
     ]
 
     Enum.each(rules, &Retention.assert_rule/1)
