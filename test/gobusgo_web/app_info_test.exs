@@ -165,13 +165,33 @@ defmodule GobusgoWeb.AppInfoTest do
       assert AppInfo.location() =~ "remembers only whether you left the button on"
     end
 
+    test "says the dot points the way the rider faces or travels, and that the direction stays in the browser" do
+      assert AppInfo.location() =~
+               "With Show my direction on, the dot also points the way you face or travel, " <>
+                 "from your device's compass or your movement. That never leaves your browser either."
+    end
+
     test "states the whole text of the location button" do
       assert AppInfo.location() ==
                "The location button shows where you are on the map and keeps the map on you " <>
                  "as you move, until you move the map yourself. Your browser asks you first, " <>
                  "and your position never leaves your browser: Gobusgo's server does not " <>
                  "receive it. The browser remembers only whether you left the button on, so " <>
-                 "the map follows you again on your next visit."
+                 "the map follows you again on your next visit. With Show my direction on, " <>
+                 "the dot also points the way you face or travel, from your device's compass " <>
+                 "or your movement. That never leaves your browser either."
+    end
+  end
+
+  describe "show_direction/0" do
+    test "says what the setting draws" do
+      assert AppInfo.show_direction() =~
+               "the dot of your location points the way you face or travel"
+    end
+
+    test "says when Safari on an iPhone asks for motion access" do
+      assert AppInfo.show_direction() =~
+               "Safari on an iPhone asks for access to motion the first time"
     end
   end
 

@@ -98,7 +98,13 @@ defmodule GobusgoWeb.AppInfo do
               "as you move, until you move the map yourself. Your browser asks you first, " <>
               "and your position never leaves your browser: Gobusgo's server does not " <>
               "receive it. The browser remembers only whether you left the button on, so " <>
-              "the map follows you again on your next visit."
+              "the map follows you again on your next visit. With Show my direction on, " <>
+              "the dot also points the way you face or travel, from your device's compass " <>
+              "or your movement. That never leaves your browser either."
+
+  @show_direction "With this on, the dot of your location points the way you face or travel. " <>
+                    "Safari on an iPhone asks for access to motion the first time you turn on " <>
+                    "the location button or this setting, and a refusal is not asked again."
 
   @favorite_stop "Your browser remembers your favorite stops. While a page is open, " <>
                    "Gobusgo's server learns each stop only to fetch its arrivals, as for " <>
@@ -241,6 +247,10 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page uses the rider's location."
   @spec location() :: String.t()
   def location, do: @location
+
+  @doc "The statement of what the Show my direction setting of a map page draws."
+  @spec show_direction() :: String.t()
+  def show_direction, do: @show_direction
 
   @doc "The statement of how a map page keeps a rider's favorite stops."
   @spec favorite_stop() :: String.t()

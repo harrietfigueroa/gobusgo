@@ -2,8 +2,9 @@ defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
   The info panel of a map page, in two groups. First the rider's settings,
   under a Settings heading: how to install the application where the
-  browser offers it, the theme setting, and how schedules are saved for
-  offline use, with its setting and status line. Then, under an About
+  browser offers it, the theme setting, how schedules are saved for
+  offline use, with its setting and status line, and the Show my direction
+  setting of the cone on the rider's location dot. Then, under an About
   heading, what the application is, a disclaimer, what donations fund where
   a donation address is configured, how to read the map, how
   OneBusAway data is used, how the rider's location is used, how favorite
@@ -62,6 +63,18 @@ defmodule GobusgoWeb.AppInfoPanel do
             Save schedules for offline use
           </label>
           <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
+        </section>
+        <section
+          id="app-info-show-direction"
+          class="flex flex-col gap-2"
+          phx-hook="ShowDirection"
+          phx-update="ignore"
+        >
+          <h3 class="font-semibold">Your direction</h3>
+          <p>{AppInfo.show_direction()}</p>
+          <label class="flex items-center gap-2">
+            <input id="show-direction-enabled" type="checkbox" checked /> Show my direction
+          </label>
         </section>
       </section>
       <section id="app-info-about" class="flex flex-col gap-5" aria-labelledby="app-info-about-title">

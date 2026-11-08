@@ -33,8 +33,17 @@
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
+// - `gobusgo:show-direction`: the text "off" while the rider keeps Show my
+//   direction turned off, never a heading. No key is on, the default, and
+//   any other text reads as on. Losing it draws the cone on the dot again.
+// - `gobusgo:motion-permission`: the text "denied" once the browser's
+//   motion permission prompt was answered with a denial, so the page never
+//   asks again. Any other text, and no key, read as never denied. Losing it
+//   asks once more on the next click that starts following.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
-//   above, as decimal text, now "1".
+//   above, as decimal text, now "1". A key added whose absence reads as its
+//   default, as the last two are, leaves version 1's stored values as they
+//   are and needs no migration, so it keeps the version.
 //
 // The migration rule: on its first use in a page, the module reads the
 // version, runs the migration from each earlier version to the next in
@@ -68,6 +77,8 @@ export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: 
 
 const LOCATION_FOLLOW_STORED = "true"
 const OFFLINE_SCHEDULES_OFF = "off"
+const SHOW_DIRECTION_OFF = "off"
+const MOTION_PERMISSION_DENIED = "denied"
 const UNVERSIONED = 0
 
 // The kinds of a stored entry read back as a favorite.
@@ -231,6 +242,30 @@ export function openStoredSettings({storage, warn}) {
       })
     },
 
+    /** Whether Show my direction is on, the default. */
+    readShowDirection() {
+      return guarded({description: "Direction setting not readable", fallback: true, operation: readShowDirectionFrom})
+    },
+
+    /** Stores whether Show my direction is on; on is stored as no key. */
+    writeShowDirection(isShown) {
+      guarded({
+        description: "Direction setting not stored",
+        fallback: undefined,
+        operation: (reached) => { writeShowDirectionTo({reached, isShown}) }
+      })
+    },
+
+    /** Whether the browser's motion permission prompt was answered with a denial. */
+    readMotionPermissionDenied() {
+      return guarded({description: "Motion permission denial not readable", fallback: false, operation: readMotionPermissionDeniedFrom})
+    },
+
+    /** Stores that the motion permission prompt was answered with a denial. */
+    writeMotionPermissionDenied() {
+      guarded({description: "Motion permission denial not stored", fallback: undefined, operation: writeMotionPermissionDeniedTo})
+    },
+
     /** The stored favorites, each once, at most `countMax` of them. */
     listFavorites,
 
@@ -320,6 +355,26 @@ function writeOfflineSchedulesEnabledTo({reached, enabled}) {
   } else {
     reached.setItem(StorageKey.offlineSchedules, OFFLINE_SCHEDULES_OFF)
   }
+}
+
+function readShowDirectionFrom(reached) {
+  return reached.getItem(StorageKey.showDirection) !== SHOW_DIRECTION_OFF
+}
+
+function writeShowDirectionTo({reached, isShown}) {
+  if (isShown) {
+    reached.removeItem(StorageKey.showDirection)
+  } else {
+    reached.setItem(StorageKey.showDirection, SHOW_DIRECTION_OFF)
+  }
+}
+
+function readMotionPermissionDeniedFrom(reached) {
+  return reached.getItem(StorageKey.motionPermission) === MOTION_PERMISSION_DENIED
+}
+
+function writeMotionPermissionDeniedTo(reached) {
+  reached.setItem(StorageKey.motionPermission, MOTION_PERMISSION_DENIED)
 }
 
 function listFavoritesFrom({reached, countMax}) {
