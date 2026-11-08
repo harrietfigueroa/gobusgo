@@ -7,6 +7,9 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Assert
   alias Gobusgo.Config
   alias Gobusgo.Demand
+  alias Gobusgo.Gbfs.VehicleStatusCycle
+  alias Gobusgo.Gbfs.VehicleStatusRetention
+  alias Gobusgo.Gbfs.VehicleStatusView
   alias Gobusgo.Gbfs.VehicleTypeRecords
   alias Gobusgo.Gbfs.VehicleTypesCycle
   alias Gobusgo.OneBusAway.AgencyView
@@ -60,6 +63,8 @@ defmodule Gobusgo.Application do
   @vehicle_situation_view_agency_count_max 64
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
+  # The shared vehicle view holds the newest fetch of each GBFS system.
+  @vehicle_status_view_system_count_max 8
   # The vehicle type view is a fetch view of each GBFS system's vehicle
   # types at each version that publishes them.
   @vehicle_type_view Gobusgo.Gbfs.VehicleTypeView
@@ -72,6 +77,7 @@ defmodule Gobusgo.Application do
          {:ok, public_host} <- Config.public_host(),
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
+         {:ok, shared_vehicles} <- Config.shared_vehicles(),
          {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),
@@ -124,6 +130,10 @@ defmodule Gobusgo.Application do
              records: ArrivalBatch.SituationRecords,
              id_count_max: @arrival_view_stop_count_max,
              fetch_age_ms_max: @arrival_view_fetch_age_ms_max},
+            {VehicleStatusView,
+             name: VehicleStatusView,
+             pubsub: Gobusgo.PubSub,
+             system_count_max: @vehicle_status_view_system_count_max},
             {FetchView,
              name: @vehicle_type_view,
              pubsub: Gobusgo.PubSub,
@@ -131,7 +141,7 @@ defmodule Gobusgo.Application do
              id_count_max: @vehicle_type_view_id_count_max},
             {Demand,
              name: Demand,
-             datasets: DemandKey.datasets(),
+             datasets: DemandKey.datasets() ++ Gobusgo.Gbfs.DemandKey.datasets(),
              holder_item_count_max: GobusgoWeb.VehicleLive.OpenStops.open_count_max()}
           ] ++
           usage_children(recorded) ++
@@ -149,7 +159,7 @@ defmodule Gobusgo.Application do
           [
             scheduler_supervisor(
               source_specs(scheduled) ++
-                gbfs_specs(scheduled) ++
+                gbfs_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
@@ -215,9 +225,21 @@ defmodule Gobusgo.Application do
   defp routing_specs(false), do: []
 
   # The GBFS feeds are public, so their sources need no settings and run
-  # wherever the sources are scheduled.
-  defp gbfs_specs(true), do: [VehicleTypesCycle.spec([])]
-  defp gbfs_specs(false), do: []
+  # wherever the sources are scheduled. The retention source deletes the
+  # stored shared vehicle files whether or not the shared vehicle source
+  # runs.
+  defp gbfs_specs(true, shared_vehicles) do
+    [
+      VehicleTypesCycle.spec([]),
+      VehicleStatusCycle.spec(shared_vehicles,
+        demand: Demand,
+        cycle_options: [view: VehicleStatusView]
+      ),
+      VehicleStatusRetention.spec([])
+    ]
+  end
+
+  defp gbfs_specs(false, _shared_vehicles), do: []
 
   defp source_specs(false), do: []
 

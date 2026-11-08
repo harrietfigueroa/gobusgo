@@ -1,5 +1,6 @@
 defmodule Gobusgo.Gbfs.Systems do
   @lime_origin "https://data.lime.bike/api/partners"
+  @id_pattern ~r/\A[a-z0-9_]{1,64}\z/
 
   @moduledoc """
   The GBFS systems gobusgo reads, each in the form
@@ -8,6 +9,9 @@ defmodule Gobusgo.Gbfs.Systems do
 
   The one system is Lime Seattle, `lime_seattle` in the MobilityData
   catalog, read through its 3.0, 2.2, and 1.0 discovery files in English.
+
+  An identifier is 1 to 64 lowercase letters, digits, and underscores, so
+  it is a destination segment and a record key as it is.
   """
 
   alias Gobusgo.Assert
@@ -39,6 +43,17 @@ defmodule Gobusgo.Gbfs.Systems do
     ids = Enum.map(@systems, & &1.id)
     Assert.condition(ids == Enum.uniq(ids), "system identifiers must be unique")
     Assert.condition(ids == Enum.sort(ids), "systems must be in identifier order")
+    Enum.each(ids, &assert_id/1)
     @systems
+  end
+
+  @doc "Whether `id` has the form of a system identifier."
+  @spec id?(term()) :: boolean()
+  def id?(id), do: is_binary(id) and Regex.match?(@id_pattern, id)
+
+  @doc "Returns `:ok` for a system identifier, and raises an assertion error for any other value."
+  @spec assert_id(term()) :: :ok
+  def assert_id(id) do
+    Assert.condition(id?(id), "a system identifier is 1 to 64 of a-z, 0-9, and _")
   end
 end
