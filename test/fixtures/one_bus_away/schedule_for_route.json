@@ -1,0 +1,1687 @@
+{
+  "code": 200,
+  "currentTime": 1794100635035,
+  "data": {
+    "entry": {
+      "routeId": "19_41",
+      "scheduleDate": 1794038400000,
+      "serviceIds": [
+        "19_7-v43"
+      ],
+      "stopTripGroupings": [
+        {
+          "directionId": "0",
+          "stopIds": [
+            "19_1504",
+            "19_797",
+            "19_796",
+            "19_269",
+            "19_271",
+            "19_273",
+            "19_274",
+            "19_275",
+            "19_276",
+            "19_277",
+            "19_278",
+            "19_279",
+            "19_280",
+            "19_281",
+            "19_282",
+            "19_283",
+            "19_284",
+            "19_285",
+            "19_286",
+            "19_287",
+            "19_288",
+            "19_289",
+            "19_786",
+            "19_291",
+            "19_292",
+            "19_293",
+            "19_294",
+            "19_295",
+            "19_296",
+            "19_297",
+            "19_298",
+            "19_241"
+          ],
+          "tripHeadsigns": [
+            "To Evergreen State College"
+          ],
+          "tripIds": [
+            "19_t12C-b19B-sl7-v43"
+          ],
+          "tripsWithStopTimes": [
+            {
+              "stopTimes": [
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97200,
+                  "departureEnabled": true,
+                  "departureTime": 97200,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_1504",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97238,
+                  "departureEnabled": true,
+                  "departureTime": 97238,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_797",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97305,
+                  "departureEnabled": true,
+                  "departureTime": 97305,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_796",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97434,
+                  "departureEnabled": true,
+                  "departureTime": 97434,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_269",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97484,
+                  "departureEnabled": true,
+                  "departureTime": 97484,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_271",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97560,
+                  "departureEnabled": true,
+                  "departureTime": 97560,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_273",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97592,
+                  "departureEnabled": true,
+                  "departureTime": 97592,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_274",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97618,
+                  "departureEnabled": true,
+                  "departureTime": 97618,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_275",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97631,
+                  "departureEnabled": true,
+                  "departureTime": 97631,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_276",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97648,
+                  "departureEnabled": true,
+                  "departureTime": 97648,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_277",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97667,
+                  "departureEnabled": true,
+                  "departureTime": 97667,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_278",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97694,
+                  "departureEnabled": true,
+                  "departureTime": 97694,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_279",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97742,
+                  "departureEnabled": true,
+                  "departureTime": 97742,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_280",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97757,
+                  "departureEnabled": true,
+                  "departureTime": 97757,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_281",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97776,
+                  "departureEnabled": true,
+                  "departureTime": 97776,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_282",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97807,
+                  "departureEnabled": true,
+                  "departureTime": 97807,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_283",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97881,
+                  "departureEnabled": true,
+                  "departureTime": 97881,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_284",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97924,
+                  "departureEnabled": true,
+                  "departureTime": 97924,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_285",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97956,
+                  "departureEnabled": true,
+                  "departureTime": 97956,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_286",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 97980,
+                  "departureEnabled": true,
+                  "departureTime": 97980,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_287",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98031,
+                  "departureEnabled": true,
+                  "departureTime": 98031,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_288",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98052,
+                  "departureEnabled": true,
+                  "departureTime": 98052,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_289",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98094,
+                  "departureEnabled": true,
+                  "departureTime": 98094,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_786",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98134,
+                  "departureEnabled": true,
+                  "departureTime": 98134,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_291",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98226,
+                  "departureEnabled": true,
+                  "departureTime": 98226,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_292",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98244,
+                  "departureEnabled": true,
+                  "departureTime": 98244,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_293",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98280,
+                  "departureEnabled": true,
+                  "departureTime": 98280,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_294",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98325,
+                  "departureEnabled": true,
+                  "departureTime": 98325,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_295",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98365,
+                  "departureEnabled": true,
+                  "departureTime": 98365,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_296",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98427,
+                  "departureEnabled": true,
+                  "departureTime": 98427,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_297",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98544,
+                  "departureEnabled": true,
+                  "departureTime": 98544,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_298",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 98700,
+                  "departureEnabled": true,
+                  "departureTime": 98700,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_241",
+                  "tripId": "19_t12C-b19B-sl7-v43"
+                }
+              ],
+              "tripId": "19_t12C-b19B-sl7-v43"
+            }
+          ]
+        },
+        {
+          "directionId": "1",
+          "stopIds": [
+            "19_241",
+            "19_242",
+            "19_243",
+            "19_244",
+            "19_245",
+            "19_246",
+            "19_247",
+            "19_248",
+            "19_249",
+            "19_250",
+            "19_251",
+            "19_252",
+            "19_253",
+            "19_254",
+            "19_255",
+            "19_256",
+            "19_257",
+            "19_258",
+            "19_259",
+            "19_260",
+            "19_261",
+            "19_262",
+            "19_263",
+            "19_264",
+            "19_798",
+            "19_941",
+            "19_1043",
+            "19_168",
+            "19_858",
+            "19_165",
+            "19_166",
+            "19_1504"
+          ],
+          "tripHeadsigns": [
+            "To Oly Transit Ctr via 4th Ave"
+          ],
+          "tripIds": [
+            "19_t21-b19B-sl7-v43"
+          ],
+          "tripsWithStopTimes": [
+            {
+              "stopTimes": [
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88380,
+                  "departureEnabled": true,
+                  "departureTime": 88380,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_241",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88411,
+                  "departureEnabled": true,
+                  "departureTime": 88411,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_242",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88458,
+                  "departureEnabled": true,
+                  "departureTime": 88458,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_243",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88472,
+                  "departureEnabled": true,
+                  "departureTime": 88472,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_244",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88482,
+                  "departureEnabled": true,
+                  "departureTime": 88482,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_245",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88500,
+                  "departureEnabled": true,
+                  "departureTime": 88500,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_246",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88532,
+                  "departureEnabled": true,
+                  "departureTime": 88532,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_247",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88569,
+                  "departureEnabled": true,
+                  "departureTime": 88569,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_248",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88622,
+                  "departureEnabled": true,
+                  "departureTime": 88622,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_249",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88673,
+                  "departureEnabled": true,
+                  "departureTime": 88673,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_250",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88710,
+                  "departureEnabled": true,
+                  "departureTime": 88710,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_251",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88729,
+                  "departureEnabled": true,
+                  "departureTime": 88729,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_252",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88749,
+                  "departureEnabled": true,
+                  "departureTime": 88749,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_253",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88807,
+                  "departureEnabled": true,
+                  "departureTime": 88807,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_254",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88830,
+                  "departureEnabled": true,
+                  "departureTime": 88830,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_255",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88860,
+                  "departureEnabled": true,
+                  "departureTime": 88860,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_256",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88882,
+                  "departureEnabled": true,
+                  "departureTime": 88882,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_257",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88906,
+                  "departureEnabled": true,
+                  "departureTime": 88906,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_258",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88928,
+                  "departureEnabled": true,
+                  "departureTime": 88928,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_259",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88956,
+                  "departureEnabled": true,
+                  "departureTime": 88956,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_260",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 88980,
+                  "departureEnabled": true,
+                  "departureTime": 88980,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_261",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89006,
+                  "departureEnabled": true,
+                  "departureTime": 89006,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_262",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89037,
+                  "departureEnabled": true,
+                  "departureTime": 89037,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_263",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89090,
+                  "departureEnabled": true,
+                  "departureTime": 89090,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_264",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89209,
+                  "departureEnabled": true,
+                  "departureTime": 89209,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_798",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89227,
+                  "departureEnabled": true,
+                  "departureTime": 89227,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_941",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89273,
+                  "departureEnabled": true,
+                  "departureTime": 89273,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_1043",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89306,
+                  "departureEnabled": true,
+                  "departureTime": 89306,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_168",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89342,
+                  "departureEnabled": true,
+                  "departureTime": 89342,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_858",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89382,
+                  "departureEnabled": true,
+                  "departureTime": 89382,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_165",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89410,
+                  "departureEnabled": true,
+                  "departureTime": 89410,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_166",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 89460,
+                  "departureEnabled": true,
+                  "departureTime": 89460,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "19_1504",
+                  "tripId": "19_t21-b19B-sl7-v43"
+                }
+              ],
+              "tripId": "19_t21-b19B-sl7-v43"
+            }
+          ]
+        }
+      ]
+    },
+    "references": {
+      "agencies": [
+        {
+          "disclaimer": "",
+          "email": "customerservice@intercitytransit.com",
+          "fareUrl": "https://www.intercitytransit.com/zerofare-faqs",
+          "id": "19",
+          "lang": "en",
+          "name": "Intercity Transit",
+          "phone": "360-786-1881",
+          "privateService": false,
+          "timezone": "America/Los_Angeles",
+          "url": "https://www.intercitytransit.com/"
+        }
+      ],
+      "routes": [
+        {
+          "agencyId": "19",
+          "color": "000000",
+          "description": "",
+          "id": "19_41",
+          "longName": "Nightline",
+          "nullSafeShortName": "NL",
+          "shortName": "NL",
+          "textColor": "ffffff",
+          "type": 3,
+          "url": "https://www.intercitytransit.com/plan-your-trip/routes/NL"
+        }
+      ],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [
+        {
+          "code": "1504",
+          "direction": "W",
+          "id": "19_1504",
+          "lat": 47.046271,
+          "locationType": 0,
+          "lon": -122.900418,
+          "name": "Olympia Transit Center - Bay F",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "797",
+          "direction": "W",
+          "id": "19_797",
+          "lat": 47.045711,
+          "locationType": 0,
+          "lon": -122.902855,
+          "name": "State Ave at Columbia St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "796",
+          "direction": "W",
+          "id": "19_796",
+          "lat": 47.044563,
+          "locationType": 0,
+          "lon": -122.907218,
+          "name": "4th Ave at Simmons St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "269",
+          "direction": "W",
+          "id": "19_269",
+          "lat": 47.045925,
+          "locationType": 0,
+          "lon": -122.916388,
+          "name": "Harrison Ave at Percival St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "271",
+          "direction": "W",
+          "id": "19_271",
+          "lat": 47.046008,
+          "locationType": 0,
+          "lon": -122.920486,
+          "name": "Harrison Ave at Perry St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "273",
+          "direction": "N",
+          "id": "19_273",
+          "lat": 47.046607,
+          "locationType": 0,
+          "lon": -122.925781,
+          "name": "Division St at Harrison Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "274",
+          "direction": "N",
+          "id": "19_274",
+          "lat": 47.049674,
+          "locationType": 0,
+          "lon": -122.925682,
+          "name": "Division St at Madison Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "275",
+          "direction": "N",
+          "id": "19_275",
+          "lat": 47.052151,
+          "locationType": 0,
+          "lon": -122.925583,
+          "name": "Division St at Giles Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "276",
+          "direction": "N",
+          "id": "19_276",
+          "lat": 47.053398,
+          "locationType": 0,
+          "lon": -122.925522,
+          "name": "Division St at Bowman Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "277",
+          "direction": "N",
+          "id": "19_277",
+          "lat": 47.055042,
+          "locationType": 0,
+          "lon": -122.925484,
+          "name": "Division St at Dickinson Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "278",
+          "direction": "N",
+          "id": "19_278",
+          "lat": 47.0569,
+          "locationType": 0,
+          "lon": -122.925491,
+          "name": "Division St at Farwell Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "279",
+          "direction": "N",
+          "id": "19_279",
+          "lat": 47.059466,
+          "locationType": 0,
+          "lon": -122.925591,
+          "name": "Division St at Muirhead Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "280",
+          "direction": "N",
+          "id": "19_280",
+          "lat": 47.063605,
+          "locationType": 0,
+          "lon": -122.928435,
+          "name": "Division St at Elliott Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "281",
+          "direction": "N",
+          "id": "19_281",
+          "lat": 47.064941,
+          "locationType": 0,
+          "lon": -122.928878,
+          "name": "Division St at Burbank Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "282",
+          "direction": "N",
+          "id": "19_282",
+          "lat": 47.066729,
+          "locationType": 0,
+          "lon": -122.929367,
+          "name": "Butler Cove Apts",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "283",
+          "direction": "NW",
+          "id": "19_283",
+          "lat": 47.069407,
+          "locationType": 0,
+          "lon": -122.931327,
+          "name": "Division St at 26th Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "284",
+          "direction": "W",
+          "id": "19_284",
+          "lat": 47.071201,
+          "locationType": 0,
+          "lon": -122.935576,
+          "name": "28th Ave at Division St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "285",
+          "direction": "W",
+          "id": "19_285",
+          "lat": 47.071368,
+          "locationType": 0,
+          "lon": -122.941582,
+          "name": "28th Ave at Cooper Point Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "286",
+          "direction": "N",
+          "id": "19_286",
+          "lat": 47.073841,
+          "locationType": 0,
+          "lon": -122.942902,
+          "name": "Cooper Point Rd at 29th Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "287",
+          "direction": "W",
+          "id": "19_287",
+          "lat": 47.07566,
+          "locationType": 0,
+          "lon": -122.943938,
+          "name": "Kaiser Rd at Cooper Point Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "288",
+          "direction": "SW",
+          "id": "19_288",
+          "lat": 47.075165,
+          "locationType": 0,
+          "lon": -122.949988,
+          "name": "College Court Apts",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "289",
+          "direction": "SW",
+          "id": "19_289",
+          "lat": 47.073982,
+          "locationType": 0,
+          "lon": -122.951782,
+          "name": "Kaiser Rd at Cedrona Dr",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "786",
+          "direction": "W",
+          "id": "19_786",
+          "lat": 47.072102,
+          "locationType": 0,
+          "lon": -122.955749,
+          "name": "Kaiser Rd at Driftwood Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "291",
+          "direction": "NW",
+          "id": "19_291",
+          "lat": 47.074699,
+          "locationType": 0,
+          "lon": -122.957557,
+          "name": "Evergreen Maintenance",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "292",
+          "direction": "W",
+          "id": "19_292",
+          "lat": 47.075668,
+          "locationType": 0,
+          "lon": -122.968384,
+          "name": "Driftwood Rd at Wildcurrant Loop",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "293",
+          "direction": "W",
+          "id": "19_293",
+          "lat": 47.076084,
+          "locationType": 0,
+          "lon": -122.970367,
+          "name": "Driftwood Rd at Overhulse Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "294",
+          "direction": "E",
+          "id": "19_294",
+          "lat": 47.075333,
+          "locationType": 0,
+          "lon": -122.97345,
+          "name": "Evergreen Dorms",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "295",
+          "direction": "E",
+          "id": "19_295",
+          "lat": 47.076077,
+          "locationType": 0,
+          "lon": -122.970757,
+          "name": "Driftwood Rd at Overhulse Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "296",
+          "direction": "E",
+          "id": "19_296",
+          "lat": 47.07563,
+          "locationType": 0,
+          "lon": -122.96794,
+          "name": "Driftwood Rd at Wildcurrant Loop",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "297",
+          "direction": "S",
+          "id": "19_297",
+          "lat": 47.075047,
+          "locationType": 0,
+          "lon": -122.964378,
+          "name": "Overhulse Pl at Driftwood Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "298",
+          "direction": "W",
+          "id": "19_298",
+          "lat": 47.071434,
+          "locationType": 0,
+          "lon": -122.969718,
+          "name": "Overhulse Pl at Fireweed Dr",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "241",
+          "direction": "SW",
+          "id": "19_241",
+          "lat": 47.071983,
+          "locationType": 0,
+          "lon": -122.977127,
+          "name": "Evergreen Library Loop",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "242",
+          "direction": "E",
+          "id": "19_242",
+          "lat": 47.069762,
+          "locationType": 0,
+          "lon": -122.969687,
+          "name": "Evergreen Pkwy at Overhulse Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "243",
+          "direction": "E",
+          "id": "19_243",
+          "lat": 47.071907,
+          "locationType": 0,
+          "lon": -122.955558,
+          "name": "Kaiser Rd at Driftwood Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "244",
+          "direction": "NE",
+          "id": "19_244",
+          "lat": 47.073605,
+          "locationType": 0,
+          "lon": -122.95208,
+          "name": "Kaiser Rd at Cedrona Dr",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "245",
+          "direction": "NE",
+          "id": "19_245",
+          "lat": 47.075268,
+          "locationType": 0,
+          "lon": -122.9496,
+          "name": "College Court Apts",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "246",
+          "direction": "E",
+          "id": "19_246",
+          "lat": 47.075538,
+          "locationType": 0,
+          "lon": -122.944205,
+          "name": "Kaiser Rd at Cooper Point Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "247",
+          "direction": "S",
+          "id": "19_247",
+          "lat": 47.073668,
+          "locationType": 0,
+          "lon": -122.943046,
+          "name": "Cooper Point Rd at 29th Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "248",
+          "direction": "E",
+          "id": "19_248",
+          "lat": 47.071133,
+          "locationType": 0,
+          "lon": -122.941611,
+          "name": "28th Ave at Cooper Point Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "249",
+          "direction": "E",
+          "id": "19_249",
+          "lat": 47.071125,
+          "locationType": 0,
+          "lon": -122.935409,
+          "name": "28th Ave at Division St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "250",
+          "direction": "SE",
+          "id": "19_250",
+          "lat": 47.069016,
+          "locationType": 0,
+          "lon": -122.931183,
+          "name": "Division St at 26th Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "251",
+          "direction": "S",
+          "id": "19_251",
+          "lat": 47.066357,
+          "locationType": 0,
+          "lon": -122.929459,
+          "name": "Butler Cove Apts",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "252",
+          "direction": "S",
+          "id": "19_252",
+          "lat": 47.064887,
+          "locationType": 0,
+          "lon": -122.929001,
+          "name": "Division St at Burbank Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "253",
+          "direction": "S",
+          "id": "19_253",
+          "lat": 47.063357,
+          "locationType": 0,
+          "lon": -122.928458,
+          "name": "Division St at Elliott Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "254",
+          "direction": "S",
+          "id": "19_254",
+          "lat": 47.059174,
+          "locationType": 0,
+          "lon": -122.925713,
+          "name": "Division St at Muirhead Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "255",
+          "direction": "S",
+          "id": "19_255",
+          "lat": 47.05735,
+          "locationType": 0,
+          "lon": -122.925659,
+          "name": "Division St at Walnut Rd",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "256",
+          "direction": "S",
+          "id": "19_256",
+          "lat": 47.054939,
+          "locationType": 0,
+          "lon": -122.925635,
+          "name": "Division St at Dickinson Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "257",
+          "direction": "S",
+          "id": "19_257",
+          "lat": 47.053245,
+          "locationType": 0,
+          "lon": -122.925651,
+          "name": "Division St at Bowman Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "258",
+          "direction": "S",
+          "id": "19_258",
+          "lat": 47.051334,
+          "locationType": 0,
+          "lon": -122.925758,
+          "name": "Division St at Conger Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "259",
+          "direction": "S",
+          "id": "19_259",
+          "lat": 47.04956,
+          "locationType": 0,
+          "lon": -122.925841,
+          "name": "Division St at Madison Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "260",
+          "direction": "S",
+          "id": "19_260",
+          "lat": 47.047374,
+          "locationType": 0,
+          "lon": -122.925918,
+          "name": "Division St at Garfield Ave",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "261",
+          "direction": "E",
+          "id": "19_261",
+          "lat": 47.04591,
+          "locationType": 0,
+          "lon": -122.925109,
+          "name": "Harrison Ave at Division St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "262",
+          "direction": "E",
+          "id": "19_262",
+          "lat": 47.045922,
+          "locationType": 0,
+          "lon": -122.922771,
+          "name": "Harrison Ave at Decatur St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "263",
+          "direction": "E",
+          "id": "19_263",
+          "lat": 47.045859,
+          "locationType": 0,
+          "lon": -122.919997,
+          "name": "Harrison Ave at Plymouth St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "264",
+          "direction": "E",
+          "id": "19_264",
+          "lat": 47.045775,
+          "locationType": 0,
+          "lon": -122.915245,
+          "name": "Harrison Ave at Foote St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "798",
+          "direction": "E",
+          "id": "19_798",
+          "lat": 47.044472,
+          "locationType": 0,
+          "lon": -122.906227,
+          "name": "4th Ave at Simmons St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "941",
+          "direction": "E",
+          "id": "19_941",
+          "lat": 47.044593,
+          "locationType": 0,
+          "lon": -122.904647,
+          "name": "4th Ave at Water St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "1043",
+          "direction": "E",
+          "id": "19_1043",
+          "lat": 47.044925,
+          "locationType": 0,
+          "lon": -122.900597,
+          "name": "4th Ave at Washington St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "168",
+          "direction": "E",
+          "id": "19_168",
+          "lat": 47.045138,
+          "locationType": 0,
+          "lon": -122.897659,
+          "name": "4th at Adams",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "858",
+          "direction": "E",
+          "id": "19_858",
+          "lat": 47.045329,
+          "locationType": 0,
+          "lon": -122.894469,
+          "name": "4th Ave at Chestnut St",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "165",
+          "direction": "W",
+          "id": "19_165",
+          "lat": 47.046359,
+          "locationType": 0,
+          "lon": -122.893752,
+          "name": "State Ave at East Bay Dr",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "166",
+          "direction": "W",
+          "id": "19_166",
+          "lat": 47.046203,
+          "locationType": 0,
+          "lon": -122.896171,
+          "name": "State at Cherry",
+          "parent": "",
+          "routeIds": [
+            "19_41"
+          ],
+          "staticRouteIds": []
+        }
+      ],
+      "trips": [
+        {
+          "blockId": "19_411-v43",
+          "directionId": "0",
+          "id": "19_t12C-b19B-sl7-v43",
+          "peakOffpeak": 0,
+          "routeId": "19_41",
+          "routeShortName": "",
+          "serviceId": "19_7-v43",
+          "shapeId": "19_16394_shp-v43",
+          "timeZone": "",
+          "tripHeadsign": "To Evergreen State College",
+          "tripShortName": ""
+        },
+        {
+          "blockId": "19_411-v43",
+          "directionId": "1",
+          "id": "19_t21-b19B-sl7-v43",
+          "peakOffpeak": 0,
+          "routeId": "19_41",
+          "routeShortName": "",
+          "serviceId": "19_7-v43",
+          "shapeId": "19_16393_shp-v43",
+          "timeZone": "",
+          "tripHeadsign": "To Oly Transit Ctr via 4th Ave",
+          "tripShortName": ""
+        }
+      ]
+    }
+  },
+  "text": "OK",
+  "version": 2
+}
