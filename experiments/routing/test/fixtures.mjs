@@ -1,14 +1,14 @@
-// Checks the engine against the hand-written journeys of the fixture file:
-// each case's timetable is written as snapshot files and loaded into the
-// engine, and every query's frontier, read back as readable legs, must equal
-// the expected one. Run it with `node test/fixtures.mjs` from the experiment
-// directory; it exits non-zero on the first mismatch.
+// Checks the application's engine against the hand-written journeys of the
+// fixture file: each case's timetable is written as snapshot files and
+// loaded into the engine, and every query's frontier, read back as readable
+// legs, must equal the expected one. Run it with `node test/fixtures.mjs`
+// from the experiment directory; it exits non-zero on the first mismatch.
 
 import {readFileSync} from "node:fs"
 import {deepStrictEqual} from "node:assert/strict"
-import {LegKind} from "../engine/csa.js"
-import {loadEngine} from "../engine/load.js"
-import {clock, seconds, snapshotOf} from "./timetable.js"
+import {LegKind, OriginKind} from "../../../assets/js/routing_engine.js"
+import {loadEngine} from "../../../assets/js/routing_journeys.js"
+import {clock, seconds, snapshotOf} from "../../../test/scripts/routing_timetable.js"
 
 const TRANSFER_S_MIN = 120
 const root = new URL("../", import.meta.url)
@@ -58,7 +58,7 @@ for (const fixture of fixtures.cases) {
 
   for (const query of fixture.queries) {
     const routed = {
-      source: snapshot.stopIndex.get(query.from),
+      origin: {kind: OriginKind.stop, stop: snapshot.stopIndex.get(query.from)},
       target: snapshot.stopIndex.get(query.to),
       departureS: seconds(query.depart),
     }

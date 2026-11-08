@@ -31,6 +31,7 @@ defmodule Gobusgo.Routing.SnapshotTest do
         connections: connections
       },
       walking_links: [],
+      positions: %{"1_A" => %{lat: 47.6080131, lon: -122.3351669}},
       built_at: ~U[2026-11-08 12:00:00Z],
       fetched_at_oldest: ~U[2026-11-07 01:00:00Z],
       fetched_at_newest: ~U[2026-11-08 02:00:00Z]
@@ -55,7 +56,7 @@ defmodule Gobusgo.Routing.SnapshotTest do
       sha256 = Base.encode16(:crypto.hash(:sha256, content), case: :lower)
 
       assert destination =~
-               ~r{^routing/snapshots/dt=2026-11-08/(stops|trips|transfers|connections)-#{sha256}\.bin$}
+               ~r{^routing/snapshots/dt=2026-11-08/(stops|trips|transfers|positions|connections)-#{sha256}\.bin$}
     end
   end
 
@@ -65,11 +66,28 @@ defmodule Gobusgo.Routing.SnapshotTest do
     paths = [
       entry["files"]["stops"],
       entry["files"]["trips"],
-      entry["files"]["transfers"] | entry["connectionChunks"]
+      entry["files"]["transfers"],
+      entry["files"]["positions"] | entry["connectionChunks"]
     ]
 
     assert Enum.map(paths, & &1["path"]) == Enum.map(files, &("/" <> &1.destination))
     assert Enum.map(paths, & &1["byteSize"]) == Enum.map(files, &byte_size(&1.content))
+  end
+
+  test "writes each stop's position in stop order, unknown for a stop with none" do
+    %{files: files, entry: entry} = build([connection(100)])
+    path = entry["files"]["positions"]["path"]
+    %{content: content} = Enum.find(files, &("/" <> &1.destination == path))
+
+    assert SnapshotFormat.decode(content) ==
+             {:ok,
+              %{
+                kind: :positions,
+                records: [
+                  %{lat_microdegrees: 47_608_013, lon_microdegrees: -122_335_167},
+                  :unknown
+                ]
+              }}
   end
 
   test "writes files the format decodes" do
@@ -91,7 +109,12 @@ defmodule Gobusgo.Routing.SnapshotTest do
                "oldest" => "2026-11-07T01:00:00Z",
                "newest" => "2026-11-08T02:00:00Z"
              },
-             "transferRules" => %{"minimumTransferS" => 120}
+             "transferRules" => %{
+               "minimumTransferS" => 120,
+               "walkRadiusM" => 400,
+               "walkSpeedMPerS" => 1.2,
+               "walkLinkCountPerStopMax" => 64
+             }
            } = entry
   end
 end

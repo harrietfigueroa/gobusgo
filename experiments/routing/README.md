@@ -1,6 +1,6 @@
 # Routing engine experiment
 
-A JavaScript connection scan engine over the routing snapshots the application publishes, with its correctness fixtures and benchmark (GOB-232). Nothing here ships: the release image, CI, and the application leave this directory alone.
+The correctness fixtures and the benchmark of the JavaScript connection scan engine over the routing snapshots the application publishes, and the comparison that chose it (GOB-232). The engine itself is the application's. Nothing here ships: the release image, CI, and the application leave this directory alone.
 
 ## Decision
 
@@ -8,9 +8,8 @@ JavaScript (decided 2026-11-08). A Rust engine compiled to WebAssembly applied t
 
 ## Layout
 
-- `engine/csa.js` is the engine. It reads the snapshot files of format version 1 (`lib/gobusgo/routing/AGENTS.md`).
-- `engine/load.js` builds it from the stops file, the transfers file, and every connection chunk of one date.
-- `fixtures/journeys.json` holds the correctness cases, written by hand as timetables and readable expected frontiers. `experiments/routing/test/fixtures.mjs` checks the engine against them.
+- The engine moved into the application (GOB-248): `assets/js/routing_engine.js` is the engine, and `loadEngine` in `assets/js/routing_journeys.js` builds it from the stops file, the transfers file, and every connection chunk of one date. Both read the snapshot files of the format version `lib/gobusgo/routing/AGENTS.md` describes. The fixtures and the benchmark import them from there.
+- `fixtures/journeys.json` holds the correctness cases, written by hand as timetables and readable expected frontiers. `experiments/routing/test/fixtures.mjs` checks the engine against them, writing each timetable as snapshot files with `test/scripts/routing_timetable.js`.
 - `bench/` holds the benchmark: `measure.js` is shared, `run.mjs` and `node.mjs` run it in node, and `index.html`, `browser.mjs`, and `serve.mjs` run it in a browser on the same network.
 - `scripts/build_snapshot.exs` builds the benchmark data from stored responses through the application's own rebuild and build, and `scripts/browser_benchmark.exs` runs the browser page in a headless Chrome.
 
