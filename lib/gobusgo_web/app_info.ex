@@ -10,6 +10,7 @@ defmodule GobusgoWeb.AppInfo do
   how it uses the rider's location,
   how it keeps favorite stops,
   how it keeps the theme,
+  how it uses shared scooter and bike data,
   what donations fund,
   what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
@@ -208,6 +209,55 @@ defmodule GobusgoWeb.AppInfo do
         "alerts shown change as vehicles run and stops open.",
       "The map shows the data as OneBusAway supplies it. A marker stands where OneBusAway " <>
         "estimates the vehicle is, which is an estimate even for a vehicle that reported recently."
+    ]
+  end
+
+  @doc """
+  The paragraphs on how the application uses the shared scooter and bike
+  data of `facts.operators`, each named as its operator, read from each
+  operator's vehicle file, of the names in `facts.vehicle_file_names`, every
+  `facts.interval_ms` while a page shows the layer and its vehicle types
+  every `facts.types_period_minutes`, with raw responses kept at most
+  `facts.stored_age_ms_max`. The interval is a whole count of seconds, the
+  period a whole count of hours, and the age a whole count of minutes.
+  """
+  @spec shared_vehicles(%{
+          operators: [String.t(), ...],
+          vehicle_file_names: [String.t(), ...],
+          interval_ms: pos_integer(),
+          types_period_minutes: pos_integer(),
+          stored_age_ms_max: pos_integer()
+        }) :: [String.t(), ...]
+  def shared_vehicles(%{
+        operators: [_operator | _rest] = operators,
+        vehicle_file_names: [_name | _names] = file_names,
+        interval_ms: interval_ms,
+        types_period_minutes: types_period_minutes,
+        stored_age_ms_max: stored_age_ms_max
+      })
+      when is_integer(interval_ms) and is_integer(stored_age_ms_max) do
+    Assert.condition(
+      rem(stored_age_ms_max, @ms_per_minute) == 0,
+      "the kept age must be a whole count of minutes, got: #{stored_age_ms_max} ms"
+    )
+
+    operator_text = Enum.join(operators, " and ")
+    file_text = file_names |> Enum.uniq() |> Enum.join(" or ")
+    minute_count = div(stored_age_ms_max, @ms_per_minute)
+
+    [
+      "Gobusgo requests #{operator_text}'s public shared vehicle feed: the file of where " <>
+        "each vehicle is, #{file_text}, and the file of its vehicle types " <>
+        "#{hours_text(types_period_minutes)}. A request carries no key and no data about you.",
+      "It requests the vehicles only while a page shows the shared scooter and bike layer, " <>
+        "#{seconds_text(interval_ms)} for every page that shows it together, and never " <>
+        "while no page shows it.",
+      "A page shows each vehicle's position, its form factor, and its remaining range.",
+      "Gobusgo keeps each response it receives for at most #{minute_count} minutes, and the " <>
+        "map tiles made from it no longer. Nothing it keeps is keyed on a vehicle's " <>
+        "identifier, which the feed's format has an operator change after every trip.",
+      "Your browser downloads the tiles of the area in view from Gobusgo, never " <>
+        "#{operator_text}'s feed, so #{operator_text} does not learn where you look."
     ]
   end
 

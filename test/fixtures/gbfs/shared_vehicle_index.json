@@ -1,0 +1,11 @@
+{
+  "city": "city-0123456789abcdef.bin.gz",
+  "fetchedAt": "2026-11-08T19:08:30Z",
+  "formatVersion": 1,
+  "lastUpdated": "2026-11-08T19:08:00Z",
+  "systemId": "lime_seattle",
+  "tileZoom": 14,
+  "tiles": [[2624, 5721, 2, "1111111111111111"], [2625, 5718, 1, "2222222222222222"]],
+  "vehicleCount": 3,
+  "version": "2.2"
+}

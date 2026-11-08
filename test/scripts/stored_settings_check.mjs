@@ -269,6 +269,30 @@ for (const denialCase of motionDenialCases) {
   deepStrictEqual(storage.entries()[StorageKey.motionPermission], "denied", "motion denial stored")
 }
 
+const sharedVehicleCases = [
+  {name: "on", entries: {[StorageKey.sharedVehicles]: "on"}, shown: true},
+  {name: "another text", entries: {[StorageKey.sharedVehicles]: "true"}, shown: false},
+  {name: "a missing key", entries: {}, shown: false}
+]
+
+for (const sharedVehicleCase of sharedVehicleCases) {
+  const {settings} = settingsOver(new MemoryStorage(sharedVehicleCase.entries))
+  const shown = settings.readSharedVehiclesShown()
+  deepStrictEqual(shown, sharedVehicleCase.shown, `shared vehicles read: ${sharedVehicleCase.name}`)
+}
+
+const sharedVehicleWriteCases = [
+  {shown: true, stored: "on"},
+  {shown: false, stored: undefined}
+]
+
+for (const writeCase of sharedVehicleWriteCases) {
+  const storage = new MemoryStorage({[StorageKey.sharedVehicles]: "on"})
+  const {settings} = settingsOver(storage)
+  settings.writeSharedVehiclesShown(writeCase.shown)
+  deepStrictEqual(storage.entries()[StorageKey.sharedVehicles], writeCase.stored, `shared vehicles write: ${writeCase.shown}`)
+}
+
 const malformedEntries = [{stopId: ""}, {stopId: 7, name: "x"}, {stopId: "1_1"}, null, "1_2", favoriteB]
 const extraFieldEntry = {...favoriteA, color: "red"}
 const repeatedEntry = {stopId: favoriteA.stopId, name: "Other"}

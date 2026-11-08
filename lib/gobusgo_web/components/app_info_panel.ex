@@ -7,7 +7,8 @@ defmodule GobusgoWeb.AppInfoPanel do
   setting of the cone on the rider's location dot. Then, under an About
   heading, what the application is, a disclaimer, what donations fund where
   a donation address is configured, how to read the map, how
-  OneBusAway data is used, how the rider's location is used, how favorite
+  OneBusAway data is used, how shared scooter and bike data is used, with
+  the credit its operator's terms ask for, how the rider's location is used, how favorite
   stops are kept, what is recorded of a connection, the credits, the
   licenses, and the commit the application was built from where the build
   names one, from `GobusgoWeb.AppInfo` and the statuses of
@@ -17,6 +18,9 @@ defmodule GobusgoWeb.AppInfoPanel do
   use Phoenix.Component
 
   alias Gobusgo.OneBusAway.RouteSchedule
+  alias Gobusgo.Gbfs.Files
+  alias Gobusgo.Gbfs.Systems
+  alias Gobusgo.Gbfs.VehicleStatusRetention
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.RetentionPolicy
   alias GobusgoWeb.AppInfo
@@ -87,6 +91,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         <DonationButton.section />
         <.legend />
         <.data_use />
+        <.shared_vehicles />
         <section id="app-info-location" class="flex flex-col gap-2">
           <h3 class="font-semibold">Your location</h3>
           <p>{AppInfo.location()}</p>
@@ -232,6 +237,46 @@ defmodule GobusgoWeb.AppInfoPanel do
       <p :for={paragraph <- @paragraphs}>{paragraph}</p>
     </section>
     """
+  end
+
+  defp shared_vehicles(assigns) do
+    assigns =
+      assign(assigns,
+        systems: Systems.all(),
+        paragraphs: AppInfo.shared_vehicles(shared_vehicle_facts())
+      )
+
+    ~H"""
+    <section id="app-info-shared-vehicles" class="flex flex-col gap-2">
+      <h3 class="font-semibold">Shared scooters and bikes</h3>
+      <p :for={system <- @systems} id={"app-info-shared-vehicles-#{system.id}"}>
+        Shared scooter and bike data is provided by {system.operator_name}, under {system.operator_name}'s <a
+          href={system.terms_url}
+          class="underline"
+          rel="noopener"
+        >{system.terms_name}</a>.
+      </p>
+      <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+    </section>
+    """
+  end
+
+  @doc """
+  The facts the shared scooter and bike texts state, read from the systems,
+  the file format, the configured interval, the vehicle type cadence, and
+  the retention of stored responses.
+  """
+  @spec shared_vehicle_facts() :: map()
+  def shared_vehicle_facts do
+    {:ok, %{interval_ms: interval_ms}} = Gobusgo.Config.shared_vehicles()
+
+    %{
+      operators: Systems.all() |> Enum.map(& &1.operator_name) |> Enum.uniq(),
+      vehicle_file_names: Enum.map(Files.versions(), &Files.vehicle_status_name/1),
+      interval_ms: interval_ms,
+      types_period_minutes: RouteSchedule.period_minutes(),
+      stored_age_ms_max: VehicleStatusRetention.stored_age_ms_max()
+    }
   end
 
   defp recorded(assigns) do

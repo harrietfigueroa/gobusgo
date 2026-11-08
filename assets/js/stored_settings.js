@@ -33,6 +33,9 @@
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
+// - `gobusgo:shared-vehicles`: the text "on" while the rider keeps the shared
+//   scooter and bike layer on. No key is off, the default, and any other
+//   text reads as off. Losing it turns the layer off.
 // - `gobusgo:show-direction`: the text "off" while the rider keeps Show my
 //   direction turned off, never a heading. No key is on, the default, and
 //   any other text reads as on. Losing it draws the cone on the dot again.
@@ -42,7 +45,7 @@
 //   asks once more on the next click that starts following.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
 //   above, as decimal text, now "1". A key added whose absence reads as its
-//   default, as the last two are, leaves version 1's stored values as they
+//   default, as the last three are, leaves version 1's stored values as they
 //   are and needs no migration, so it keeps the version.
 //
 // The migration rule: on its first use in a page, the module reads the
@@ -79,6 +82,7 @@ const LOCATION_FOLLOW_STORED = "true"
 const OFFLINE_SCHEDULES_OFF = "off"
 const SHOW_DIRECTION_OFF = "off"
 const MOTION_PERMISSION_DENIED = "denied"
+const SHARED_VEHICLES_SHOWN = "on"
 const UNVERSIONED = 0
 
 // The kinds of a stored entry read back as a favorite.
@@ -266,6 +270,20 @@ export function openStoredSettings({storage, warn}) {
       guarded({description: "Motion permission denial not stored", fallback: undefined, operation: writeMotionPermissionDeniedTo})
     },
 
+    /** Whether the rider keeps the shared scooter and bike layer on; off is the default. */
+    readSharedVehiclesShown() {
+      return guarded({description: "Shared vehicles setting not readable", fallback: false, operation: readSharedVehiclesShownFrom})
+    },
+
+    /** Stores whether the shared scooter and bike layer is on; off is stored as no key. */
+    writeSharedVehiclesShown(shown) {
+      guarded({
+        description: "Shared vehicles setting not stored",
+        fallback: undefined,
+        operation: (reached) => { writeSharedVehiclesShownTo({reached, shown}) }
+      })
+    },
+
     /** The stored favorites, each once, at most `countMax` of them. */
     listFavorites,
 
@@ -375,6 +393,18 @@ function readMotionPermissionDeniedFrom(reached) {
 
 function writeMotionPermissionDeniedTo(reached) {
   reached.setItem(StorageKey.motionPermission, MOTION_PERMISSION_DENIED)
+}
+
+function readSharedVehiclesShownFrom(reached) {
+  return reached.getItem(StorageKey.sharedVehicles) === SHARED_VEHICLES_SHOWN
+}
+
+function writeSharedVehiclesShownTo({reached, shown}) {
+  if (shown) {
+    reached.setItem(StorageKey.sharedVehicles, SHARED_VEHICLES_SHOWN)
+  } else {
+    reached.removeItem(StorageKey.sharedVehicles)
+  }
 }
 
 function listFavoritesFrom({reached, countMax}) {

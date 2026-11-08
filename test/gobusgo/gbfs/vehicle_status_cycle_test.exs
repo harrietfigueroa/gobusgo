@@ -14,6 +14,7 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycleTest do
   alias Gobusgo.Gbfs.VehicleStatusBatch.Records
   alias Gobusgo.Gbfs.VehicleStatusCycle
   alias Gobusgo.Gbfs.VehicleStatusView
+  alias Gobusgo.Gbfs.VehicleTiles
   alias Gobusgo.Publisher.InProcess
   alias Gobusgo.Scheduler
 
@@ -143,6 +144,23 @@ defmodule Gobusgo.Gbfs.VehicleStatusCycleTest do
         end)
 
       assert length(String.split(log, "[warning] Shared vehicle feed not published")) == 2
+    end
+
+    test "drops the system's published index", context do
+      tiles = Module.concat(__MODULE__, "Tiles#{context.line}")
+      start_supervised!({VehicleTiles, name: tiles, pubsub: Gobusgo.PubSub})
+
+      :ok =
+        VehicleTiles.record(tiles, %{
+          system_id: "lime_seattle",
+          destination: "shared-vehicles/earlier",
+          fetched_at: ~U[2026-11-08 19:00:00Z],
+          vehicle_count: 1
+        })
+
+      {:ok, _counts} = VehicleStatusCycle.run(context.options ++ [tile_options: [server: tiles]])
+
+      assert VehicleTiles.current(tiles) == []
     end
   end
 end

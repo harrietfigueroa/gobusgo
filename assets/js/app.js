@@ -13,6 +13,7 @@ import {OfflineSchedules} from "./offline_schedules"
 import {PanelSheet} from "./panel_sheet"
 import {registerServiceWorker} from "./release_update"
 import {LocalTime} from "./service_alerts"
+import {SharedVehicles, SharedVehicleToggle} from "./shared_vehicles"
 import {ShowDirection} from "./show_direction"
 import {StopMarkers} from "./stop_markers"
 import {TripPlanner} from "./trip_planner"
@@ -53,6 +54,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
     PanelSheet,
     RouteLines,
     RouteStopTiles,
+    SharedVehicles,
+    SharedVehicleToggle,
     ShowDirection,
     StopMarkers,
     TripPlanner,

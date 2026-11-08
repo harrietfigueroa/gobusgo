@@ -38,10 +38,10 @@ defmodule Gobusgo.RetentionPolicyTest do
       end
     end
 
-    test "holds ten rules, each one Retention accepts" do
+    test "holds eleven rules, each one Retention accepts" do
       rules = RetentionPolicy.rules()
 
-      assert length(rules) == 10
+      assert length(rules) == 11
       assert Enum.all?(rules, &(Retention.assert_rule(&1) == :ok))
     end
 
