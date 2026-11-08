@@ -1,0 +1,143 @@
+{
+  "formatNote": "Each case is a timetable and queries with their expected Pareto frontiers, written by hand. A stop time is [stop, time] or [stop, arrival, departure], times as HH:MM from the start of the service day, past 24:00 after midnight. A leg is 'ride TRIP FROM HH:MM TO HH:MM' or 'walk FROM TO SECONDS'. Every case uses a minimum transfer of 120 seconds.",
+  "cases": [
+    {
+      "name": "a direct ride stays aboard through the stops between",
+      "trips": [{"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"], ["C", "08:20"]]}],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "07:55", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["ride T1 A 08:00 C 08:20"]}]}
+      ]
+    },
+    {
+      "name": "a transfer with time to spare",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"]]},
+        {"id": "T2", "stopTimes": [["B", "08:15"], ["C", "08:30"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T2 B 08:15 C 08:30"]}]}
+      ]
+    },
+    {
+      "name": "a transfer shorter than the minimum waits for the next trip",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"]]},
+        {"id": "T2", "stopTimes": [["B", "08:11"], ["C", "08:25"]]},
+        {"id": "T3", "stopTimes": [["B", "08:20"], ["C", "08:35"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:35", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T3 B 08:20 C 08:35"]}]}
+      ]
+    },
+    {
+      "name": "a destination no trip reaches",
+      "trips": [{"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"]]}],
+      "stops": ["D"],
+      "queries": [
+        {"from": "A", "to": "D", "depart": "07:00", "expected": []},
+        {"from": "B", "to": "A", "depart": "07:00", "expected": []}
+      ]
+    },
+    {
+      "name": "a trip that left before the query is not taken",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"]]},
+        {"id": "T2", "stopTimes": [["A", "08:30"], ["B", "08:40"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "B", "depart": "08:01", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride T2 A 08:30 B 08:40"]}]}
+      ]
+    },
+    {
+      "name": "fewer changes against an earlier arrival keeps both",
+      "trips": [
+        {"id": "SLOW", "stopTimes": [["A", "08:00"], ["C", "09:00"]]},
+        {"id": "F1", "stopTimes": [["A", "08:05"], ["B", "08:15"]]},
+        {"id": "F2", "stopTimes": [["B", "08:20"], ["C", "08:40"]]}
+      ],
+      "queries": [
+        {
+          "from": "A",
+          "to": "C",
+          "depart": "08:00",
+          "expected": [
+            {"arrive": "09:00", "changes": 0, "legs": ["ride SLOW A 08:00 C 09:00"]},
+            {"arrive": "08:40", "changes": 1, "legs": ["ride F1 A 08:05 B 08:15", "ride F2 B 08:20 C 08:40"]}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a journey with more changes and no earlier arrival is dominated",
+      "trips": [
+        {"id": "D1", "stopTimes": [["A", "08:00"], ["B", "08:10"]]},
+        {"id": "D2", "stopTimes": [["B", "08:15"], ["C", "08:40"]]},
+        {"id": "X1", "stopTimes": [["A", "08:00"], ["E", "08:05"]]},
+        {"id": "X2", "stopTimes": [["E", "08:10"], ["F", "08:15"]]},
+        {"id": "X3", "stopTimes": [["F", "08:20"], ["C", "08:40"]]},
+        {"id": "Y1", "stopTimes": [["A", "08:01"], ["C", "08:40"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride Y1 A 08:01 C 08:40"]}]}
+      ]
+    },
+    {
+      "name": "a trip past midnight and a trip of the previous service date",
+      "trips": [
+        {"id": "LATE", "stopTimes": [["A", "23:50"], ["B", "24:10"]]},
+        {"id": "OWL", "serviceDayOffset": 1, "stopTimes": [["B", "00:20"], ["C", "00:40"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "23:45", "expected": []},
+        {"from": "B", "to": "C", "depart": "00:00", "expected": [{"arrive": "00:40", "changes": 0, "legs": ["ride OWL B 00:20 C 00:40"]}]},
+        {"from": "A", "to": "B", "depart": "23:45", "expected": [{"arrive": "24:10", "changes": 0, "legs": ["ride LATE A 23:50 B 24:10"]}]}
+      ]
+    },
+    {
+      "name": "a walk from the origin and a walk after a ride",
+      "trips": [
+        {"id": "T1", "stopTimes": [["B", "08:10"], ["C", "08:20"]]},
+        {"id": "T2", "stopTimes": [["E", "08:28"], ["F", "08:40"]]}
+      ],
+      "walks": [["A", "B", 300], ["C", "E", 240]],
+      "queries": [
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["walk A B 300", "ride T1 B 08:10 C 08:20"]}]},
+        {"from": "B", "to": "F", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 1, "legs": ["ride T1 B 08:10 C 08:20", "walk C E 240", "ride T2 E 08:28 F 08:40"]}]},
+        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:05", "changes": 0, "legs": ["walk A B 300"]}]}
+      ]
+    },
+    {
+      "name": "no boarding and no alighting where a stop forbids them",
+      "trips": [
+        {"id": "T1", "noBoarding": ["B"], "noAlighting": ["C"], "stopTimes": [["A", "08:00"], ["B", "08:10"], ["C", "08:20"], ["D", "08:30"]]}
+      ],
+      "queries": [
+        {"from": "B", "to": "D", "depart": "08:00", "expected": []},
+        {"from": "A", "to": "C", "depart": "08:00", "expected": []},
+        {"from": "A", "to": "D", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 0, "legs": ["ride T1 A 08:00 D 08:30"]}]}
+      ]
+    },
+    {
+      "name": "a walk keeps the ride it follows when a later walk reaches its starting stop earlier",
+      "trips": [
+        {"id": "R1", "stopTimes": [["A", "08:00"], ["X", "08:10"]]},
+        {"id": "R2", "stopTimes": [["A", "08:01"], ["Z", "08:04"]]}
+      ],
+      "walks": [["X", "Y", 180], ["Z", "X", 240]],
+      "queries": [
+        {"from": "A", "to": "Y", "depart": "08:00", "expected": [{"arrive": "08:13", "changes": 0, "legs": ["ride R1 A 08:00 X 08:10", "walk X Y 180"]}]},
+        {"from": "A", "to": "X", "depart": "08:00", "expected": [{"arrive": "08:08", "changes": 0, "legs": ["ride R2 A 08:01 Z 08:04", "walk Z X 240"]}]}
+      ]
+    },
+    {
+      "name": "a stop dwell boards at its departure and alights at its arrival",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10", "08:15"], ["C", "08:25"]]}
+      ],
+      "queries": [
+        {"from": "B", "to": "C", "depart": "08:12", "expected": [{"arrive": "08:25", "changes": 0, "legs": ["ride T1 B 08:15 C 08:25"]}]},
+        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 B 08:10"]}]}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# The benchmark data that scripts/build_snapshot.exs writes, and the Rust
+# build output.
+/data/
+/rust/target/
