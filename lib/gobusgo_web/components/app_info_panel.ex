@@ -4,7 +4,8 @@ defmodule GobusgoWeb.AppInfoPanel do
   under a Settings heading: how to install the application where the
   browser offers it, the theme setting, and how schedules are saved for
   offline use, with its setting and status line. Then, under an About
-  heading, what the application is, a disclaimer, how to read the map, how
+  heading, what the application is, a disclaimer, what donations fund where
+  a donation address is configured, how to read the map, how
   OneBusAway data is used, how the rider's location is used, how favorite
   stops are kept, what is recorded of a connection, the credits, the
   licenses, and the commit the application was built from where the build
@@ -18,6 +19,7 @@ defmodule GobusgoWeb.AppInfoPanel do
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.RetentionPolicy
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.DonationButton
   alias GobusgoWeb.VehicleMarkers
 
   # A route-colored status has no one color, so its swatch is a sample of
@@ -69,6 +71,7 @@ defmodule GobusgoWeb.AppInfoPanel do
           <h3 class="font-semibold">Disclaimer</h3>
           <p>{AppInfo.disclaimer()}</p>
         </section>
+        <DonationButton.section />
         <.legend />
         <.data_use />
         <section id="app-info-location" class="flex flex-col gap-2">
