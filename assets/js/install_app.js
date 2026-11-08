@@ -1,4 +1,4 @@
-// The install section of the About tab. It shows the one offer
+// The install section of the Settings tab. It shows the one offer
 // `installOffer` picks: the install button where the browser has handed
 // over its prompt, Safari's menu on Apple platforms, and nothing in an
 // installed app or a browser that installs nothing.

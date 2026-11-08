@@ -190,10 +190,11 @@ defmodule GobusgoWeb.PanelSheet do
     """
   end
 
-  defp icon(%{name: "about"} = assigns) do
+  defp icon(%{name: "settings"} = assigns) do
     ~H"""
     <svg aria-hidden="true" class="panel-sheet-icon" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="9" /><path d="M12 11 V17 M12 7 V7.5" />
+      <path d="M4 6 H7 M11 6 H20 M4 12 H13 M17 12 H20 M4 18 H5 M9 18 H20" />
+      <circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="7" cy="18" r="2" />
     </svg>
     """
   end

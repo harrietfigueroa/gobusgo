@@ -7,7 +7,7 @@ defmodule GobusgoWeb.VehicleLive do
   fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines and the stops of
   the route and stop tile archive, with the panel sheet of
   `GobusgoWeb.PanelSheet` over it. The sheet's tabs are Trip, Favorites,
-  Filter, Alerts, and About; a page with no basemap offers About alone.
+  Filter, Alerts, and Settings; a page with no basemap offers Settings alone.
   Above the tabs a line names the filter the map shows. The Filter tab's badge counts the agencies and the
   routes the filter names and the Alerts tab's the current alerts, and the
   Favorites tab's badge is the browser's to write. A page with a basemap
@@ -56,7 +56,7 @@ defmodule GobusgoWeb.VehicleLive do
   fitted bounds inside one archive moves the view with the `basemap:fit`
   event. Before any
   extraction the page says that no basemap is available, and shows the
-  sheet with its About tab and nothing else.
+  sheet with its Settings tab and nothing else.
 
   An element of its own mounts the hook that centers the map on the rider's
   location. It carries the bounds of the whole archive and starts hidden;
@@ -517,7 +517,7 @@ defmodule GobusgoWeb.VehicleLive do
           <ServiceAlertsPanel.content alerts={@service_alerts} />
         </:tab>
 
-        <:tab name="about" label="About">
+        <:tab name="settings" label="Settings">
           <AppInfoPanel.content agencies={@agencies} />
         </:tab>
       </PanelSheet.sheet>
