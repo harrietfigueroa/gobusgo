@@ -1,4 +1,4 @@
-import {favoriteHolder, holdStop, releaseStop} from "./stop_holds"
+import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {appendParagraph, writeArrivals} from "./stop_arrivals"
 
 // The rider's favorite stops, which this browser keeps in its local storage
@@ -8,18 +8,21 @@ import {appendParagraph, writeArrivals} from "./stop_arrivals"
 // the panel shows it, as an open popup's stop is, so its arrivals come with
 // the "stop-arrivals:arrivals" event.
 
-const storageKey = "gobusgo:favorite-stops"
-const elementId = "favorite-stop"
-export const changeEventName = "gobusgo:favorite-stops-change"
+const STORAGE_KEY = "gobusgo:favorite-stops"
+const ELEMENT_ID = "favorite-stop"
+export const CHANGE_EVENT_NAME = "gobusgo:favorite-stops-change"
 // The next bus, and enough after it to choose between two routes.
-const arrivalCountMax = 3
-const removeLabelPrefix = "Remove favorite stop"
-const entryClassName = "flex flex-col gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
+const ARRIVAL_COUNT_MAX = 3
+const REMOVE_LABEL_PREFIX = "Remove favorite stop"
+const ENTRY_CLASS_NAME = "flex flex-col gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
+
+// The kinds of a stored entry read back as a favorite.
+const EntryKind = Object.freeze({favorite: "favorite", malformed: "malformed"})
 
 // The most favorites a rider keeps, which the panel's element carries, or
 // none on a page that has no panel.
 export function favoriteCountMax() {
-  const element = document.getElementById(elementId)
+  const element = document.getElementById(ELEMENT_ID)
 
   if (element === null) {
     return 0
@@ -41,8 +44,13 @@ export function storedFavorites() {
   let parsed
 
   try {
-    const text = window.localStorage.getItem(storageKey)
-    parsed = text === null ? [] : JSON.parse(text)
+    const text = window.localStorage.getItem(STORAGE_KEY)
+
+    if (text === null) {
+      parsed = []
+    } else {
+      parsed = JSON.parse(text)
+    }
   } catch (error) {
     console.warn("Stored favorite stops not readable", error)
     return []
@@ -59,11 +67,14 @@ function favoritesOf(value) {
   }
 
   for (const entry of value.slice(0, favoriteCountMax())) {
-    const favorite = favoriteOf(entry)
-    const isNew = favorite !== null && favorites.every((kept) => kept.stopId !== favorite.stopId)
+    const read = favoriteOf(entry)
 
-    if (isNew) {
-      favorites.push(favorite)
+    if (read.kind === EntryKind.favorite) {
+      const isNew = favorites.every((kept) => kept.stopId !== read.favorite.stopId)
+
+      if (isNew) {
+        favorites.push(read.favorite)
+      }
     }
   }
 
@@ -72,13 +83,14 @@ function favoritesOf(value) {
 
 function favoriteOf(value) {
   const isObject = typeof value === "object" && value !== null
-  const hasStopId = isObject && typeof value.stopId === "string" && value.stopId !== ""
+  const hasStopIdText = isObject && typeof value.stopId === "string"
+  const hasStopId = hasStopIdText && value.stopId !== ""
   const isFavorite = hasStopId && typeof value.name === "string"
 
   if (isFavorite) {
-    return {stopId: value.stopId, name: value.name}
+    return {kind: EntryKind.favorite, favorite: {stopId: value.stopId, name: value.name}}
   } else {
-    return null
+    return {kind: EntryKind.malformed}
   }
 }
 
@@ -86,12 +98,12 @@ function favoriteOf(value) {
 // "gobusgo:favorite-stops-change" event.
 function storeFavorites(favorites) {
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify(favorites))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites))
   } catch (error) {
     console.warn("Favorite stops not stored", error)
   }
 
-  window.dispatchEvent(new CustomEvent(changeEventName, {detail: {favorites}}))
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {favorites}}))
 }
 
 // Adds `favorite`, a stop's identifier and name, after the rider's other
@@ -101,8 +113,9 @@ export function addFavorite(favorite) {
   const favorites = storedFavorites()
   const isNew = favorites.every((kept) => kept.stopId !== favorite.stopId)
   const hasRoom = favorites.length < favoriteCountMax()
+  const isAddable = isNew && hasRoom
 
-  if (isNew && hasRoom) {
+  if (isAddable) {
     storeFavorites([...favorites, favorite])
   }
 }
@@ -121,7 +134,7 @@ export function removeFavorite(stopId) {
 // arrivals.
 function shownInPanel(shown) {
   if (shown.status === "arrivals") {
-    return {...shown, arrivals: shown.arrivals.slice(0, arrivalCountMax)}
+    return {...shown, arrivals: shown.arrivals.slice(0, ARRIVAL_COUNT_MAX)}
   } else {
     return shown
   }
@@ -132,7 +145,7 @@ function shownInPanel(shown) {
 // outside the application and is never parsed as HTML.
 function entryOf(favorite) {
   const element = document.createElement("div")
-  element.className = entryClassName
+  element.className = ENTRY_CLASS_NAME
 
   const header = document.createElement("div")
   header.className = "flex items-start justify-between gap-2"
@@ -144,7 +157,7 @@ function entryOf(favorite) {
   const remove = document.createElement("button")
   remove.type = "button"
   remove.className = "close-button shrink-0"
-  remove.setAttribute("aria-label", `${removeLabelPrefix} ${favorite.name}`)
+  remove.setAttribute("aria-label", `${REMOVE_LABEL_PREFIX} ${favorite.name}`)
   remove.textContent = "×"
   remove.addEventListener("click", () => { removeFavorite(favorite.stopId) })
 
@@ -166,7 +179,7 @@ export const FavoriteStop = {
     this.push = (event, payload) => { this.pushEvent(event, payload) }
 
     this.onChange = (event) => { this.show(event.detail.favorites) }
-    window.addEventListener(changeEventName, this.onChange)
+    window.addEventListener(CHANGE_EVENT_NAME, this.onChange)
 
     this.handleEvent("stop-arrivals:arrivals", (shown) => {
       const entry = this.entries.get(shown.stop_id)
@@ -183,7 +196,7 @@ export const FavoriteStop = {
   // open, and is told them again.
   reconnected() {
     for (const stopId of this.entries.keys()) {
-      holdStop({pushEvent: this.push, stopId, holder: favoriteHolder})
+      holdStop({pushEvent: this.push, stopId, holder: FAVORITE_HOLDER})
     }
   },
 
@@ -199,7 +212,7 @@ export const FavoriteStop = {
 
       if (entry === undefined) {
         entry = entryOf(favorite)
-        holdStop({pushEvent: this.push, stopId: favorite.stopId, holder: favoriteHolder})
+        holdStop({pushEvent: this.push, stopId: favorite.stopId, holder: FAVORITE_HOLDER})
       }
 
       entries.set(favorite.stopId, entry)
@@ -207,16 +220,23 @@ export const FavoriteStop = {
 
     for (const stopId of this.entries.keys()) {
       if (entries.has(stopId) === false) {
-        releaseStop({pushEvent: this.push, stopId, holder: favoriteHolder})
+        releaseStop({pushEvent: this.push, stopId, holder: FAVORITE_HOLDER})
       }
     }
 
     this.entries = entries
-    this.el.replaceChildren(...Array.from(entries.values(), (entry) => entry.element))
+
+    const elements = document.createDocumentFragment()
+
+    for (const entry of entries.values()) {
+      elements.append(entry.element)
+    }
+
+    this.el.replaceChildren(elements)
     this.el.hidden = entries.size === 0
   },
 
   destroyed() {
-    window.removeEventListener(changeEventName, this.onChange)
+    window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
   }
 }

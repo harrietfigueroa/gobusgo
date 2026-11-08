@@ -1,36 +1,37 @@
-import {readyEventName} from "./basemap"
+import {READY_EVENT_NAME} from "./basemap"
 import {glidePosition, glides} from "./marker_glide"
-import {announceRiderPopupChange, riderPopupClassName} from "./rider_popups"
+import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {compactPopupContent} from "./route_chips"
 import {alertLines} from "./service_alerts"
 
-const sourceName = "vehicle-markers"
-const roundLayerName = "vehicle-markers-round"
-const pointedLayerName = "vehicle-markers-pointed"
+const SOURCE_NAME = "vehicle-markers"
+const ROUND_LAYER_NAME = "vehicle-markers-round"
+const POINTED_LAYER_NAME = "vehicle-markers-pointed"
 
 // The layers a vehicle's marker is drawn in, round or pointed.
-export const markerLayerNames = [roundLayerName, pointedLayerName]
-const routeLayerName = "vehicle-markers-route"
+export const markerLayerNames = [ROUND_LAYER_NAME, POINTED_LAYER_NAME]
+const ROUTE_LAYER_NAME = "vehicle-markers-route"
 const routeFont = ["Noto Sans Medium"]
-const routeTextSizePixels = 11
+const ROUTE_TEXT_SIZE_PIXELS = 11
 const routeTextOffsetEms = [0, 1]
-const routeTextColor = "#0f172a"
-const routeHaloColor = "#ffffff"
-const routeHaloWidthPixels = 1.5
-const pointedImagePrefix = "vehicle-marker-pointed-"
-const pointedImageSizePixels = 28
-const pointedImagePixelRatio = 2
-const pointedTipInsetPixels = 2
-const markerRadiusPixels = 6
-const markerStrokeWidthPixels = 1.5
-const markerStrokeColor = "#ffffff"
-const statusOpacityFallback = 1
-const positionNote = "Marker position: the source's estimate"
-const notSupplied = "Not supplied"
-const titleClassName = "popup-title"
+const ROUTE_TEXT_COLOR = "#0f172a"
+const ROUTE_HALO_COLOR = "#ffffff"
+const ROUTE_HALO_WIDTH_PIXELS = 1.5
+const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
+const POINTED_IMAGE_SIZE_PIXELS = 28
+const POINTED_IMAGE_PIXEL_RATIO = 2
+const POINTED_TIP_INSET_PIXELS = 2
+const HALVING_DIVISOR = 2
+const MARKER_RADIUS_PIXELS = 6
+const MARKER_STROKE_WIDTH_PIXELS = 1.5
+const MARKER_STROKE_COLOR = "#ffffff"
+const STATUS_OPACITY_FALLBACK = 1
+const POSITION_NOTE = "Marker position: the source's estimate"
+const NOT_SUPPLIED = "Not supplied"
+const TITLE_CLASS_NAME = "popup-title"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
-const reducedMotionQuery = "(prefers-reduced-motion: reduce)"
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
 
 function point(coordinates) {
   return {type: "Point", coordinates}
@@ -86,39 +87,43 @@ function placeMarkers({markersByAgency, drawn, startMs, reducedMotion}) {
   return {collection: {type: "FeatureCollection", features}, drawn: placed, gliding}
 }
 
+function statusCase({status, opacity}) {
+  return [status, opacity]
+}
+
 // The paint expression that gives each marker the opacity of its status.
 function statusOpacity(statuses) {
-  const cases = statuses.flatMap(({status, opacity}) => [status, opacity])
-  return ["match", ["get", "status"], ...cases, statusOpacityFallback]
+  const cases = statuses.flatMap(statusCase)
+  return ["match", ["get", "status"], ...cases, STATUS_OPACITY_FALLBACK]
 }
 
 // The image of a pointed marker in one color: the round marker's circle,
 // centered in the image, drawn out to a tip that points up, which is north
 // for a heading of zero.
 function pointedImage(color) {
-  const size = pointedImageSizePixels * pointedImagePixelRatio
+  const size = POINTED_IMAGE_SIZE_PIXELS * POINTED_IMAGE_PIXEL_RATIO
   const canvas = document.createElement("canvas")
   canvas.width = size
   canvas.height = size
 
   const context = canvas.getContext("2d")
-  const center = pointedImageSizePixels / 2
-  const tipDistance = center - pointedTipInsetPixels
+  const center = POINTED_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
+  const tipDistance = center - POINTED_TIP_INSET_PIXELS
   // The angle at the circle's center between the tip and each point where
   // a line from the tip touches the circle.
-  const tangentAngle = Math.acos(markerRadiusPixels / tipDistance)
-  const up = -Math.PI / 2
+  const tangentAngle = Math.acos(MARKER_RADIUS_PIXELS / tipDistance)
+  const up = -Math.PI / HALVING_DIVISOR
 
-  context.scale(pointedImagePixelRatio, pointedImagePixelRatio)
+  context.scale(POINTED_IMAGE_PIXEL_RATIO, POINTED_IMAGE_PIXEL_RATIO)
   context.beginPath()
   context.moveTo(center, center - tipDistance)
-  context.arc(center, center, markerRadiusPixels, up + tangentAngle, up - tangentAngle)
+  context.arc(center, center, MARKER_RADIUS_PIXELS, up + tangentAngle, up - tangentAngle)
   context.closePath()
   context.fillStyle = color
   context.fill()
   context.lineJoin = "round"
-  context.lineWidth = markerStrokeWidthPixels
-  context.strokeStyle = markerStrokeColor
+  context.lineWidth = MARKER_STROKE_WIDTH_PIXELS
+  context.strokeStyle = MARKER_STROKE_COLOR
   context.stroke()
 
   return context.getImageData(0, 0, size, size)
@@ -128,7 +133,7 @@ function headingText(heading) {
   if (typeof heading === "number") {
     return `${heading}° clockwise from north`
   } else {
-    return notSupplied
+    return NOT_SUPPLIED
   }
 }
 
@@ -136,7 +141,7 @@ function suppliedText(value) {
   if (typeof value === "string") {
     return value
   } else {
-    return notSupplied
+    return NOT_SUPPLIED
   }
 }
 
@@ -179,16 +184,25 @@ function popupContent(properties, statusLabels) {
     `Location reported: ${properties.locationAge}`,
     `Real-time data: ${properties.realTime}`,
     `Heading: ${headingText(properties.heading)}`,
-    positionNote
+    POSITION_NOTE
   ]
-  const routeIds = typeof properties.routeId === "string" ? [properties.routeId] : []
+  const routeIds = []
+
+  if (typeof properties.routeId === "string") {
+    routeIds.push(properties.routeId)
+  }
+
   const content = document.createElement("div")
 
   appendParagraphs(content, tripLines)
-  content.append(...alertLines({routeIds, stopId: null}))
+
+  for (const alertLine of alertLines({routeIds, stopId: null})) {
+    content.append(alertLine)
+  }
+
   appendParagraphs(content, detailLines)
 
-  content.firstElementChild.className = titleClassName
+  content.firstElementChild.className = TITLE_CLASS_NAME
   return content
 }
 
@@ -209,6 +223,10 @@ function compactVehicleContent(properties, statusLabels) {
   })
 }
 
+function statusLabelEntry({status, label}) {
+  return [status, label]
+}
+
 // The hook of the element beside the map. It holds every agency's markers
 // as the server last sent them, and draws them on each map the basemap
 // announces, so a map drawn anew for another archive shows them too.
@@ -216,7 +234,8 @@ export const VehicleMarkers = {
   mounted() {
     const statuses = JSON.parse(this.el.dataset.statuses)
     this.statuses = statuses
-    this.statusLabels = new Map(statuses.map(({status, label}) => [status, label]))
+    const labelEntries = Array.from(statuses, statusLabelEntry)
+    this.statusLabels = new Map(labelEntries)
     this.markersByAgency = new Map()
     this.map = null
     this.drawn = new Map()
@@ -231,7 +250,7 @@ export const VehicleMarkers = {
       map.once("load", () => { this.attach(map, maplibre) })
     }
 
-    window.addEventListener(readyEventName, this.onBasemapReady)
+    window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
 
     this.handleEvent("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
       this.markersByAgency.set(agencyId, markers)
@@ -249,34 +268,34 @@ export const VehicleMarkers = {
       markersByAgency: this.markersByAgency,
       drawn: new Map(),
       startMs: performance.now(),
-      reducedMotion: window.matchMedia(reducedMotionQuery).matches
+      reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
     })
 
     this.drawn = drawn
-    map.addSource(sourceName, {type: "geojson", data: collection, promoteId: "markerId"})
+    map.addSource(SOURCE_NAME, {type: "geojson", data: collection, promoteId: "markerId"})
 
     // A pointed marker's image is made the first time a marker of its color
     // is drawn, since the colors are the routes' and not known in advance.
     map.on("styleimagemissing", ({id}) => {
-      if (id.startsWith(pointedImagePrefix)) {
-        const color = id.slice(pointedImagePrefix.length)
-        map.addImage(id, pointedImage(color), {pixelRatio: pointedImagePixelRatio})
+      if (id.startsWith(POINTED_IMAGE_PREFIX)) {
+        const color = id.slice(POINTED_IMAGE_PREFIX.length)
+        map.addImage(id, pointedImage(color), {pixelRatio: POINTED_IMAGE_PIXEL_RATIO})
       }
     })
 
     const opacity = statusOpacity(this.statuses)
 
     map.addLayer({
-      id: roundLayerName,
+      id: ROUND_LAYER_NAME,
       type: "circle",
-      source: sourceName,
+      source: SOURCE_NAME,
       filter: ["!", hasHeading],
       paint: {
-        "circle-radius": markerRadiusPixels,
+        "circle-radius": MARKER_RADIUS_PIXELS,
         "circle-color": ["get", "color"],
         "circle-opacity": opacity,
-        "circle-stroke-color": markerStrokeColor,
-        "circle-stroke-width": markerStrokeWidthPixels,
+        "circle-stroke-color": MARKER_STROKE_COLOR,
+        "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS,
         "circle-stroke-opacity": opacity
       }
     })
@@ -284,12 +303,12 @@ export const VehicleMarkers = {
     // The image turns with the map, so a heading stays a compass direction
     // on a map that is turned.
     map.addLayer({
-      id: pointedLayerName,
+      id: POINTED_LAYER_NAME,
       type: "symbol",
-      source: sourceName,
+      source: SOURCE_NAME,
       filter: hasHeading,
       layout: {
-        "icon-image": ["concat", pointedImagePrefix, ["get", "color"]],
+        "icon-image": ["concat", POINTED_IMAGE_PREFIX, ["get", "color"]],
         "icon-rotate": ["get", "heading"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true
@@ -300,30 +319,32 @@ export const VehicleMarkers = {
     // A label is left out where it would cover another label, so a crowded
     // street shows the routes of some of its vehicles.
     map.addLayer({
-      id: routeLayerName,
+      id: ROUTE_LAYER_NAME,
       type: "symbol",
-      source: sourceName,
+      source: SOURCE_NAME,
       filter: hasRoute,
       layout: {
         "text-field": ["get", "route"],
         "text-font": routeFont,
-        "text-size": routeTextSizePixels,
+        "text-size": ROUTE_TEXT_SIZE_PIXELS,
         "text-anchor": "top",
         "text-offset": routeTextOffsetEms,
         "text-allow-overlap": false
       },
       paint: {
-        "text-color": routeTextColor,
-        "text-halo-color": routeHaloColor,
-        "text-halo-width": routeHaloWidthPixels
+        "text-color": ROUTE_TEXT_COLOR,
+        "text-halo-color": ROUTE_HALO_COLOR,
+        "text-halo-width": ROUTE_HALO_WIDTH_PIXELS
       }
     })
+
+    const canvas = map.getCanvas()
 
     for (const layerName of markerLayerNames) {
       map.on("click", layerName, (event) => {
         const [feature] = event.features
 
-        const popup = new maplibre.Popup({className: riderPopupClassName})
+        const popup = new maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
           .setLngLat(feature.geometry.coordinates)
           .setDOMContent(compactVehicleContent(feature.properties, this.statusLabels))
 
@@ -332,8 +353,8 @@ export const VehicleMarkers = {
         announceRiderPopupChange()
       })
 
-      map.on("mouseenter", layerName, () => { map.getCanvas().style.cursor = "pointer" })
-      map.on("mouseleave", layerName, () => { map.getCanvas().style.cursor = "" })
+      map.on("mouseenter", layerName, () => { canvas.style.cursor = "pointer" })
+      map.on("mouseleave", layerName, () => { canvas.style.cursor = "" })
     }
 
     this.map = map
@@ -345,12 +366,12 @@ export const VehicleMarkers = {
         markersByAgency: this.markersByAgency,
         drawn: this.drawn,
         startMs: performance.now(),
-        reducedMotion: window.matchMedia(reducedMotionQuery).matches
+        reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
       })
 
       this.drawn = drawn
       this.gliding = gliding
-      this.map.getSource(sourceName).setData(collection)
+      this.map.getSource(SOURCE_NAME).setData(collection)
       this.requestGlideFrame()
     }
   },
@@ -382,7 +403,7 @@ export const VehicleMarkers = {
       }
     }
 
-    this.map.getSource(sourceName).updateData({update})
+    this.map.getSource(SOURCE_NAME).updateData({update})
     this.requestGlideFrame()
   },
 
@@ -397,6 +418,6 @@ export const VehicleMarkers = {
 
   destroyed() {
     this.stopGliding()
-    window.removeEventListener(readyEventName, this.onBasemapReady)
+    window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
   }
 }

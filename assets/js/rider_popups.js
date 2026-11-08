@@ -3,12 +3,12 @@
 // around it.
 
 // The class of a popup a rider opened.
-export const riderPopupClassName = "rider-popup"
+export const RIDER_POPUP_CLASS_NAME = "rider-popup"
 // The DOM event the window gets when a rider's popup opens or closes.
-export const riderPopupChangeEventName = "gobusgo:rider-popup-change"
+export const RIDER_POPUP_CHANGE_EVENT_NAME = "gobusgo:rider-popup-change"
 
 export function announceRiderPopupChange() {
-  window.dispatchEvent(new CustomEvent(riderPopupChangeEventName))
+  window.dispatchEvent(new CustomEvent(RIDER_POPUP_CHANGE_EVENT_NAME))
 }
 
 // The box of each rider's popup that is open on `map`, in the pixels of the
@@ -18,7 +18,7 @@ export function riderPopupBoxes(map) {
   const origin = container.getBoundingClientRect()
   const boxes = []
 
-  for (const element of container.querySelectorAll(`.${riderPopupClassName}`)) {
+  for (const element of container.querySelectorAll(`.${RIDER_POPUP_CLASS_NAME}`)) {
     const rectangle = element.getBoundingClientRect()
 
     boxes.push({

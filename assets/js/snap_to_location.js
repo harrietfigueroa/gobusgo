@@ -1,21 +1,21 @@
-import {readyEventName} from "./basemap"
+import {READY_EVENT_NAME} from "./basemap"
 
-const storageKey = "gobusgo:snap-to-location"
-const storedValue = "true"
-const buttonSelector = ".maplibregl-ctrl-geolocate"
-const snapZoomMax = 15
-const positionTimeoutMs = 10_000
-const noticeMs = 8_000
-const deniedText = "Location permission was denied, so the map stays where it is."
-const unavailableText = "Your location could not be found, so the map stays where it is."
-const outsideText = "Your location is outside the area this map covers."
+const STORAGE_KEY = "gobusgo:snap-to-location"
+const STORED_VALUE = "true"
+const BUTTON_SELECTOR = ".maplibregl-ctrl-geolocate"
+const SNAP_ZOOM_MAX = 15
+const POSITION_TIMEOUT_MS = 10_000
+const NOTICE_MS = 8_000
+const DENIED_TEXT = "Location permission was denied, so the map stays where it is."
+const UNAVAILABLE_TEXT = "Your location could not be found, so the map stays where it is."
+const OUTSIDE_TEXT = "Your location is outside the area this map covers."
 
 // Whether this browser stored that the rider snaps to their location.
 // Reading throws where storage is blocked, such as a private window, which
 // reads as nothing stored.
 function readStored() {
   try {
-    return window.localStorage.getItem(storageKey) === storedValue
+    return window.localStorage.getItem(STORAGE_KEY) === STORED_VALUE
   } catch (error) {
     console.warn("Stored snap to location not readable", error)
     return false
@@ -24,7 +24,7 @@ function readStored() {
 
 function writeStored() {
   try {
-    window.localStorage.setItem(storageKey, storedValue)
+    window.localStorage.setItem(STORAGE_KEY, STORED_VALUE)
   } catch (error) {
     console.warn("Snap to location not stored", error)
   }
@@ -34,7 +34,9 @@ function writeStored() {
 // the Permissions API, and one that refuses the query, reads as one that
 // prompts.
 async function permissionGranted() {
-  if (navigator.permissions === undefined) return false
+  if (navigator.permissions === undefined) {
+    return false
+  }
 
   try {
     const status = await navigator.permissions.query({name: "geolocation"})
@@ -46,7 +48,10 @@ async function permissionGranted() {
 }
 
 function inside({south, west, north, east}, {latitude, longitude}) {
-  return latitude >= south && latitude <= north && longitude >= west && longitude <= east
+  const isWithinLatitude = latitude >= south && latitude <= north
+  const isWithinLongitude = longitude >= west && longitude <= east
+  const isInside = isWithinLatitude && isWithinLongitude
+  return isInside
 }
 
 function camera(map) {
@@ -62,7 +67,11 @@ function camera(map) {
 // position that is unavailable and one that timed out.
 // https://developer.mozilla.org/en-US/docs/Web/API/GeolocationPositionError/code — checked 2026-10-09
 function errorText(error) {
-  return error.code === error.PERMISSION_DENIED ? deniedText : unavailableText
+  if (error.code === error.PERMISSION_DENIED) {
+    return DENIED_TEXT
+  } else {
+    return UNAVAILABLE_TEXT
+  }
 }
 
 // The hook of the notice beside the map. On each map the basemap announces
@@ -83,13 +92,13 @@ export const SnapToLocation = {
     this.restCamera = null
 
     this.onBasemapReady = (event) => { this.attach(event.detail) }
-    window.addEventListener(readyEventName, this.onBasemapReady)
+    window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
   },
 
   attach({map, maplibre}) {
     const control = new maplibre.GeolocateControl({
-      positionOptions: {enableHighAccuracy: false, maximumAge: 0, timeout: positionTimeoutMs},
-      fitBoundsOptions: {maxZoom: snapZoomMax},
+      positionOptions: {enableHighAccuracy: false, maximumAge: 0, timeout: POSITION_TIMEOUT_MS},
+      fitBoundsOptions: {maxZoom: SNAP_ZOOM_MAX},
       trackUserLocation: false,
       showUserLocation: true,
       showAccuracyCircle: true,
@@ -103,14 +112,16 @@ export const SnapToLocation = {
     // The control moves the map before it announces a position, so the view
     // to go back to is the one the last move of another origin ended on.
     map.on("moveend", (moved) => {
-      if (!moved.geolocateSource) this.restCamera = camera(map)
+      if (!moved.geolocateSource) {
+        this.restCamera = camera(map)
+      }
     })
 
     control.on("geolocate", (position) => { this.located(map, position.coords) })
     control.on("error", (error) => { this.explain(errorText(error)) })
     map.addControl(control)
 
-    map.getContainer().querySelector(buttonSelector).addEventListener("click", () => {
+    map.getContainer().querySelector(BUTTON_SELECTOR).addEventListener("click", () => {
       this.clicked = true
       this.hideNotice()
     })
@@ -122,12 +133,21 @@ export const SnapToLocation = {
   },
 
   async snapOnLoad(control) {
-    if (!readStored()) return
-    if (!(await permissionGranted())) return
+    if (!readStored()) {
+      return
+    }
+
+    const granted = await permissionGranted()
+
+    if (!granted) {
+      return
+    }
 
     // The control finishes its setup after a permission query of its own
     // and refuses a trigger before that.
-    if (!control.trigger()) console.warn("Map not snapped to location on load")
+    if (!control.trigger()) {
+      console.warn("Map not snapped to location on load")
+    }
   },
 
   located(map, coords) {
@@ -135,19 +155,21 @@ export const SnapToLocation = {
       writeStored()
     } else {
       map.jumpTo(this.restCamera)
-      this.explain(outsideText)
+      this.explain(OUTSIDE_TEXT)
     }
   },
 
   // Says why a snap did not happen, to a rider who asked for one. A snap
   // on load that fails says nothing.
   explain(text) {
-    if (!this.clicked) return
+    if (!this.clicked) {
+      return
+    }
 
     this.hideNotice()
     this.el.textContent = text
     this.el.hidden = false
-    this.noticeTimer = window.setTimeout(() => { this.hideNotice() }, noticeMs)
+    this.noticeTimer = window.setTimeout(() => { this.hideNotice() }, NOTICE_MS)
   },
 
   hideNotice() {
@@ -160,7 +182,7 @@ export const SnapToLocation = {
   },
 
   destroyed() {
-    window.removeEventListener(readyEventName, this.onBasemapReady)
+    window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     this.hideNotice()
   }
 }

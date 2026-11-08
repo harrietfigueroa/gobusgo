@@ -20,7 +20,7 @@ function client() {
 
   try {
     referrerHost = new URL(document.referrer).hostname
-  } catch (_invalid) {
+  } catch {
     // An empty referrer is no URL, and a visit with none sends no host.
   }
 
@@ -51,7 +51,11 @@ const liveSocket = new LiveSocket("/live", Socket, {
 
 // A <dialog> opens as a modal only through its showModal method, so the
 // element that opens one dispatches this event to it.
-window.addEventListener("gobusgo:show-modal", event => event.target.showModal())
+function showModal(event) {
+  event.target.showModal()
+}
+
+window.addEventListener("gobusgo:show-modal", showModal)
 
 liveSocket.connect()
 

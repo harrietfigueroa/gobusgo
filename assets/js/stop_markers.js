@@ -1,68 +1,70 @@
-import {readyEventName} from "./basemap"
+import {READY_EVENT_NAME} from "./basemap"
 import {placePopups} from "./popup_placement"
 import {
   announceRiderPopupChange,
   riderPopupBoxes,
-  riderPopupChangeEventName,
-  riderPopupClassName
+  RIDER_POPUP_CHANGE_EVENT_NAME,
+  RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
 import {alertLines} from "./service_alerts"
 import {compactPopupContent} from "./route_chips"
 import {appendParagraph, writeArrivals} from "./stop_arrivals"
 import {
   addFavorite,
-  changeEventName as favoriteChangeEventName,
+  CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME,
   favoriteCountMax,
   favoritesFullText,
   removeFavorite,
   storedFavorites
 } from "./favorite_stop"
-import {holdStop, popupHolder, releaseStop} from "./stop_holds"
+import {holdStop, POPUP_HOLDER, releaseStop} from "./stop_holds"
 import {
   addSource,
-  changeEventName,
+  CHANGE_EVENT_NAME,
   filterProperties,
-  sourceName,
+  SOURCE_NAME,
+  FilterKind,
+  setLayerFilter,
   stopFilter,
-  stopLayerName
+  STOP_LAYER_NAME
 } from "./route_stop_tiles"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 
 // The layer a stop's marker is drawn in.
-export const markerLayerName = "stop-markers"
+export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
-const zoomMin = 14
-const markerRadiusPixels = 7
-const markerColor = "#ffffff"
-const markerStrokeColor = "#334155"
-const markerStrokeWidthPixels = 2
-const labelLayerName = "stop-markers-label"
+const ZOOM_MIN = 14
+const MARKER_RADIUS_PIXELS = 7
+const MARKER_COLOR = "#ffffff"
+const MARKER_STROKE_COLOR = "#334155"
+const MARKER_STROKE_WIDTH_PIXELS = 2
+const LABEL_LAYER_NAME = "stop-markers-label"
 const labelFont = ["Noto Sans Medium"]
-const labelTextSizePixels = 11
+const LABEL_TEXT_SIZE_PIXELS = 11
 const labelTextOffsetEms = [0, 1]
-const labelTextWidthEmsMax = 12
-const labelTextColor = "#334155"
-const labelHaloColor = "#ffffff"
-const labelHaloWidthPixels = 1.5
+const LABEL_TEXT_WIDTH_EMS_MAX = 12
+const LABEL_TEXT_COLOR = "#334155"
+const LABEL_HALO_COLOR = "#ffffff"
+const LABEL_HALO_WIDTH_PIXELS = 1.5
 const hasLabel = ["!=", ["get", "label"], ""]
 // The zoom from which a screen holds few enough stops that their popups
 // stand apart.
-const autoOpenZoomMin = 16
+const AUTO_OPEN_ZOOM_MIN = 16
 // The room between two popups, and between a popup and a rider's.
-const popupGapPixels = 4
+const POPUP_GAP_PIXELS = 4
 // MapLibre names the edge of a popup that touches its point, which is the
 // edge across from the side of the point the popup stands on.
 const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left"}
 // The side a popup stands on while it is only measured.
-const measuredSide = "above"
-const notSupplied = "Not supplied"
-const titleClassName = "popup-title"
-const favoriteButtonClassName = "mt-1 text-left underline"
-const favoriteText = "★ Your favorite stop"
-const notFavoriteText = "☆ Make this your favorite stop"
+const MEASURED_SIDE = "above"
+const NOT_SUPPLIED = "Not supplied"
+const TITLE_CLASS_NAME = "popup-title"
+const FAVORITE_BUTTON_CLASS_NAME = "mt-1 text-left underline"
+const FAVORITE_TEXT = "★ Your favorite stop"
+const NOT_FAVORITE_TEXT = "☆ Make this your favorite stop"
 // A compact stop popup shows as many route numbers as the stop's label does.
-const chipCountMax = 4
+const CHIP_COUNT_MAX = 4
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its popup shows, the routes and the agencies each one text. A text
@@ -80,9 +82,24 @@ function stopFromFeature({geometry, properties}) {
     direction: properties.direction,
     routes: properties.routes,
     agencies: properties.agencies,
-    routeIds: (properties.routeIds ?? "").split(",").filter((routeId) => routeId !== ""),
+    routeIds: routeIdsOf(properties.routeIds),
     routeChips: routeChips(properties.routeChips)
   }
+}
+
+function isRouteId(routeId) {
+  return routeId !== ""
+}
+
+function routeIdsOf(text) {
+  const isAbsent = text === undefined || text === null
+
+  if (isAbsent) {
+    return []
+  }
+
+  const parts = text.split(",")
+  return parts.filter(isRouteId)
 }
 
 // The feature holds its route chips as a JSON list of name and color pairs.
@@ -106,7 +123,7 @@ function routeChip([name, color]) {
 function renderedStops(map) {
   const stopsById = new Map()
 
-  for (const feature of map.queryRenderedFeatures({layers: [markerLayerName]})) {
+  for (const feature of map.queryRenderedFeatures({layers: [MARKER_LAYER_NAME]})) {
     stopsById.set(feature.properties.stopId, stopFromFeature(feature))
   }
 
@@ -123,10 +140,10 @@ function firstVehicleLayerName(map) {
 function labelFilter() {
   const kept = stopFilter()
 
-  if (kept === null) {
+  if (kept.kind === FilterKind.none) {
     return hasLabel
   } else {
-    return ["all", hasLabel, kept]
+    return ["all", hasLabel, kept.filter]
   }
 }
 
@@ -134,7 +151,10 @@ function labelFilter() {
 // shows the stops of `visibleStopIds`: all of them in a view zoomed in
 // close that shows at most `countMax`, and none in any other view.
 export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
-  if (zoom >= autoOpenZoomMin && visibleStopIds.length <= countMax) {
+  const isZoomedIn = zoom >= AUTO_OPEN_ZOOM_MIN
+  const opensAll = isZoomedIn && visibleStopIds.length <= countMax
+
+  if (opensAll) {
     return visibleStopIds
   } else {
     return []
@@ -142,10 +162,12 @@ export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
 }
 
 function suppliedText(value) {
-  if (typeof value === "string" && value !== "") {
+  const isSupplied = typeof value === "string" && value !== ""
+
+  if (isSupplied) {
     return value
   } else {
-    return notSupplied
+    return NOT_SUPPLIED
   }
 }
 
@@ -167,8 +189,11 @@ function popupContent(stop) {
     appendParagraph(content, line)
   }
 
-  content.append(...alertLines({routeIds: stop.routeIds, stopId: stop.id}))
-  content.firstElementChild.className = titleClassName
+  for (const alertLine of alertLines({routeIds: stop.routeIds, stopId: stop.id})) {
+    content.append(alertLine)
+  }
+
+  content.firstElementChild.className = TITLE_CLASS_NAME
   return content
 }
 
@@ -183,7 +208,7 @@ function popupElements(stop) {
 
   const content = compactPopupContent({
     chips: stop.routeChips,
-    countMax: chipCountMax,
+    countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
     label: `${suppliedName(stop)}: show details`,
     details
@@ -203,7 +228,7 @@ function isFavoriteStop(stopId) {
 function favoriteButtonOf(stop) {
   const button = document.createElement("button")
   button.type = "button"
-  button.className = favoriteButtonClassName
+  button.className = FAVORITE_BUTTON_CLASS_NAME
   button.addEventListener("click", () => {
     if (isFavoriteStop(stop.id)) {
       removeFavorite(stop.id)
@@ -212,32 +237,37 @@ function favoriteButtonOf(stop) {
     }
   })
 
-  showFavorite({button, stopId: stop.id, favorites: storedFavorites()})
+  const shown = favoriteButtonState({stopId: stop.id, favorites: storedFavorites()})
+  button.textContent = shown.text
+  button.disabled = shown.disabled
+  button.setAttribute("aria-pressed", shown.pressed)
   return button
 }
 
 function suppliedName(stop) {
-  if (typeof stop.name === "string" && stop.name !== "") {
+  const isNamed = typeof stop.name === "string" && stop.name !== ""
+
+  if (isNamed) {
     return stop.name
   } else {
     return stop.id
   }
 }
 
-function showFavorite({button, stopId, favorites}) {
+// What a popup's favorite button of the stop `stopId` shows while the
+// rider's favorites are `favorites`.
+function favoriteButtonState({stopId, favorites}) {
   const isFavorite = favorites.some((favorite) => favorite.stopId === stopId)
   const isFull = isFavorite === false && favorites.length >= favoriteCountMax()
+  let text = NOT_FAVORITE_TEXT
 
   if (isFavorite) {
-    button.textContent = favoriteText
+    text = FAVORITE_TEXT
   } else if (isFull) {
-    button.textContent = favoritesFullText(favoriteCountMax())
-  } else {
-    button.textContent = notFavoriteText
+    text = favoritesFullText(favoriteCountMax())
   }
 
-  button.disabled = isFull
-  button.setAttribute("aria-pressed", String(isFavorite))
+  return {text, disabled: isFull, pressed: String(isFavorite)}
 }
 
 // The options of a stop's popup. One that opens by itself stands on the
@@ -248,7 +278,7 @@ function popupOptions({auto, side}) {
   if (auto) {
     return {anchor: anchorBySide[side], closeOnClick: false, focusAfterOpen: false}
   } else {
-    return {className: riderPopupClassName, closeOnClick: true, focusAfterOpen: true}
+    return {className: RIDER_POPUP_CLASS_NAME, closeOnClick: true, focusAfterOpen: true}
   }
 }
 
@@ -322,8 +352,8 @@ export const StopMarkers = {
       if (this.map === null) {
         return
       } else if (this.attached) {
-        this.map.setFilter(markerLayerName, stopFilter())
-        this.map.setFilter(labelLayerName, labelFilter())
+        setLayerFilter({map: this.map, layerName: MARKER_LAYER_NAME, layerFilter: stopFilter()})
+        this.map.setFilter(LABEL_LAYER_NAME, labelFilter())
       } else {
         this.attach()
       }
@@ -337,14 +367,17 @@ export const StopMarkers = {
       const {favorites} = event.detail
 
       for (const [stopId, open] of this.openPopups) {
-        showFavorite({button: open.favoriteButton, stopId, favorites})
+        const shown = favoriteButtonState({stopId, favorites})
+        open.favoriteButton.textContent = shown.text
+        open.favoriteButton.disabled = shown.disabled
+        open.favoriteButton.setAttribute("aria-pressed", shown.pressed)
       }
     }
 
-    window.addEventListener(readyEventName, this.onBasemapReady)
-    window.addEventListener(changeEventName, this.onChange)
-    window.addEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
-    window.addEventListener(favoriteChangeEventName, this.onFavoriteChange)
+    window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    window.addEventListener(CHANGE_EVENT_NAME, this.onChange)
+    window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
+    window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
 
     // Arrivals of a stop whose popup has closed are dropped.
     this.handleEvent("stop-arrivals:arrivals", (shown) => {
@@ -378,7 +411,7 @@ export const StopMarkers = {
 
     this.openPopups.set(stop.id, open)
     this.showPopup({stop, open})
-    holdStop({pushEvent: this.push, stopId: stop.id, holder: popupHolder})
+    holdStop({pushEvent: this.push, stopId: stop.id, holder: POPUP_HOLDER})
 
     if (auto === false) {
       announceRiderPopupChange()
@@ -396,9 +429,12 @@ export const StopMarkers = {
     // the stop's place before the earlier one closes, and the earlier one's
     // closing then changes nothing.
     popup.on("close", () => {
-      if (this.openPopups.get(stopId) === open && open.popup === popup) {
+      const isCurrentOpen = this.openPopups.get(stopId) === open
+      const isCurrentPopup = isCurrentOpen && open.popup === popup
+
+      if (isCurrentPopup) {
         this.openPopups.delete(stopId)
-        releaseStop({pushEvent: this.push, stopId, holder: popupHolder})
+        releaseStop({pushEvent: this.push, stopId, holder: POPUP_HOLDER})
 
         if (open.auto) {
           if (open.closedByRider) {
@@ -428,7 +464,7 @@ export const StopMarkers = {
   // measured and that the page is told nothing of.
   measuredPopup(stop) {
     const {content} = popupElements(stop)
-    const popup = new this.maplibre.Popup(popupOptions({auto: true, side: measuredSide}))
+    const popup = new this.maplibre.Popup(popupOptions({auto: true, side: MEASURED_SIDE}))
       .setLngLat([stop.lon, stop.lat])
       .setDOMContent(content)
       .addTo(this.map)
@@ -446,15 +482,22 @@ export const StopMarkers = {
     const kept = this.popupSizes.get(stop.id)
     let size
 
-    if (open !== undefined) {
-      const shown = contentBoxSize(open.content)
-      size = kept === undefined ? shown : largerSize(shown, kept)
-    } else if (kept !== undefined) {
-      size = kept
+    if (open === undefined) {
+      if (kept === undefined) {
+        const measured = this.measuredPopup(stop)
+        size = measured.size
+        this.tipLength = measured.tipLength
+      } else {
+        size = kept
+      }
     } else {
-      const measured = this.measuredPopup(stop)
-      size = measured.size
-      this.tipLength = measured.tipLength
+      const shown = contentBoxSize(open.content)
+
+      if (kept === undefined) {
+        size = shown
+      } else {
+        size = largerSize(shown, kept)
+      }
     }
 
     this.popupSizes.set(stop.id, size)
@@ -469,7 +512,7 @@ export const StopMarkers = {
       return new Map()
     }
 
-    const popups = stopIds.map((stopId) => {
+    const popups = Array.from(stopIds, (stopId) => {
       const stop = this.stopsById.get(stopId)
       const point = this.map.project([stop.lon, stop.lat])
 
@@ -487,7 +530,7 @@ export const StopMarkers = {
       obstacles: riderPopupBoxes(this.map),
       view: {width: container.clientWidth, height: container.clientHeight},
       tipLength: this.tipLength,
-      gapPixels: popupGapPixels
+      gapPixels: POPUP_GAP_PIXELS
     })
   },
 
@@ -518,12 +561,21 @@ export const StopMarkers = {
     const zoomedOut = this.zoom !== null && zoom < this.zoom
     this.zoom = zoom
 
-    if (zoomedOut && zoom < autoOpenZoomMin) {
+    const isZoomedOutPastAutoOpen = zoomedOut && zoom < AUTO_OPEN_ZOOM_MIN
+
+    if (isZoomedOutPastAutoOpen) {
       this.closePopups([...this.openPopups.keys()])
     }
 
     // Below the zoom that draws stops, none is on screen.
-    this.stopsById = this.attached && zoom >= zoomMin ? renderedStops(this.map) : new Map()
+    const drawsStops = this.attached && zoom >= ZOOM_MIN
+
+    if (drawsStops) {
+      this.stopsById = renderedStops(this.map)
+    } else {
+      this.stopsById = new Map()
+    }
+
     const visibleStopIds = [...this.stopsById.keys()]
     const visible = new Set(visibleStopIds)
 
@@ -548,7 +600,9 @@ export const StopMarkers = {
     const closing = []
 
     for (const [stopId, open] of this.openPopups) {
-      if (open.auto && sidesByStop.has(stopId) === false) {
+      const isUnplacedAuto = open.auto && sidesByStop.has(stopId) === false
+
+      if (isUnplacedAuto) {
         closing.push(stopId)
       }
     }
@@ -596,69 +650,71 @@ export const StopMarkers = {
     }
 
     map.addLayer({
-      id: markerLayerName,
+      id: MARKER_LAYER_NAME,
       type: "circle",
-      source: sourceName,
-      "source-layer": stopLayerName,
-      minzoom: zoomMin,
+      source: SOURCE_NAME,
+      "source-layer": STOP_LAYER_NAME,
+      minzoom: ZOOM_MIN,
       ...filterProperties(stopFilter()),
       paint: {
-        "circle-radius": markerRadiusPixels,
-        "circle-color": markerColor,
-        "circle-stroke-color": markerStrokeColor,
-        "circle-stroke-width": markerStrokeWidthPixels
+        "circle-radius": MARKER_RADIUS_PIXELS,
+        "circle-color": MARKER_COLOR,
+        "circle-stroke-color": MARKER_STROKE_COLOR,
+        "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS
       }
     }, firstVehicleLayerName(map))
 
     // A label is left out where it would cover another label, so a crowded
     // street shows the labels of some of its stops.
     map.addLayer({
-      id: labelLayerName,
+      id: LABEL_LAYER_NAME,
       type: "symbol",
-      source: sourceName,
-      "source-layer": stopLayerName,
-      minzoom: zoomMin,
+      source: SOURCE_NAME,
+      "source-layer": STOP_LAYER_NAME,
+      minzoom: ZOOM_MIN,
       filter: labelFilter(),
       layout: {
         "text-field": ["get", "label"],
         "text-font": labelFont,
-        "text-size": labelTextSizePixels,
+        "text-size": LABEL_TEXT_SIZE_PIXELS,
         "text-anchor": "top",
         "text-offset": labelTextOffsetEms,
-        "text-max-width": labelTextWidthEmsMax,
+        "text-max-width": LABEL_TEXT_WIDTH_EMS_MAX,
         "text-allow-overlap": false
       },
       paint: {
-        "text-color": labelTextColor,
-        "text-halo-color": labelHaloColor,
-        "text-halo-width": labelHaloWidthPixels
+        "text-color": LABEL_TEXT_COLOR,
+        "text-halo-color": LABEL_HALO_COLOR,
+        "text-halo-width": LABEL_HALO_WIDTH_PIXELS
       }
     }, firstVehicleLayerName(map))
 
     // A click on a stop whose popup opened by itself leaves that popup as
     // it is.
-    map.on("click", markerLayerName, (event) => {
+    map.on("click", MARKER_LAYER_NAME, (event) => {
       const stop = stopFromFeature(event.features[0])
       const stopId = stop.id
       const open = this.openPopups.get(stopId)
 
-      if (open === undefined || open.auto === false) {
+      const isRiderOpenable = open === undefined || open.auto === false
+
+      if (isRiderOpenable) {
         this.dismissedStopIds.delete(stopId)
         this.openPopup({stop, auto: false, side: null})
       }
     })
 
-    map.on("mouseenter", markerLayerName, () => { map.getCanvas().style.cursor = "pointer" })
-    map.on("mouseleave", markerLayerName, () => { map.getCanvas().style.cursor = "" })
+    map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
+    map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
 
     this.attached = true
   },
 
   destroyed() {
-    window.removeEventListener(readyEventName, this.onBasemapReady)
-    window.removeEventListener(changeEventName, this.onChange)
-    window.removeEventListener(riderPopupChangeEventName, this.onRiderPopupChange)
-    window.removeEventListener(favoriteChangeEventName, this.onFavoriteChange)
+    window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
+    window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
+    window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.clearTimeout(this.followTimer)
   }
 }
