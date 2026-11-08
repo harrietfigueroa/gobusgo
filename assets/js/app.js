@@ -2,6 +2,7 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
+import {ColorTheme, followSystemTheme} from "./color_theme"
 import {FavoriteStop} from "./favorite_stop"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
@@ -37,6 +38,7 @@ function client() {
 const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     Basemap,
+    ColorTheme,
     FavoriteStop,
     LocalTime,
     OfflineSchedules,
@@ -51,6 +53,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: () => ({_csrf_token: csrfToken, client: client()})
 })
 
+followSystemTheme()
 liveSocket.connect()
 
 // Exposed for debugging from the browser console, such as liveSocket.enableDebug().

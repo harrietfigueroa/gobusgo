@@ -1,4 +1,5 @@
-import {READY_EVENT_NAME} from "./basemap"
+import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
+import {currentTheme} from "./color_theme"
 import {placePopups} from "./popup_placement"
 import {
   announceRiderPopupChange,
@@ -29,6 +30,7 @@ import {
   STOP_LAYER_NAME
 } from "./route_stop_tiles"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
+import {mapColors} from "./theme"
 
 // The layer a stop's marker is drawn in.
 export const MARKER_LAYER_NAME = "stop-markers"
@@ -36,16 +38,12 @@ export const MARKER_LAYER_NAME = "stop-markers"
 // region cover its routes.
 const ZOOM_MIN = 14
 const MARKER_RADIUS_PIXELS = 7
-const MARKER_COLOR = "#ffffff"
-const MARKER_STROKE_COLOR = "#334155"
 const MARKER_STROKE_WIDTH_PIXELS = 2
 const LABEL_LAYER_NAME = "stop-markers-label"
 const labelFont = ["Noto Sans Medium"]
 const LABEL_TEXT_SIZE_PIXELS = 11
 const labelTextOffsetEms = [0, 1]
 const LABEL_TEXT_WIDTH_EMS_MAX = 12
-const LABEL_TEXT_COLOR = "#334155"
-const LABEL_HALO_COLOR = "#ffffff"
 const LABEL_HALO_WIDTH_PIXELS = 1.5
 const hasLabel = ["!=", ["get", "label"], ""]
 // The zoom from which a screen holds few enough stops that their popups
@@ -295,9 +293,10 @@ function largerSize(size, other) {
 
 // The hook of the element beside the map. It draws the stops layer of the
 // route and stop tile archive on each map the basemap announces, so a map
-// drawn anew for another archive shows them too, and keeps the stops to
-// those of the routes the page's filter keeps. Its layers go under the
-// vehicle markers' layers.
+// drawn anew for another archive shows them too, draws them again in the
+// theme of a map whose style is set anew, and keeps the stops to those of
+// the routes the page's filter keeps. Its layers go under the vehicle
+// markers' layers.
 export const StopMarkers = {
   mounted() {
     // The stops drawn in the view as the map last came to rest.
@@ -305,6 +304,7 @@ export const StopMarkers = {
     this.map = null
     this.maplibre = null
     this.attached = false
+    this.clicksAttached = false
     this.followTimer = null
     // The popup that is open for each stop, with its content, the element
     // its arrivals are written into, whether it opened by itself, and the
@@ -330,6 +330,7 @@ export const StopMarkers = {
       this.map = null
       this.maplibre = null
       this.attached = false
+      this.clicksAttached = false
       this.zoom = null
       this.tipLength = null
       this.stopsById.clear()
@@ -361,6 +362,15 @@ export const StopMarkers = {
 
     this.onRiderPopupChange = () => { this.scheduleFollow() }
 
+    // A style set anew holds none of the layers, nor the source. The
+    // popups stand over the map and stay open.
+    this.onRestyled = (event) => {
+      if (event.detail.map === this.map) {
+        this.attached = false
+        this.attach()
+      }
+    }
+
     // A favorite added from one popup, or removed from the panel, changes
     // the button of every open popup.
     this.onFavoriteChange = (event) => {
@@ -376,6 +386,7 @@ export const StopMarkers = {
 
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.addEventListener(CHANGE_EVENT_NAME, this.onChange)
+    window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
 
@@ -557,6 +568,14 @@ export const StopMarkers = {
       return
     }
 
+    // A style set anew holds the stops again once it has loaded, and the
+    // popups stay as they are until then.
+    const isRestyling = this.attached && this.map.getLayer(MARKER_LAYER_NAME) === undefined
+
+    if (isRestyling) {
+      return
+    }
+
     const zoom = this.map.getZoom()
     const zoomedOut = this.zoom !== null && zoom < this.zoom
     this.zoom = zoom
@@ -641,13 +660,16 @@ export const StopMarkers = {
     }
   },
 
-  // Adds the layers, once the page has an archive to draw them from.
+  // Adds the layers, once the page has an archive to draw them from, in the
+  // page's theme, and answers clicks on them, once for each map.
   attach() {
     const map = this.map
 
     if (!addSource(map)) {
       return
     }
+
+    const colors = mapColors(currentTheme())
 
     map.addLayer({
       id: MARKER_LAYER_NAME,
@@ -658,8 +680,8 @@ export const StopMarkers = {
       ...filterProperties(stopFilter()),
       paint: {
         "circle-radius": MARKER_RADIUS_PIXELS,
-        "circle-color": MARKER_COLOR,
-        "circle-stroke-color": MARKER_STROKE_COLOR,
+        "circle-color": colors.stopFill,
+        "circle-stroke-color": colors.stopStroke,
         "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS
       }
     }, firstVehicleLayerName(map))
@@ -683,11 +705,23 @@ export const StopMarkers = {
         "text-allow-overlap": false
       },
       paint: {
-        "text-color": LABEL_TEXT_COLOR,
-        "text-halo-color": LABEL_HALO_COLOR,
+        "text-color": colors.stopLabel,
+        "text-halo-color": colors.stopHalo,
         "text-halo-width": LABEL_HALO_WIDTH_PIXELS
       }
     }, firstVehicleLayerName(map))
+
+    if (!this.clicksAttached) {
+      this.attachClicks()
+      this.clicksAttached = true
+    }
+
+    this.attached = true
+  },
+
+  // A map keeps the listeners of a layer while the layer is added again.
+  attachClicks() {
+    const map = this.map
 
     // A click on a stop whose popup opened by itself leaves that popup as
     // it is.
@@ -706,13 +740,12 @@ export const StopMarkers = {
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
-
-    this.attached = true
   },
 
   destroyed() {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
+    window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.clearTimeout(this.followTimer)

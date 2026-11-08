@@ -1,8 +1,10 @@
-import {READY_EVENT_NAME} from "./basemap"
+import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
+import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {compactPopupContent} from "./route_chips"
 import {alertLines} from "./service_alerts"
+import {mapColors} from "./theme"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -14,8 +16,6 @@ const ROUTE_LAYER_NAME = "vehicle-markers-route"
 const routeFont = ["Noto Sans Medium"]
 const ROUTE_TEXT_SIZE_PIXELS = 11
 const routeTextOffsetEms = [0, 1]
-const ROUTE_TEXT_COLOR = "#0f172a"
-const ROUTE_HALO_COLOR = "#ffffff"
 const ROUTE_HALO_WIDTH_PIXELS = 1.5
 const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
 const POINTED_IMAGE_SIZE_PIXELS = 28
@@ -24,7 +24,6 @@ const POINTED_TIP_INSET_PIXELS = 2
 const HALVING_DIVISOR = 2
 const MARKER_RADIUS_PIXELS = 6
 const MARKER_STROKE_WIDTH_PIXELS = 1.5
-const MARKER_STROKE_COLOR = "#ffffff"
 const STATUS_OPACITY_FALLBACK = 1
 const POSITION_NOTE = "Marker position: the source's estimate"
 const NOT_SUPPLIED = "Not supplied"
@@ -97,10 +96,10 @@ function statusOpacity(statuses) {
   return ["match", ["get", "status"], ...cases, STATUS_OPACITY_FALLBACK]
 }
 
-// The image of a pointed marker in one color: the round marker's circle,
-// centered in the image, drawn out to a tip that points up, which is north
-// for a heading of zero.
-function pointedImage(color) {
+// The image of a pointed marker in one color, outlined in `strokeColor`:
+// the round marker's circle, centered in the image, drawn out to a tip that
+// points up, which is north for a heading of zero.
+function pointedImage({color, strokeColor}) {
   const size = POINTED_IMAGE_SIZE_PIXELS * POINTED_IMAGE_PIXEL_RATIO
   const canvas = document.createElement("canvas")
   canvas.width = size
@@ -123,7 +122,7 @@ function pointedImage(color) {
   context.fill()
   context.lineJoin = "round"
   context.lineWidth = MARKER_STROKE_WIDTH_PIXELS
-  context.strokeStyle = MARKER_STROKE_COLOR
+  context.strokeStyle = strokeColor
   context.stroke()
 
   return context.getImageData(0, 0, size, size)
@@ -229,7 +228,8 @@ function statusLabelEntry({status, label}) {
 
 // The hook of the element beside the map. It holds every agency's markers
 // as the server last sent them, and draws them on each map the basemap
-// announces, so a map drawn anew for another archive shows them too.
+// announces, so a map drawn anew for another archive shows them too, and
+// again in the theme of a map whose style is set anew.
 export const VehicleMarkers = {
   mounted() {
     const statuses = JSON.parse(this.el.dataset.statuses)
@@ -250,7 +250,18 @@ export const VehicleMarkers = {
       map.once("load", () => { this.attach(map, maplibre) })
     }
 
+    // A style set anew holds none of the layers, nor the source, nor the
+    // images of the pointed markers, which are made again as they are drawn.
+    this.onRestyled = (event) => {
+      const {map} = event.detail
+
+      if (map === this.map) {
+        this.addLayers(map)
+      }
+    }
+
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
 
     this.handleEvent("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
       this.markersByAgency.set(agencyId, markers)
@@ -261,6 +272,47 @@ export const VehicleMarkers = {
   },
 
   attach(map, maplibre) {
+    // A pointed marker's image is made the first time a marker of its color
+    // is drawn, since the colors are the routes' and not known in advance.
+    // MapLibre awaits this resolver before it hands a tile its images, and
+    // gives it to every style the map is set to; its "styleimagemissing"
+    // event comes after the tile has taken its images without the new one
+    // (maplibre-gl 6.12.0, ImageManager._getImagesForIds).
+    map.setMissingStyleImageResolver((id) => {
+      if (id.startsWith(POINTED_IMAGE_PREFIX)) {
+        const color = id.slice(POINTED_IMAGE_PREFIX.length)
+        const strokeColor = mapColors(currentTheme()).vehicleStroke
+        const image = pointedImage({color, strokeColor})
+        map.addImage(id, image, {pixelRatio: POINTED_IMAGE_PIXEL_RATIO})
+      }
+    })
+
+    this.addLayers(map)
+    const canvas = map.getCanvas()
+
+    // A map keeps the listeners of a layer while the layer is added again.
+    for (const layerName of markerLayerNames) {
+      map.on("click", layerName, (event) => {
+        const [feature] = event.features
+
+        const popup = new maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
+          .setLngLat(feature.geometry.coordinates)
+          .setDOMContent(compactVehicleContent(feature.properties, this.statusLabels))
+
+        popup.on("close", announceRiderPopupChange)
+        popup.addTo(map)
+        announceRiderPopupChange()
+      })
+
+      map.on("mouseenter", layerName, () => { canvas.style.cursor = "pointer" })
+      map.on("mouseleave", layerName, () => { canvas.style.cursor = "" })
+    }
+
+    this.map = map
+  },
+
+  // Adds the source with every marker and the layers in the page's theme.
+  addLayers(map) {
     this.stopGliding()
 
     // A new map draws every marker at its position, with nothing to glide from.
@@ -274,15 +326,7 @@ export const VehicleMarkers = {
     this.drawn = drawn
     map.addSource(SOURCE_NAME, {type: "geojson", data: collection, promoteId: "markerId"})
 
-    // A pointed marker's image is made the first time a marker of its color
-    // is drawn, since the colors are the routes' and not known in advance.
-    map.on("styleimagemissing", ({id}) => {
-      if (id.startsWith(POINTED_IMAGE_PREFIX)) {
-        const color = id.slice(POINTED_IMAGE_PREFIX.length)
-        map.addImage(id, pointedImage(color), {pixelRatio: POINTED_IMAGE_PIXEL_RATIO})
-      }
-    })
-
+    const colors = mapColors(currentTheme())
     const opacity = statusOpacity(this.statuses)
 
     map.addLayer({
@@ -294,7 +338,7 @@ export const VehicleMarkers = {
         "circle-radius": MARKER_RADIUS_PIXELS,
         "circle-color": ["get", "color"],
         "circle-opacity": opacity,
-        "circle-stroke-color": MARKER_STROKE_COLOR,
+        "circle-stroke-color": colors.vehicleStroke,
         "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS,
         "circle-stroke-opacity": opacity
       }
@@ -332,36 +376,19 @@ export const VehicleMarkers = {
         "text-allow-overlap": false
       },
       paint: {
-        "text-color": ROUTE_TEXT_COLOR,
-        "text-halo-color": ROUTE_HALO_COLOR,
+        "text-color": colors.vehicleLabel,
+        "text-halo-color": colors.vehicleHalo,
         "text-halo-width": ROUTE_HALO_WIDTH_PIXELS
       }
     })
-
-    const canvas = map.getCanvas()
-
-    for (const layerName of markerLayerNames) {
-      map.on("click", layerName, (event) => {
-        const [feature] = event.features
-
-        const popup = new maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
-          .setLngLat(feature.geometry.coordinates)
-          .setDOMContent(compactVehicleContent(feature.properties, this.statusLabels))
-
-        popup.on("close", announceRiderPopupChange)
-        popup.addTo(map)
-        announceRiderPopupChange()
-      })
-
-      map.on("mouseenter", layerName, () => { canvas.style.cursor = "pointer" })
-      map.on("mouseleave", layerName, () => { canvas.style.cursor = "" })
-    }
-
-    this.map = map
   },
 
   draw() {
-    if (this.map !== null) {
+    // A map whose style is being set anew has no source until the style has
+    // loaded, and the markers held here are drawn when the source is added.
+    const hasSource = this.map !== null && this.map.getSource(SOURCE_NAME) !== undefined
+
+    if (hasSource) {
       const {collection, drawn, gliding} = placeMarkers({
         markersByAgency: this.markersByAgency,
         drawn: this.drawn,
@@ -389,6 +416,13 @@ export const VehicleMarkers = {
   // has arrived.
   glideFrame(frameMs) {
     this.frame = null
+    const source = this.map.getSource(SOURCE_NAME)
+
+    if (source === undefined) {
+      this.gliding = new Map()
+      return
+    }
+
     const update = []
 
     for (const [markerId, glide] of this.gliding) {
@@ -403,7 +437,7 @@ export const VehicleMarkers = {
       }
     }
 
-    this.map.getSource(SOURCE_NAME).updateData({update})
+    source.updateData({update})
     this.requestGlideFrame()
   },
 
@@ -419,5 +453,6 @@ export const VehicleMarkers = {
   destroyed() {
     this.stopGliding()
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
   }
 }

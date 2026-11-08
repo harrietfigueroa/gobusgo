@@ -164,8 +164,13 @@ function onMarker({map, point}) {
 }
 
 // The list of the routes whose lines are within the tolerance of `point`,
-// or none off every line.
+// or none off every line and on a style that does not hold the lines, as
+// while a style set anew loads.
 function listAt({map, point, layerName}) {
+  if (map.getLayer(layerName) === undefined) {
+    return {kind: ListKind.none}
+  }
+
   const box = [
     [point.x - TOLERANCE_PIXELS, point.y - TOLERANCE_PIXELS],
     [point.x + TOLERANCE_PIXELS, point.y + TOLERANCE_PIXELS]

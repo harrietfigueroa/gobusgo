@@ -292,6 +292,56 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
+    test "says how the theme is kept, in a section of its own" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-theme")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.theme()
+    end
+
+    test "offers the three theme settings, Match system checked until the browser reads the rider's" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      for value <- ["light", "dark"] do
+        assert has_element?(view, @panel <> ~s( #theme-setting-#{value}[type=radio][name=theme]))
+        refute has_element?(view, @panel <> ~s( #theme-setting-#{value}[checked]))
+      end
+
+      assert has_element?(
+               view,
+               @panel <> " #theme-setting-system[type=radio][name=theme][checked]"
+             )
+    end
+
+    test "names the theme settings Light, Dark, and Match system" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      labels =
+        view
+        |> element(@panel <> " #app-info-theme fieldset")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("label")
+        |> Enum.map(&String.trim(LazyHTML.text(&1)))
+
+      assert labels == ["Light", "Dark", "Match system"]
+    end
+
+    test "hands the theme section to its hook, which the server leaves alone" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(
+               view,
+               @panel <> ~s( #app-info-theme[phx-hook="ColorTheme"][phx-update="ignore"])
+             )
+    end
+
     test "links the terms the data is provided under" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       %{name: name, url: url} = AppInfo.terms()
