@@ -129,7 +129,10 @@ defmodule GobusgoWeb.VehicleLive do
   `GobusgoWeb.VehicleLive.OpenStops.favorite_count_max/0`, and leaves its
   content to the `FavoriteStop` hook: the browser keeps the favorites and
   opens their stops with `stop-arrivals:open`, as for a stop's popup, so the
-  page serves the favorites' arrivals with no state of its own for them.
+  page serves the favorites' arrivals with no state of its own for them. The
+  hook asks for a chosen favorite's position with `stop:position`, which the
+  page answers from the stop view with the stop's `lat` and `lon`, or with
+  `refused` for a stop the view does not hold.
 
   In the Trip tab, on a page with a basemap, the page renders an empty
   element for the trip planner, with the address of the routing manifest,
@@ -456,6 +459,14 @@ defmodule GobusgoWeb.VehicleLive do
   def handle_event("trip:filter", _params, socket), do: {:noreply, socket}
 
   def handle_event("trip:clear", _params, socket), do: {:noreply, show_trip(socket, nil)}
+
+  def handle_event("stop:position", %{"stop_id" => stop_id}, socket) when is_binary(stop_id) do
+    held_stop = StopView.stop(StopView, stop_id)
+    {:reply, OpenStops.position(held_stop), socket}
+  end
+
+  # A request whose parameters name no stop is the browser's error.
+  def handle_event("stop:position", _params, socket), do: {:reply, %{refused: true}, socket}
 
   def handle_event("stop-arrivals:open", %{"stop_id" => stop_id}, socket)
       when is_binary(stop_id) do

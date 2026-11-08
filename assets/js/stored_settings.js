@@ -13,9 +13,11 @@
 //   is Match system, the default, and any other text reads as Match system.
 //   Losing it draws the page in the system's theme.
 // - `gobusgo:favorite-stops`: the rider's favorite stops as a JSON list in
-//   the order they were added, at most the six of
+//   the rider's order, at most the six of
 //   `GobusgoWeb.VehicleLive.OpenStops.favorite_count_max/0`, for example
-//   `[{"stopId":"1_100","name":"Pine St & 3rd Ave"}]`. An entry needs a
+//   `[{"stopId":"1_100","name":"Pine St & 3rd Ave"}]`. A new favorite is
+//   added at the end, and a move puts one favorite at another index; the
+//   first entry is the one the rider puts first. An entry needs a
 //   non-empty string `stopId` and a string `name`; an entry of another
 //   shape, a stop listed again, and the entries past the limit are left out.
 //   No key, text that is not JSON, and a value that is not a list read as
@@ -67,7 +69,7 @@ export const STORED_THEMES = Object.freeze([...contract.storedThemes])
 /** The kinds of a read of the stored vehicle filter. */
 export const FilterKind = Object.freeze({found: "found", none: "none"})
 
-/** The kinds of the outcome of adding or removing a favorite. */
+/** The kinds of the outcome of adding, removing, or moving a favorite. */
 export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: "unchanged"})
 
 const LOCATION_FOLLOW_STORED = "true"
@@ -271,6 +273,21 @@ export function openStoredSettings({storage, warn}) {
     removeFavorite({stopId, countMax}) {
       const favorites = listFavorites(countMax)
       const change = favoritesRemoved({favorites, stopId})
+      return storeChange(change)
+    },
+
+    /**
+     * Moves the favorite of the stop `stopId`, of at most `countMax`
+     * favorites, to `index` among them, as a `FavoriteChangeKind` member;
+     * an index past the end moves it to the end. A stop that is no
+     * favorite, and a move to where it stands, leave the favorites
+     * unchanged.
+     */
+    moveFavorite({stopId, index, countMax}) {
+      assertCondition(Number.isSafeInteger(index), "a favorite's index must be an integer, got: " + String(index))
+      assertCondition(index >= 0, "a favorite's index must not be negative, got: " + String(index))
+      const favorites = listFavorites(countMax)
+      const change = favoritesMoved({favorites, stopId, index})
       return storeChange(change)
     }
   })
@@ -490,6 +507,26 @@ function favoritesRemoved({favorites, stopId}) {
 
   if (kept.length < favorites.length) {
     return {kind: FavoriteChangeKind.changed, favorites: kept}
+  } else {
+    return {kind: FavoriteChangeKind.unchanged}
+  }
+}
+
+// The favorites `favorites` with that of `stopId` at `index`, the end for
+// an index past it, or unchanged for a stop that is no favorite and for a
+// favorite that stands at `index` already.
+function favoritesMoved({favorites, stopId, index}) {
+  const fromIndex = favorites.findIndex((favorite) => favorite.stopId === stopId)
+  const isFavorite = fromIndex >= 0
+  const lastIndex = favorites.length - 1
+  const toIndex = Math.min(index, lastIndex)
+  const isMoved = isFavorite && toIndex !== fromIndex
+
+  if (isMoved) {
+    const others = favorites.filter((favorite) => favorite.stopId !== stopId)
+    const moved = favorites[fromIndex]
+    const changed = [...others.slice(0, toIndex), moved, ...others.slice(toIndex)]
+    return {kind: FavoriteChangeKind.changed, favorites: changed}
   } else {
     return {kind: FavoriteChangeKind.unchanged}
   }

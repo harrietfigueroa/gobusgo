@@ -11,7 +11,7 @@ import {compactPopupContent, writeChipNote} from "./route_chips"
 import {nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
-import {autoOpenCountMax} from "./open_stop_budget"
+import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
 import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
   DetailKind,
@@ -48,9 +48,6 @@ const labelTextOffsetEms = [0, 1]
 const LABEL_TEXT_WIDTH_EMS_MAX = 12
 const LABEL_HALO_WIDTH_PIXELS = 1.5
 const hasLabel = ["!=", ["get", "label"], ""]
-// The zoom from which a screen holds few enough stops that their popups
-// stand apart.
-const AUTO_OPEN_ZOOM_MIN = 16
 // The room between two popups, and between a popup and a rider's.
 const POPUP_GAP_PIXELS = 4
 // MapLibre names the edge of a popup that touches its point, which is the
