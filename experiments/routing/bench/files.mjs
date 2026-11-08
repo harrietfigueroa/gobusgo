@@ -35,8 +35,3 @@ export function snapshot(serviceDate = SERVICE_DATE) {
     files: {stops: arrayBuffer(stops), transfers: arrayBuffer(transfers), connectionChunks: Array.from(chunks, arrayBuffer)},
   }
 }
-
-/** The WebAssembly module's bytes. */
-export function wasmBytes() {
-  return readFileSync(new URL("rust/target/wasm32-unknown-unknown/release/routing_csa.wasm", root))
-}

@@ -1,11 +1,11 @@
 // The measurements of the routing benchmark, shared by the node runner and
-// the browser page so both report the same quantities: the time to build an
+// the browser page so both report the same quantities: the time to build the
 // engine from snapshot files (cold start), the latency of a fixed set of
 // queries once warm, and the latency of one query repeated. The queries come
-// from a seeded generator, so every run and every engine routes the same
-// ones. The clock is the caller's `now`, in milliseconds.
+// from a seeded generator, so every run routes the same ones. The clock is
+// the caller's `now`, in milliseconds.
 
-import {loadJavaScriptEngine, loadWasmEngine} from "../engine/load.js"
+import {loadEngine} from "../engine/load.js"
 
 export const QUERY_COUNT = 200
 export const REPEAT_COUNT = 50
@@ -49,17 +49,10 @@ function summary(durationsMs) {
   return {medianMs: sorted[middle], p95Ms: p95, maxMs: sorted[sorted.length - 1]}
 }
 
-/** Builds the engine named `engineName` from `files` and returns it with its cold start. */
-export async function load({engineName, files, wasmBytes, minimumTransferS, now}) {
+/** Builds the engine from `files` and returns it with its cold start. */
+export function load({files, minimumTransferS, now}) {
   const startedMs = now()
-
-  if (engineName === "wasm") {
-    const module = await WebAssembly.compile(wasmBytes)
-    const engine = await loadWasmEngine({module, files, minimumTransferS})
-    return {engine, coldStartMs: now() - startedMs}
-  }
-
-  const engine = loadJavaScriptEngine({files, minimumTransferS})
+  const engine = loadEngine({files, minimumTransferS})
   return {engine, coldStartMs: now() - startedMs}
 }
 

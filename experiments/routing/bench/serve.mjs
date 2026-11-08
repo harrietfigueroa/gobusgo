@@ -1,6 +1,6 @@
 // Serves the browser benchmark to a phone on the same network: the page, the
-// engines, the snapshot reader, the benchmark data, and the WebAssembly
-// module, and nothing else of the repository, so no other file is reachable.
+// engine, the snapshot reader, and the benchmark data, and nothing else of
+// the repository, so no other file is reachable.
 // Run it with `node bench/serve.mjs` from the experiment directory and open
 // the address it prints on the phone.
 
@@ -15,8 +15,8 @@ const OK = 200
 const NOT_FOUND = 404
 const repository = fileURLToPath(new URL("../../../", import.meta.url))
 const ALLOWED_PREFIXES = ["experiments/routing/bench/", "experiments/routing/engine/", "experiments/routing/data/"]
-const ALLOWED_FILES = ["assets/js/routing_snapshot.js", "experiments/routing/rust/target/wasm32-unknown-unknown/release/routing_csa.wasm"]
-const CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".wasm": "application/wasm", ".bin": "application/octet-stream"}
+const ALLOWED_FILES = ["assets/js/routing_snapshot.js"]
+const CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".bin": "application/octet-stream"}
 
 function isAllowed(path) {
   const isAllowedFile = ALLOWED_FILES.includes(path)

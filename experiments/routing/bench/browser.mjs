@@ -1,7 +1,6 @@
-// The browser benchmark: fetches the snapshot of the benchmark date and the
-// WebAssembly module, then measures each engine as the node runner does,
-// with the fetch measured apart from the cold start. A reload starts every
-// engine cold again.
+// The browser benchmark: fetches the snapshot of the benchmark date, then
+// measures the engine as the node runner does, with the fetch measured apart
+// from the cold start. A reload starts the engine cold again.
 
 import {latencies, load, queries} from "./measure.js"
 
@@ -9,8 +8,6 @@ const SERVICE_DATE = "2026-11-08"
 const MEBIBYTE_BYTES = 1024 * 1024
 const JSON_INDENT_SPACES = 2
 const DATA_PATH = "../data"
-const WASM_PATH = "../rust/target/wasm32-unknown-unknown/release/routing_csa.wasm"
-const ENGINES = ["javascript", "wasm"]
 const results = document.getElementById("results")
 
 function now() {
@@ -62,19 +59,6 @@ function heapReading() {
   return performance.memory.usedJSHeapSize / MEBIBYTE_BYTES
 }
 
-async function measureEngine({engineName, entry, files, wasmBytes, queryList}) {
-  const heapBeforeMiB = heapReading()
-  const {engine, coldStartMs} = await load({engineName, files, wasmBytes, minimumTransferS: entry.transferRules.minimumTransferS, now})
-  const measured = latencies({engine, queryList, now})
-  let wasmMemoryMiB = "not used"
-
-  if (engine.memory !== undefined) {
-    wasmMemoryMiB = engine.memory.buffer.byteLength / MEBIBYTE_BYTES
-  }
-
-  return {coldStartMs, heapBeforeMiB, heapAfterMiB: heapReading(), wasmMemoryMiB, ...measured}
-}
-
 async function run() {
   results.textContent = "Running…"
   const fetchStartedMs = now()
@@ -85,16 +69,12 @@ async function run() {
     return
   }
 
-  const wasmBytes = await arrayBuffer(WASM_PATH)
   const fetchMs = now() - fetchStartedMs
+  const heapBeforeMiB = heapReading()
+  const {engine, coldStartMs} = load({files: fetched.files, minimumTransferS: fetched.entry.transferRules.minimumTransferS, now})
   const queryList = queries(fetched.entry.stopCount)
-  const report = {userAgent: navigator.userAgent, fetchMs, engines: {}}
-
-  for (const engineName of ENGINES) {
-    const measured = await measureEngine({engineName, entry: fetched.entry, files: fetched.files, wasmBytes, queryList})
-    report.engines[engineName] = measured
-  }
-
+  const measured = latencies({engine, queryList, now})
+  const report = {userAgent: navigator.userAgent, fetchMs, coldStartMs, heapBeforeMiB, heapAfterMiB: heapReading(), ...measured}
   results.textContent = JSON.stringify(report, null, JSON_INDENT_SPACES)
 }
 
