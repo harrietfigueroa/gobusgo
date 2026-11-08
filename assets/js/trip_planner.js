@@ -35,17 +35,14 @@ import {
 } from "./trip_plan"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
-import {permissionGranted} from "./snap_to_location"
+import {LatestKind, OutcomeKind} from "./position_watch"
+import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
 
 const NAMES_EVENT_NAME = "trip:names"
 const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
 const FILTER_ENDED_EVENT_NAME = "trip:filter-ended"
 const MANIFEST_TIMEOUT_MS = 20 * 1000
-const POSITION_TIMEOUT_MS = 10 * 1000
-// A position this recent is as good as a new one for choosing the stops a
-// rider walks to.
-const POSITION_AGE_MS_MAX = 60 * 1000
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const EMPTY_FIELD_TEXT = "Choose a stop"
 const LOCATION_TEXT = "My location"
@@ -56,24 +53,42 @@ const NO_NAMES = Object.freeze({stops: {}, routes: {}})
 // The kinds of what the query's start resolves to.
 const StartKind = Object.freeze({start: "start", refused: "refused"})
 
-// Resolves on the rider's position, or on why the browser gives none.
+function locatedStart(fix) {
+  return {kind: StartKind.start, position: {lat: fix.latitude, lon: fix.longitude}}
+}
+
+// The start an outcome of the page's position watch gives.
+function startOfOutcome(outcome) {
+  switch (outcome.kind) {
+    case OutcomeKind.fix:
+      return locatedStart(outcome.fix)
+    case OutcomeKind.denied:
+      return {kind: StartKind.refused, state: StateKind.locationDenied}
+    case OutcomeKind.unavailable:
+    case OutcomeKind.timedOut:
+      return {kind: StartKind.refused, state: StateKind.locationUnavailable}
+    default:
+      return unreachable(outcome.kind, "trip planner: a position outcome of unknown kind")
+  }
+}
+
+// Resolves on the rider's position, or on why the browser gives none: the
+// latest fix of the page's position watch while it is fresh, or else the
+// watch's next outcome, which the trip panel holds the watch for.
 function locate(resolve) {
-  function located(position) {
-    resolve({kind: StartKind.start, position: {lat: position.coords.latitude, lon: position.coords.longitude}})
+  const latest = latestFix()
+
+  if (latest.kind === LatestKind.fresh) {
+    resolve(locatedStart(latest.fix))
+    return
   }
 
-  // GeolocationPositionError names code 1 PERMISSION_DENIED; 2 and 3 are a
-  // position that is unavailable and one that timed out.
-  // https://developer.mozilla.org/en-US/docs/Web/API/GeolocationPositionError/code — checked 2026-11-08
-  function refused(error) {
-    if (error.code === error.PERMISSION_DENIED) {
-      resolve({kind: StartKind.refused, state: StateKind.locationDenied})
-    } else {
-      resolve({kind: StartKind.refused, state: StateKind.locationUnavailable})
-    }
+  function onOutcome(outcome) {
+    releasePosition({holder: TRIP_HOLDER})
+    resolve(startOfOutcome(outcome))
   }
 
-  navigator.geolocation.getCurrentPosition(located, refused, {enableHighAccuracy: false, maximumAge: POSITION_AGE_MS_MAX, timeout: POSITION_TIMEOUT_MS})
+  holdPosition({holder: TRIP_HOLDER, onOutcome})
 }
 
 // Whether the browser gives the rider's position, and the position.
@@ -646,5 +661,6 @@ export const TripPlanner = {
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
     stopPicking()
+    releasePosition({holder: TRIP_HOLDER})
   }
 }
