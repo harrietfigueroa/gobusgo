@@ -1,4 +1,4 @@
-import {readyEventName} from "./basemap"
+import {READY_EVENT_NAME} from "./basemap"
 
 // The source the route lines and the stops are drawn from: one vector source
 // over the route and stop tile archive, which the basemap's protocol reads
@@ -6,16 +6,25 @@ import {readyEventName} from "./basemap"
 // filter keeps are data attributes of one element, which the server renders
 // with the page and patches.
 
-const protocolName = "pmtiles"
-const elementId = "route-stop-tiles"
+const PROTOCOL_NAME = "pmtiles"
+const ELEMENT_ID = "route-stop-tiles"
 
-export const sourceName = "route-stops"
-export const routeLayerName = "routes"
-export const stopLayerName = "stops"
-export const changeEventName = "route-stop-tiles:change"
+export const SOURCE_NAME = "route-stops"
+export const ROUTE_LAYER_NAME = "routes"
+export const STOP_LAYER_NAME = "stops"
+export const CHANGE_EVENT_NAME = "route-stop-tiles:change"
+
+// The kinds of a read of the current archive.
+const ArchiveKind = Object.freeze({found: "found", none: "none"})
+
+// The kinds of a read of the routes the filter keeps.
+const KeptKind = Object.freeze({every: "every", routes: "routes"})
+
+/** The kinds of a layer's filter: none, which draws everything, or a filter. */
+export const FilterKind = Object.freeze({none: "none", filter: "filter"})
 
 function element() {
-  return document.getElementById(elementId)
+  return document.getElementById(ELEMENT_ID)
 }
 
 function absoluteUrl(path) {
@@ -23,46 +32,73 @@ function absoluteUrl(path) {
 }
 
 function sourceUrl(archiveUrl) {
-  return `${protocolName}://${absoluteUrl(archiveUrl)}`
+  return `${PROTOCOL_NAME}://${absoluteUrl(archiveUrl)}`
 }
 
-// The address of the current archive, or null while there is none.
-function archiveUrl() {
+// The address of the current archive, or none while there is none.
+function currentArchive() {
   const found = element()
 
-  if (found === null || found.dataset.archiveUrl === undefined) {
-    return null
+  if (found === null) {
+    return {kind: ArchiveKind.none}
+  }
+
+  const url = found.dataset.archiveUrl
+
+  if (url === undefined) {
+    return {kind: ArchiveKind.none}
   } else {
-    return found.dataset.archiveUrl
+    return {kind: ArchiveKind.found, url}
   }
 }
 
-// The routes the filter keeps, or null for a page with no filter, which
-// draws every route of the archive.
-export function keptRouteIds() {
+function archiveChanged(previous, current) {
+  if (previous.kind !== current.kind) {
+    return true
+  } else if (current.kind === ArchiveKind.found) {
+    return previous.url !== current.url
+  } else {
+    return false
+  }
+}
+
+// The routes the filter keeps, or every route for a page with no filter,
+// which draws every route of the archive.
+function keptRoutes() {
   const found = element()
 
-  if (found === null || found.dataset.routeIds === undefined) {
-    return null
+  if (found === null) {
+    return {kind: KeptKind.every}
+  }
+
+  const routeIds = found.dataset.routeIds
+
+  if (routeIds === undefined) {
+    return {kind: KeptKind.every}
   } else {
-    return JSON.parse(found.dataset.routeIds)
+    return {kind: KeptKind.routes, routeIds: JSON.parse(routeIds)}
   }
 }
 
 // Whether the page's filter keeps the route.
 export function routeKept(routeId) {
-  const kept = keptRouteIds()
-  return kept === null || kept.includes(routeId)
+  const kept = keptRoutes()
+
+  if (kept.kind === KeptKind.every) {
+    return true
+  } else {
+    return kept.routeIds.includes(routeId)
+  }
 }
 
 // The filter of a layer of route lines: the kept routes by identifier.
 export function routeFilter() {
-  const kept = keptRouteIds()
+  const kept = keptRoutes()
 
-  if (kept === null) {
-    return null
+  if (kept.kind === KeptKind.every) {
+    return {kind: FilterKind.none}
   } else {
-    return ["in", ["get", "routeId"], ["literal", kept]]
+    return {kind: FilterKind.filter, filter: ["in", ["get", "routeId"], ["literal", kept.routeIds]]}
   }
 }
 
@@ -72,38 +108,55 @@ export function routeFilter() {
 // whole identifier.
 // https://maplibre.org/maplibre-style-spec/expressions/#in — checked 2026-10-14
 export function stopFilter() {
-  const kept = keptRouteIds()
+  const kept = keptRoutes()
 
-  if (kept === null) {
-    return null
-  } else {
-    return ["any", ...kept.map((routeId) => ["in", `,${routeId},`, ["get", "routeIds"]])]
+  if (kept.kind === KeptKind.every) {
+    return {kind: FilterKind.none}
   }
+
+  const filter = ["any"]
+
+  for (const routeId of kept.routeIds) {
+    filter.push(["in", `,${routeId},`, ["get", "routeIds"]])
+  }
+
+  return {kind: FilterKind.filter, filter}
 }
 
 // The filter of a layer as the properties of the layer, none for no filter:
 // a style refuses a layer whose filter is null.
-export function filterProperties(filter) {
-  if (filter === null) {
+export function filterProperties(layerFilter) {
+  if (layerFilter.kind === FilterKind.none) {
     return {}
   } else {
-    return {filter}
+    return {filter: layerFilter.filter}
+  }
+}
+
+// Sets the filter of the layer `layerName` of `map`. MapLibre takes null
+// for a layer that has no filter.
+// https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#setfilter — checked 2026-11-08
+export function setLayerFilter({map, layerName, layerFilter}) {
+  if (layerFilter.kind === FilterKind.none) {
+    map.setFilter(layerName, null)
+  } else {
+    map.setFilter(layerName, layerFilter.filter)
   }
 }
 
 // Adds the source to `map` unless it is there or there is no archive, and
 // says whether the map has it.
 export function addSource(map) {
-  if (map.getSource(sourceName) !== undefined) {
+  if (map.getSource(SOURCE_NAME) !== undefined) {
     return true
   }
 
-  const url = archiveUrl()
+  const archive = currentArchive()
 
-  if (url === null) {
+  if (archive.kind === ArchiveKind.none) {
     return false
   } else {
-    map.addSource(sourceName, {type: "vector", url: sourceUrl(url)})
+    map.addSource(SOURCE_NAME, {type: "vector", url: sourceUrl(archive.url)})
     return true
   }
 }
@@ -117,38 +170,47 @@ export function addSource(map) {
 export const RouteStopTiles = {
   mounted() {
     this.map = null
-    this.archiveUrl = archiveUrl()
+    this.archive = currentArchive()
     this.routeIds = this.el.dataset.routeIds
 
     this.onBasemapReady = (event) => {
       this.map = event.detail.map
     }
 
-    window.addEventListener(readyEventName, this.onBasemapReady)
+    window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
   },
 
   updated() {
-    const url = archiveUrl()
+    const archive = currentArchive()
     const routeIds = this.el.dataset.routeIds
+    const isArchiveChanged = archiveChanged(this.archive, archive)
+    const isSourceMovable = isArchiveChanged && this.map !== null
 
-    if (url !== this.archiveUrl) {
-      const source = this.map === null ? undefined : this.map.getSource(sourceName)
-
-      // A map with no source yet adds it with the new address when a hook
-      // adds its layers.
-      if (source !== undefined && url !== null) {
-        source.setUrl(sourceUrl(url))
-      }
+    if (isSourceMovable) {
+      this.moveSource(archive)
     }
 
-    if (url !== this.archiveUrl || routeIds !== this.routeIds) {
-      this.archiveUrl = url
+    const isChanged = isArchiveChanged || routeIds !== this.routeIds
+
+    if (isChanged) {
+      this.archive = archive
       this.routeIds = routeIds
-      window.dispatchEvent(new CustomEvent(changeEventName))
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME))
+    }
+  },
+
+  moveSource(archive) {
+    const source = this.map.getSource(SOURCE_NAME)
+    // A map with no source yet adds it with the new address when a hook
+    // adds its layers.
+    const hasSourceAndArchive = source !== undefined && archive.kind === ArchiveKind.found
+
+    if (hasSourceAndArchive) {
+      source.setUrl(sourceUrl(archive.url))
     }
   },
 
   destroyed() {
-    window.removeEventListener(readyEventName, this.onBasemapReady)
+    window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
   }
 }

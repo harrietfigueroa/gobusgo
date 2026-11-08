@@ -1,14 +1,14 @@
 // The texts of a stop's arrivals, as the server sends them with the
 // "stop-arrivals:arrivals" event.
 
-const arrivalsHeading = "Arrivals"
-const arrivalsWaiting = "Waiting for this stop's arrivals"
-const arrivalsNone = "No arrivals soon"
-const arrivalsRefused = "No arrivals for this stop"
-const arrivalsBusy = "Too many stops open; close one to see this stop's arrivals"
-const arrivalNow = "now"
-const arrivalScheduledNote = " (scheduled)"
-const arrivalUnnamed = "Arrival"
+const ARRIVALS_HEADING = "Arrivals"
+const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
+const ARRIVALS_NONE = "No arrivals soon"
+const ARRIVALS_REFUSED = "No arrivals for this stop"
+const ARRIVALS_BUSY = "Too many stops open; close one to see this stop's arrivals"
+const ARRIVAL_NOW = "now"
+const ARRIVAL_SCHEDULED_NOTE = " (scheduled)"
+const ARRIVAL_UNNAMED = "Arrival"
 
 export function appendParagraph(element, text) {
   const paragraph = document.createElement("p")
@@ -29,9 +29,21 @@ function arrivalText({route, headsign, minutes, predicted}) {
     names.push(`to ${headsign}`)
   }
 
-  const name = names.length === 0 ? arrivalUnnamed : names.join(" ")
-  const time = minutes === 0 ? arrivalNow : `${minutes} min`
-  const note = predicted ? "" : arrivalScheduledNote
+  let name = ARRIVAL_UNNAMED
+  let time = `${minutes} min`
+  let note = ARRIVAL_SCHEDULED_NOTE
+
+  if (names.length > 0) {
+    name = names.join(" ")
+  }
+
+  if (minutes === 0) {
+    time = ARRIVAL_NOW
+  }
+
+  if (predicted) {
+    note = ""
+  }
 
   return `${name}: ${time}${note}`
 }
@@ -40,9 +52,9 @@ function arrivalText({route, headsign, minutes, predicted}) {
 // from once it is a minute old.
 function arrivalsHeadingText(ageMinutes) {
   if (ageMinutes >= 1) {
-    return `${arrivalsHeading} (as of ${ageMinutes} min ago)`
+    return `${ARRIVALS_HEADING} (as of ${ageMinutes} min ago)`
   } else {
-    return arrivalsHeading
+    return ARRIVALS_HEADING
   }
 }
 
@@ -50,16 +62,16 @@ function arrivalsHeadingText(ageMinutes) {
 function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
   switch (status) {
     case "waiting":
-      return [arrivalsWaiting]
+      return [ARRIVALS_WAITING]
     case "refused":
-      return [arrivalsRefused]
+      return [ARRIVALS_REFUSED]
     case "busy":
-      return [arrivalsBusy]
+      return [ARRIVALS_BUSY]
     case "arrivals":
       if (arrivals.length === 0) {
-        return [arrivalsHeadingText(ageMinutes), arrivalsNone]
+        return [arrivalsHeadingText(ageMinutes), ARRIVALS_NONE]
       } else {
-        return [arrivalsHeadingText(ageMinutes), ...arrivals.map(arrivalText)]
+        return [arrivalsHeadingText(ageMinutes), ...Array.from(arrivals, arrivalText)]
       }
     default:
       throw new Error(`unknown arrivals status: ${status}`)

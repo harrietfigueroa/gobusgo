@@ -4,6 +4,8 @@
 
 // The sides of its point a popup stands on, in the order they are tried.
 export const sides = ["above", "below", "left", "right"]
+const HALVING_DIVISOR = 2
+const SQUARE_EXPONENT = 2
 
 // The box of a popup of `size`, the size of its content, that stands on
 // `side` of `point` with a tip of `tipLength` between the two.
@@ -12,13 +14,13 @@ export function popupBox({point, size, side, tipLength}) {
 
   switch (side) {
     case "above":
-      return box({left: point.x - width / 2, top: point.y - tipLength - height, width, height: height + tipLength})
+      return box({left: point.x - width / HALVING_DIVISOR, top: point.y - tipLength - height, width, height: height + tipLength})
     case "below":
-      return box({left: point.x - width / 2, top: point.y, width, height: height + tipLength})
+      return box({left: point.x - width / HALVING_DIVISOR, top: point.y, width, height: height + tipLength})
     case "left":
-      return box({left: point.x - tipLength - width, top: point.y - height / 2, width: width + tipLength, height})
+      return box({left: point.x - tipLength - width, top: point.y - height / HALVING_DIVISOR, width: width + tipLength, height})
     case "right":
-      return box({left: point.x, top: point.y - height / 2, width: width + tipLength, height})
+      return box({left: point.x, top: point.y - height / HALVING_DIVISOR, width: width + tipLength, height})
     default:
       throw new Error(`unknown popup side: ${side}`)
   }
@@ -57,7 +59,7 @@ function areaWithin(rectangle, view) {
 }
 
 function distanceSquared(point, other) {
-  return (point.x - other.x) ** 2 + (point.y - other.y) ** 2
+  return (point.x - other.x) ** SQUARE_EXPONENT + (point.y - other.y) ** SQUARE_EXPONENT
 }
 
 // How far each side reaches along a direction.
@@ -77,10 +79,15 @@ function sidesAwayFrom({point, others}) {
     return sides
   }
 
-  const middle = {
-    x: others.reduce((sum, other) => sum + other.x, 0) / others.length,
-    y: others.reduce((sum, other) => sum + other.y, 0) / others.length
+  let xSum = 0
+  let ySum = 0
+
+  for (const other of others) {
+    xSum += other.x
+    ySum += other.y
   }
+
+  const middle = {x: xSum / others.length, y: ySum / others.length}
   const direction = {x: point.x - middle.x, y: point.y - middle.y}
 
   // The sort is stable, so sides that reach equally far keep their order.
@@ -107,8 +114,9 @@ function freeSide({popup, sidesTried, taken, view, tipLength, gapPixels}) {
     }
 
     const area = areaWithin(candidate, view)
+    const isMostArea = partial === null || area > partial.area
 
-    if (partial === null || area > partial.area) {
+    if (isMostArea) {
       partial = {side, box: candidate, area}
     }
   }
@@ -123,7 +131,7 @@ function freeSide({popup, sidesTried, taken, view, tipLength, gapPixels}) {
 // `view` gets its side first, then the others by distance from the middle.
 // A popup with no free side is left out.
 export function placePopups({popups, obstacles, view, tipLength, gapPixels}) {
-  const middle = {x: view.width / 2, y: view.height / 2}
+  const middle = {x: view.width / HALVING_DIVISOR, y: view.height / HALVING_DIVISOR}
   const ordered = [...popups].sort(
     (first, second) => distanceSquared(first.point, middle) - distanceSquared(second.point, middle)
   )
@@ -131,7 +139,14 @@ export function placePopups({popups, obstacles, view, tipLength, gapPixels}) {
   const sidesById = new Map()
 
   for (const popup of ordered) {
-    const others = popups.filter((other) => other !== popup).map((other) => other.point)
+    const others = []
+
+    for (const other of popups) {
+      if (other !== popup) {
+        others.push(other.point)
+      }
+    }
+
     const sidesTried = sidesAwayFrom({point: popup.point, others})
     const free = freeSide({popup, sidesTried, taken, view, tipLength, gapPixels})
 

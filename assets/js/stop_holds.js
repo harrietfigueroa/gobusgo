@@ -3,11 +3,11 @@
 // registers an open stop in the demand registry once however many hold it,
 // so a stop is closed for the server only when its last holder lets go.
 
-export const popupHolder = "popup"
-export const favoriteHolder = "favorite"
+export const POPUP_HOLDER = "popup"
+export const FAVORITE_HOLDER = "favorite"
 
-const openEventName = "stop-arrivals:open"
-const closeEventName = "stop-arrivals:close"
+const OPEN_EVENT_NAME = "stop-arrivals:open"
+const CLOSE_EVENT_NAME = "stop-arrivals:close"
 
 // The holders of each open stop, by stop identifier.
 const holdersByStop = new Map()
@@ -24,7 +24,7 @@ export function holdStop({pushEvent, stopId, holder}) {
   }
 
   holders.add(holder)
-  pushEvent(openEventName, {stop_id: stopId})
+  pushEvent(OPEN_EVENT_NAME, {stop_id: stopId})
 }
 
 // Lets go of a stop for `holder`, and closes it for the page once no holder
@@ -32,13 +32,19 @@ export function holdStop({pushEvent, stopId, holder}) {
 export function releaseStop({pushEvent, stopId, holder}) {
   const holders = holdersByStop.get(stopId)
 
-  if (holders === undefined || holders.delete(holder) === false) {
+  if (holders === undefined) {
+    return
+  }
+
+  const wasHeld = holders.delete(holder)
+
+  if (wasHeld === false) {
     return
   }
 
   if (holders.size === 0) {
     holdersByStop.delete(stopId)
-    pushEvent(closeEventName, {stop_id: stopId})
+    pushEvent(CLOSE_EVENT_NAME, {stop_id: stopId})
   }
 }
 

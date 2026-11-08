@@ -3,18 +3,18 @@
 // renders the alerts of each route into an element, and a popup reads it
 // when it opens, so the browser keeps none of them.
 
-const routesElementId = "service-alert-routes"
-const showModalEventName = "gobusgo:show-modal"
-const lineClassName = "popup-alert"
-const linePrefix = "⚠ Service alert: "
+const ROUTES_ELEMENT_ID = "service-alert-routes"
+const SHOW_MODAL_EVENT_NAME = "gobusgo:show-modal"
+const LINE_CLASS_NAME = "popup-alert"
+const LINE_PREFIX = "⚠ Service alert: "
 // A popup shows at most this many alert lines, then a line with the count
 // of the rest, so a stop with many alerts keeps the popup's size bounded.
-const lineCountMax = 2
+const LINE_COUNT_MAX = 2
 
 // The current alerts of each route, by route identifier, as the page last
 // rendered them; none before it has.
 function alertsByRoute() {
-  const element = document.getElementById(routesElementId)
+  const element = document.getElementById(ROUTES_ELEMENT_ID)
 
   if (element === null) {
     return {}
@@ -31,9 +31,17 @@ function popupAlerts({routeIds, stopId}) {
   const alertsById = new Map()
 
   for (const routeId of routeIds) {
-    for (const alert of byRoute[routeId] ?? []) {
-      if (alert.stop_ids.length === 0 || alert.stop_ids.includes(stopId)) {
-        alertsById.set(alert.id, alert)
+    const routeAlerts = byRoute[routeId]
+    const hasAlerts = routeAlerts !== undefined && routeAlerts !== null
+
+    if (hasAlerts) {
+      for (const alert of routeAlerts) {
+        const isRouteWide = alert.stop_ids.length === 0
+        const appliesHere = isRouteWide || alert.stop_ids.includes(stopId)
+
+        if (appliesHere) {
+          alertsById.set(alert.id, alert)
+        }
       }
     }
   }
@@ -44,8 +52,8 @@ function popupAlerts({routeIds, stopId}) {
 // Opens the alerts panel and, for an alert it lists, shows that alert with
 // its details open.
 function openPanel(alertId) {
-  const panel = document.getElementById(document.getElementById(routesElementId).dataset.panelId)
-  panel.dispatchEvent(new CustomEvent(showModalEventName, {bubbles: true}))
+  const panel = document.getElementById(document.getElementById(ROUTES_ELEMENT_ID).dataset.panelId)
+  panel.dispatchEvent(new CustomEvent(SHOW_MODAL_EVENT_NAME, {bubbles: true}))
 
   const entry = [...panel.querySelectorAll("[data-alert-id]")]
     .find((element) => element.dataset.alertId === alertId)
@@ -66,22 +74,33 @@ function openPanel(alertId) {
 function line(text, alertId) {
   const button = document.createElement("button")
   button.type = "button"
-  button.className = lineClassName
+  button.className = LINE_CLASS_NAME
   button.textContent = text
   button.title = text
   button.addEventListener("click", () => openPanel(alertId))
   return button
 }
 
+function alertLine(alert) {
+  return line(LINE_PREFIX + alert.summary, alert.id)
+}
+
 // The lines a popup of `routeIds` at `stopId` shows for their current
 // alerts, none when they have none.
 export function alertLines({routeIds, stopId}) {
   const alerts = popupAlerts({routeIds, stopId})
-  const lines = alerts.slice(0, lineCountMax).map((alert) => line(linePrefix + alert.summary, alert.id))
+  const shownAlerts = alerts.slice(0, LINE_COUNT_MAX)
+  const lines = Array.from(shownAlerts, alertLine)
   const restCount = alerts.length - lines.length
 
   if (restCount > 0) {
-    lines.push(line(`⚠ ${restCount} more service alert${restCount === 1 ? "" : "s"}`, null))
+    let noun = "service alerts"
+
+    if (restCount === 1) {
+      noun = "service alert"
+    }
+
+    lines.push(line(`⚠ ${restCount} more ${noun}`, null))
   }
 
   return lines
