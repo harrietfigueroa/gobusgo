@@ -87,8 +87,53 @@ const positionFixture = {
 
 const RIDER = {lat: RIDER_LAT_MICRODEGREES / MICRODEGREES_PER_DEGREE, lon: RIDER_LON_MICRODEGREES / MICRODEGREES_PER_DEGREE}
 
-function manifestOf(snapshot) {
-  return {formatVersion: FORMAT_VERSION, snapshots: [snapshot.entry]}
+// Today's last trip from A leaves at 22:00 and its last connection at 23:30;
+// tomorrow's first trip from A leaves at 05:12. A late variant of today
+// leaves A at 23:50 and arrives at C past midnight, after that connection.
+const todayFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  trips: [
+    {id: "T1", stopTimes: [["A", "22:00"], ["C", "22:20"]]},
+    {id: "T9", stopTimes: [["X", "23:30"], ["Y", "23:40"]]},
+  ],
+}
+
+const lateTodayFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  trips: [{id: "L", stopTimes: [["A", "23:50"], ["C", "24:30"]]}],
+}
+
+const tomorrowFixture = {
+  serviceDate: "2026-11-09",
+  serviceDayStartMs: DAY_START_MS + DAY_MS,
+  trips: [{id: "M", stopTimes: [["A", "05:12"], ["C", "05:40"]]}],
+}
+
+function manifestOf(...snapshots) {
+  return {formatVersion: FORMAT_VERSION, snapshots: Array.from(snapshots, entryOf)}
+}
+
+function entryOf(snapshot) {
+  return snapshot.entry
+}
+
+// The files of `snapshots` together, as one snapshot's `filesByPath`.
+function served(...snapshots) {
+  const filesByPath = new Map()
+
+  for (const snapshot of snapshots) {
+    for (const [path, buffer] of snapshot.filesByPath) {
+      filesByPath.set(path, buffer)
+    }
+  }
+
+  return {filesByPath}
+}
+
+function isTomorrowPath(path) {
+  return path.startsWith("/tomorrow/")
 }
 
 // A fetch over the snapshot's files in memory, recording each path asked for.
@@ -127,6 +172,17 @@ function readable(journeys) {
 
   for (const journey of journeys) {
     result.push({arrive: clock(journey.arrivalS), changes: journey.changes, isEarliest: journey.isEarliest, legs: Array.from(journey.legs, readableLeg)})
+  }
+
+  return result
+}
+
+// The readable journeys with the service date each one runs on.
+function datedReadable(journeys) {
+  const result = []
+
+  for (const [index, journey] of readable(journeys).entries()) {
+    result.push({serviceDate: journeys[index].serviceDate, ...journey})
   }
 
   return result
@@ -253,5 +309,36 @@ deepStrictEqual(serviceDateAt({manifest: days, departureMs: nextStartMs + HALF_H
 deepStrictEqual(serviceDateAt({manifest: days, departureMs: nextStartMs - HALF_HOUR_MS}), {kind: ServiceDateKind.found, serviceDate: "2026-11-08", departureS: (DAY_MS - HALF_HOUR_MS) / SECOND_MS})
 deepStrictEqual(serviceDateAt({manifest: days, departureMs: DAY_START_MS - 1}), {kind: ServiceDateKind.none})
 deepStrictEqual(serviceDateAt({manifest: days, departureMs: nextStartMs + (LAST_DEPARTURE_HOUR + 1) * HOUR_MS}), {kind: ServiceDateKind.none})
+
+// Late at night a query continues into the next service date: a departure
+// after today's last trip from A finds tomorrow's first, marked with
+// tomorrow's date and timed in its service day.
+const today = snapshotOf(todayFixture, "/today")
+const tomorrow = snapshotOf(tomorrowFixture, "/tomorrow")
+const lateQuery = {serviceDate: todayFixture.serviceDate, from: {kind: FromKind.stop, stopId: "A"}, toStopId: "C"}
+const nextMorning = await routeJourneys({manifest: manifestOf(today, tomorrow), fetchFile: memoryFetch(served(today, tomorrow)).fetchFile, ...lateQuery, departureS: seconds("23:00")})
+deepStrictEqual(datedReadable(nextMorning.journeys), [{serviceDate: "2026-11-09", arrive: "05:40", changes: 0, isEarliest: true, legs: ["ride M A 05:12 C 05:40"]}])
+
+// A journey that arrives before today's last connection stays on today and
+// fetches nothing of tomorrow.
+const eveningFetch = memoryFetch(served(today, tomorrow))
+const evening = await routeJourneys({manifest: manifestOf(today, tomorrow), fetchFile: eveningFetch.fetchFile, ...lateQuery, departureS: seconds("21:30")})
+deepStrictEqual(datedReadable(evening.journeys), [{serviceDate: "2026-11-08", arrive: "22:20", changes: 0, isEarliest: true, legs: ["ride T1 A 22:00 C 22:20"]}])
+const isTomorrowFetched = eveningFetch.requested.some(isTomorrowPath)
+deepStrictEqual(isTomorrowFetched, false)
+
+// With no later snapshot the late query answers from today alone.
+const lastDate = await routeJourneys({manifest: manifestOf(today), fetchFile: memoryFetch(today).fetchFile, ...lateQuery, departureS: seconds("23:00")})
+deepStrictEqual(lastDate.kind, JourneysKind.none)
+
+// A journey arriving after today's last connection continues into tomorrow,
+// whose chunks wait past the window of today's arrival, so today's journey
+// is the answer and no chunk of tomorrow is fetched.
+const lateToday = snapshotOf(lateTodayFixture, "/today")
+const pastMidnightFetch = memoryFetch(served(lateToday, tomorrow))
+const pastMidnight = await routeJourneys({manifest: manifestOf(lateToday, tomorrow), fetchFile: pastMidnightFetch.fetchFile, ...lateQuery, departureS: seconds("23:00")})
+deepStrictEqual(datedReadable(pastMidnight.journeys), [{serviceDate: "2026-11-08", arrive: "24:30", changes: 0, isEarliest: true, legs: ["ride L A 23:50 C 24:30"]}])
+deepStrictEqual(pastMidnightFetch.requested.includes("/tomorrow/stops.bin"), true)
+deepStrictEqual(pastMidnightFetch.requested.includes("/tomorrow/connections-5.bin"), false)
 
 console.log("routing journeys: every case holds")
