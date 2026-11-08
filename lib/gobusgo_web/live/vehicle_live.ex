@@ -5,8 +5,13 @@ defmodule GobusgoWeb.VehicleLive do
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
   fetch in `Gobusgo.OneBusAway.VehicleView`, over the lines and the stops of
-  the route and stop tile archive, with the filter's controls and the info
-  button of `GobusgoWeb.AppInfoPanel` over it.
+  the route and stop tile archive, with the panel sheet of
+  `GobusgoWeb.PanelSheet` over it. The sheet's tabs are Trip, which holds a
+  line in place of trip planning, Favorites, Filter, Alerts, and About; a
+  page with no basemap offers About alone. Above the tabs a line names the
+  filter the map shows. The Filter tab's badge counts the agencies and the
+  routes the filter names and the Alerts tab's the current alerts, and the
+  Favorites tab's badge is the browser's to write.
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
   reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
@@ -14,10 +19,10 @@ defmodule GobusgoWeb.VehicleLive do
   whose vehicles and route lines the map shows. The two apply together,
   and an address with neither shows every vehicle and line. A vehicle with
   no route is shown under no filter that names a route. A filter that is
-  refused shows no vehicle, no line, and a notice that links to the page
-  without a filter.
+  refused shows no vehicle, no line, and a notice in the line above the
+  tabs that links to the page without a filter.
 
-  Over the map's corner the page offers the filter as a form: one checkbox
+  The Filter tab offers the filter as a form: one checkbox
   per agency of `Gobusgo.OneBusAway.AgencyView`, from
   `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. Under
   them the form offers the routes, from `GobusgoWeb.RouteOptions`: one
@@ -50,8 +55,8 @@ defmodule GobusgoWeb.VehicleLive do
   `GobusgoWeb.BasemapSources`, and the browser draws it; a change of the
   fitted bounds inside one archive moves the view with the `basemap:fit`
   event. Before any
-  extraction the page says that no basemap is available, and shows the info
-  button and nothing else.
+  extraction the page says that no basemap is available, and shows the
+  sheet with its About tab and nothing else.
 
   An element of its own mounts the hook that centers the map on the rider's
   location. It carries the bounds of the whole archive and starts hidden;
@@ -117,14 +122,14 @@ defmodule GobusgoWeb.VehicleLive do
   recorder, `Gobusgo.Usage`, whose record of the page's connection holds the
   last one. A refused filter is not named.
 
-  Under the filter's controls, on a page with a basemap, the page renders a
-  hidden panel for the rider's favorite stops, at most
+  In the Favorites tab, on a page with a basemap, the page renders an empty
+  panel for the rider's favorite stops, at most
   `GobusgoWeb.VehicleLive.OpenStops.favorite_count_max/0`, and leaves its
   content to the `FavoriteStop` hook: the browser keeps the favorites and
   opens their stops with `stop-arrivals:open`, as for a stop's popup, so the
   page serves the favorites' arrivals with no state of its own for them.
 
-  Over the map, beside the info button, the page shows the service alerts
+  In the Alerts tab the page shows the service alerts
   of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
   `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
   `Gobusgo.OneBusAway.VehicleSituationView` and
@@ -152,6 +157,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
+  alias GobusgoWeb.PanelSheet
   alias GobusgoWeb.RouteOptions
   alias GobusgoWeb.RouteStopTiles
   alias GobusgoWeb.ServiceAlerts
@@ -370,33 +376,68 @@ defmodule GobusgoWeb.VehicleLive do
     <main>
       <p :if={@basemap == nil} id="no-basemap" class="p-8">No basemap yet.</p>
 
-      <%!-- The form stands before the map's elements: hooks mount in document
+      <%!-- The sheet stands before the map's elements: hooks mount in document
       order, so the stored filter is offered before the map asks for its
       markers and lines. --%>
-      <div :if={@basemap != nil} class="absolute left-2 top-2 z-10 flex flex-col items-start gap-2">
-        <VehicleFilterForm.form
-          agency_options={agency_options(@agencies, @filter)}
-          route_options={@route_options}
-          route_query={@route_query}
-          supplied={@filter_supplied}
-        />
+      <PanelSheet.sheet>
+        <:summary :if={@basemap != nil}>
+          <.filter_summary
+            filter={@filter}
+            agency_options={agency_options(@agencies, @filter)}
+            route_options={@route_options}
+          />
+        </:summary>
 
-        <p :if={@filter == :refused} id="filter-refused" class="surface px-3 py-2 shadow">
-          This filter is not valid.
-          <.link patch="/vehicles" class="underline">Remove the filter</.link>
-        </p>
+        <:tab :if={@basemap != nil} name="trip" label="Trip">
+          <p class="text-slate-600">Trip planning will appear here.</p>
+        </:tab>
 
-        <section
-          id="favorite-stop"
-          phx-hook="FavoriteStop"
-          phx-update="ignore"
-          aria-label="Favorite stops"
-          data-favorite-count-max={OpenStops.favorite_count_max()}
-          class="surface flex max-h-[50vh] w-xs max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-y-auto px-3 py-2 text-sm shadow"
-          hidden
+        <:tab
+          :if={@basemap != nil}
+          name="favorites"
+          label="Favorites"
+          browser_badge_id="favorite-stop-badge"
         >
-        </section>
-      </div>
+          <section
+            id="favorite-stop"
+            phx-hook="FavoriteStop"
+            phx-update="ignore"
+            aria-label="Favorite stops"
+            data-favorite-count-max={OpenStops.favorite_count_max()}
+            class="flex flex-col gap-2"
+          >
+          </section>
+        </:tab>
+
+        <:tab
+          :if={@basemap != nil}
+          name="filter"
+          label="Filter"
+          accessible_label={filter_tab_label(filter_count(@filter))}
+          badge={badge_text(filter_count(@filter))}
+        >
+          <VehicleFilterForm.form
+            agency_options={agency_options(@agencies, @filter)}
+            route_options={@route_options}
+            route_query={@route_query}
+            supplied={@filter_supplied}
+          />
+        </:tab>
+
+        <:tab
+          :if={@basemap != nil}
+          name="alerts"
+          label="Alerts"
+          accessible_label={alerts_tab_label(length(@service_alerts.current))}
+          badge={badge_text(length(@service_alerts.current))}
+        >
+          <ServiceAlertsPanel.content alerts={@service_alerts} />
+        </:tab>
+
+        <:tab name="about" label="About">
+          <AppInfoPanel.content agencies={@agencies} />
+        </:tab>
+      </PanelSheet.sheet>
 
       <.map_elements
         :if={@basemap != nil}
@@ -404,12 +445,59 @@ defmodule GobusgoWeb.VehicleLive do
         tile_archive_url={@tile_archive_url}
         kept_route_ids={@kept_route_ids}
       />
-
-      <AppInfoPanel.panel agencies={@agencies} />
-      <ServiceAlertsPanel.panel :if={@basemap != nil} alerts={@service_alerts} />
     </main>
     """
   end
+
+  attr :filter, :any, required: true
+  attr :agency_options, :list, required: true
+  attr :route_options, :map, required: true
+
+  # The line that names the filter the map shows: its agencies by the agency
+  # view's names, then its routes by the route view's, an agency or a route
+  # a view does not hold by its identifier.
+  defp filter_summary(%{filter: :refused} = assigns) do
+    ~H"""
+    <p id="filter-refused">
+      This filter is not valid. <.link patch="/vehicles" class="underline">Remove the filter</.link>
+    </p>
+    """
+  end
+
+  defp filter_summary(assigns) do
+    assigns =
+      assign(assigns,
+        agency_names: for(%{checked: true, name: name} <- assigns.agency_options, do: name),
+        route_names: Enum.map(assigns.route_options.selected, & &1.name)
+      )
+
+    ~H"""
+    <p class="panel-sheet-summary-line">
+      <span class="text-slate-600">Showing</span>{" "}
+      <span :if={@agency_names == [] and @route_names == []}>every vehicle</span>
+      <%= for name <- @agency_names do %>
+        <span class="panel-sheet-chip">{name}</span>{" "}
+      <% end %>
+      <span :if={@agency_names != [] and @route_names != []} class="text-slate-600">and</span>{" "}
+      <%= for name <- @route_names do %>
+        <span class="panel-sheet-chip">{name}</span>{" "}
+      <% end %>
+    </p>
+    """
+  end
+
+  defp filter_count(filter),
+    do: length(Filter.agency_ids(filter)) + length(Filter.route_ids(filter))
+
+  # A count of zero shows no badge.
+  defp badge_text(0), do: nil
+  defp badge_text(count) when is_integer(count) and count > 0, do: Integer.to_string(count)
+
+  defp filter_tab_label(0), do: "Filter"
+  defp filter_tab_label(count), do: "Filter, #{count} applied"
+
+  defp alerts_tab_label(0), do: "Alerts"
+  defp alerts_tab_label(count), do: "Alerts, #{count} now"
 
   attr :basemap, :map, required: true
   attr :tile_archive_url, :string, required: true
@@ -466,7 +554,7 @@ defmodule GobusgoWeb.VehicleLive do
       phx-hook="SnapToLocation"
       phx-update="ignore"
       role="status"
-      class="fixed bottom-14 left-1/2 z-10 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
+      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow"
       data-bounds={JSON.encode!(@basemap.archive_bounds)}
       hidden
     >

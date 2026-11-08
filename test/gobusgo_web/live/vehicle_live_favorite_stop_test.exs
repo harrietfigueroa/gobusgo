@@ -42,12 +42,12 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
       write_manifest(tmp_dir)
     end
 
-    test "renders the favorite stops' panel hidden, for its hook to fill" do
+    test "renders the favorite stops' panel empty, for its hook to fill" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       panel = panel(view)
 
       assert LazyHTML.attribute(panel, "phx-hook") == ["FavoriteStop"]
-      assert LazyHTML.attribute(panel, "hidden") == [""]
+      assert panel |> LazyHTML.text() |> String.trim() == ""
     end
 
     test "leaves the panel's content to its hook across patches" do
@@ -56,10 +56,10 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
       assert view |> panel() |> LazyHTML.attribute("phx-update") == ["ignore"]
     end
 
-    test "renders the panel in the column of the filter's controls" do
+    test "renders the panel in the Favorites tab" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, "div:has(> #vehicle-filter) > #{@panel}")
+      assert has_element?(view, "#panel-favorites > #{@panel}")
     end
 
     test "hands the panel's hook the most favorites a rider keeps" do

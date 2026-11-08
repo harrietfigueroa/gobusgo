@@ -6,7 +6,7 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
   # situation view drops a fetch by the real clock, so the fetches are made
   # at the time the test runs, and the alerts' windows are set around it.
   # The browser opens the panel and draws the popups, so these tests observe
-  # what the page renders: the button, the panel's entries, and the routes'
+  # what the page renders: the Alerts tab, the panel's entries, and the routes'
   # alerts the popups read.
   use ExUnit.Case, async: false
 
@@ -141,10 +141,10 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
   end
 
   describe "GET /vehicles with no alert" do
-    test "shows no alerts button and gives the popups no alert", %{now: _now} do
+    test "counts no alert on the Alerts tab and gives the popups no alert", %{now: _now} do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      refute has_element?(view, "#service-alerts-open")
+      refute has_element?(view, "#panel-tab-alerts-badge")
       assert has_element?(view, "#service-alerts-current", "No alerts now.")
       assert routes(view) == %{}
     end
@@ -157,11 +157,11 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
       :ok
     end
 
-    test "shows the button with the count of current alerts" do
+    test "counts the current alerts on the Alerts tab" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert view |> element("#service-alerts-count") |> render() =~ "1"
-      assert has_element?(view, "#service-alerts-open[aria-label='Service alerts: 1 now']")
+      assert view |> element("#panel-tab-alerts-badge") |> render() =~ "1"
+      assert has_element?(view, "#panel-tab-alerts[aria-label='Alerts, 1 now']")
     end
 
     test "lists the alert with its summary, routes, description, and link" do
@@ -193,14 +193,14 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
     test "leaves the alert out under a filter that keeps another route" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?route=40_100479")
 
-      refute has_element?(view, "#service-alerts-open")
+      refute has_element?(view, "#panel-tab-alerts-badge")
       assert routes(view) == %{}
     end
 
     test "keeps the alert under a filter that keeps its route" do
       {:ok, view, _html} = live(build_conn(), "/vehicles?route=40_2LINE")
 
-      assert has_element?(view, "#service-alerts-count")
+      assert has_element?(view, "#panel-tab-alerts-badge")
     end
   end
 
@@ -215,8 +215,8 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
 
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, "#service-alerts-open[aria-label='Service alerts']")
-      refute has_element?(view, "#service-alerts-count")
+      assert has_element?(view, "#panel-tab-alerts[aria-label='Alerts']")
+      refute has_element?(view, "#panel-tab-alerts-badge")
 
       time = DateTime.from_unix!(starts_ms, :millisecond) |> DateTime.to_iso8601()
       assert has_element?(view, "#service-alerts-upcoming time[datetime='#{time}']")
@@ -227,11 +227,11 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
   describe "a connected page" do
     test "shows an alert that the vehicle situations bring after it mounts", %{now: now} do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
-      refute has_element?(view, "#service-alerts-open")
+      refute has_element?(view, "#panel-tab-alerts-badge")
 
       apply_vehicle_situations([situation(%{})], now)
 
-      assert has_element?(view, "#service-alerts-count")
+      assert has_element?(view, "#panel-tab-alerts-badge")
     end
 
     test "drops an alert that the next vehicle fetch no longer references", %{now: now} do
@@ -240,7 +240,7 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
 
       apply_vehicle_situations([], DateTime.add(now, 10), 2)
 
-      refute has_element?(view, "#service-alerts-open")
+      refute has_element?(view, "#panel-tab-alerts-badge")
     end
 
     test "gives a stop's popups the alert its arrivals bring, at that stop", %{now: now} do

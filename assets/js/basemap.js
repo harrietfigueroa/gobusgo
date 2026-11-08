@@ -1,17 +1,18 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
+import {sheetInsets} from "./panel_sheet"
 
-const protocolName = "pmtiles"
-const sourceName = "protomaps"
-const flavorName = "light"
-const labelLanguage = "en"
-const fitPaddingPixels = 24
-const failureText = "The map could not be loaded."
+const PROTOCOL_NAME = "pmtiles"
+const SOURCE_NAME = "protomaps"
+const FLAVOR_NAME = "light"
+const LABEL_LANGUAGE = "en"
+const FIT_PADDING_PIXELS = 24
+const FAILURE_TEXT = "The map could not be loaded."
 // A map takes the texts of its controls when it is made, so the label of
 // the geolocate control is given here.
 const locale = {"GeolocateControl.FindMyLocation": "Snap to my location"}
 
-export const readyEventName = "basemap:ready"
+export const READY_EVENT_NAME = "basemap:ready"
 
 let maplibreLoading = null
 
@@ -21,13 +22,19 @@ let maplibreLoading = null
 // file beside the one it was loaded from, which a bundle has no address for.
 function loadMaplibre(maplibreUrl) {
   if (maplibreLoading === null) {
-    maplibreLoading = import(maplibreUrl).then((maplibre) => {
-      maplibre.addProtocol(protocolName, new Protocol().tile)
-      return maplibre
-    })
+    maplibreLoading = import(maplibreUrl).then(registerProtocol)
   }
 
   return maplibreLoading
+}
+
+function registerProtocol(maplibre) {
+  maplibre.addProtocol(PROTOCOL_NAME, new Protocol().tile)
+  return maplibre
+}
+
+function logMapError(event) {
+  console.error("basemap error", event.error)
 }
 
 // The style names its sources by absolute address, so a path the server
@@ -42,15 +49,15 @@ function basemapStyle({archiveUrl, fontsUrl, spritesUrl, attribution}) {
   return {
     version: 8,
     glyphs: `${absoluteUrl(fontsUrl)}/{fontstack}/{range}.pbf`,
-    sprite: `${absoluteUrl(spritesUrl)}/${flavorName}`,
+    sprite: `${absoluteUrl(spritesUrl)}/${FLAVOR_NAME}`,
     sources: {
-      [sourceName]: {
+      [SOURCE_NAME]: {
         type: "vector",
-        url: `${protocolName}://${absoluteUrl(archiveUrl)}`,
+        url: `${PROTOCOL_NAME}://${absoluteUrl(archiveUrl)}`,
         attribution
       }
     },
-    layers: layers(sourceName, namedFlavor(flavorName), {lang: labelLanguage})
+    layers: layers(SOURCE_NAME, namedFlavor(FLAVOR_NAME), {lang: LABEL_LANGUAGE})
   }
 }
 
@@ -58,6 +65,17 @@ function basemapStyle({archiveUrl, fontsUrl, spritesUrl, attribution}) {
 // south-west corner, then the north-east one, each longitude first.
 function cornerBounds({south, west, north, east}) {
   return [[west, south], [east, north]]
+}
+
+// The padding a fit leaves around its bounds, wider by what the panel
+// sheet covers of the map, so the fitted bounds stay in sight beside it.
+function fitPadding({left, bottom}) {
+  return {
+    top: FIT_PADDING_PIXELS,
+    right: FIT_PADDING_PIXELS,
+    bottom: FIT_PADDING_PIXELS + bottom,
+    left: FIT_PADDING_PIXELS + left
+  }
 }
 
 // The hook of the element the map is drawn in. The element's data
@@ -77,17 +95,20 @@ export const Basemap = {
       this.fitBounds = cornerBounds(event.bounds)
 
       if (this.map !== null) {
-        this.map.fitBounds(this.fitBounds, {padding: fitPaddingPixels})
+        const padding = fitPadding(sheetInsets())
+        this.map.fitBounds(this.fitBounds, {padding})
       }
     })
 
     loadMaplibre(element.dataset.libraryUrl)
       .then((maplibre) => {
+        const padding = fitPadding(sheetInsets())
+
         this.map = new maplibre.Map({
           container: element,
           style: basemapStyle(element.dataset),
           bounds: this.fitBounds,
-          fitBoundsOptions: {padding: fitPaddingPixels},
+          fitBoundsOptions: {padding},
           locale,
           attributionControl: false
         })
@@ -96,16 +117,16 @@ export const Basemap = {
         // behind a button on a narrow map.
         this.map.addControl(new maplibre.AttributionControl({compact: false}))
         this.map.addControl(new maplibre.NavigationControl({showCompass: false}))
-        this.map.on("error", (event) => { console.error("basemap error", event.error) })
+        this.map.on("error", logMapError)
 
-        element.dispatchEvent(new CustomEvent(readyEventName, {
+        element.dispatchEvent(new CustomEvent(READY_EVENT_NAME, {
           bubbles: true,
           detail: {map: this.map, maplibre}
         }))
       })
       .catch((error) => {
         // The page leaves this element's content alone, so the message stays.
-        element.textContent = failureText
+        element.textContent = FAILURE_TEXT
         console.error("basemap not loaded", error)
       })
   },

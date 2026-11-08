@@ -25,6 +25,22 @@
   --route-chip-radius: 4px;
   --route-chip-count-fill: #e2e8f0;
   --route-chip-count-color: #0f172a;
+  --map-control-size: 44px;
+  --panel-sheet-radius: 16px;
+  --panel-sheet-radius-wide: 12px;
+  --panel-sheet-margin: 12px;
+  --panel-sheet-width: 360px;
+  --panel-sheet-expanded-height: 60dvh;
+  --panel-sheet-handle-height: 28px;
+  --panel-sheet-tab-height: 52px;
+  --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
+  --panel-sheet-text-color: #0f172a;
+  --panel-sheet-grip-color: #94a3b8;
+  --panel-sheet-rule-color: #cbd5e1;
+  --panel-sheet-chip-fill: #e2e8f0;
+  --panel-sheet-badge-fill: #0f172a;
+  --panel-sheet-alert-badge-fill: #b45309;
+  --panel-sheet-selected-color: #15803d;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -234,6 +250,200 @@
 @media (pointer: coarse) {
   .popup-alert {
     min-height: var(--popup-alert-hit-size);
+  }
+}
+
+/* A map control's button is a finger's size at every width. */
+.maplibregl-ctrl-group button {
+  width: var(--map-control-size);
+  height: var(--map-control-size);
+}
+
+/* The attribution stands above the part of the map the panel sheet
+   covers, which its hook writes as the inset. */
+.maplibregl-ctrl-bottom-right {
+  bottom: var(--panel-sheet-inset-bottom, 0px);
+}
+
+/* The panel sheet is a sheet along the bottom on a narrow viewport and a
+   panel along the left from the md breakpoint up. It draws the surface
+   style itself, with the corners and borders of its own shape. */
+.panel-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  accent-color: var(--surface-border-color);
+  background-color: var(--surface-fill);
+  border-top: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--panel-sheet-radius) var(--panel-sheet-radius) 0 0;
+  box-shadow: var(--panel-sheet-shadow);
+  color: var(--panel-sheet-text-color);
+  font-size: 0.875rem;
+}
+
+.panel-sheet[data-expanded="true"] {
+  height: var(--panel-sheet-expanded-height);
+}
+
+.panel-sheet-handle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--panel-sheet-handle-height);
+  cursor: grab;
+  touch-action: none;
+}
+
+.panel-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--panel-sheet-grip-color);
+}
+
+.panel-sheet-summary {
+  flex-shrink: 0;
+  padding: 0 16px 6px;
+}
+
+.panel-sheet-summary-line {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-sheet-chip {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 10px;
+  background-color: var(--panel-sheet-chip-fill);
+}
+
+.panel-sheet-tabs {
+  display: grid;
+  flex-shrink: 0;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--panel-sheet-rule-color);
+}
+
+.panel-sheet-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--panel-sheet-tab-height);
+  border-bottom: 3px solid transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.panel-sheet-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.panel-sheet-badge {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background-color: var(--panel-sheet-badge-fill);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+#panel-tab-filter-badge {
+  background-color: var(--surface-border-color);
+}
+
+#panel-tab-alerts-badge {
+  background-color: var(--panel-sheet-alert-badge-fill);
+}
+
+.panel-sheet-badge[hidden],
+.panel-sheet-panel[hidden] {
+  display: none;
+}
+
+.panel-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.panel-sheet-handle:focus-visible,
+.panel-sheet-tab:focus-visible,
+.panel-sheet-panel:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: -2px;
+}
+
+/* The open tab is marked where its panel shows: on a narrow viewport while
+   the sheet is expanded or dragged, and always on a wide one. */
+@media (width < 48rem) {
+  .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
+    display: none;
+  }
+
+  .panel-sheet[data-expanded="true"] .panel-sheet-tab[aria-selected="true"] {
+    border-bottom-color: var(--surface-border-color);
+    color: var(--panel-sheet-selected-color);
+    font-weight: 600;
+  }
+}
+
+@media (width >= 48rem) {
+  .panel-sheet,
+  .panel-sheet[data-expanded="true"] {
+    top: var(--panel-sheet-margin);
+    right: auto;
+    bottom: var(--panel-sheet-margin);
+    left: var(--panel-sheet-margin);
+    width: var(--panel-sheet-width);
+    height: auto;
+    border: var(--surface-border-width) solid var(--surface-border-color);
+    border-radius: var(--panel-sheet-radius-wide);
+    box-shadow: var(--control-shadow);
+  }
+
+  .panel-sheet-handle {
+    display: none;
+  }
+
+  .panel-sheet-summary {
+    padding-top: 10px;
+  }
+
+  .panel-sheet-tab[aria-selected="true"] {
+    border-bottom-color: var(--surface-border-color);
+    color: var(--panel-sheet-selected-color);
+    font-weight: 600;
   }
 }
 

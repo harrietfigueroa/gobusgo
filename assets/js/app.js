@@ -6,6 +6,7 @@ import {FavoriteStop} from "./favorite_stop"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineSchedules} from "./offline_schedules"
+import {PanelSheet} from "./panel_sheet"
 import {LocalTime} from "./service_alerts"
 import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
@@ -20,7 +21,7 @@ function client() {
 
   try {
     referrerHost = new URL(document.referrer).hostname
-  } catch (_invalid) {
+  } catch {
     // An empty referrer is no URL, and a visit with none sends no host.
   }
 
@@ -39,6 +40,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     FavoriteStop,
     LocalTime,
     OfflineSchedules,
+    PanelSheet,
     RouteLines,
     RouteStopTiles,
     SnapToLocation,
@@ -48,10 +50,6 @@ const liveSocket = new LiveSocket("/live", Socket, {
   },
   params: () => ({_csrf_token: csrfToken, client: client()})
 })
-
-// A <dialog> opens as a modal only through its showModal method, so the
-// element that opens one dispatches this event to it.
-window.addEventListener("gobusgo:show-modal", event => event.target.showModal())
 
 liveSocket.connect()
 
