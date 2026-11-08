@@ -1,13 +1,15 @@
 // Checks the stored settings module against a storage double written out
 // by hand: each key's valid values, a value of the wrong shape, and a
-// missing key; the schema version and its migration; the favorites' limit;
-// and storage that throws. It also runs the theme script of the service
+// missing key; the schema version and its migration; the favorites' limit
+// and their order, moved to each index and read again by a page loaded
+// anew; and storage that throws. It also runs the theme script of the service
 // worker's offline screen against the same double, so the screen reads the
 // key and accepts the values the module does. Run it with
 // `node test/scripts/stored_settings_check.mjs`; it exits non-zero on the
 // first case that differs.
 
-import {deepStrictEqual} from "node:assert/strict"
+import {deepStrictEqual, throws} from "node:assert/strict"
+import {AssertionError} from "../../assets/js/assert.js"
 import {ThemeSetting} from "../../assets/js/theme.js"
 import {
   FavoriteChangeKind,
@@ -357,6 +359,71 @@ function storedFavoritesOf(storage) {
   deepStrictEqual(storedFavoritesOf(storage), [favoriteB], "favorites remove stored")
   const unchanged = settings.removeFavorite({stopId: "1_999", countMax: COUNT_MAX})
   deepStrictEqual(unchanged, {kind: FavoriteChangeKind.unchanged}, "favorites remove of no favorite")
+}
+
+const favoriteC = {stopId: "1_300", name: "Othello Station"}
+const threeFavorites = [favoriteA, favoriteB, favoriteC]
+
+// Every move of every favorite of three to every index, with the order the
+// list then holds.
+const moveCases = [
+  {stopId: favoriteA.stopId, index: 1, favorites: [favoriteB, favoriteA, favoriteC]},
+  {stopId: favoriteA.stopId, index: 2, favorites: [favoriteB, favoriteC, favoriteA]},
+  {stopId: favoriteB.stopId, index: 0, favorites: [favoriteB, favoriteA, favoriteC]},
+  {stopId: favoriteB.stopId, index: 2, favorites: [favoriteA, favoriteC, favoriteB]},
+  {stopId: favoriteC.stopId, index: 0, favorites: [favoriteC, favoriteA, favoriteB]},
+  {stopId: favoriteC.stopId, index: 1, favorites: [favoriteA, favoriteC, favoriteB]}
+]
+
+for (const moveCase of moveCases) {
+  const name = `favorites move of ${moveCase.stopId} to ${moveCase.index}`
+  const storage = new MemoryStorage({[StorageKey.favoriteStops]: JSON.stringify(threeFavorites)})
+  const {settings} = settingsOver(storage)
+  const moved = settings.moveFavorite({stopId: moveCase.stopId, index: moveCase.index, countMax: COUNT_MAX})
+  deepStrictEqual(moved, {kind: FavoriteChangeKind.changed, favorites: moveCase.favorites}, name)
+  deepStrictEqual(storedFavoritesOf(storage), moveCase.favorites, `${name} stored`)
+
+  // A page loaded again opens a module of its own over the same storage.
+  const {settings: reloaded} = settingsOver(storage)
+  deepStrictEqual(reloaded.listFavorites(COUNT_MAX), moveCase.favorites, `${name} after a reload`)
+}
+
+const unchangedMoveCases = [
+  {name: "to where it stands", stopId: favoriteB.stopId, index: 1},
+  {name: "of no favorite", stopId: "1_999", index: 0}
+]
+
+for (const moveCase of unchangedMoveCases) {
+  const storage = new MemoryStorage({[StorageKey.favoriteStops]: JSON.stringify(threeFavorites)})
+  const {settings} = settingsOver(storage)
+  const moved = settings.moveFavorite({stopId: moveCase.stopId, index: moveCase.index, countMax: COUNT_MAX})
+  deepStrictEqual(moved, {kind: FavoriteChangeKind.unchanged}, `favorites move ${moveCase.name}`)
+  deepStrictEqual(storage.writeCounts.get(StorageKey.favoriteStops), undefined, `favorites move ${moveCase.name} writes nothing`)
+}
+
+{
+  const storage = new MemoryStorage({[StorageKey.favoriteStops]: JSON.stringify(threeFavorites)})
+  const {settings} = settingsOver(storage)
+  const moved = settings.moveFavorite({stopId: favoriteA.stopId, index: threeFavorites.length, countMax: COUNT_MAX})
+  deepStrictEqual(moved, {kind: FavoriteChangeKind.changed, favorites: [favoriteB, favoriteC, favoriteA]}, "favorites move past the end")
+}
+
+{
+  const storage = new MemoryStorage({[StorageKey.favoriteStops]: JSON.stringify(threeFavorites)})
+  const {settings} = settingsOver(storage)
+  settings.moveFavorite({stopId: favoriteC.stopId, index: 0, countMax: COUNT_MAX})
+  const favoriteD = {stopId: "1_400", name: "Mount Baker Station"}
+  const added = settings.addFavorite({favorite: favoriteD, countMax: COUNT_MAX})
+  const expected = [favoriteC, favoriteA, favoriteB, favoriteD]
+  deepStrictEqual(added, {kind: FavoriteChangeKind.changed, favorites: expected}, "favorites add after a move appends")
+}
+
+const NEGATIVE_INDEX = -1
+const FRACTIONAL_INDEX = 0.5
+
+for (const index of [NEGATIVE_INDEX, FRACTIONAL_INDEX, Number.NaN]) {
+  const {settings} = settingsOver(new MemoryStorage({[StorageKey.favoriteStops]: JSON.stringify(threeFavorites)}))
+  throws(() => settings.moveFavorite({stopId: favoriteA.stopId, index, countMax: COUNT_MAX}), AssertionError, `favorites move to ${index} asserts`)
 }
 
 // Today's values, as a browser stored them before the module existed.

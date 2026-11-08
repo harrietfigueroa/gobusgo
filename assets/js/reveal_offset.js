@@ -27,3 +27,12 @@ export function revealOffset({point, viewWidth, viewHeight, insets, marginPixels
 
   return {x, y}
 }
+
+// The offset in pixels, from the middle of the view, of the middle of the
+// part of the view a sheet that covers `insets` leaves: the point the
+// reveal moves a covered place to, as MapLibre's camera `offset` takes it.
+export function freeMiddleOffset(insets) {
+  // Subtracting from 0 keeps a sheet of no height at an offset of 0 rather
+  // than -0, which the map reads the same and a strict comparison does not.
+  return [insets.left / HALVING_DIVISOR, (0 - insets.bottom) / HALVING_DIVISOR]
+}

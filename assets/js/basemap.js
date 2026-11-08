@@ -14,8 +14,9 @@ export const READY_EVENT_NAME = "basemap:ready"
 export const RESTYLED_EVENT_NAME = "basemap:restyled"
 
 /**
- * The event data of a fit of the map to a set of bounds, which its camera
- * events carry so that a listener tells a fit from a zoom by the rider.
+ * The event data of a camera move of the page's own that zooms, a fit of
+ * the map to a set of bounds or a move to a place at a zoom, which its
+ * camera events carry so that a listener tells it from a zoom by the rider.
  */
 export const FIT_EVENT_DATA = Object.freeze({fitSource: true})
 
