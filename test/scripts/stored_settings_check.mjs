@@ -174,24 +174,28 @@ for (const filterCase of filterCases) {
   deepStrictEqual(storage.entries()[StorageKey.vehicleFilter], undefined, "filter remove")
 }
 
-const snapCases = [
-  {name: "true", entries: {[StorageKey.snapToLocation]: "true"}, snaps: true},
-  {name: "false as text", entries: {[StorageKey.snapToLocation]: "false"}, snaps: false},
-  {name: "another case", entries: {[StorageKey.snapToLocation]: "TRUE"}, snaps: false},
-  {name: "a missing key", entries: {}, snaps: false}
+const followCases = [
+  {name: "true", entries: {[StorageKey.locationFollow]: "true"}, isOn: true},
+  {name: "false as text", entries: {[StorageKey.locationFollow]: "false"}, isOn: false},
+  {name: "another case", entries: {[StorageKey.locationFollow]: "TRUE"}, isOn: false},
+  {name: "a missing key", entries: {}, isOn: false}
 ]
 
-for (const snapCase of snapCases) {
-  const {settings} = settingsOver(new MemoryStorage(snapCase.entries))
-  const snaps = settings.readSnapToLocation()
-  deepStrictEqual(snaps, snapCase.snaps, `snap read: ${snapCase.name}`)
+deepStrictEqual(StorageKey.locationFollow, "gobusgo:snap-to-location", "the location button keeps the snap's key")
+
+for (const followCase of followCases) {
+  const {settings} = settingsOver(new MemoryStorage(followCase.entries))
+  const isOn = settings.readLocationFollow()
+  deepStrictEqual(isOn, followCase.isOn, `location button read: ${followCase.name}`)
 }
 
 {
   const storage = new MemoryStorage({})
   const {settings} = settingsOver(storage)
-  settings.writeSnapToLocation()
-  deepStrictEqual(storage.entries()[StorageKey.snapToLocation], "true", "snap write")
+  settings.writeLocationFollow(true)
+  deepStrictEqual(storage.entries()[StorageKey.locationFollow], "true", "location button left on")
+  settings.writeLocationFollow(false)
+  deepStrictEqual(storage.entries()[StorageKey.locationFollow], undefined, "location button turned off")
 }
 
 const offlineCases = [
@@ -289,7 +293,7 @@ const unversionedEntries = {
   [StorageKey.theme]: "dark",
   [StorageKey.favoriteStops]: JSON.stringify([favoriteA, favoriteB]),
   [StorageKey.vehicleFilter]: JSON.stringify(filter),
-  [StorageKey.snapToLocation]: "true",
+  [StorageKey.locationFollow]: "true",
   [StorageKey.offlineSchedules]: "off"
 }
 
@@ -310,7 +314,7 @@ deepStrictEqual(SCHEMA_VERSION, 1, "schema version")
   const {settings} = settingsOver(storage)
   settings.readTheme()
   settings.listFavorites(COUNT_MAX)
-  settings.readSnapToLocation()
+  settings.readLocationFollow()
   const expected = {...unversionedEntries, [StorageKey.schemaVersion]: VERSION_TEXT}
   deepStrictEqual(storage.entries(), expected, "first use stores the version and changes no value")
   deepStrictEqual(storage.writeCounts.get(StorageKey.schemaVersion), 1, "migration runs once")
@@ -357,20 +361,20 @@ for (const throwingCase of throwingCases) {
   const settings = openStoredSettings({storage: throwingCase.storage, warn: (description) => { warnings.push(description) }})
   const theme = settings.readTheme()
   const read = settings.readVehicleFilter()
-  const snaps = settings.readSnapToLocation()
+  const followed = settings.readLocationFollow()
   const enabled = settings.readOfflineSchedulesEnabled()
   const favorites = settings.listFavorites(COUNT_MAX)
   settings.writeTheme(ThemeSetting.dark)
   settings.writeVehicleFilter(filter)
   settings.removeVehicleFilter()
-  settings.writeSnapToLocation()
+  settings.writeLocationFollow(true)
   settings.writeOfflineSchedulesEnabled(false)
   const added = settings.addFavorite({favorite: favoriteA, countMax: COUNT_MAX})
   const removed = settings.removeFavorite({stopId: favoriteA.stopId, countMax: COUNT_MAX})
 
   deepStrictEqual(theme, ThemeSetting.system, `${throwingCase.name}: theme`)
   deepStrictEqual(read, {kind: FilterKind.none}, `${throwingCase.name}: filter`)
-  deepStrictEqual(snaps, false, `${throwingCase.name}: snap`)
+  deepStrictEqual(followed, false, `${throwingCase.name}: location button`)
   deepStrictEqual(enabled, true, `${throwingCase.name}: offline`)
   deepStrictEqual(favorites, [], `${throwingCase.name}: favorites`)
   deepStrictEqual(added, {kind: FavoriteChangeKind.changed, favorites: [favoriteA]}, `${throwingCase.name}: add`)

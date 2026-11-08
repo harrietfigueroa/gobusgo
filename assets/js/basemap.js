@@ -9,12 +9,15 @@ const SOURCE_NAME = "protomaps"
 const LABEL_LANGUAGE = "en"
 const FIT_PADDING_PIXELS = 24
 const FAILURE_TEXT = "The map could not be loaded."
-// A map takes the texts of its controls when it is made, so the label of
-// the geolocate control is given here.
-const locale = {"GeolocateControl.FindMyLocation": "Snap to my location"}
 
 export const READY_EVENT_NAME = "basemap:ready"
 export const RESTYLED_EVENT_NAME = "basemap:restyled"
+
+/**
+ * The event data of a fit of the map to a set of bounds, which its camera
+ * events carry so that a listener tells a fit from a zoom by the rider.
+ */
+export const FIT_EVENT_DATA = Object.freeze({fitSource: true})
 
 let maplibreLoading = null
 
@@ -110,7 +113,7 @@ export const Basemap = {
 
       if (this.map !== null) {
         const padding = fitPadding(sheetInsets())
-        this.map.fitBounds(this.fitBounds, {padding})
+        this.map.fitBounds(this.fitBounds, {padding}, FIT_EVENT_DATA)
       }
     })
 
@@ -133,7 +136,6 @@ export const Basemap = {
       style: basemapStyle({sources: element.dataset, theme: this.theme}),
       bounds: this.fitBounds,
       fitBoundsOptions: {padding},
-      locale,
       attributionControl: false
     })
 

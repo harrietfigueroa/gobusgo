@@ -26,9 +26,10 @@
 //   value but null is offered to the page, which judges it again and has a
 //   refused one removed. No key, null, and text that is not JSON read as no
 //   filter. Losing it shows every vehicle.
-// - `gobusgo:snap-to-location`: the text "true" once a snap to the rider's
-//   location succeeded, never a position. Any other text, and no key, read
-//   as no snap. Losing it ends the snap on load.
+// - `gobusgo:snap-to-location`: the text "true" while the rider left the
+//   location button on, Following or Located, never a position; turning
+//   the button off removes the key. Any other text, and no key, read as
+//   off. Losing it ends the follow on load.
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
@@ -65,7 +66,7 @@ export const FilterKind = Object.freeze({found: "found", none: "none"})
 /** The kinds of the outcome of adding or removing a favorite. */
 export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: "unchanged"})
 
-const SNAP_STORED = "true"
+const LOCATION_FOLLOW_STORED = "true"
 const OFFLINE_SCHEDULES_OFF = "off"
 const UNVERSIONED = 0
 
@@ -202,14 +203,18 @@ export function openStoredSettings({storage, warn}) {
       guarded({description: "Stored vehicle filter not removed", fallback: undefined, operation: removeVehicleFilterFrom})
     },
 
-    /** Whether a snap to the rider's location is stored as succeeded. */
-    readSnapToLocation() {
-      return guarded({description: "Stored snap to location not readable", fallback: false, operation: readSnapToLocationFrom})
+    /** Whether the rider left the location button on, in Following or Located. */
+    readLocationFollow() {
+      return guarded({description: "Stored location button not readable", fallback: false, operation: readLocationFollowFrom})
     },
 
-    /** Stores that a snap to the rider's location succeeded. */
-    writeSnapToLocation() {
-      guarded({description: "Snap to location not stored", fallback: undefined, operation: writeSnapToLocationTo})
+    /** Stores whether the rider left the location button on; off is stored as no key. */
+    writeLocationFollow(isOn) {
+      guarded({
+        description: "Location button not stored",
+        fallback: undefined,
+        operation: (reached) => { writeLocationFollowTo({reached, isOn}) }
+      })
     },
 
     /** Whether saving schedules for offline use is on, the default. */
@@ -293,12 +298,16 @@ function removeVehicleFilterFrom(reached) {
   reached.removeItem(StorageKey.vehicleFilter)
 }
 
-function readSnapToLocationFrom(reached) {
-  return reached.getItem(StorageKey.snapToLocation) === SNAP_STORED
+function readLocationFollowFrom(reached) {
+  return reached.getItem(StorageKey.locationFollow) === LOCATION_FOLLOW_STORED
 }
 
-function writeSnapToLocationTo(reached) {
-  reached.setItem(StorageKey.snapToLocation, SNAP_STORED)
+function writeLocationFollowTo({reached, isOn}) {
+  if (isOn) {
+    reached.setItem(StorageKey.locationFollow, LOCATION_FOLLOW_STORED)
+  } else {
+    reached.removeItem(StorageKey.locationFollow)
+  }
 }
 
 function readOfflineSchedulesEnabledFrom(reached) {

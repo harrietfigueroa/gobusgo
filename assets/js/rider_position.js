@@ -29,6 +29,9 @@ import {
 /** The holder name of the trip panel's My location start. */
 export const TRIP_HOLDER = "trip"
 
+/** The holder name of the location button, in Following and Located. */
+export const FOLLOW_HOLDER = "follow"
+
 const WatchKind = Object.freeze({idle: "idle", watching: "watching"})
 const IDLE = Object.freeze({kind: WatchKind.idle})
 const UNAVAILABLE = Object.freeze({kind: OutcomeKind.unavailable})
@@ -172,15 +175,25 @@ export function latestFix() {
  * that refuses the query, reads as one that prompts.
  */
 export async function permissionGranted() {
+  const permission = await currentPermission()
+  return permission === PermissionKind.granted
+}
+
+/**
+ * The location permission as the Permissions API reads it, a
+ * `PermissionKind`. A browser without the API, and one that refuses the
+ * query, read as one that prompts.
+ */
+export async function currentPermission() {
   if (navigator.permissions === undefined) {
-    return false
+    return PermissionKind.prompt
   }
 
   try {
     const status = await navigator.permissions.query({name: "geolocation"})
-    return permissionOf(status.state) === PermissionKind.granted
+    return permissionOf(status.state)
   } catch (error) {
     console.warn("Location permission not readable", error)
-    return false
+    return PermissionKind.prompt
   }
 }
