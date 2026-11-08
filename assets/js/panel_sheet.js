@@ -33,6 +33,10 @@ const REVEAL_MARGIN_PIXELS = 96
 // sheet open that panel's tab and expand.
 export const OPEN_EVENT_NAME = "gobusgo:panel-open"
 
+// An element inside the sheet dispatches this bubbling DOM event to have
+// the sheet collapse, so the map under it can be reached.
+export const COLLAPSE_EVENT_NAME = "gobusgo:panel-collapse"
+
 export const DragOutcome = Object.freeze({expand: "expand", collapse: "collapse", none: "none"})
 
 // What a drag of the handle from `startY` to `endY`, in pixels from the top
@@ -147,6 +151,7 @@ export const PanelSheet = {
     })
 
     this.el.addEventListener(OPEN_EVENT_NAME, (event) => { this.openPanelOf(event.target) })
+    this.el.addEventListener(COLLAPSE_EVENT_NAME, () => { this.collapseCallback() })
 
     this.detail = this.el.querySelector("#panel-detail")
     this.onDetailChange = (event) => { this.followDetail(event.detail.shown) }

@@ -14,6 +14,7 @@ import {registerServiceWorker} from "./release_update"
 import {LocalTime} from "./service_alerts"
 import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
+import {TripPlanner} from "./trip_planner"
 import {VehicleFilter} from "./vehicle_filter"
 import {VehicleMarkers} from "./vehicle_markers"
 
@@ -52,6 +53,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     RouteStopTiles,
     SnapToLocation,
     StopMarkers,
+    TripPlanner,
     VehicleFilter,
     VehicleMarkers
   },

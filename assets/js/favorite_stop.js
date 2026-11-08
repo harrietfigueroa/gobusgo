@@ -1,5 +1,6 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {appendParagraph, nextArrivalText, writeArrivals} from "./stop_arrivals"
+import {tripEndButtons} from "./trip_ends"
 
 // The rider's favorite stops, which this browser keeps in its local storage
 // as each stop's identifier and name, in the order they were added, and the
@@ -17,7 +18,9 @@ export const CHANGE_EVENT_NAME = "gobusgo:favorite-stops-change"
 // The next bus, and enough after it to choose between two routes.
 const ARRIVAL_COUNT_MAX = 3
 const REMOVE_LABEL_PREFIX = "Remove favorite stop"
-const ENTRY_CLASS_NAME = "flex flex-col gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
+const ACTIONS_CLASS_NAME = "panel-detail-actions"
+const ACTION_CLASS_NAME = "panel-detail-action"
+const ENTRY_CLASS_NAME ="flex flex-col gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0"
 
 // The kinds of a stored entry read back as a favorite.
 const EntryKind = Object.freeze({favorite: "favorite", malformed: "malformed"})
@@ -144,7 +147,7 @@ function shownInPanel(shown) {
 }
 
 // The entry of `favorite` in the panel, with the element its arrivals are
-// written into. Its content is built as text nodes: a stop's name comes from
+// written into and the stop's "From here" and "To here". Its content is built as text nodes: a stop's name comes from
 // outside the application and is never parsed as HTML.
 function entryOf(favorite) {
   const element = document.createElement("div")
@@ -166,10 +169,17 @@ function entryOf(favorite) {
 
   header.append(title, remove)
 
+  const actions = document.createElement("div")
+  actions.className = ACTIONS_CLASS_NAME
+
+  for (const tripButton of tripEndButtons({stopId: favorite.stopId, name: favorite.name, className: ACTION_CLASS_NAME})) {
+    actions.append(tripButton)
+  }
+
   const arrivalsElement = document.createElement("div")
   const shown = {status: "waiting"}
   writeArrivals(arrivalsElement, shown)
-  element.append(header, arrivalsElement)
+  element.append(header, arrivalsElement, actions)
 
   return {element, arrivalsElement, shown}
 }

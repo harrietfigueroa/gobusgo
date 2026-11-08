@@ -19,6 +19,7 @@ import {
   showsDetail
 } from "./panel_detail"
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
+import {isPicking, pickStop} from "./trip_ends"
 import {revealOnMap} from "./panel_sheet"
 import {
   addSource,
@@ -758,10 +759,16 @@ export const StopMarkers = {
 
     // A click on a stop shows it in the details view. A click on a stop
     // whose popup opened by itself leaves that popup as it is, and any
-    // other opens the rider's popup.
+    // other opens the rider's popup. While the Trip tab waits for a stop,
+    // the stop clicked is its end instead.
     map.on("click", MARKER_LAYER_NAME, (event) => {
       const stop = stopFromFeature(event.features[0])
       const stopId = stop.id
+
+      if (isPicking()) {
+        pickStop({stopId, name: suppliedName(stop)})
+        return
+      }
       const open = this.openPopups.get(stopId)
 
       const isRiderOpenable = open === undefined || open.auto === false

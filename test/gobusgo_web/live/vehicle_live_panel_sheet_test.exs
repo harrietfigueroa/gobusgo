@@ -235,10 +235,10 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
       refute has_element?(view, "#panel-sheet-handle[phx-click]")
     end
 
-    test "holds a place for the trip and nothing else in the Trip tab" do
+    test "holds the trip planner in the Trip tab" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert text(view, "#panel-trip") =~ "Trip planning"
+      assert has_element?(view, "#panel-trip #trip-planner[phx-hook=TripPlanner]")
     end
 
     test "holds the favorite stops' panel in the Favorites tab" do

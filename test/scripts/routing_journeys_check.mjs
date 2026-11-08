@@ -2,8 +2,9 @@
 // through the fetch function it takes: that loading stops at the window
 // after the earliest arrival and still returns the whole snapshot's frontier
 // cut at that cutoff, that a start from a position walks to the stops within
-// the walking radius, that no fetched path carries the position, and which
-// service date a departure is routed in. Run it with
+// the walking radius, that no fetched path carries the position, that a
+// ride names the stops it passes and a journey the positions of its stops,
+// and which service date a departure is routed in. Run it with
 // `node test/scripts/routing_journeys_check.mjs`; it exits non-zero on the
 // first case that differs.
 
@@ -83,6 +84,16 @@ const positionFixture = {
     FAR: [RIDER_LAT_MICRODEGREES + NORTH_500_M_MICRODEGREES, RIDER_LON_MICRODEGREES],
     T: [TARGET_LAT_MICRODEGREES, RIDER_LON_MICRODEGREES],
   },
+}
+
+// P runs A, B, C; Q departs X between P's departures from A and from B.
+const passedFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  trips: [
+    {id: "P", stopTimes: [["A", "08:00"], ["B", "08:10"], ["C", "08:20"]]},
+    {id: "Q", stopTimes: [["X", "08:05"], ["Y", "08:15"]]},
+  ],
 }
 
 const RIDER = {lat: RIDER_LAT_MICRODEGREES / MICRODEGREES_PER_DEGREE, lon: RIDER_LON_MICRODEGREES / MICRODEGREES_PER_DEGREE}
@@ -261,6 +272,20 @@ const positionFetch = memoryFetch(positionSnapshot)
 const fromRider = {kind: FromKind.position, lat: RIDER.lat, lon: RIDER.lon}
 const located = await routeJourneys({manifest: manifestOf(positionSnapshot), serviceDate: positionFixture.serviceDate, fetchFile: positionFetch.fetchFile, from: fromRider, toStopId: "T", departureS: seconds("07:50")})
 deepStrictEqual(readable(located.journeys), [{arrive: "08:10", changes: 0, isEarliest: true, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]}])
+
+// A journey holds the positions of the stops it names, in degrees, and a
+// stop with no known position has none.
+deepStrictEqual(located.journeys[0].stopPositions, {
+  N2: {lat: (RIDER_LAT_MICRODEGREES + NORTH_300_M_MICRODEGREES) / MICRODEGREES_PER_DEGREE, lon: RIDER.lon},
+  T: {lat: TARGET_LAT_MICRODEGREES / MICRODEGREES_PER_DEGREE, lon: RIDER.lon},
+})
+
+// A ride names every stop it passes, in order, while another trip's
+// connections depart between its own.
+const passedSnapshot = snapshotOf(passedFixture)
+const passed = await routeJourneys({manifest: manifestOf(passedSnapshot), serviceDate: passedFixture.serviceDate, fetchFile: memoryFetch(passedSnapshot).fetchFile, from: {kind: FromKind.stop, stopId: "A"}, toStopId: "C", departureS: seconds("07:55")})
+deepStrictEqual(passed.journeys[0].legs[0].stopIds, ["A", "B", "C"])
+deepStrictEqual(passed.journeys[0].stopPositions, {})
 
 for (const path of positionFetch.requested) {
   deepStrictEqual(positionSnapshot.filesByPath.has(path), true)
