@@ -33,7 +33,7 @@ function lastDepartureMs(entry) {
 }
 
 function snapshotPaths(entry) {
-  const paths = [entry.files.stops.path, entry.files.trips.path, entry.files.transfers.path]
+  const paths = [entry.files.stops.path, entry.files.trips.path, entry.files.transfers.path, entry.files.positions.path]
 
   for (const chunk of entry.connectionChunks) {
     paths.push(chunk.path)

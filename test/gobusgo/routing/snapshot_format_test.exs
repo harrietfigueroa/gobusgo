@@ -8,7 +8,7 @@ defmodule Gobusgo.Routing.SnapshotFormatTest do
   alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Test.RoutingSnapshotFixture
 
-  @kinds [:stops, :trips, :transfers, :connections]
+  @kinds [:stops, :trips, :transfers, :positions, :connections]
 
   defp fixture(kind), do: File.read!(Path.join(RoutingSnapshotFixture.directory(), "#{kind}.bin"))
   defp records(kind), do: Map.fetch!(RoutingSnapshotFixture.records(), kind)
@@ -44,7 +44,7 @@ defmodule Gobusgo.Routing.SnapshotFormatTest do
   test "refuses a file of another format version" do
     <<magic::binary-size(4), _version::little-16, rest::binary>> = fixture(:stops)
 
-    assert SnapshotFormat.decode(magic <> <<2::little-16>> <> rest) ==
+    assert SnapshotFormat.decode(magic <> <<1::little-16>> <> rest) ==
              {:error, :unsupported_version}
   end
 
@@ -74,5 +74,19 @@ defmodule Gobusgo.Routing.SnapshotFormatTest do
     altered = binary_part(file, 0, byte_size(file) - 2) <> <<0xFF, 0xFE>>
 
     assert SnapshotFormat.decode(altered) == {:error, :invalid_length}
+  end
+
+  test "refuses a position outside the range of its axis" do
+    header = binary_part(SnapshotFormat.encode(:positions, [:unknown]), 0, 16)
+
+    assert SnapshotFormat.decode(header <> <<90_000_001::little-signed-32, 0::little-32>>) ==
+             {:error, :invalid_position}
+  end
+
+  test "refuses a position with one axis unknown" do
+    header = binary_part(SnapshotFormat.encode(:positions, [:unknown]), 0, 16)
+
+    assert SnapshotFormat.decode(header <> <<-2_147_483_648::little-signed-32, 0::little-32>>) ==
+             {:error, :invalid_position}
   end
 end

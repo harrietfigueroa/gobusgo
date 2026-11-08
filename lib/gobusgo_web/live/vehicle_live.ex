@@ -24,22 +24,21 @@ defmodule GobusgoWeb.VehicleLive do
   refused shows no vehicle, no line, and a notice in the line above the
   tabs that links to the page without a filter.
 
-  The Filter tab offers the filter as a form: one checkbox
-  per agency of `Gobusgo.OneBusAway.AgencyView`, from
-  `GobusgoWeb.AgencyOptions`, and nothing checked for every agency. Under
-  them the form offers the routes, from `GobusgoWeb.RouteOptions`: one
-  checkbox per route the filter names, checked, then one per route of the
-  route view that the text in the form's text box narrows to, of the
-  agencies the filter names or of every agency when it names none, a
-  bounded count of them with the count of the rest. The page keeps the text
-  and the options it shows, and neither goes into the address or the
-  stored filter. A change of the form goes through the same
-  contract, and one that names agencies keeps only the routes that one of
-  those agencies lists in the route view, and no route field when it lists
-  none of them. When accepted and another filter than the page shows, it
-  goes into the address, and the page has the browser store the filter
-  with the `vehicle-filter:store` event. A refused change changes nothing
-  but the text. The
+  The Filter tab offers the filter as one text bar, from
+  `GobusgoWeb.FilterBar`: a token per agency and per route the filter
+  names, and under it the suggestions that the text typed into the bar
+  narrows to, the agencies of `Gobusgo.OneBusAway.AgencyView` and the
+  routes of the route view, each labeled with its kind, a bounded count of
+  them with the count of the rest. The page keeps the text and the
+  suggestions it shows, and neither goes into the address or the stored
+  filter. Choosing a suggestion adds its value to the filter and clears the
+  text, and removing a token removes its value; each change goes through
+  the same contract, and one that leaves agencies keeps only the routes
+  that one of those agencies lists in the route view, and no route field
+  when it lists none of them. When accepted and another filter than the
+  page shows, it goes into the address, and the page has the browser store
+  the filter with the `vehicle-filter:store` event. A refused change
+  changes nothing. The
   browser offers its stored filter with the `vehicle-filter:restore` event,
   which the page puts into the address only when the address supplies no
   filter itself, so a filter in an address wins and is never stored. The
@@ -154,9 +153,9 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Usage
-  alias GobusgoWeb.AgencyOptions
   alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
+  alias GobusgoWeb.FilterBar
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
   alias GobusgoWeb.PanelSheet
@@ -189,8 +188,8 @@ defmodule GobusgoWeb.VehicleLive do
         filter: nil,
         filter_supplied: false,
         agencies: agencies(),
-        route_query: "",
-        route_options: %{selected: [], matches: [], rest_count: 0},
+        filter_query: "",
+        filter_bar: %{tokens: [], suggestions: [], rest_count: 0},
         shown_request_ids: %{},
         tile_archive_url: nil,
         kept_route_ids: :every,
@@ -244,7 +243,7 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply,
      socket
      |> assign(basemap: basemap)
-     |> assign_route_options(FetchView.current(@route_view))
+     |> assign_filter_bar(FetchView.current(@route_view))
      |> assign_service_alerts()
      |> push_fit(shown, basemap)
      |> push_filter_change(shown_filter)}
@@ -255,7 +254,7 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply,
      socket
      |> assign(agencies: agencies())
-     |> assign_route_options(FetchView.current(@route_view))}
+     |> assign_filter_bar(FetchView.current(@route_view))}
   end
 
   def handle_info(
@@ -279,7 +278,7 @@ defmodule GobusgoWeb.VehicleLive do
     {:noreply,
      socket
      |> assign(kept_route_ids: Routes.kept_ids(socket.assigns.filter))
-     |> assign_route_options(FetchView.current(@route_view))
+     |> assign_filter_bar(FetchView.current(@route_view))
      |> assign_service_alerts()}
   end
 
@@ -300,30 +299,42 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("vehicle-filter:change", params, socket) do
-    shown_filter = socket.assigns.filter
+  def handle_event("vehicle-filter:query", params, socket) do
+    filter_query = RouteOptions.query(Map.get(params, VehicleFilterForm.query_param()))
+
+    {:noreply,
+     socket
+     |> assign(filter_query: filter_query)
+     |> assign_filter_bar(FetchView.current(@route_view))}
+  end
+
+  def handle_event("vehicle-filter:add", %{"field" => field, "id" => value}, socket)
+      when is_binary(field) do
     route_fetches = FetchView.current(@route_view)
-    route_query = RouteOptions.query(Map.get(params, VehicleFilterForm.route_query_param()))
+    change = %{filter: socket.assigns.filter, field: field, value: value}
+    added = Filter.added(Map.put(change, :route_fetches, route_fetches))
 
-    socket =
-      socket
-      |> assign(route_query: route_query)
-      |> assign_route_options(route_fetches)
+    # A chosen suggestion has done what the text was typed for.
+    {:noreply,
+     socket
+     |> assign(filter_query: "")
+     |> assign_filter_bar(route_fetches)
+     |> apply_filter_change(added)}
+  end
 
-    case Filter.changed(%{raw: Filter.raw(params), route_fetches: route_fetches}) do
-      :refused ->
-        {:noreply, socket}
+  def handle_event("vehicle-filter:remove", %{"field" => field, "id" => value}, socket)
+      when is_binary(field) do
+    change = %{filter: socket.assigns.filter, field: field, value: value}
+    removed = Filter.removed(Map.put(change, :route_fetches, FetchView.current(@route_view)))
 
-      # Text typed into the text box changes the form and not the filter.
-      ^shown_filter ->
-        {:noreply, socket}
+    {:noreply, apply_filter_change(socket, removed)}
+  end
 
-      filter ->
-        {:noreply,
-         socket
-         |> push_event("vehicle-filter:store", %{filter: filter})
-         |> push_patch(to: path(filter))}
-    end
+  # An event whose parameters name no field is the browser's error and
+  # changes nothing.
+  def handle_event("vehicle-filter:" <> action, _params, socket)
+      when action in ["add", "remove"] do
+    {:noreply, socket}
   end
 
   def handle_event("vehicle-filter:restore", params, socket) do
@@ -383,11 +394,7 @@ defmodule GobusgoWeb.VehicleLive do
       markers and lines. --%>
       <PanelSheet.sheet detail={@basemap != nil}>
         <:summary :if={@basemap != nil}>
-          <.filter_summary
-            filter={@filter}
-            agency_options={agency_options(@agencies, @filter)}
-            route_options={@route_options}
-          />
+          <.filter_summary filter={@filter} tokens={@filter_bar.tokens} />
         </:summary>
 
         <:tab :if={@basemap != nil} name="trip" label="Trip">
@@ -419,9 +426,10 @@ defmodule GobusgoWeb.VehicleLive do
           badge={badge_text(filter_count(@filter))}
         >
           <VehicleFilterForm.form
-            agency_options={agency_options(@agencies, @filter)}
-            route_options={@route_options}
-            route_query={@route_query}
+            tokens={@filter_bar.tokens}
+            suggestions={@filter_bar.suggestions}
+            rest_count={@filter_bar.rest_count}
+            query={@filter_query}
             supplied={@filter_supplied}
           />
         </:tab>
@@ -452,8 +460,7 @@ defmodule GobusgoWeb.VehicleLive do
   end
 
   attr :filter, :any, required: true
-  attr :agency_options, :list, required: true
-  attr :route_options, :map, required: true
+  attr :tokens, :list, required: true
 
   # The line that names the filter the map shows: its agencies by the agency
   # view's names, then its routes by the route view's, an agency or a route
@@ -469,8 +476,8 @@ defmodule GobusgoWeb.VehicleLive do
   defp filter_summary(assigns) do
     assigns =
       assign(assigns,
-        agency_names: for(%{checked: true, name: name} <- assigns.agency_options, do: name),
-        route_names: Enum.map(assigns.route_options.selected, & &1.name)
+        agency_names: for(%{field: "agency", name: name} <- assigns.tokens, do: name),
+        route_names: for(%{field: "route", name: name} <- assigns.tokens, do: name)
       )
 
     ~H"""
@@ -717,26 +724,39 @@ defmodule GobusgoWeb.VehicleLive do
     end
   end
 
-  defp agency_names(agencies), do: Map.new(agencies, &{&1.id, &1.name})
+  # A change of the filter bar that leaves another accepted filter than the
+  # page shows goes into the address, and the browser stores it.
+  defp apply_filter_change(socket, changed) do
+    shown_filter = socket.assigns.filter
 
-  defp agency_options(agencies, filter) do
-    AgencyOptions.options(%{agencies: agencies, selected_ids: Filter.agency_ids(filter)})
+    case changed do
+      :refused ->
+        socket
+
+      ^shown_filter ->
+        socket
+
+      filter ->
+        socket
+        |> push_event("vehicle-filter:store", %{filter: filter})
+        |> push_patch(to: path(filter))
+    end
   end
 
-  # The route options of the page's filter, of the text in the text box,
-  # and of what the route view and the agency view hold now. A refused
-  # filter selects nothing.
-  defp assign_route_options(socket, route_fetches) do
-    %{filter: filter, agencies: agencies, route_query: route_query} = socket.assigns
+  # The tokens and the suggestions of the page's filter, of the text in the
+  # text bar, and of what the route view and the agency view hold now. A
+  # refused filter has no token.
+  defp assign_filter_bar(socket, route_fetches) do
+    %{filter: filter, agencies: agencies, filter_query: filter_query} = socket.assigns
 
     assign(socket,
-      route_options:
-        RouteOptions.options(%{
+      filter_bar:
+        FilterBar.options(%{
+          agencies: agencies,
           route_fetches: route_fetches,
-          agency_names: agency_names(agencies),
           agency_ids: Filter.agency_ids(filter),
-          selected_ids: Filter.route_ids(filter),
-          query: route_query
+          route_ids: Filter.route_ids(filter),
+          query: filter_query
         })
     )
   end

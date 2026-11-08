@@ -1,12 +1,11 @@
-// Reads the packed files of a routing snapshot, format version 1, as
+// Reads the packed files of a routing snapshot, format version 2, as
 // Gobusgo.Routing.SnapshotFormat writes them. Everything here is pure: each
 // function takes an ArrayBuffer and returns a result keyed by `kind`, either
-// the decoded records, the connections and transfers as typed arrays a
-// connection scan reads by index, or the reason the file was refused. Every
-// number is little-endian.
+// the decoded records, the connections, transfers, and positions as typed
+// arrays a connection scan reads by index, or the reason the file was
+// refused. Every number is little-endian.
 
 const FORMAT_MAGIC = "GBRT"
-const FORMAT_VERSION = 1
 const HEADER_BYTES = 16
 const MAGIC_BYTES = 4
 const VERSION_OFFSET = 4
@@ -29,7 +28,18 @@ const CONNECTION_FLAGS_OFFSET = 22
 const BOARDING_BIT = 1
 const ALIGHTING_BIT = 2
 
-const FILE_KINDS = Object.freeze({stops: 1, trips: 2, transfers: 3, connections: 4})
+const POSITION_BYTES = 8
+const POSITION_LON_OFFSET = 4
+const LAT_MICRODEGREES_MAX = 90000000
+const LON_MICRODEGREES_MAX = 180000000
+
+const FILE_KINDS = Object.freeze({stops: 1, trips: 2, transfers: 3, connections: 4, positions: 5})
+
+/** The format version this module reads, as the manifest's `formatVersion` names it. */
+export const FORMAT_VERSION = 2
+
+/** The microdegrees a positions file holds on both axes for a stop with no known position. */
+export const POSITION_UNKNOWN_MICRODEGREES = -2147483648
 
 /** The kinds of a decoding result. */
 export const DecodeKind = Object.freeze({decoded: "decoded", refused: "refused"})
@@ -40,6 +50,7 @@ export const RefusalReason = Object.freeze({
   unsupportedVersion: "unsupportedVersion",
   invalidLength: "invalidLength",
   invalidText: "invalidText",
+  invalidPosition: "invalidPosition",
 })
 
 const textDecoder = new TextDecoder("utf-8", {fatal: true})
@@ -217,6 +228,58 @@ export function decodeTransfers(buffer) {
   }
 
   return decoded(transfers)
+}
+
+// Whether a position read from a file is one the format admits: known on
+// both axes inside their ranges, or unknown on both.
+function isAdmittedPosition({latMicrodegrees, lonMicrodegrees}) {
+  const isLatUnknown = latMicrodegrees === POSITION_UNKNOWN_MICRODEGREES
+  const isLonUnknown = lonMicrodegrees === POSITION_UNKNOWN_MICRODEGREES
+  const isUnknown = isLatUnknown && isLonUnknown
+
+  if (isUnknown) {
+    return true
+  }
+
+  const isLatInRange = Math.abs(latMicrodegrees) <= LAT_MICRODEGREES_MAX
+  const isLonInRange = Math.abs(lonMicrodegrees) <= LON_MICRODEGREES_MAX
+  const isInRange = isLatInRange && isLonInRange
+  return isInRange
+}
+
+/**
+ * The stop positions of a positions file, in the order of the stops file,
+ * as typed arrays of microdegrees by axis. A stop with no known position
+ * holds POSITION_UNKNOWN_MICRODEGREES on both.
+ */
+export function decodePositions(buffer) {
+  const header = readHeader({buffer, kind: "positions"})
+
+  if (header.kind === DecodeKind.refused) {
+    return header
+  }
+
+  const {view, count} = header.records
+
+  if (HEADER_BYTES + count * POSITION_BYTES !== buffer.byteLength) {
+    return refused(RefusalReason.invalidLength)
+  }
+
+  const positions = {latMicrodegrees: new Int32Array(count), lonMicrodegrees: new Int32Array(count)}
+
+  for (let index = 0; index < count; index++) {
+    const offset = HEADER_BYTES + index * POSITION_BYTES
+    const position = {latMicrodegrees: view.getInt32(offset, true), lonMicrodegrees: view.getInt32(offset + POSITION_LON_OFFSET, true)}
+
+    if (!isAdmittedPosition(position)) {
+      return refused(RefusalReason.invalidPosition)
+    }
+
+    positions.latMicrodegrees[index] = position.latMicrodegrees
+    positions.lonMicrodegrees[index] = position.lonMicrodegrees
+  }
+
+  return decoded(positions)
 }
 
 function flagSet(flags, bit) {

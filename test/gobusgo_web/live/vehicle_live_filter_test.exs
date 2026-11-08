@@ -138,24 +138,49 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     view
   end
 
-  # The agency options of the controls in order, each
-  # `{value, label, checked}`.
-  defp options(view), do: list_options(view, "#vehicle-filter-agencies")
-
-  # The route options of the controls in order, the same way, a label's
-  # parts separated by one space.
-  defp route_options(view), do: list_options(view, "#vehicle-filter-routes")
-
-  defp list_options(view, list) do
-    document = view |> element(@form) |> render() |> LazyHTML.from_fragment()
-
-    for label <- LazyHTML.query(document, list <> " label") do
-      input = LazyHTML.query(label, "input")
-      [value] = LazyHTML.attribute(input, "value")
-      text = Enum.map_join(LazyHTML.query(label, "span"), " ", &String.trim(LazyHTML.text(&1)))
-
-      {value, text, LazyHTML.attribute(input, "checked") != []}
+  # The tokens of the filter bar in order, each `{field, value, name}`.
+  defp tokens(view) do
+    for token <- LazyHTML.query(form_document(view), "#vehicle-filter-tokens li") do
+      [field] = LazyHTML.attribute(token, "data-field")
+      [value] = LazyHTML.attribute(token, "data-value")
+      name = token |> LazyHTML.query(".filter-token-name") |> LazyHTML.text() |> String.trim()
+      {field, value, name}
     end
+  end
+
+  # The suggestions of the filter bar in order, each `{field, value, label}`,
+  # a label's parts separated by one space, its kind first.
+  defp suggestions(view) do
+    for option <- LazyHTML.query(form_document(view), "#vehicle-filter-suggestions li") do
+      [field] = LazyHTML.attribute(option, "phx-value-field")
+      [value] = LazyHTML.attribute(option, "phx-value-id")
+      text = Enum.map_join(LazyHTML.query(option, "span"), " ", &String.trim(LazyHTML.text(&1)))
+      {field, value, text}
+    end
+  end
+
+  defp input_value(view) do
+    view
+    |> form_document()
+    |> LazyHTML.query("#vehicle-filter-input")
+    |> LazyHTML.attribute("value")
+  end
+
+  defp form_document(view), do: view |> element(@form) |> render() |> LazyHTML.from_fragment()
+
+  defp type(view, text), do: view |> form(@form, %{"filter_query" => text}) |> render_change()
+
+  # Chooses the suggestion of `value` after typing `text`.
+  defp choose(view, %{text: text, value: value}) do
+    type(view, text)
+
+    view
+    |> element("#vehicle-filter-suggestions li[phx-value-id='#{value}']")
+    |> render_click()
+  end
+
+  defp remove(view, value) do
+    view |> element("#vehicle-filter-tokens button[phx-value-id='#{value}']") |> render_click()
   end
 
   defp supplied(view) do
@@ -557,37 +582,62 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
-  describe "the filter controls" do
-    test "offer every agency of the agency view in name order" do
+  describe "the filter bar's tokens" do
+    test "are none at an address without a filter" do
       view = open_with_agencies("/vehicles")
 
-      assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", false}]
+      assert tokens(view) == []
     end
 
-    test "check the agencies the address's filter names" do
-      view = open_with_agencies("/vehicles?agency=40")
+    test "name the agencies the address's filter names by the agency view's names" do
+      view = open_with_agencies("/vehicles?agency=40,1")
 
-      assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", true}]
+      assert tokens(view) == [
+               {"agency", "1", "Metro Transit"},
+               {"agency", "40", "Sound Transit"}
+             ]
     end
 
-    test "offer an agency the filter names and the agency view does not hold" do
+    test "name an agency the agency view does not hold by its identifier" do
       view = open_with_agencies("/vehicles?agency=97")
 
-      assert {"97", "97", true} in options(view)
+      assert tokens(view) == [{"agency", "97", "97"}]
     end
 
-    test "check nothing for a refused filter" do
-      view = open_with_agencies("/vehicles?agency[x]=1")
+    test "name the routes after the agencies, by the route view's names" do
+      apply_routes([{"1_8", "8", nil}], %{agency_id: "1", sequence: 1})
+      view = open_with_agencies("/vehicles?agency=1&route=1_8")
 
-      assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", false}]
+      assert tokens(view) == [{"agency", "1", "Metro Transit"}, {"route", "1_8", "8"}]
+    end
+
+    test "name a route the route view does not hold by its identifier" do
+      view = open_with_agencies("/vehicles?route=1_999")
+
+      assert tokens(view) == [{"route", "1_999", "1_999"}]
+    end
+
+    test "are none for a refused filter" do
+      view = open_with_agencies("/vehicles?route=1_8&agency[x]=1")
+
+      assert tokens(view) == []
     end
 
     test "follow a new fetch of the agency view" do
-      view = open_with_agencies("/vehicles")
+      view = open_with_agencies("/vehicles?agency=40")
 
-      apply_agencies([{"1", "Metro Transit"}], 1)
+      apply_agencies([{"40", "ST Express"}], 1)
 
-      assert options(view) == [{"1", "Metro Transit", false}]
+      assert tokens(view) == [{"agency", "40", "ST Express"}]
+    end
+
+    test "label each remove button with its kind and name" do
+      view = open_with_agencies("/vehicles?agency=40")
+
+      assert has_element?(
+               view,
+               "#vehicle-filter-tokens button[aria-label='Remove agency Sound Transit']"
+             )
     end
 
     test "are absent from a page with no basemap", %{tmp_dir: tmp_dir} do
@@ -598,7 +648,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
   end
 
-  describe "the route controls" do
+  describe "the filter bar's suggestions" do
     # Agency "1" lists the routes 8 and 40 and agency "40" the routes 40 and
     # 550, and the page is at `path`.
     defp open_with_routes(path) do
@@ -612,142 +662,209 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
       open_with_agencies(path)
     end
 
-    test "offer every route of the route view in name order, with its agency" do
+    test "are none before text is typed" do
       view = open_with_routes("/vehicles")
 
-      assert route_options(view) == [
-               {"1_8", "8 Metro Transit", false},
-               {"1_40", "40 Ballard - Northgate Metro Transit", false},
-               {"40_40", "40 Sound Transit", false},
-               {"40_550", "550 Sound Transit", false}
+      assert suggestions(view) == []
+    end
+
+    test "leave the combobox collapsed before text is typed" do
+      view = open_with_routes("/vehicles")
+
+      assert has_element?(view, "#vehicle-filter-input[aria-expanded='false']")
+    end
+
+    test "offer the agencies whose name holds the typed text, labeled as agencies" do
+      view = open_with_routes("/vehicles")
+
+      type(view, "sound")
+
+      assert suggestions(view) == [{"agency", "40", "Agency Sound Transit"}]
+    end
+
+    test "offer the routes whose name holds the typed text, labeled as routes" do
+      view = open_with_routes("/vehicles")
+
+      type(view, "40")
+
+      assert suggestions(view) == [
+               {"route", "1_40", "Route 40 Ballard - Northgate Metro Transit"},
+               {"route", "40_40", "Route 40 Sound Transit"}
              ]
+    end
+
+    test "mark the combobox as expanded while there are suggestions" do
+      view = open_with_routes("/vehicles")
+
+      type(view, "40")
+
+      assert has_element?(view, "#vehicle-filter-input[aria-expanded='true']")
     end
 
     test "offer the routes of the agencies the filter names alone" do
       view = open_with_routes("/vehicles?agency=40")
 
-      assert route_options(view) == [
-               {"40_40", "40 Sound Transit", false},
-               {"40_550", "550 Sound Transit", false}
-             ]
+      type(view, "40")
+
+      assert suggestions(view) == [{"route", "40_40", "Route 40 Sound Transit"}]
     end
 
-    test "show the routes the filter names first, checked" do
-      view = open_with_routes("/vehicles?route=40_550")
+    test "leave out an agency the filter names" do
+      view = open_with_routes("/vehicles?agency=40")
 
-      assert [{"40_550", "550 Sound Transit", true}, {"1_8", _label, false} | _rest] =
-               route_options(view)
+      type(view, "s")
+
+      assert suggestions(view) == [{"agency", "1", "Agency Metro Transit"}]
     end
 
-    test "show a route the filter names and the route view does not hold by its identifier" do
-      view = open_with_routes("/vehicles?route=1_999")
+    test "leave out a route the filter names" do
+      view = open_with_routes("/vehicles?agency=40&route=40_550")
 
-      assert {"1_999", "1_999", true} in route_options(view)
+      type(view, "5")
+
+      assert suggestions(view) == []
     end
 
-    test "check nothing for a refused filter" do
-      view = open_with_routes("/vehicles?route=40_550&agency[x]=1")
+    test "say how many are left out" do
+      count = GobusgoWeb.RouteOptions.match_count_max() + 2
+      routes = for number <- 1..count, do: {"1_#{number}", "x#{number}", nil}
+      apply_routes(routes, %{agency_id: "1", sequence: 1})
+      view = open_with_agencies("/vehicles")
 
-      assert Enum.all?(route_options(view), fn {_id, _label, checked} -> not checked end)
+      type(view, "x")
+
+      assert view |> element("#vehicle-filter-rest") |> render() =~ "2 more"
     end
 
-    test "narrow to the routes whose name holds the typed text" do
-      view = open_with_routes("/vehicles")
+    test "follow a new fetch of the route view" do
+      view = open_with_routes("/vehicles?agency=40")
+      type(view, "56")
 
-      view |> form(@form, %{"route_query" => "55"}) |> render_change()
+      apply_routes([{"40_560", "560", nil}], %{agency_id: "40", sequence: 3})
 
-      assert route_options(view) == [{"40_550", "550 Sound Transit", false}]
-    end
-
-    test "keep a checked route shown whatever the typed text" do
-      view = open_with_routes("/vehicles?route=1_8")
-
-      view |> form(@form, %{"route_query" => "55"}) |> render_change()
-
-      assert route_options(view) == [
-               {"1_8", "8 Metro Transit", true},
-               {"40_550", "550 Sound Transit", false}
-             ]
+      assert suggestions(view) == [{"route", "40_560", "Route 560 Sound Transit"}]
     end
 
     test "leave the address and the stored filter as they are while text is typed" do
       view = open_with_routes("/vehicles?route=1_8")
 
-      view |> form(@form, %{"route_query" => "55"}) |> render_change()
+      type(view, "55")
 
       refute_push_event(view, @store_event, %{})
       refute_patched(view)
     end
-
-    test "say how many matches are left out" do
-      count = GobusgoWeb.RouteOptions.match_count_max() + 2
-      routes = for number <- 1..count, do: {"1_#{number}", "#{number}", nil}
-      apply_routes(routes, %{agency_id: "1", sequence: 1})
-      view = open_with_agencies("/vehicles")
-
-      assert view |> element("#vehicle-filter-routes-rest") |> render() =~ "2 more"
-    end
-
-    test "follow a new fetch of the route view" do
-      view = open_with_routes("/vehicles?agency=40")
-
-      apply_routes([{"40_560", "560", nil}], %{agency_id: "40", sequence: 3})
-
-      assert route_options(view) == [{"40_560", "560 Sound Transit", false}]
-    end
-
-    test "name a route's agency as a new fetch of the agency view does" do
-      view = open_with_routes("/vehicles?agency=40")
-
-      apply_agencies([{"40", "ST Express"}], 1)
-
-      assert {"40_550", "550 ST Express", false} in route_options(view)
-    end
   end
 
-  describe "a change of the route controls" do
+  describe "choosing a suggestion" do
     defp open_with_listed_routes(path) do
       apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
       apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
       open_with_agencies(path)
     end
 
-    test "puts a checked route into the address" do
-      view = open_with_listed_routes("/vehicles")
+    test "puts an agency into the address" do
+      view = open_with_agencies("/vehicles")
 
-      view |> form(@form, %{"route" => ["40_500"]}) |> render_change()
+      choose(view, %{text: "sound", value: "40"})
 
-      assert_patch(view, "/vehicles?route=40_500")
+      assert_patch(view, "/vehicles?agency=40")
     end
 
-    test "adds a checked route to the routes of the address's filter" do
+    test "adds an agency to the agencies of the address's filter" do
+      view = open_with_agencies("/vehicles?agency=40")
+
+      choose(view, %{text: "metro", value: "1"})
+
+      assert_patch(view, "/vehicles?agency=1,40")
+    end
+
+    test "adds a route to the routes of the address's filter" do
       view = open_with_listed_routes("/vehicles?route=1_100")
 
-      view |> form(@form, %{"route" => ["1_100", "40_500"]}) |> render_change()
+      choose(view, %{text: "40_5", value: "40_500"})
 
       assert_patch(view, "/vehicles?route=1_100,40_500")
     end
 
-    test "removes an unchecked route from the address" do
-      view = open_with_listed_routes("/vehicles?route=1_100,40_500")
-
-      view |> form(@form, %{"route" => ["40_500"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?route=40_500")
-    end
-
-    test "removes the route field when the last route is unchecked" do
-      view = open_with_listed_routes("/vehicles?agency=1&route=1_100")
-
-      render_change(view, "vehicle-filter:change", %{"agency" => ["1"]})
-
-      assert_patch(view, "/vehicles?agency=1")
-    end
-
-    test "has the browser store the filter with the route" do
+    test "has the browser store the filter" do
       view = open_with_listed_routes("/vehicles?agency=40")
 
-      view |> form(@form, %{"route" => ["40_500"]}) |> render_change()
+      choose(view, %{text: "40_5", value: "40_500"})
+
+      assert_push_event(view, @store_event, %{
+        filter: %{"agency" => ["40"], "route" => ["40_500"]}
+      })
+    end
+
+    test "shows the chosen value as a token" do
+      view = open_with_agencies("/vehicles")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert tokens(view) == [{"agency", "40", "Sound Transit"}]
+    end
+
+    test "clears the suggestions" do
+      view = open_with_agencies("/vehicles")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert suggestions(view) == []
+    end
+
+    test "clears the text" do
+      view = open_with_agencies("/vehicles")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert input_value(view) == [""]
+    end
+
+    test "sends the markers the new filter keeps" do
+      apply_agencies([{"40", "Sound Transit"}, {"1", "Metro Transit"}])
+      view = open_ready("/vehicles")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: []})
+    end
+
+    test "of an agency reduces the routes of the address's filter to those it lists" do
+      view = open_with_listed_routes("/vehicles?route=40_500,1_100")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert_patch(view, "/vehicles?agency=40&route=40_500")
+    end
+
+    test "of an agency keeps the routes that any of the filter's agencies lists" do
+      view = open_with_listed_routes("/vehicles?agency=1&route=1_100")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert_patch(view, "/vehicles?agency=1,40&route=1_100")
+    end
+
+    test "of an agency removes the routes when the agencies list none of them" do
+      view = open_with_listed_routes("/vehicles?route=1_100")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert_patch(view, "/vehicles?agency=40")
+    end
+
+    test "of an agency removes a route that no fetch of the route view lists" do
+      view = open_with_agencies("/vehicles?route=40_500")
+
+      choose(view, %{text: "sound", value: "40"})
+
+      assert_patch(view, "/vehicles?agency=40")
+    end
+
+    test "has the browser store the filter with the reduced routes" do
+      view = open_with_listed_routes("/vehicles?route=40_500,1_100")
+
+      choose(view, %{text: "sound", value: "40"})
 
       assert_push_event(view, @store_event, %{
         filter: %{"agency" => ["40"], "route" => ["40_500"]}
@@ -755,128 +872,104 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
     end
 
     test "changes nothing for more routes than the limit" do
-      view = open_with_listed_routes("/vehicles?route=1_100")
-      routes = Enum.map(0..Filter.value_count_max(), &"1_#{&1}")
+      routes = Enum.map_join(1..Filter.value_count_max(), ",", &"1_#{&1}")
+      view = open_with_listed_routes("/vehicles?route=" <> routes)
 
-      render_change(view, "vehicle-filter:change", %{"route" => routes})
+      render_click(view, "vehicle-filter:add", %{"field" => "route", "id" => "1_100"})
 
       refute_push_event(view, @store_event, %{})
-      assert {"1_100", "1_100 Metro Transit", true} in route_options(view)
+      refute_patched(view)
+    end
+
+    test "changes nothing for a field the filter does not know" do
+      view = open_with_agencies("/vehicles?agency=40")
+
+      render_click(view, "vehicle-filter:add", %{"field" => "color", "id" => "red"})
+
+      refute_push_event(view, @store_event, %{})
+      assert tokens(view) == [{"agency", "40", "Sound Transit"}]
+    end
+
+    test "changes nothing for parameters that name no field" do
+      view = open_with_agencies("/vehicles?agency=40")
+
+      render_click(view, "vehicle-filter:add", %{"id" => "1"})
+
+      refute_push_event(view, @store_event, %{})
     end
 
     test "is shown again by a page that connects at the address it left" do
       view = open_with_listed_routes("/vehicles")
-      view |> form(@form, %{"route" => ["40_500"]}) |> render_change()
+      choose(view, %{text: "40_5", value: "40_500"})
       path = assert_patch(view)
 
       {:ok, again, _html} = live(build_conn(), path)
 
-      assert {"40_500", "40_500 Sound Transit", true} in route_options(again)
+      assert tokens(again) == [{"route", "40_500", "40_500"}]
       assert supplied(again) == "true"
     end
   end
 
-  describe "a change of the filter controls" do
-    test "puts the checked agencies into the address" do
-      view = open_with_agencies("/vehicles")
+  describe "removing a token" do
+    test "removes its route from the address" do
+      view = open_with_agencies("/vehicles?route=1_100,40_500")
 
-      view |> form(@form, %{"agency" => ["40", "1"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?agency=1,40")
-    end
-
-    test "has the browser store the filter" do
-      view = open_with_agencies("/vehicles")
-
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
-
-      assert_push_event(view, @store_event, %{filter: %{"agency" => ["40"]}})
-    end
-
-    test "sends the markers the new filter keeps" do
-      apply_agencies([{"40", "Sound Transit"}, {"1", "Metro Transit"}])
-      view = open_ready("/vehicles?agency=40")
-
-      view |> form(@form, %{"agency" => ["1"]}) |> render_change()
-
-      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
-      assert_push_event(view, @event, %{agency_id: "40", markers: []})
-    end
-
-    test "reduces the routes of the address's filter to those the checked agency lists" do
-      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
-      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
-      view = open_with_agencies("/vehicles?route=40_500,1_100")
-
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?agency=40&route=40_500")
-    end
-
-    test "keeps the routes that any of the checked agencies lists" do
-      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
-      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
-      view = open_with_agencies("/vehicles?route=40_500,1_100")
-
-      view |> form(@form, %{"agency" => ["40", "1"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?agency=1,40&route=1_100,40_500")
-    end
-
-    test "removes the routes when the checked agency lists none of them" do
-      apply_routes(["1_100"], %{agency_id: "1", sequence: 1})
-      apply_routes(["40_500"], %{agency_id: "40", sequence: 2})
-      view = open_with_agencies("/vehicles?route=1_100")
-
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?agency=40")
-    end
-
-    test "removes a route that no fetch of the route view lists" do
-      view = open_with_agencies("/vehicles?route=40_500")
-
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
-
-      assert_patch(view, "/vehicles?agency=40")
-    end
-
-    test "has the browser store the filter with the reduced routes" do
-      apply_routes(["40_500"], %{agency_id: "40", sequence: 1})
-      view = open_with_agencies("/vehicles?route=40_500,1_100")
-
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
-
-      assert_push_event(view, @store_event, %{
-        filter: %{"agency" => ["40"], "route" => ["40_500"]}
-      })
-    end
-
-    test "keeps every route of the address's filter when nothing is checked" do
-      view = open_with_agencies("/vehicles?agency=40&route=40_500")
-
-      render_change(view, "vehicle-filter:change", %{"route" => ["40_500"]})
+      remove(view, "1_100")
 
       assert_patch(view, "/vehicles?route=40_500")
     end
 
-    test "removes the filter from the address when nothing is checked" do
+    test "removes the route field with the last route" do
+      view = open_with_agencies("/vehicles?agency=1&route=1_100")
+
+      remove(view, "1_100")
+
+      assert_patch(view, "/vehicles?agency=1")
+    end
+
+    test "keeps every route of the address's filter with the last agency" do
+      view = open_with_agencies("/vehicles?agency=40&route=40_500")
+
+      remove(view, "40")
+
+      assert_patch(view, "/vehicles?route=40_500")
+    end
+
+    test "removes the filter from the address with the last token" do
       view = open_with_agencies("/vehicles?agency=40")
 
-      render_change(view, "vehicle-filter:change", %{})
+      remove(view, "40")
 
       assert_patch(view, "/vehicles")
       assert_push_event(view, @store_event, %{filter: filter})
       assert filter == %{}
     end
 
-    test "changes nothing for a filter that is refused" do
+    test "sends the markers the new filter keeps" do
+      apply_agencies([{"40", "Sound Transit"}, {"1", "Metro Transit"}])
+      view = open_ready("/vehicles?agency=40")
+
+      remove(view, "40")
+
+      assert_push_event(view, @event, %{agency_id: "1", markers: [%{id: "1/1_a"}]})
+    end
+
+    test "leaves the typed text as it is" do
+      view = open_with_agencies("/vehicles?agency=40")
+      type(view, "metro")
+
+      remove(view, "40")
+
+      assert {"agency", "1", "Agency Metro Transit"} in suggestions(view)
+    end
+
+    test "changes nothing for parameters that name no field" do
       view = open_with_agencies("/vehicles?agency=40")
 
-      render_change(view, "vehicle-filter:change", %{"agency" => %{"x" => "1"}})
+      render_click(view, "vehicle-filter:remove", %{})
 
       refute_push_event(view, @store_event, %{})
-      assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", true}]
+      assert tokens(view) == [{"agency", "40", "Sound Transit"}]
     end
   end
 
@@ -901,7 +994,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
       |> element(@form)
       |> render_hook("vehicle-filter:restore", %{"filter" => %{"agency" => ["1"]}})
 
-      assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", true}]
+      assert tokens(view) == [{"agency", "40", "Sound Transit"}]
     end
   end
 
@@ -948,7 +1041,7 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
 
         assert_reply(view, %{accepted: false})
         refute has_element?(view, "#filter-refused")
-        assert options(view) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", false}]
+        assert tokens(view) == []
       end
     end
   end
@@ -956,12 +1049,12 @@ defmodule GobusgoWeb.VehicleLiveFilterTest do
   describe "a page that connects again at the address a change left" do
     test "shows the same filter" do
       view = open_with_agencies("/vehicles")
-      view |> form(@form, %{"agency" => ["40"]}) |> render_change()
+      choose(view, %{text: "sound", value: "40"})
       path = assert_patch(view)
 
       {:ok, again, _html} = live(build_conn(), path)
 
-      assert options(again) == [{"1", "Metro Transit", false}, {"40", "Sound Transit", true}]
+      assert tokens(again) == [{"agency", "40", "Sound Transit"}]
       assert supplied(again) == "true"
     end
   end

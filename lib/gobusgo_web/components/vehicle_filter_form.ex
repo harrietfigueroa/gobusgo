@@ -1,111 +1,149 @@
 defmodule GobusgoWeb.VehicleFilterForm do
-  @route_query_param "route_query"
-  @route_query_debounce_ms 200
+  @query_param "filter_query"
+  @query_debounce_ms 200
+  @add_event "vehicle-filter:add"
+  @remove_event "vehicle-filter:remove"
+  @query_event "vehicle-filter:query"
 
   @moduledoc """
-  The form a map page offers its vehicle filter with: one checkbox per
-  agency, then a text box that narrows the routes and one checkbox per
-  route.
+  The form a map page offers its vehicle filter with: one text bar that
+  holds a token per value of the filter, and under it a list of the
+  suggestions the text narrows to, each labeled with its field. The bar
+  follows the WAI-ARIA combobox pattern, its text box the combobox and the
+  suggestions its listbox.
 
-  A change and a submit of the form send the `vehicle-filter:change` event
-  with the checked agencies as `agency`, the checked routes as `route`, and
-  the text as `#{@route_query_param}`, the text #{@route_query_debounce_ms} ms
-  after the last key. The form mounts the `VehicleFilter` hook.
+  A change and a submit of the form send the `#{@query_event}` event with
+  the text as `#{@query_param}`, #{@query_debounce_ms} ms after the last key.
+  A click on a suggestion sends `#{@add_event}` and a click on a token's
+  remove button `#{@remove_event}`, each with the value's `field` and its
+  `id`. A value is sent as `id`, because the click of a list item sends
+  the item's own `value` property under `value`. The form mounts the
+  `VehicleFilter` hook, and the bar the `FilterBar` hook, which moves
+  through the suggestions from the keyboard.
   """
 
   use Phoenix.Component
 
   alias GobusgoWeb.RouteOptions
 
-  @doc "The name of the form's parameter that holds the text of the text box."
-  @spec route_query_param() :: String.t()
-  def route_query_param, do: @route_query_param
+  @field_labels %{"agency" => "Agency", "route" => "Route"}
+
+  @doc "The name of the form's parameter that holds the text of the text bar."
+  @spec query_param() :: String.t()
+  def query_param, do: @query_param
 
   @doc """
-  The form. `agency_options` are the options of `GobusgoWeb.AgencyOptions`,
-  `route_options` those of `GobusgoWeb.RouteOptions`, `route_query` the text
-  of the text box, and `supplied` whether the page's address supplies a
-  filter.
+  The form. `tokens`, `suggestions`, and `rest_count` are those of
+  `GobusgoWeb.FilterBar.options/1`, `query` the text of the text bar, and
+  `supplied` whether the page's address supplies a filter.
   """
-  attr :agency_options, :list, required: true
-  attr :route_options, :map, required: true
-  attr :route_query, :string, required: true
+  attr :tokens, :list, required: true
+  attr :suggestions, :list, required: true
+  attr :rest_count, :integer, required: true
+  attr :query, :string, required: true
   attr :supplied, :boolean, required: true
 
   def form(assigns) do
+    assigns =
+      assign(assigns,
+        query_param: @query_param,
+        query_debounce_ms: @query_debounce_ms,
+        query_length_max: RouteOptions.query_length_max(),
+        query_event: @query_event,
+        add_event: @add_event,
+        remove_event: @remove_event
+      )
+
     ~H"""
     <form
       id="vehicle-filter"
       phx-hook="VehicleFilter"
-      phx-change="vehicle-filter:change"
-      phx-submit="vehicle-filter:change"
+      phx-change={@query_event}
+      phx-submit={@query_event}
       data-supplied={to_string(@supplied)}
       class="text-sm"
     >
-      <.agencies options={@agency_options} />
-      <.routes options={@route_options} query={@route_query} />
+      <div id="vehicle-filter-bar" phx-hook="FilterBar">
+        <div class="filter-bar">
+          <label for="vehicle-filter-input" class="sr-only">Filter by agency or route</label>
+          <ul
+            id="vehicle-filter-tokens"
+            aria-label="Applied filter"
+            class="filter-tokens"
+            hidden={@tokens == []}
+          >
+            <li
+              :for={token <- @tokens}
+              class="filter-token"
+              data-field={token.field}
+              data-value={token.id}
+            >
+              <span class="filter-kind">{field_label(token.field)}</span>
+              <span class="filter-token-name">{token.name}</span>
+              <button
+                type="button"
+                class="filter-token-remove"
+                aria-label={"Remove #{String.downcase(field_label(token.field))} #{token.name}"}
+                phx-click={@remove_event}
+                phx-value-field={token.field}
+                phx-value-id={token.id}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </li>
+          </ul>
+          <input
+            id="vehicle-filter-input"
+            type="text"
+            name={@query_param}
+            value={@query}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="vehicle-filter-suggestions"
+            aria-expanded={to_string(@suggestions != [])}
+            placeholder={placeholder(@tokens)}
+            maxlength={@query_length_max}
+            autocomplete="off"
+            spellcheck="false"
+            phx-debounce={@query_debounce_ms}
+            class="filter-bar-input"
+          />
+        </div>
+        <ul
+          id="vehicle-filter-suggestions"
+          role="listbox"
+          aria-label="Suggestions"
+          class="filter-suggestions"
+          hidden={@suggestions == []}
+        >
+          <li
+            :for={{suggestion, index} <- Enum.with_index(@suggestions)}
+            id={"vehicle-filter-suggestion-#{index}"}
+            role="option"
+            class="filter-suggestion"
+            phx-click={@add_event}
+            phx-value-field={suggestion.field}
+            phx-value-id={suggestion.id}
+          >
+            <span class="filter-kind">{field_label(suggestion.field)}</span>
+            <span class="font-medium">{suggestion.name}</span>
+            <span :if={suggestion.detail != nil}>{suggestion.detail}</span>
+            <span :if={suggestion.agency_name != nil} class="text-slate-600">
+              {suggestion.agency_name}
+            </span>
+          </li>
+        </ul>
+        <p :if={@rest_count > 0} id="vehicle-filter-rest" class="mt-1 px-2 text-slate-600">
+          {@rest_count} more; type more to narrow them
+        </p>
+      </div>
     </form>
     """
   end
 
-  attr :options, :list, required: true
+  defp field_label(field), do: Map.fetch!(@field_labels, field)
 
-  defp agencies(assigns) do
-    ~H"""
-    <details id="vehicle-filter-agencies">
-      <summary class="cursor-pointer font-medium">Agencies</summary>
-      <div class="mt-2 flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
-        <label :for={option <- @options} class="flex items-center gap-2">
-          <input type="checkbox" name="agency[]" value={option.id} checked={option.checked} />
-          <span>{option.name}</span>
-        </label>
-      </div>
-    </details>
-    """
-  end
-
-  attr :options, :map, required: true
-  attr :query, :string, required: true
-
-  defp routes(assigns) do
-    assigns =
-      assign(assigns,
-        query_param: @route_query_param,
-        query_debounce_ms: @route_query_debounce_ms,
-        query_length_max: RouteOptions.query_length_max()
-      )
-
-    ~H"""
-    <details id="vehicle-filter-routes" class="mt-2">
-      <summary class="cursor-pointer font-medium">Routes</summary>
-      <input
-        type="search"
-        name={@query_param}
-        value={@query}
-        placeholder="Route name"
-        aria-label="Narrow the routes by name"
-        maxlength={@query_length_max}
-        autocomplete="off"
-        phx-debounce={@query_debounce_ms}
-        class="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1"
-      />
-      <div class="mt-2 flex max-h-[40vh] flex-col gap-1 overflow-y-auto">
-        <label
-          :for={option <- @options.selected ++ @options.matches}
-          class="flex items-baseline gap-2"
-        >
-          <input type="checkbox" name="route[]" value={option.id} checked={option.checked} />
-          <span class="font-medium">{option.name}</span>
-          <span :if={option.detail != nil}>{option.detail}</span>
-          <span :if={option.agency_name != nil} class="text-gray-600">
-            {option.agency_name}
-          </span>
-        </label>
-        <p :if={@options.rest_count > 0} id="vehicle-filter-routes-rest" class="text-gray-600">
-          {@options.rest_count} more
-        </p>
-      </div>
-    </details>
-    """
-  end
+  # A bar with tokens says what more text adds to them.
+  defp placeholder([]), do: "Agency or route"
+  defp placeholder([_token | _rest]), do: "Add an agency or route"
 end

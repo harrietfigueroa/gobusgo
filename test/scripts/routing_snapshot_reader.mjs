@@ -11,12 +11,15 @@ import {
   DecodeKind,
   RefusalReason,
   decodeConnections,
+  decodePositions,
   decodeStops,
   decodeTransfers,
   decodeTrips,
 } from "../../assets/js/routing_snapshot.js"
 
-const directory = fileURLToPath(new URL("../fixtures/routing/v1/", import.meta.url))
+const directory = fileURLToPath(new URL("../fixtures/routing/v2/", import.meta.url))
+const POSITION_BYTES = 8
+const LAT_MICRODEGREES_OUT_OF_RANGE = 90000001
 const expected = JSON.parse(readFileSync(directory + "expected.json", "utf-8"))
 const BOOLEAN_COLUMNS = ["boarding", "alighting"]
 
@@ -63,16 +66,26 @@ const stopsFile = buffer("stops")
 const tripsFile = buffer("trips")
 const transfersFile = buffer("transfers")
 const connections = buffer("connections")
+const positionsFile = buffer("positions")
 const stops = records(decodeStops(stopsFile))
 const trips = records(decodeTrips(tripsFile))
 const transferColumns = records(decodeTransfers(transfersFile))
 const connectionColumns = records(decodeConnections(connections))
+const positionColumns = records(decodePositions(positionsFile))
 deepStrictEqual(stops, expected.stops)
 deepStrictEqual(trips, expected.trips)
 deepStrictEqual(rows(transferColumns), expected.transfers)
 deepStrictEqual(rows(connectionColumns), expected.connections)
+deepStrictEqual(rows(positionColumns), expected.positions)
 
 const cutShort = connections.slice(0, connections.byteLength - 1)
 deepStrictEqual(decodeConnections(cutShort), {kind: DecodeKind.refused, reason: RefusalReason.invalidLength})
+
+// The first position moved one microdegree past the north pole.
+const outOfRange = positionsFile.slice(0)
+const outOfRangeView = new DataView(outOfRange)
+outOfRangeView.setInt32(outOfRange.byteLength - POSITION_BYTES * stops.length, LAT_MICRODEGREES_OUT_OF_RANGE, true)
+deepStrictEqual(decodePositions(outOfRange), {kind: DecodeKind.refused, reason: RefusalReason.invalidPosition})
+deepStrictEqual(decodePositions(stopsFile), {kind: DecodeKind.refused, reason: RefusalReason.invalidHeader})
 
 console.log("routing snapshot reader: every fixture decodes to expected.json")

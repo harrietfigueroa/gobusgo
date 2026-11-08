@@ -133,6 +133,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       Snapshot.build(%{
         timetable: timetable,
         walking_links: Transfers.walking_links(timetable.stop_ids, input.positions),
+        positions: input.positions,
         built_at: now,
         fetched_at_oldest: Enum.min(fetch_times, DateTime),
         fetched_at_newest: Enum.max(fetch_times, DateTime)
