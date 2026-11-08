@@ -53,6 +53,29 @@ defmodule Gobusgo.WriterTest do
       assert options == [recipient: self()]
     end
 
+    test "passes the backend how long a reader may keep the content" do
+      request = %{destination: "a/b.pmtiles", content: "payload", reader_keep_seconds: 3_600}
+
+      assert Writer.write(request, backend: RecordingBackend, recipient: self()) == :ok
+      assert_received {:written, %{reader_keep_seconds: 3_600}, _options}
+    end
+
+    for reader_keep_seconds <- [0, -1, 1.5, "3600"] do
+      test "raises for a reader keep time of #{inspect(reader_keep_seconds)}" do
+        request = %{
+          destination: "a/b.pmtiles",
+          content: "payload",
+          reader_keep_seconds: unquote(reader_keep_seconds)
+        }
+
+        assert_raise Gobusgo.Assert.AssertionError, fn ->
+          Writer.write(request, backend: RecordingBackend, recipient: self())
+        end
+
+        refute_received {:written, _request, _options}
+      end
+    end
+
     test "returns a documented error as a value" do
       request = %{destination: "a", content: "x"}
 

@@ -4,9 +4,9 @@ Gobusgo stores every destination of the writer, the reader, and the deleter as o
 
 ## Documentation sources
 
-- `PutObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html — checked 2026-10-11
+- `PutObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html — checked 2026-11-08
 - Conditional writes: https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html — checked 2026-10-11
-- `GetObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html — checked 2026-10-11
+- `GetObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html — checked 2026-11-08
 - `HeadObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html — checked 2026-10-11
 - `DeleteObject`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html — checked 2026-10-11
 - `ListObjectsV2`: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html — checked 2026-10-11
@@ -48,13 +48,14 @@ A key is the key prefix followed by the destination (`Gobusgo.S3.Key`).
 
 | Contract call | Request | Outcomes |
 | --- | --- | --- |
-| `Writer.write/2` | `PUT /<key>` with `If-None-Match: *` | 200 `:ok`; 412 `:already_exists`; 403 `:permission_denied`; 404 and the transient statuses `:io_failure` |
+| `Writer.write/2` | `PUT /<key>` with `If-None-Match: *`, and `Cache-Control: public, max-age=<seconds>, immutable` for a request that names `reader_keep_seconds` | 200 `:ok`; 412 `:already_exists`; 403 `:permission_denied`; 404 and the transient statuses `:io_failure` |
 | `Reader.read/2` | `GET /<key>` | 200 the content; 404 `:not_found`; 403 `:permission_denied`; a body over 16 MB `:content_too_large` |
 | `Reader.discover/2` | `GET /?list-type=2&encoding-type=url&max-keys=<at most 100>&prefix=<key prefix and prefix>`, with `start-after` on the first request and `continuation-token` on the next | 200 a page; 403 `:permission_denied`; 404 `:io_failure` |
 | `Deleter.delete/2` | `HEAD /<key>`, then `DELETE /<key>` | `HEAD` 404 `:not_found`; `DELETE` 204 `:ok`; 403 `:permission_denied` |
 
 Every call answers `:io_failure` for a transient status that outlasts the retries, a network fault, the client's deadline, and unavailable credentials. A status outside an operation's rows raises `Gobusgo.Assert.AssertionError`.
 
+- `PutObject` stores a request's `Cache-Control` with the object, and `GetObject` answers with it. The route and stop tile archives are written with a year (GOB-221). Neither page says whether a ranged `GetObject` or an error for a key carries the header; both are unverified.
 - S3 answers 403 in place of 404 for a key that holds no object when the role may not list the bucket, so a role without `s3:ListBucket` turns every `:not_found` into `:permission_denied`.
 - S3 lists keys in ascending order only. A descending discovery lists the whole prefix first, at most 100 requests of 100 keys, and answers `:discovery_too_large` past that. Nothing in the application discovers in descending order.
 - A listing is one lazy stream of pages; discovery takes pages until its own page of destinations is full. A key whose remainder after the key prefix is no valid destination is left out.

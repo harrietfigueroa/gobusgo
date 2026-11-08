@@ -27,6 +27,26 @@ defmodule Gobusgo.Writer.S3Test do
     assert FakeS3.get(bucket, @destination) == "content"
   end
 
+  test "stores content a reader may keep with the cache control S3 answers it with", %{
+    bucket: bucket
+  } do
+    :ok =
+      Writer.write(
+        %{destination: @destination, content: "content", reader_keep_seconds: 31_536_000},
+        [backend: S3] ++ FakeS3.options(bucket)
+      )
+
+    assert FakeS3.cache_control(bucket, @destination) == "public, max-age=31536000, immutable"
+  end
+
+  test "stores content with no cache control when the request names no keep time", %{
+    bucket: bucket
+  } do
+    write(bucket, @destination, "content")
+
+    assert FakeS3.cache_control(bucket, @destination) == :none
+  end
+
   test "stores under the key prefix", %{bucket: bucket} do
     write(bucket, @destination, "content", "gobusgo/production/")
 

@@ -52,5 +52,11 @@ defmodule GobusgoWeb.TilesTest do
 
       assert conn.status == 404
     end
+
+    test "lets no cache keep the 404 for an archive that is not stored for a year" do
+      conn = get(build_conn(), "/tiles/route-stops/dt=2026-10-14/absent.pmtiles")
+
+      refute "public, max-age=31536000, immutable" in get_resp_header(conn, "cache-control")
+    end
   end
 end

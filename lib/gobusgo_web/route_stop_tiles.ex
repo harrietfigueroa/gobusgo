@@ -5,6 +5,7 @@ defmodule GobusgoWeb.RouteStopTiles do
   @check_interval_ms 600_000
   @run_deadline_ms 120_000
   @content_sha256_bytes 32
+  @reader_keep_seconds 31_536_000
 
   @moduledoc """
   The tile archive of the routes and stops a map page draws, and the process
@@ -48,6 +49,13 @@ defmodule GobusgoWeb.RouteStopTiles do
   @doc "The prefix of every stored archive's destination, without a trailing `/`."
   @spec prefix() :: String.t()
   def prefix, do: @prefix
+
+  @doc """
+  How long a reader may keep a stored archive, a year: each archive's name is
+  that of its own build, so the content at a destination never changes.
+  """
+  @spec reader_keep_seconds() :: pos_integer()
+  def reader_keep_seconds, do: @reader_keep_seconds
 
   @doc "The destination of an archive built at `built_at`."
   @spec destination(DateTime.t()) :: String.t()

@@ -98,6 +98,17 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     assert Enum.map(features, & &1["geometry"]["type"]) == ["MultiLineString", "Point"]
   end
 
+  test "stores the archive for a reader to keep for a year as immutable", context do
+    bucket = Gobusgo.Test.FakeS3.start()
+    write_options = [backend: Gobusgo.Writer.S3] ++ Gobusgo.Test.FakeS3.options(bucket)
+
+    {:ok, %{destination: destination}} =
+      run(context, @content, write_options: write_options)
+
+    assert Gobusgo.Test.FakeS3.cache_control(bucket, destination) ==
+             "public, max-age=31536000, immutable"
+  end
+
   test "makes the archive it stores the current one", context do
     {:ok, %{destination: destination}} = run(context, @content)
 
