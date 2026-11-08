@@ -36,6 +36,8 @@ config :gobusgo, Gobusgo.Publisher, backend: Gobusgo.Publisher.InProcess
 
 config :gobusgo, Gobusgo.Publisher.InProcess,
   subscribers: %{
+    "gbfs.vehicle-types.state" =>
+      {Gobusgo.OneBusAway.FetchView, :apply_records, [Gobusgo.Gbfs.VehicleTypeView]},
     "oba.agencies-with-coverage.response-stored" =>
       {Gobusgo.OneBusAway.ResponseConsumer, :consume,
        [
