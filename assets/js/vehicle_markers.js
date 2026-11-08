@@ -1,6 +1,7 @@
 import {readyEventName} from "./basemap"
 import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, riderPopupClassName} from "./rider_popups"
+import {compactPopupContent} from "./route_chips"
 import {alertLines} from "./service_alerts"
 
 const sourceName = "vehicle-markers"
@@ -191,6 +192,23 @@ function popupContent(properties, statusLabels) {
   return content
 }
 
+// A vehicle's popup opens as its route's number in its marker's color.
+function compactVehicleContent(properties, statusLabels) {
+  const chips = []
+
+  if (typeof properties.route === "string") {
+    chips.push({name: properties.route, color: properties.color})
+  }
+
+  return compactPopupContent({
+    chips,
+    countMax: 1,
+    emptyText: `Vehicle ${properties.vehicleId}`,
+    label: `Vehicle ${properties.vehicleId}: show details`,
+    details: popupContent(properties, statusLabels)
+  })
+}
+
 // The hook of the element beside the map. It holds every agency's markers
 // as the server last sent them, and draws them on each map the basemap
 // announces, so a map drawn anew for another archive shows them too.
@@ -307,7 +325,7 @@ export const VehicleMarkers = {
 
         const popup = new maplibre.Popup({className: riderPopupClassName})
           .setLngLat(feature.geometry.coordinates)
-          .setDOMContent(popupContent(feature.properties, this.statusLabels))
+          .setDOMContent(compactVehicleContent(feature.properties, this.statusLabels))
 
         popup.on("close", announceRiderPopupChange)
         popup.addTo(map)

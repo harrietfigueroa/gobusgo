@@ -7,6 +7,7 @@ import {
   riderPopupClassName
 } from "./rider_popups"
 import {alertLines} from "./service_alerts"
+import {compactPopupContent} from "./route_chips"
 import {appendParagraph, writeArrivals} from "./stop_arrivals"
 import {
   addFavorite,
@@ -60,6 +61,8 @@ const titleClassName = "popup-title"
 const favoriteButtonClassName = "mt-1 text-left underline"
 const favoriteText = "★ Your favorite stop"
 const notFavoriteText = "☆ Make this your favorite stop"
+// A compact stop popup shows as many route numbers as the stop's label does.
+const chipCountMax = 4
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its popup shows, the routes and the agencies each one text. A text
@@ -77,8 +80,24 @@ function stopFromFeature({geometry, properties}) {
     direction: properties.direction,
     routes: properties.routes,
     agencies: properties.agencies,
-    routeIds: (properties.routeIds ?? "").split(",").filter((routeId) => routeId !== "")
+    routeIds: (properties.routeIds ?? "").split(",").filter((routeId) => routeId !== ""),
+    routeChips: routeChips(properties.routeChips)
   }
+}
+
+// The feature holds its route chips as a JSON list of name and color pairs.
+// An archive built before the feature held them gives a stop no chips.
+function routeChips(text) {
+  if (typeof text === "string") {
+    const pairs = JSON.parse(text)
+    return Array.from(pairs, routeChip)
+  } else {
+    return []
+  }
+}
+
+function routeChip([name, color]) {
+  return {name, color}
 }
 
 // The stops drawn in the view of `map`, by identifier. A stop near a tile's
@@ -156,11 +175,19 @@ function popupContent(stop) {
 // A popup's content with the element its stop's arrivals are written into,
 // which says that it is waiting for them.
 function popupElements(stop) {
-  const content = popupContent(stop)
+  const details = popupContent(stop)
   const favoriteButton = favoriteButtonOf(stop)
   const arrivalsElement = document.createElement("div")
   writeArrivals(arrivalsElement, {status: "waiting"})
-  content.append(favoriteButton, arrivalsElement)
+  details.append(favoriteButton, arrivalsElement)
+
+  const content = compactPopupContent({
+    chips: stop.routeChips,
+    countMax: chipCountMax,
+    emptyText: suppliedName(stop),
+    label: `${suppliedName(stop)}: show details`,
+    details
+  })
 
   return {content, favoriteButton, arrivalsElement}
 }
