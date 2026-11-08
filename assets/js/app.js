@@ -5,6 +5,7 @@ import {Basemap} from "./basemap"
 import {FavoriteStop} from "./favorite_stop"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
+import {OfflineSchedules} from "./offline_schedules"
 import {LocalTime} from "./service_alerts"
 import {SnapToLocation} from "./snap_to_location"
 import {StopMarkers} from "./stop_markers"
@@ -37,6 +38,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     Basemap,
     FavoriteStop,
     LocalTime,
+    OfflineSchedules,
     RouteLines,
     RouteStopTiles,
     SnapToLocation,

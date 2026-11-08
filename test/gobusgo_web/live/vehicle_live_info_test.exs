@@ -298,6 +298,35 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert text =~ AppInfo.favorite_stop()
     end
 
+    test "says how schedules are saved for offline use, in a section of its own" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-offline-schedules")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.offline_schedules()
+    end
+
+    test "offers the offline schedules setting, checked until the browser reads the rider's" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @panel <> " #offline-schedules-enabled[type=checkbox][checked]")
+    end
+
+    test "hands the offline schedules section to its hook, which the server leaves alone" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(
+               view,
+               @panel <>
+                 ~s( #app-info-offline-schedules[phx-hook="OfflineSchedules"][phx-update="ignore"])
+             )
+    end
+
     test "links the terms the data is provided under" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       %{name: name, url: url} = AppInfo.terms()
