@@ -78,6 +78,30 @@ function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
   }
 }
 
+// The next arrival of what the server says of a stop's arrivals, as its
+// route and how soon, such as "E 2 min"; an empty text while it says of
+// none.
+export function nextArrivalText({status, arrivals}) {
+  const hasArrival = status === "arrivals" && arrivals.length > 0
+
+  if (hasArrival === false) {
+    return ""
+  }
+
+  const [{route, minutes}] = arrivals
+  let time = `${minutes} min`
+
+  if (minutes === 0) {
+    time = ARRIVAL_NOW
+  }
+
+  if (typeof route === "string") {
+    return `${route} ${time}`
+  } else {
+    return time
+  }
+}
+
 // Writes a stop's arrivals into `element` as text nodes: the names come
 // from outside the application and are never parsed as HTML.
 export function writeArrivals(element, shown) {

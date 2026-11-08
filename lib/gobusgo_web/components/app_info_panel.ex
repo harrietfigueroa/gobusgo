@@ -1,16 +1,12 @@
 defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
-  The info button of a map page and the panel it opens: what the
-  application is, a disclaimer, how to read the map, how OneBusAway data is used, how the rider's location is used, what is recorded of a connection, the
-  credits, the licenses, and the commit the application was built from where
-  the build names one, from `GobusgoWeb.AppInfo` and the statuses of
-  `GobusgoWeb.VehicleMarkers`.
-
-  The panel is a `<dialog>` the browser opens and closes. The button
-  dispatches the `gobusgo:show-modal` DOM event to the panel, and the form
-  inside the panel closes it, so neither sends the server an event. The
-  panel's `open` attribute is the browser's: a patch of the page leaves it
-  as it is, so a panel a rider has open stays open.
+  The info panel of a map page: what the application is, a disclaimer, how
+  to read the map, how OneBusAway data is used, how the rider's location is
+  used, how favorite stops are kept, how schedules are saved for offline
+  use, what is recorded of a connection, the credits, the licenses, and the
+  commit the application was built from where the build names one, from
+  `GobusgoWeb.AppInfo` and the statuses of `GobusgoWeb.VehicleMarkers`. It
+  sends the server no event.
   """
 
   use Phoenix.Component
@@ -20,51 +16,22 @@ defmodule GobusgoWeb.AppInfoPanel do
   alias Gobusgo.RetentionPolicy
   alias GobusgoWeb.AppInfo
   alias GobusgoWeb.VehicleMarkers
-  alias Phoenix.LiveView.JS
-
-  @panel_id "app-info"
-  @show_event "gobusgo:show-modal"
 
   # A route-colored status has no one color, so its swatch is a sample of
   # route colors.
   @route_color_sample "linear-gradient(135deg, #2563eb, #e11d48, #16a34a)"
 
   @doc """
-  The button and the panel. `agencies` are the agencies the panel credits,
-  each with a `name`, in display order.
+  The panel's content. `agencies` are the agencies the panel credits, each
+  with a `name`, in display order.
   """
   attr :agencies, :list, required: true
 
-  def panel(assigns) do
-    assigns =
-      assign(assigns, panel_id: @panel_id, show: JS.dispatch(@show_event, to: "#" <> @panel_id))
-
+  def content(assigns) do
     ~H"""
-    <button
-      id="app-info-open"
-      type="button"
-      aria-label="About this map"
-      aria-haspopup="dialog"
-      phx-click={@show}
-      class="surface fixed bottom-2 left-2 z-10 h-11 w-11 [--surface-radius:9999px] text-lg font-semibold shadow"
-    >
-      i
-    </button>
-
-    <dialog
-      id={@panel_id}
-      aria-labelledby="app-info-title"
-      phx-mounted={JS.ignore_attributes("open")}
-      class="m-auto max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto surface p-0 text-sm text-slate-900 shadow-lg backdrop:bg-black/40"
-    >
-      <header class="sticky top-0 flex items-center justify-between border-b border-gray-300 bg-[var(--surface-fill)] px-4 py-3">
-        <h2 id="app-info-title" class="text-base font-semibold">About Gobusgo</h2>
-        <form method="dialog">
-          <button class="close-button [--close-button-size:32px]" aria-label="Close"></button>
-        </form>
-      </header>
-
-      <div class="flex flex-col gap-5 px-4 py-4">
+    <div id="app-info" class="flex flex-col gap-5">
+      <h2 class="text-base font-semibold">About Gobusgo</h2>
+      <div class="flex flex-col gap-5">
         <p>{AppInfo.about()}</p>
         <section id="app-info-disclaimer" class="flex flex-col gap-2">
           <h3 class="font-semibold">Disclaimer</h3>
@@ -98,7 +65,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         <.credits agencies={@agencies} />
         <.licenses />
       </div>
-    </dialog>
+    </div>
     """
   end
 

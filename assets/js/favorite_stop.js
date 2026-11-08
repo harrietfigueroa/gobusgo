@@ -1,15 +1,18 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
-import {appendParagraph, writeArrivals} from "./stop_arrivals"
+import {appendParagraph, nextArrivalText, writeArrivals} from "./stop_arrivals"
 
 // The rider's favorite stops, which this browser keeps in its local storage
 // as each stop's identifier and name, in the order they were added, and the
 // panel that shows each one's next arrivals whatever the page's filter keeps
-// and wherever its map is. Each favorite's stop is open for the server while
-// the panel shows it, as an open popup's stop is, so its arrivals come with
-// the "stop-arrivals:arrivals" event.
+// and wherever its map is, with the next arrival at the first favorite in
+// the badge of the Favorites tab. Each favorite's stop is open for the
+// server while the panel shows it, as an open popup's stop is, so its
+// arrivals come with the "stop-arrivals:arrivals" event.
 
 const STORAGE_KEY = "gobusgo:favorite-stops"
 const ELEMENT_ID = "favorite-stop"
+const BADGE_ID = "favorite-stop-badge"
+const EMPTY_TEXT = "No favorite stops yet. Open a stop on the map and choose “☆ Make this your favorite stop”."
 export const CHANGE_EVENT_NAME = "gobusgo:favorite-stops-change"
 // The next bus, and enough after it to choose between two routes.
 const ARRIVAL_COUNT_MAX = 3
@@ -164,14 +167,15 @@ function entryOf(favorite) {
   header.append(title, remove)
 
   const arrivalsElement = document.createElement("div")
-  writeArrivals(arrivalsElement, {status: "waiting"})
+  const shown = {status: "waiting"}
+  writeArrivals(arrivalsElement, shown)
   element.append(header, arrivalsElement)
 
-  return {element, arrivalsElement}
+  return {element, arrivalsElement, shown}
 }
 
-// The hook of the panel. The server renders the panel hidden and leaves its
-// content to the hook, which shows it while the rider has a favorite.
+// The hook of the panel. The server renders the panel empty and leaves its
+// content to the hook, which lists the favorites, or says there is none.
 export const FavoriteStop = {
   mounted() {
     // The entry of each favorite the panel shows, by stop identifier.
@@ -185,7 +189,9 @@ export const FavoriteStop = {
       const entry = this.entries.get(shown.stop_id)
 
       if (entry !== undefined) {
-        writeArrivals(entry.arrivalsElement, shownInPanel(shown))
+        entry.shown = shownInPanel(shown)
+        writeArrivals(entry.arrivalsElement, entry.shown)
+        this.writeBadge()
       }
     })
 
@@ -200,10 +206,10 @@ export const FavoriteStop = {
     }
   },
 
-  // Shows `favorites` in the panel, in their order, and hides it when there
-  // is none. A favorite shown before keeps its entry and its arrivals; the
-  // stop of a favorite that is gone is let go of, and that of a new one is
-  // opened for the server.
+  // Shows `favorites` in the panel, in their order, or a line that says
+  // there is none. A favorite shown before keeps its entry and its
+  // arrivals; the stop of a favorite that is gone is let go of, and that of
+  // a new one is opened for the server.
   show(favorites) {
     const entries = new Map()
 
@@ -232,8 +238,32 @@ export const FavoriteStop = {
       elements.append(entry.element)
     }
 
+    if (entries.size === 0) {
+      appendParagraph(elements, EMPTY_TEXT)
+    }
+
     this.el.replaceChildren(elements)
-    this.el.hidden = entries.size === 0
+    this.writeBadge()
+  },
+
+  // The badge of the Favorites tab: the next arrival at the first favorite,
+  // hidden while there is none.
+  writeBadge() {
+    const badge = document.getElementById(BADGE_ID)
+
+    if (badge === null) {
+      return
+    }
+
+    const [first] = this.entries.values()
+    let text = ""
+
+    if (first !== undefined) {
+      text = nextArrivalText(first.shown)
+    }
+
+    badge.textContent = text
+    badge.hidden = text === ""
   },
 
   destroyed() {
