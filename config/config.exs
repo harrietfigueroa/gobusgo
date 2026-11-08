@@ -8,6 +8,14 @@ config :esbuild,
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
+  # The service worker is a script of its own at the root, so its scope is
+  # the whole site. The profile defines no build: `mix
+  # gobusgo.assets.service_worker` runs it with the release and the paths
+  # the worker stores.
+  service_worker: [
+    args: ~w(js/service_worker.js --bundle --target=es2022 --outfile=../priv/static/sw.js),
+    cd: Path.expand("../assets", __DIR__)
+  ],
   # MapLibre's module files are copied as they are and served beside each
   # other: the library starts its worker from the file next to its own, so
   # it cannot be part of the bundle. The profile names no output directory:

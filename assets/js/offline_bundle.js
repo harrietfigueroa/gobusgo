@@ -8,6 +8,8 @@
 // archive, which holds the stops and route shapes a snapshot leaves out. A
 // service date ends at its last departure, which can be past midnight.
 
+import {unreachable} from "./assert.js"
+
 const BUNDLE_DATE_COUNT_MAX = 2
 const SECOND_MS = 1000
 
@@ -130,6 +132,27 @@ export function bundleStatus({savedIndex, presentPaths, nowMs}) {
   }
 
   return {kind: StatusKind.saved, dates: validDates}
+}
+
+/**
+ * The kinds of the browser's answer to a request to keep the page's storage:
+ * kept until the rider removes it, open to eviction, or no answer from a
+ * browser that cannot be asked.
+ */
+export const PersistenceKind = Object.freeze({granted: "granted", notGranted: "notGranted", unknown: "unknown"})
+
+/** The sentence of the status line that says whether the browser keeps a saved bundle. */
+export function persistenceText(kind) {
+  switch (kind) {
+    case PersistenceKind.granted:
+      return "Your browser keeps them until you remove them."
+    case PersistenceKind.notGranted:
+      return "Your browser can remove them when the device runs short of space."
+    case PersistenceKind.unknown:
+      return "Your browser does not say whether it keeps them."
+    default:
+      return unreachable(kind, "persistence kind")
+  }
 }
 
 /** The paths a store holds that `index` no longer names, which can go. */

@@ -30,6 +30,11 @@ defmodule GobusgoWeb.Endpoint do
   The locally stored routing snapshot files are served under `/routing`,
   from the routing directory. Each file's name holds the SHA-256 of its
   content, so a cache may keep it for a year as immutable.
+
+  The web app manifest, its icons under `/icons`, and the service worker
+  are served at the root. A cache has to revalidate the service worker on
+  every use, so a browser that checks for a new release never gets an old
+  worker from a cache.
   """
 
   use Phoenix.Endpoint, otp_app: :gobusgo
@@ -40,7 +45,8 @@ defmodule GobusgoWeb.Endpoint do
   @error_status_min 400
   @health_path "/health"
   @readiness_path "/ready"
-  @static_paths ["assets", "favicon.ico", "robots.txt"]
+  @static_paths ["assets", "favicon.ico", "icons", "manifest.webmanifest", "robots.txt"]
+  @service_worker_paths ["sw.js"]
   @vendor_path "/vendor"
   @vendor_cache_seconds 3_600
   @basemap_path "/basemap"
@@ -73,6 +79,14 @@ defmodule GobusgoWeb.Endpoint do
   # the one JSON error that leaves as `application/json`.
   # deps/phoenix/lib/phoenix/endpoint.ex, __before_compile__/1 — checked 2026-10-02
   plug :problem_content_type
+
+  plug Plug.Static,
+    at: "/",
+    from: :gobusgo,
+    gzip: false,
+    only: @service_worker_paths,
+    cache_control_for_etags: "no-cache"
+
   plug Plug.Static, at: "/", from: :gobusgo, gzip: true, only: @static_paths
 
   plug Plug.Static,

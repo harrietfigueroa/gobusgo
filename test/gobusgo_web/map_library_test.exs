@@ -27,6 +27,16 @@ defmodule GobusgoWeb.MapLibraryTest do
     end
   end
 
+  describe "module_paths/1" do
+    test "are the library's three module files inside the version's directory" do
+      assert MapLibrary.module_paths("6.12.0") == [
+               "/assets/vendor/maplibre-gl-6.12.0/maplibre-gl.mjs",
+               "/assets/vendor/maplibre-gl-6.12.0/maplibre-gl-shared.mjs",
+               "/assets/vendor/maplibre-gl-6.12.0/maplibre-gl-worker.mjs"
+             ]
+    end
+  end
+
   describe "version/0" do
     test "is the version the lock file pins" do
       {:ok, lock} = Lock.decode(File.read!("assets/vendor.lock.json"))

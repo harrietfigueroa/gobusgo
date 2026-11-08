@@ -10,7 +10,7 @@
 // names are deleted only after it is written. A file the browser evicted is
 // missing from the store and is fetched again by the next save.
 
-import {IndexKind, PlanKind, StatusKind, bundleStatus, planBundle, stalePaths} from "./offline_bundle"
+import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "./offline_bundle"
 
 const CACHE_NAME = "gobusgo-offline-schedules-v1"
 const INDEX_PATH = "/offline-schedules/index.json"
@@ -203,13 +203,45 @@ function statusText({status, bytes}) {
   }
 }
 
-async function describe() {
+// Asks the browser to keep the page's storage, so the saved schedules are
+// not evicted, and returns its answer. WebKit grants it by heuristics that
+// favor a page opened as a Home Screen web app.
+// https://webkit.org/?p=14403 — checked 2026-11-08
+async function requestPersistence() {
+  const storage = navigator.storage
+  const isAskable = storage !== undefined && typeof storage.persist === "function"
+
+  if (!isAskable) {
+    return PersistenceKind.unknown
+  }
+
+  try {
+    const persisted = await storage.persisted()
+
+    if (persisted) {
+      return PersistenceKind.granted
+    }
+
+    const granted = await storage.persist()
+
+    if (granted) {
+      return PersistenceKind.granted
+    }
+
+    return PersistenceKind.notGranted
+  } catch (error) {
+    console.warn("Persistent storage not requested", error)
+    return PersistenceKind.unknown
+  }
+}
+
+async function describe(persistence) {
   const cache = await caches.open(CACHE_NAME)
   const savedIndex = await readIndex(cache)
   const present = await storedPaths(cache)
   const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
   const bytes = await storedBytes(cache)
-  return statusText({status, bytes})
+  return statusText({status, bytes}) + " " + persistenceText(persistence)
 }
 
 // Keeps the region's schedules saved while the setting is on, and shows
@@ -221,6 +253,7 @@ export const OfflineSchedules = {
     this.status = this.el.querySelector("[data-offline-status]")
     this.controller = null
     this.timer = null
+    this.persistence = null
 
     if (!isSupported()) {
       this.checkbox.checked = false
@@ -321,7 +354,13 @@ export const OfflineSchedules = {
     }
 
     try {
-      this.status.textContent = await describe()
+      // Asked once per page, while the setting is on.
+      if (this.persistence === null) {
+        this.persistence = requestPersistence()
+      }
+
+      const persistence = await this.persistence
+      this.status.textContent = await describe(persistence)
     } catch (error) {
       console.warn("Offline schedules status not read", error)
     }

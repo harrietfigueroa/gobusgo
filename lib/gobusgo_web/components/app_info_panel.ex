@@ -3,7 +3,8 @@ defmodule GobusgoWeb.AppInfoPanel do
   The info panel of a map page: what the application is, a disclaimer, how
   to read the map, how OneBusAway data is used, how the rider's location is
   used, how favorite stops are kept, how schedules are saved for offline
-  use, the theme setting, what is recorded of a connection, the credits,
+  use, the theme setting, how to install the application where the browser
+  offers it, what is recorded of a connection, the credits,
   the licenses, and the commit the application was built from where the
   build names one, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`. It sends the server no event.
@@ -68,6 +69,7 @@ defmodule GobusgoWeb.AppInfoPanel do
           </label>
           <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
         </section>
+        <.install_app />
         <.recorded />
         <.credits agencies={@agencies} />
         <.licenses />
@@ -99,6 +101,40 @@ defmodule GobusgoWeb.AppInfoPanel do
         </label>
       </fieldset>
       <p id="theme-setting-status" data-theme-status aria-live="polite"></p>
+    </section>
+    """
+  end
+
+  # The browser decides which offer applies, or none, as in an installed
+  # app, so the server renders the section and every offer hidden.
+  defp install_app(assigns) do
+    assigns = assign(assigns, offers: AppInfo.install_offers())
+
+    ~H"""
+    <section
+      id="app-info-install"
+      class="flex flex-col gap-2"
+      phx-hook="InstallApp"
+      phx-update="ignore"
+      hidden
+    >
+      <h3 class="font-semibold">Install app</h3>
+      <div
+        :for={offer <- @offers}
+        class="flex flex-col items-start gap-2"
+        data-install-kind={offer.kind}
+        hidden
+      >
+        <p>{offer.text}</p>
+        <button
+          :if={offer.kind == "prompt"}
+          type="button"
+          class="surface px-3 py-1 font-semibold"
+          data-install-button
+        >
+          Install app
+        </button>
+      </div>
     </section>
     """
   end
