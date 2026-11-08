@@ -44,7 +44,8 @@ defmodule Gobusgo.Routing.TransfersTest do
     assert Transfers.rules() == %{
              minimum_transfer_s: 120,
              walk_radius_m: 400,
-             walk_speed_m_per_s: 1.2
+             walk_speed_m_per_s: 1.2,
+             link_count_per_stop_max: 64
            }
   end
 end

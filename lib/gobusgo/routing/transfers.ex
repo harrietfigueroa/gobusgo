@@ -32,13 +32,15 @@ defmodule Gobusgo.Routing.Transfers do
   @spec rules() :: %{
           minimum_transfer_s: pos_integer(),
           walk_radius_m: pos_integer(),
-          walk_speed_m_per_s: float()
+          walk_speed_m_per_s: float(),
+          link_count_per_stop_max: pos_integer()
         }
   def rules do
     %{
       minimum_transfer_s: @minimum_transfer_s,
       walk_radius_m: @walk_radius_m,
-      walk_speed_m_per_s: @walk_speed_mm_per_s / 1_000
+      walk_speed_m_per_s: @walk_speed_mm_per_s / 1_000,
+      link_count_per_stop_max: @link_count_per_stop_max
     }
   end
 

@@ -105,7 +105,8 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
     named = [
       entry["files"]["stops"],
       entry["files"]["trips"],
-      entry["files"]["transfers"] | entry["connectionChunks"]
+      entry["files"]["transfers"],
+      entry["files"]["positions"] | entry["connectionChunks"]
     ]
 
     assert Enum.sort(written()) ==
