@@ -25,6 +25,7 @@
   --route-chip-radius: 4px;
   --route-chip-count-fill: #e2e8f0;
   --route-chip-count-color: #0f172a;
+  --route-chip-outline: none;
   --map-control-size: 44px;
   --panel-sheet-radius: 16px;
   --panel-sheet-radius-wide: 12px;
@@ -39,8 +40,14 @@
   --panel-sheet-rule-color: #cbd5e1;
   --panel-sheet-chip-fill: #e2e8f0;
   --panel-sheet-badge-fill: #0f172a;
+  --panel-sheet-badge-color: #ffffff;
   --panel-sheet-alert-badge-fill: #b45309;
   --panel-sheet-selected-color: #15803d;
+  --map-control-icon-filter: none;
+  --map-attribution-fill: rgb(255 255 255 / 0.5);
+  --map-attribution-color: rgb(0 0 0 / 0.75);
+  --theme-option-checked-fill: #dcfce7;
+  --theme-option-height: 44px;
   --popup-selected-text-color: #ffffff;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
@@ -56,6 +63,51 @@
      reaches (sqrt(2) - 1) / 2 of its side past its own box. */
   --popup-tip-overlap: calc(var(--popup-tip-size) / -2);
   --popup-tip-reach: calc(var(--popup-tip-size) * 0.2071);
+}
+
+/* The dark theme, which the document's root element names. The page's
+   markup names colors of Tailwind's palette, so the theme sets the palette
+   entries the page uses to their dark counterparts, and the text stays at
+   a contrast of 4.5:1 or more against every fill it stands on. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-fill: #0f1a24;
+  --surface-border-color: #22c55e;
+  --control-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.5);
+  --close-button-focus-color: #e2e8f0;
+  --popup-alert-color: #fbbf24;
+  --route-chip-count-fill: #334155;
+  --route-chip-count-color: #e2e8f0;
+  --route-chip-outline: 0 0 0 1px #e2e8f0;
+  --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.5);
+  --panel-sheet-text-color: #e2e8f0;
+  --panel-sheet-grip-color: #64748b;
+  --panel-sheet-rule-color: #334155;
+  --panel-sheet-chip-fill: #1e293b;
+  --panel-sheet-badge-fill: #e2e8f0;
+  --panel-sheet-badge-color: #0f172a;
+  --panel-sheet-alert-badge-fill: #fbbf24;
+  --panel-sheet-selected-color: #4ade80;
+  /* MapLibre draws its control icons dark; turned, they are light and keep
+     their hue. */
+  --map-control-icon-filter: invert(1) hue-rotate(180deg);
+  --map-attribution-fill: rgb(15 23 42 / 0.6);
+  --map-attribution-color: #cbd5e1;
+  --theme-option-checked-fill: #14532d;
+  --filter-bar-fill: #0f172a;
+  --filter-suggestion-active-fill: #14532d;
+  --popup-selected-text-color: #052e16;
+  --panel-detail-action-fill: #0f172a;
+  --panel-detail-action-pressed-fill: #14532d;
+  --filter-kind-color: #94a3b8;
+  --color-white: #0f172a;
+  --color-slate-200: #334155;
+  --color-slate-300: #475569;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #cbd5e1;
+  --color-slate-900: #e2e8f0;
+  --color-gray-300: #334155;
+  --color-gray-600: #cbd5e1;
 }
 
 /* The rules stand after MapLibre's, which give a popup and a group of
@@ -227,6 +279,7 @@
   display: inline-block;
   border-radius: var(--route-chip-radius);
   background-color: var(--route-chip-count-fill);
+  box-shadow: var(--route-chip-outline);
   color: var(--route-chip-count-color);
   padding: 0 0.4em;
   line-height: 1.5;
@@ -290,6 +343,51 @@
 .maplibregl-ctrl-group button {
   width: var(--map-control-size);
   height: var(--map-control-size);
+}
+
+.maplibregl-ctrl-icon {
+  filter: var(--map-control-icon-filter);
+}
+
+/* The rule stands after MapLibre's, which gives the attribution a white
+   fill and black text with the same specificity. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background-color: var(--map-attribution-fill);
+  color: var(--map-attribution-color);
+}
+
+.maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+
+/* The theme setting is one row of three choices inside the surface's
+   border, the checked one filled. */
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--theme-option-height);
+  padding: 0 4px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.theme-option + .theme-option {
+  border-left: var(--surface-border-width) solid var(--surface-border-color);
+}
+
+.theme-option:has(:checked) {
+  background-color: var(--theme-option-checked-fill);
+  font-weight: 600;
 }
 
 /* The attribution stands above the part of the map the panel sheet
@@ -403,7 +501,7 @@
   padding: 0 5px;
   border-radius: 8px;
   background-color: var(--panel-sheet-badge-fill);
-  color: #fff;
+  color: var(--panel-sheet-badge-color);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;

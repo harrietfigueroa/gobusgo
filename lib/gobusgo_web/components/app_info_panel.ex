@@ -3,10 +3,10 @@ defmodule GobusgoWeb.AppInfoPanel do
   The info panel of a map page: what the application is, a disclaimer, how
   to read the map, how OneBusAway data is used, how the rider's location is
   used, how favorite stops are kept, how schedules are saved for offline
-  use, what is recorded of a connection, the credits, the licenses, and the
-  commit the application was built from where the build names one, from
-  `GobusgoWeb.AppInfo` and the statuses of `GobusgoWeb.VehicleMarkers`. It
-  sends the server no event.
+  use, the theme setting, what is recorded of a connection, the credits,
+  the licenses, and the commit the application was built from where the
+  build names one, from `GobusgoWeb.AppInfo` and the statuses of
+  `GobusgoWeb.VehicleMarkers`. It sends the server no event.
   """
 
   use Phoenix.Component
@@ -20,6 +20,12 @@ defmodule GobusgoWeb.AppInfoPanel do
   # A route-colored status has no one color, so its swatch is a sample of
   # route colors.
   @route_color_sample "linear-gradient(135deg, #2563eb, #e11d48, #16a34a)"
+
+  @theme_options [
+    %{value: "light", label: "Light"},
+    %{value: "dark", label: "Dark"},
+    %{value: "system", label: "Match system"}
+  ]
 
   @doc """
   The panel's content. `agencies` are the agencies the panel credits, each
@@ -47,6 +53,7 @@ defmodule GobusgoWeb.AppInfoPanel do
           <h3 class="font-semibold">Your favorite stops</h3>
           <p>{AppInfo.favorite_stop()}</p>
         </section>
+        <.theme_setting />
         <section
           id="app-info-offline-schedules"
           class="flex flex-col gap-2"
@@ -66,6 +73,33 @@ defmodule GobusgoWeb.AppInfoPanel do
         <.licenses />
       </div>
     </div>
+    """
+  end
+
+  # The browser checks the stored setting, so the server renders the
+  # default, Match system, checked.
+  defp theme_setting(assigns) do
+    assigns = assign(assigns, options: @theme_options)
+
+    ~H"""
+    <section id="app-info-theme" class="flex flex-col gap-2" phx-hook="ColorTheme" phx-update="ignore">
+      <h3 class="font-semibold">Theme</h3>
+      <p>{AppInfo.theme()}</p>
+      <fieldset class="theme-options">
+        <legend class="sr-only">Theme</legend>
+        <label :for={option <- @options} class="theme-option">
+          <input
+            id={"theme-setting-#{option.value}"}
+            type="radio"
+            name="theme"
+            value={option.value}
+            checked={option.value == "system"}
+          />
+          {option.label}
+        </label>
+      </fieldset>
+      <p id="theme-setting-status" data-theme-status aria-live="polite"></p>
+    </section>
     """
   end
 

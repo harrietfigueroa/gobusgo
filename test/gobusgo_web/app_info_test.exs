@@ -190,6 +190,21 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "theme/0" do
+    test "says the browser remembers the theme" do
+      assert AppInfo.theme() =~ "Your browser remembers the theme you choose"
+    end
+
+    test "says Match system follows the device's setting while the page is open" do
+      assert AppInfo.theme() =~
+               "Match system follows the light or dark setting of your device while the page is open"
+    end
+
+    test "says the server never learns it" do
+      assert AppInfo.theme() =~ "Gobusgo's server never learns it"
+    end
+  end
+
   describe "terms/0" do
     test "names the terms the data is provided under, at an https address" do
       assert %{name: "Transit Data Terms of Use", url: "https://www.soundtransit.org/" <> _path} =

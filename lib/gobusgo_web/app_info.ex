@@ -9,6 +9,7 @@ defmodule GobusgoWeb.AppInfo do
   that it is independent of the agencies, how it uses OneBusAway data,
   how it uses the rider's location,
   how it keeps favorite stops,
+  how it keeps the theme,
   what it records of a page connection, the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
@@ -97,6 +98,10 @@ defmodule GobusgoWeb.AppInfo do
                        "on your device for offline use. It saves them after the page has " <>
                        "loaded and updates them while you are online, and turning this off " <>
                        "removes them."
+
+  @theme "Your browser remembers the theme you choose, and Match system follows the light " <>
+           "or dark setting of your device while the page is open. Gobusgo's server never " <>
+           "learns it."
 
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
 
@@ -203,6 +208,10 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page saves schedules for offline use."
   @spec offline_schedules() :: String.t()
   def offline_schedules, do: @offline_schedules
+
+  @doc "The statement of how a map page keeps a rider's theme setting."
+  @spec theme() :: String.t()
+  def theme, do: @theme
 
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()
