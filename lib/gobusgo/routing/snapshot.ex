@@ -1,6 +1,7 @@
 defmodule Gobusgo.Routing.Snapshot do
   @prefix "routing/snapshots"
   @chunk_s 3_600
+  @microdegrees_per_degree 1_000_000
 
   @moduledoc """
   One routing snapshot as the files that hold it and the manifest entry that
@@ -10,7 +11,7 @@ defmodule Gobusgo.Routing.Snapshot do
   The connections are split into chunks by the hour of their departure, so
   a reader fetches from the hour of its query onward and stops once a chunk
   departs after the best arrival it has found (decided in GOB-237). The
-  stop, trip, and transfer tables are files of their own.
+  stop, trip, transfer, and position tables are files of their own.
 
   A file's name is its kind and the SHA-256 of its content, and it is stored
   at `#{@prefix}/dt=<build date>/<name>`, so a file's address never holds
@@ -34,13 +35,15 @@ defmodule Gobusgo.Routing.Snapshot do
 
   @doc """
   Returns the files of the snapshot of `input.timetable` with
-  `input.walking_links`, built at `input.built_at` from fetches made from
+  `input.walking_links` and `input.positions`, the position of each stop by
+  identifier, built at `input.built_at` from fetches made from
   `input.fetched_at_oldest` to `input.fetched_at_newest`, and its manifest
-  entry.
+  entry. A stop `input.positions` leaves out has an unknown position.
   """
   @spec build(%{
           timetable: Timetable.t(),
           walking_links: [SnapshotFormat.transfer()],
+          positions: %{String.t() => Transfers.position()},
           built_at: DateTime.t(),
           fetched_at_oldest: DateTime.t(),
           fetched_at_newest: DateTime.t()
@@ -53,6 +56,9 @@ defmodule Gobusgo.Routing.Snapshot do
     stops = file(directory, :stops, timetable.stop_ids)
     trips = file(directory, :trips, timetable.trips)
     transfers = file(directory, :transfers, walking_links)
+
+    positions =
+      file(directory, :positions, position_records(timetable.stop_ids, input.positions))
 
     chunks =
       timetable.connections
@@ -84,7 +90,8 @@ defmodule Gobusgo.Routing.Snapshot do
       "files" => %{
         "stops" => file_entry(stops),
         "trips" => file_entry(trips),
-        "transfers" => file_entry(transfers)
+        "transfers" => file_entry(transfers),
+        "positions" => file_entry(positions)
       },
       "connectionChunks" =>
         for chunk <- chunks do
@@ -98,8 +105,22 @@ defmodule Gobusgo.Routing.Snapshot do
         end
     }
 
-    %{files: [stops, trips, transfers | Enum.map(chunks, & &1.file)], entry: entry}
+    %{files: [stops, trips, transfers, positions | Enum.map(chunks, & &1.file)], entry: entry}
   end
+
+  defp position_records(stop_ids, positions) do
+    for stop_id <- stop_ids do
+      case Map.get(positions, stop_id) do
+        %{lat: lat, lon: lon} ->
+          %{lat_microdegrees: microdegrees(lat), lon_microdegrees: microdegrees(lon)}
+
+        nil ->
+          :unknown
+      end
+    end
+  end
+
+  defp microdegrees(degrees), do: round(degrees * @microdegrees_per_degree)
 
   defp transfer_rules do
     rules = Transfers.rules()
@@ -107,7 +128,8 @@ defmodule Gobusgo.Routing.Snapshot do
     %{
       "minimumTransferS" => rules.minimum_transfer_s,
       "walkRadiusM" => rules.walk_radius_m,
-      "walkSpeedMPerS" => rules.walk_speed_m_per_s
+      "walkSpeedMPerS" => rules.walk_speed_m_per_s,
+      "walkLinkCountPerStopMax" => rules.link_count_per_stop_max
     }
   end
 

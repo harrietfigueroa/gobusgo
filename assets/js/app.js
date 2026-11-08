@@ -4,6 +4,7 @@ import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
 import {ColorTheme, followSystemTheme} from "./color_theme"
 import {FavoriteStop} from "./favorite_stop"
+import {FilterBar} from "./filter_bar"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineSchedules} from "./offline_schedules"
@@ -40,6 +41,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     Basemap,
     ColorTheme,
     FavoriteStop,
+    FilterBar,
     LocalTime,
     OfflineSchedules,
     PanelSheet,

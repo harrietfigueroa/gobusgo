@@ -48,6 +48,12 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
+  --filter-bar-height-min: 44px;
+  --filter-bar-fill: #ffffff;
+  --filter-token-height: 28px;
+  --filter-suggestion-height-min: 44px;
+  --filter-suggestion-active-fill: #dcfce7;
+  --filter-kind-color: #475569;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -85,6 +91,9 @@
   --map-attribution-fill: rgb(15 23 42 / 0.6);
   --map-attribution-color: #cbd5e1;
   --theme-option-checked-fill: #14532d;
+  --filter-bar-fill: #0f172a;
+  --filter-suggestion-active-fill: #14532d;
+  --filter-kind-color: #94a3b8;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -487,6 +496,109 @@
   min-height: 0;
   overflow-y: auto;
   padding: 12px 16px;
+}
+
+/* The filter bar holds its tokens and its text box in one box, as one text
+   field, and its suggestions under it. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--filter-bar-height-min);
+  padding: 6px 8px;
+  border: 2px solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--filter-bar-fill);
+  cursor: text;
+}
+
+.filter-bar:focus-within {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 1px;
+}
+
+.filter-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-tokens[hidden],
+.filter-suggestions[hidden] {
+  display: none;
+}
+
+.filter-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--filter-token-height);
+  padding: 0 0 0 8px;
+  border-radius: calc(var(--filter-token-height) / 2);
+  background-color: var(--panel-sheet-chip-fill);
+}
+
+.filter-token-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--filter-token-height);
+  height: var(--filter-token-height);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.filter-token-remove:hover {
+  background-color: var(--panel-sheet-rule-color);
+}
+
+.filter-token-remove:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: -2px;
+}
+
+.filter-kind {
+  color: var(--filter-kind-color);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.filter-bar-input {
+  flex: 1;
+  min-width: 8rem;
+  min-height: var(--filter-token-height);
+  border: 0;
+  background: transparent;
+  font-size: 1rem;
+  outline: none;
+}
+
+.filter-suggestions {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+.filter-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-height: var(--filter-suggestion-height-min);
+  padding: 12px 8px;
+  border-radius: var(--control-radius-inner);
+  cursor: pointer;
+}
+
+.filter-suggestion .filter-kind {
+  width: 3.5rem;
+}
+
+.filter-suggestion:hover,
+.filter-suggestion[aria-selected="true"] {
+  background-color: var(--filter-suggestion-active-fill);
 }
 
 .panel-sheet-handle:focus-visible,

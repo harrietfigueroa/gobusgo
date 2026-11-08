@@ -12,7 +12,7 @@ defmodule GobusgoWeb.RoutingManifestControllerTest do
   test "answers the manifest as JSON that every request revalidates" do
     conn = get(build_conn(), "/api/routing/manifest")
 
-    assert json_response(conn, 200) == %{"formatVersion" => 1, "snapshots" => []}
+    assert json_response(conn, 200) == %{"formatVersion" => 2, "snapshots" => []}
     assert get_resp_header(conn, "cache-control") == ["no-cache"]
     assert [~s(") <> _tag] = get_resp_header(conn, "etag")
   end

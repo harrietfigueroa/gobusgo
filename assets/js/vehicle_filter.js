@@ -58,17 +58,12 @@ function removeRefused({accepted}) {
   }
 }
 
-function isDetailsOpen(details) {
-  return details.open
-}
-
 // Keeps the filter of the vehicle page in this browser. The page says
-// which filter to store, after a change of its controls. A page whose
+// which filter to store, after a change of its filter bar. A page whose
 // address supplies no filter is offered the stored one, and a stored
 // filter the page turns down is removed.
 export const VehicleFilter = {
   mounted() {
-    this.detailsOpen = []
     this.handleEvent(STORE_EVENT_NAME, storeFilter)
 
     if (this.el.dataset.supplied === "false") {
@@ -77,22 +72,6 @@ export const VehicleFilter = {
       if (stored.kind === StoredKind.found) {
         this.pushEvent(RESTORE_EVENT_NAME, {filter: stored.filter}, removeRefused)
       }
-    }
-  },
-
-  // The server's markup never holds the `open` attribute, so an update
-  // closes each list unless its state is carried across. The lists keep
-  // their order, so a list is known by its place.
-  beforeUpdate() {
-    this.detailsOpen = Array.from(this.el.querySelectorAll("details"), isDetailsOpen)
-  },
-
-  updated() {
-    let index = 0
-
-    for (const details of this.el.querySelectorAll("details")) {
-      details.open = this.detailsOpen[index] === true
-      index += 1
     }
   }
 }
