@@ -1,9 +1,8 @@
 import {READY_EVENT_NAME} from "./basemap"
 import {OutcomeKind, errorOutcome} from "./position_watch"
 import {permissionGranted} from "./rider_position"
+import {storedSettings} from "./stored_settings"
 
-const STORAGE_KEY = "gobusgo:snap-to-location"
-const STORED_VALUE = "true"
 const BUTTON_SELECTOR = ".maplibregl-ctrl-geolocate"
 const SNAP_ZOOM_MAX = 15
 const POSITION_TIMEOUT_MS = 10_000
@@ -11,26 +10,6 @@ const NOTICE_MS = 8_000
 const DENIED_TEXT = "Location permission was denied, so the map stays where it is."
 const UNAVAILABLE_TEXT = "Your location could not be found, so the map stays where it is."
 const OUTSIDE_TEXT = "Your location is outside the area this map covers."
-
-// Whether this browser stored that the rider snaps to their location.
-// Reading throws where storage is blocked, such as a private window, which
-// reads as nothing stored.
-function readStored() {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === STORED_VALUE
-  } catch (error) {
-    console.warn("Stored snap to location not readable", error)
-    return false
-  }
-}
-
-function writeStored() {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, STORED_VALUE)
-  } catch (error) {
-    console.warn("Snap to location not stored", error)
-  }
-}
 
 function inside({south, west, north, east}, {latitude, longitude}) {
   const isWithinLatitude = latitude >= south && latitude <= north
@@ -118,7 +97,7 @@ export const SnapToLocation = {
   },
 
   async snapOnLoad(control) {
-    if (!readStored()) {
+    if (!storedSettings.readSnapToLocation()) {
       return
     }
 
@@ -137,7 +116,7 @@ export const SnapToLocation = {
 
   located(map, coords) {
     if (inside(JSON.parse(this.el.dataset.bounds), coords)) {
-      writeStored()
+      storedSettings.writeSnapToLocation()
     } else {
       map.jumpTo(this.restCamera)
       this.explain(OUTSIDE_TEXT)

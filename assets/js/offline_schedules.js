@@ -1,6 +1,6 @@
 // Saves the schedules of the region for offline use in the browser's Cache
-// API, and keeps the rider's setting for it in local storage, on unless the
-// rider turns it off.
+// API, and keeps the rider's setting for it through the stored settings
+// module, on unless the rider turns it off.
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, fetches one file at a time at low priority, and
@@ -11,12 +11,11 @@
 // missing from the store and is fetched again by the next save.
 
 import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "./offline_bundle"
+import {storedSettings} from "./stored_settings"
 
 const CACHE_NAME = "gobusgo-offline-schedules-v1"
 const INDEX_PATH = "/offline-schedules/index.json"
 const MANIFEST_PATH = "/api/routing/manifest"
-const SETTING_KEY = "gobusgo:offline-schedules"
-const SETTING_OFF = "off"
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const IDLE_TIMEOUT_MS = 10 * 1000
 const MEBIBYTE_BYTES = 1024 * 1024
@@ -31,27 +30,12 @@ function isSupported() {
   return "caches" in window
 }
 
-// Whether the rider keeps the setting on. Storage that throws, as in a
-// private window, reads as the default, on.
 function isEnabled() {
-  try {
-    return window.localStorage.getItem(SETTING_KEY) !== SETTING_OFF
-  } catch (error) {
-    console.warn("Offline schedules setting not readable", error)
-    return true
-  }
+  return storedSettings.readOfflineSchedulesEnabled()
 }
 
 function storeEnabled(enabled) {
-  try {
-    if (enabled) {
-      window.localStorage.removeItem(SETTING_KEY)
-    } else {
-      window.localStorage.setItem(SETTING_KEY, SETTING_OFF)
-    }
-  } catch (error) {
-    console.warn("Offline schedules setting not stored", error)
-  }
+  storedSettings.writeOfflineSchedulesEnabled(enabled)
 }
 
 function tileArchivePath() {

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "keys": {
+    "schemaVersion": "gobusgo:stored-settings-version",
+    "theme": "gobusgo:theme",
+    "favoriteStops": "gobusgo:favorite-stops",
+    "vehicleFilter": "gobusgo:vehicle-filter",
+    "snapToLocation": "gobusgo:snap-to-location",
+    "offlineSchedules": "gobusgo:offline-schedules"
+  },
+  "storedThemes": ["light", "dark"]
+}
