@@ -7,18 +7,19 @@ import {
   RIDER_POPUP_CHANGE_EVENT_NAME,
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
-import {alertLines} from "./service_alerts"
-import {compactPopupContent} from "./route_chips"
-import {appendParagraph, writeArrivals} from "./stop_arrivals"
+import {compactPopupContent, writeChipNote} from "./route_chips"
+import {nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
+import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
+import {autoOpenCountMax} from "./open_stop_budget"
 import {
-  addFavorite,
-  CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME,
-  favoriteCountMax,
-  favoritesFullText,
-  removeFavorite,
-  storedFavorites
-} from "./favorite_stop"
-import {holdStop, POPUP_HOLDER, releaseStop} from "./stop_holds"
+  CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
+  DetailKind,
+  showDetail,
+  showsDetail
+} from "./panel_detail"
+import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
+import {revealOnMap} from "./panel_sheet"
 import {
   addSource,
   CHANGE_EVENT_NAME,
@@ -56,13 +57,22 @@ const POPUP_GAP_PIXELS = 4
 const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left"}
 // The side a popup stands on while it is only measured.
 const MEASURED_SIDE = "above"
-const NOT_SUPPLIED = "Not supplied"
-const TITLE_CLASS_NAME = "popup-title"
-const FAVORITE_BUTTON_CLASS_NAME = "mt-1 text-left underline"
-const FAVORITE_TEXT = "★ Your favorite stop"
-const NOT_FAVORITE_TEXT = "☆ Make this your favorite stop"
+// A popup is measured with the longest next arrival it shows, so the room
+// its stop is given holds the arrival that comes later.
+const MEASURED_NOTE_TEXT = "99 min"
 // A compact stop popup shows as many route numbers as the stop's label does.
 const CHIP_COUNT_MAX = 4
+// The stop the details view shows is marked on the map at every zoom, from
+// a source of its own, since the archive holds stops from zoom 14 alone.
+const SELECTED_SOURCE_NAME = "stop-selected"
+const SELECTED_HALO_LAYER_NAME = "stop-selected-halo"
+const SELECTED_RING_LAYER_NAME = "stop-selected-ring"
+const SELECTED_COLOR = "#16a34a"
+const SELECTED_HALO_RADIUS_PIXELS = 12
+const SELECTED_HALO_OPACITY = 0.25
+const SELECTED_RING_STROKE_WIDTH_PIXELS = 3
+// The class of the popup of the stop the details view shows.
+const SELECTED_POPUP_CLASS_NAME = "popup-selected"
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its popup shows, the routes and the agencies each one text. A text
@@ -159,113 +169,33 @@ export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
   }
 }
 
-function suppliedText(value) {
-  const isSupplied = typeof value === "string" && value !== ""
-
-  if (isSupplied) {
-    return value
-  } else {
-    return NOT_SUPPLIED
-  }
-}
-
-// A popup's content is built as text nodes: a stop's texts come from
-// outside the application and are never parsed as HTML. The current alerts
-// of the stop's routes, those of a route as a whole and those that name the
-// stop, stand under its texts.
-function popupContent(stop) {
-  const lines = [
-    stop.name,
-    `Stop code: ${suppliedText(stop.code)}`,
-    `Direction: ${suppliedText(stop.direction)}`,
-    `Routes: ${suppliedText(stop.routes)}`,
-    `Agencies: ${suppliedText(stop.agencies)}`
-  ]
-  const content = document.createElement("div")
-
-  for (const line of lines) {
-    appendParagraph(content, line)
-  }
-
-  for (const alertLine of alertLines({routeIds: stop.routeIds, stopId: stop.id})) {
-    content.append(alertLine)
-  }
-
-  content.firstElementChild.className = TITLE_CLASS_NAME
-  return content
-}
-
-// A popup's content with the element its stop's arrivals are written into,
-// which says that it is waiting for them.
-function popupElements(stop) {
-  const details = popupContent(stop)
-  const favoriteButton = favoriteButtonOf(stop)
-  const arrivalsElement = document.createElement("div")
-  writeArrivals(arrivalsElement, {status: "waiting"})
-  details.append(favoriteButton, arrivalsElement)
-
-  const content = compactPopupContent({
+// A popup's compact content: the stop's first route numbers and, in the
+// note beside them, its next arrival once the page has sent its arrivals.
+// A click on it hands the stop to `onSelect`.
+function popupElements({stop, noteText, onSelect}) {
+  return compactPopupContent({
     chips: stop.routeChips,
     countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
-    label: `${suppliedName(stop)}: show details`,
-    details
+    noteText,
+    label: `${suppliedName(stop)}: show the stop`,
+    onSelect
   })
-
-  return {content, favoriteButton, arrivalsElement}
 }
 
-function isFavoriteStop(stopId) {
-  return storedFavorites().some((favorite) => favorite.stopId === stopId)
+function favoriteStopId(favorite) {
+  return favorite.stopId
 }
 
-// The button that makes a popup's stop one of the rider's favorites, or
-// removes it when it is one already. A stop the source names no name for is
-// stored under its identifier. A rider with every favorite taken removes one
-// before adding another.
-function favoriteButtonOf(stop) {
-  const button = document.createElement("button")
-  button.type = "button"
-  button.className = FAVORITE_BUTTON_CLASS_NAME
-  button.addEventListener("click", () => {
-    if (isFavoriteStop(stop.id)) {
-      removeFavorite(stop.id)
-    } else {
-      addFavorite({stopId: stop.id, name: suppliedName(stop)})
-    }
-  })
+// The collection the selected stop's source draws: the stop, or nothing.
+function selectedCollection(stop) {
+  const features = []
 
-  const shown = favoriteButtonState({stopId: stop.id, favorites: storedFavorites()})
-  button.textContent = shown.text
-  button.disabled = shown.disabled
-  button.setAttribute("aria-pressed", shown.pressed)
-  return button
-}
-
-function suppliedName(stop) {
-  const isNamed = typeof stop.name === "string" && stop.name !== ""
-
-  if (isNamed) {
-    return stop.name
-  } else {
-    return stop.id
-  }
-}
-
-// What a popup's favorite button of the stop `stopId` shows while the
-// rider's favorites are `favorites`.
-function favoriteButtonState({stopId, favorites}) {
-  const isFavorite = favorites.some((favorite) => favorite.stopId === stopId)
-  const isFull = isFavorite === false && favorites.length >= favoriteCountMax()
-  let text = NOT_FAVORITE_TEXT
-
-  if (isFavorite) {
-    text = FAVORITE_TEXT
-  } else if (isFull) {
-    text = favoritesFullText(favoriteCountMax())
+  if (stop !== null) {
+    features.push({type: "Feature", geometry: {type: "Point", coordinates: [stop.lon, stop.lat]}, properties: {}})
   }
 
-  return {text, disabled: isFull, pressed: String(isFavorite)}
+  return {type: "FeatureCollection", features}
 }
 
 // The options of a stop's popup. One that opens by itself stands on the
@@ -306,10 +236,13 @@ export const StopMarkers = {
     this.attached = false
     this.clicksAttached = false
     this.followTimer = null
-    // The popup that is open for each stop, with its content, the element
-    // its arrivals are written into, whether it opened by itself, and the
+    // The popup that is open for each stop, with its content, the note its
+    // next arrival is written into, whether it opened by itself, and the
     // side of its stop it then stands on.
     this.openPopups = new Map()
+    // The stop the details view shows, with its favorite button and the
+    // element its arrivals are written into, or null while it shows none.
+    this.view = null
     // The stops on screen whose popup the rider closed after it opened by
     // itself; such a popup stays closed until its stop leaves the screen.
     this.dismissedStopIds = new Set()
@@ -371,16 +304,25 @@ export const StopMarkers = {
       }
     }
 
-    // A favorite added from one popup, or removed from the panel, changes
-    // the button of every open popup.
+    // A favorite added from the stop view, or removed from the panel,
+    // changes the view's button.
     this.onFavoriteChange = (event) => {
-      const {favorites} = event.detail
+      if (this.view !== null) {
+        const {favorites} = event.detail
+        writeFavoriteButton({button: this.view.favoriteButton, stopId: this.view.stop.id, favorites})
+      }
+    }
 
-      for (const [stopId, open] of this.openPopups) {
-        const shown = favoriteButtonState({stopId, favorites})
-        open.favoriteButton.textContent = shown.text
-        open.favoriteButton.disabled = shown.disabled
-        open.favoriteButton.setAttribute("aria-pressed", shown.pressed)
+    // The view moving to a vehicle, or closing, lets go of its stop.
+    this.onDetailChange = () => {
+      const isViewLeft = this.view !== null && showsDetail({kind: DetailKind.stop, id: this.view.stop.id}) === false
+
+      if (isViewLeft) {
+        const stopId = this.view.stop.id
+        this.view = null
+        releaseStop({pushEvent: this.push, stopId, holder: VIEW_HOLDER})
+        this.markSelected()
+        this.scheduleFollow()
       }
     }
 
@@ -389,15 +331,21 @@ export const StopMarkers = {
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
+    window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
-    // Arrivals of a stop whose popup has closed are dropped.
+    // Arrivals of a stop with neither a popup nor the view are dropped.
     this.handleEvent("stop-arrivals:arrivals", (shown) => {
       const open = this.openPopups.get(shown.stop_id)
+      const isViewStop = this.view !== null && this.view.stop.id === shown.stop_id
 
       if (open !== undefined) {
-        writeArrivals(open.arrivalsElement, shown)
-        // The popup has another size with these lines.
+        writeChipNote(open.note, nextArrivalTimeText(shown))
+        // The popup has another size with its next arrival.
         this.scheduleFollow()
+      }
+
+      if (isViewStop) {
+        writeArrivals(this.view.arrivalsElement, shown)
       }
     })
   },
@@ -405,8 +353,72 @@ export const StopMarkers = {
   // The page that connects again knows nothing of the stops this hook has
   // open, and is told them again.
   reconnected() {
-    for (const stopId of this.openPopups.keys()) {
+    const stopIds = new Set(this.openPopups.keys())
+
+    if (this.view !== null) {
+      stopIds.add(this.view.stop.id)
+    }
+
+    for (const stopId of stopIds) {
       this.pushEvent("stop-arrivals:open", {stop_id: stopId})
+    }
+  },
+
+  // Shows `stop` in the details view and holds it for its arrivals, which
+  // the page answers with, and lets go of the stop the view showed before.
+  // The stop is marked on the map while the view shows it. The stop the
+  // view shows already is shown again as it is, which expands a collapsed
+  // sheet.
+  selectStop(stop) {
+    const isSameStop = this.view !== null && this.view.stop.id === stop.id
+
+    if (isSameStop) {
+      showDetail({kind: DetailKind.stop, id: stop.id, title: suppliedName(stop), content: this.view.content})
+      this.revealStop(stop)
+      return
+    }
+
+    const {content, favoriteButton, arrivalsElement} = stopViewElements(stop)
+    const earlier = this.view
+    this.view = {stop, content, favoriteButton, arrivalsElement}
+
+    if (earlier !== null) {
+      releaseStop({pushEvent: this.push, stopId: earlier.stop.id, holder: VIEW_HOLDER})
+    }
+
+    holdStop({pushEvent: this.push, stopId: stop.id, holder: VIEW_HOLDER})
+    showDetail({kind: DetailKind.stop, id: stop.id, title: suppliedName(stop), content})
+    this.markSelected()
+    this.revealStop(stop)
+  },
+
+  // Moves the map so the stop stands beside the expanded sheet.
+  revealStop(stop) {
+    if (this.map !== null) {
+      revealOnMap({map: this.map, lngLat: [stop.lon, stop.lat]})
+    }
+  },
+
+  // Marks the stop the view shows on the map and its popup, and unmarks
+  // every other.
+  markSelected() {
+    let selected = null
+
+    if (this.view !== null) {
+      selected = this.view.stop
+    }
+
+    for (const [stopId, open] of this.openPopups) {
+      const isSelected = selected !== null && selected.id === stopId
+      open.popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
+    }
+
+    // The map takes the source once the page has an archive to draw the
+    // stops from.
+    const hasSource = this.map !== null && this.map.getSource(SELECTED_SOURCE_NAME) !== undefined
+
+    if (hasSource) {
+      this.map.getSource(SELECTED_SOURCE_NAME).setData(selectedCollection(selected))
     }
   },
 
@@ -417,11 +429,11 @@ export const StopMarkers = {
   // and `side` is then the side of its stop it stands on; a popup the rider
   // opens has a null `side`.
   openPopup({stop, auto, side}) {
-    const {content, favoriteButton, arrivalsElement} = popupElements(stop)
-    const open = {popup: null, content, favoriteButton, arrivalsElement, auto, side, closedByRider: true}
+    const {content, note} = popupElements({stop, noteText: "", onSelect: () => { this.selectStop(stop) }})
+    const open = {popup: null, content, note, auto, side, closedByRider: true}
 
     this.openPopups.set(stop.id, open)
-    this.showPopup({stop, open})
+    open.popup = this.showPopup({stop, open})
     holdStop({pushEvent: this.push, stopId: stop.id, holder: POPUP_HOLDER})
 
     if (auto === false) {
@@ -429,7 +441,8 @@ export const StopMarkers = {
     }
   },
 
-  // Puts the popup of `open` on the map, on the side `open` names.
+  // Puts the popup of `open` on the map, on the side `open` names, and
+  // returns it to be the popup `open` holds.
   showPopup({stop, open}) {
     const stopId = stop.id
     const popup = new this.maplibre.Popup(popupOptions(open))
@@ -457,16 +470,20 @@ export const StopMarkers = {
       }
     })
 
-    open.popup = popup
     popup.addTo(this.map)
+
+    const isSelected = this.view !== null && this.view.stop.id === stopId
+    popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
+    return popup
   },
 
-  // Puts an open popup on another side of its stop. The stop stays open
-  // for the page, and the popup keeps its content.
-  movePopup({stop, open, side}) {
+  // Puts the open popup of `stop` on another side of it. The stop stays
+  // open for the page, and the popup keeps its content.
+  movePopup({stop, side}) {
+    const open = this.openPopups.get(stop.id)
     const earlier = open.popup
     open.side = side
-    this.showPopup({stop, open})
+    open.popup = this.showPopup({stop, open})
     earlier.remove()
   },
 
@@ -474,7 +491,7 @@ export const StopMarkers = {
   // popup's tip, read from a popup that is on the map only while it is
   // measured and that the page is told nothing of.
   measuredPopup(stop) {
-    const {content} = popupElements(stop)
+    const {content} = popupElements({stop, noteText: MEASURED_NOTE_TEXT, onSelect: () => { this.selectStop(stop) }})
     const popup = new this.maplibre.Popup(popupOptions({auto: true, side: MEASURED_SIDE}))
       .setLngLat([stop.lon, stop.lat])
       .setDOMContent(content)
@@ -610,8 +627,9 @@ export const StopMarkers = {
       }
     }
 
-    const wanted = autoOpenStopIds({zoom, visibleStopIds, countMax: this.autoOpenCountMax})
-      .filter((stopId) => this.opensByItself(stopId))
+    const countMax = this.autoOpenCountMaxNow(visibleStopIds)
+    const opened = autoOpenStopIds({zoom, visibleStopIds, countMax})
+    const wanted = opened.filter((stopId) => this.opensByItself(stopId))
     const sidesByStop = this.popupSides(wanted)
 
     // The closings go first, so the page never holds more stops open than
@@ -635,9 +653,22 @@ export const StopMarkers = {
       if (open === undefined) {
         this.openPopup({stop, auto: true, side})
       } else if (open.side !== side) {
-        this.movePopup({stop, open, side})
+        this.movePopup({stop, side})
       }
     }
+  },
+
+  // The most popups that open by themselves for a view that shows the
+  // stops of `visibleStopIds`, with the stop the details view holds.
+  autoOpenCountMaxNow(visibleStopIds) {
+    let detailStopId = null
+
+    if (this.view !== null) {
+      detailStopId = this.view.stop.id
+    }
+
+    const favoriteStopIds = Array.from(storedFavorites(), favoriteStopId)
+    return autoOpenCountMax({countMax: this.autoOpenCountMax, detailStopId, visibleStopIds, favoriteStopIds})
   },
 
   // Whether a stop the view opens gets a popup that opens by itself: one
@@ -711,6 +742,8 @@ export const StopMarkers = {
       }
     }, firstVehicleLayerName(map))
 
+    this.attachSelected()
+
     if (!this.clicksAttached) {
       this.attachClicks()
       this.clicksAttached = true
@@ -723,8 +756,9 @@ export const StopMarkers = {
   attachClicks() {
     const map = this.map
 
-    // A click on a stop whose popup opened by itself leaves that popup as
-    // it is.
+    // A click on a stop shows it in the details view. A click on a stop
+    // whose popup opened by itself leaves that popup as it is, and any
+    // other opens the rider's popup.
     map.on("click", MARKER_LAYER_NAME, (event) => {
       const stop = stopFromFeature(event.features[0])
       const stopId = stop.id
@@ -736,10 +770,48 @@ export const StopMarkers = {
         this.dismissedStopIds.delete(stopId)
         this.openPopup({stop, auto: false, side: null})
       }
+
+      this.selectStop(stop)
     })
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
+  },
+
+  // Adds the source and the layers that mark the stop the details view
+  // shows, over the stops and under the vehicles.
+  attachSelected() {
+    const map = this.map
+    let selected = null
+
+    if (this.view !== null) {
+      selected = this.view.stop
+    }
+
+    map.addSource(SELECTED_SOURCE_NAME, {type: "geojson", data: selectedCollection(selected)})
+
+    map.addLayer({
+      id: SELECTED_HALO_LAYER_NAME,
+      type: "circle",
+      source: SELECTED_SOURCE_NAME,
+      paint: {
+        "circle-radius": SELECTED_HALO_RADIUS_PIXELS,
+        "circle-color": SELECTED_COLOR,
+        "circle-opacity": SELECTED_HALO_OPACITY
+      }
+    }, firstVehicleLayerName(map))
+
+    map.addLayer({
+      id: SELECTED_RING_LAYER_NAME,
+      type: "circle",
+      source: SELECTED_SOURCE_NAME,
+      paint: {
+        "circle-radius": MARKER_RADIUS_PIXELS,
+        "circle-color": mapColors(currentTheme()).stopFill,
+        "circle-stroke-color": SELECTED_COLOR,
+        "circle-stroke-width": SELECTED_RING_STROKE_WIDTH_PIXELS
+      }
+    }, firstVehicleLayerName(map))
   },
 
   destroyed() {
@@ -748,6 +820,7 @@ export const StopMarkers = {
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
+    window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.clearTimeout(this.followTimer)
   }
 }

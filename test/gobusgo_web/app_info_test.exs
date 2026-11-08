@@ -62,7 +62,7 @@ defmodule GobusgoWeb.AppInfoTest do
         }
 
         assert data_use_text(cadences) =~
-                 "While a stop's popup is open, the arrivals at that stop are read " <>
+                 "While a stop's popup or its view in the panel is open, the arrivals at that stop are read " <>
                    "#{unquote(text)}, less often the more stops are open."
       end
     end
@@ -78,7 +78,7 @@ defmodule GobusgoWeb.AppInfoTest do
 
     test "says the alerts are those of the trips running and of the open stops" do
       assert data_use_text(@cadences) =~
-               "the agencies' alerts for the trips running now and for the stops whose popups are open"
+               "the agencies' alerts for the trips running now and for the stops that are open"
     end
 
     for {label, fields} <- [

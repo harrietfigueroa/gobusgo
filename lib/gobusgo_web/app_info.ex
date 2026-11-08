@@ -159,11 +159,12 @@ defmodule GobusgoWeb.AppInfo do
         "of the Puget Sound region, which Sound Transit provides access to.",
       "While a map is open, vehicle positions are read #{seconds_text(vehicle_interval_ms)}. " <>
         "Routes and stops are read #{hours_text(route_period_minutes)}.",
-      "While a stop's popup is open, the arrivals at that stop are read every " <>
+      "While a stop's popup or its view in the panel is open, the arrivals at that stop " <>
+        "are read every " <>
         "#{every_text(duration(age_ms_min))} to #{up_to_text(duration(age_ms_max))}, " <>
         "less often the more stops are open.",
       "Service alerts come with the vehicle positions and the arrivals: the agencies' alerts " <>
-        "for the trips running now and for the stops whose popups are open. An alert for a " <>
+        "for the trips running now and for the stops that are open. An alert for a " <>
         "route with no vehicle running shows once one of the route's stops is open, so the " <>
         "alerts shown change as vehicles run and stops open.",
       "The map shows the data as OneBusAway supplies it. A marker stands where OneBusAway " <>

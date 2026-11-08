@@ -1,0 +1,61 @@
+// Checks what the details view of the panel sheet decides as pure functions
+// of values written out by hand: how many popups open by themselves while
+// the view holds a stop, the next-arrival text a compact stop popup shows,
+// and how far the map moves to bring the view's item out from under the
+// sheet. Run it with `node test/scripts/panel_detail_check.mjs`; it exits
+// non-zero on the first case that differs.
+
+import {deepStrictEqual} from "node:assert/strict"
+import {autoOpenCountMax} from "../../assets/js/open_stop_budget.js"
+import {revealOffset} from "../../assets/js/reveal_offset.js"
+import {nextArrivalText, nextArrivalTimeText} from "../../assets/js/stop_arrivals.js"
+
+const COUNT_MAX = 5
+
+const budgetCases = [
+  {name: "no stop in the view", detailStopId: null, visibleStopIds: ["1_1"], favoriteStopIds: [], expected: COUNT_MAX},
+  {name: "the view's stop on screen", detailStopId: "1_1", visibleStopIds: ["1_1", "1_2"], favoriteStopIds: [], expected: COUNT_MAX},
+  {name: "the view's stop a favorite off screen", detailStopId: "1_9", visibleStopIds: ["1_1"], favoriteStopIds: ["1_9"], expected: COUNT_MAX},
+  {name: "the view's stop off screen and no favorite", detailStopId: "1_9", visibleStopIds: ["1_1"], favoriteStopIds: ["1_8"], expected: COUNT_MAX - 1},
+  {name: "the view's stop with no stop on screen", detailStopId: "1_9", visibleStopIds: [], favoriteStopIds: [], expected: COUNT_MAX - 1}
+]
+
+for (const {name, detailStopId, visibleStopIds, favoriteStopIds, expected} of budgetCases) {
+  const actual = autoOpenCountMax({countMax: COUNT_MAX, detailStopId, visibleStopIds, favoriteStopIds})
+  deepStrictEqual(actual, expected, name)
+}
+
+const arrival = {route: "E", headsign: "Aurora Village", minutes: 2, predicted: true}
+
+const arrivalCases = [
+  {name: "waiting", shown: {status: "waiting"}, time: "", text: ""},
+  {name: "busy", shown: {status: "busy"}, time: "", text: ""},
+  {name: "no arrival soon", shown: {status: "arrivals", age_minutes: 0, arrivals: []}, time: "", text: ""},
+  {name: "an arrival in minutes", shown: {status: "arrivals", age_minutes: 0, arrivals: [arrival]}, time: "2 min", text: "E 2 min"},
+  {name: "an arrival now", shown: {status: "arrivals", age_minutes: 0, arrivals: [{...arrival, minutes: 0}]}, time: "now", text: "E now"},
+  {name: "an arrival with no route", shown: {status: "arrivals", age_minutes: 0, arrivals: [{...arrival, route: null}]}, time: "2 min", text: "2 min"}
+]
+
+for (const {name, shown, time, text} of arrivalCases) {
+  deepStrictEqual(nextArrivalTimeText(shown), time, `time: ${name}`)
+  deepStrictEqual(nextArrivalText(shown), text, `text: ${name}`)
+}
+
+const MARGIN_PIXELS = 96
+const phone = {viewWidth: 390, viewHeight: 844, insets: {left: 0, bottom: 506}}
+const desktop = {viewWidth: 1280, viewHeight: 800, insets: {left: 372, bottom: 0}}
+
+const revealCases = [
+  {name: "a point above a phone's sheet", view: phone, point: {x: 200, y: 150}, expected: {x: 0, y: 0}},
+  {name: "a point under a phone's sheet", view: phone, point: {x: 200, y: 600}, expected: {x: 0, y: 431}},
+  {name: "a point just above a phone's sheet", view: phone, point: {x: 200, y: 300}, expected: {x: 0, y: 131}},
+  {name: "a point beside a desktop's panel", view: desktop, point: {x: 800, y: 400}, expected: {x: 0, y: 0}},
+  {name: "a point under a desktop's panel", view: desktop, point: {x: 200, y: 400}, expected: {x: -626, y: 0}}
+]
+
+for (const {name, view, point, expected} of revealCases) {
+  deepStrictEqual(revealOffset({...view, point, marginPixels: MARGIN_PIXELS}), expected, name)
+}
+
+const caseCount = budgetCases.length + arrivalCases.length + revealCases.length
+console.log(`${caseCount} cases passed`)

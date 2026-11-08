@@ -9,7 +9,8 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
 
   A page opens a stop for each popup that opens by itself, at most
   #{@auto_open_count_max}, for each rider's favorite, at most
-  #{@favorite_count_max}, and for each popup a rider opens.
+  #{@favorite_count_max}, for each popup a rider opens, and for the stop
+  the panel sheet's details view shows.
   `open_count_max/0`, their sum, is the bound on the stops one page holds
   open, so the favorites and the popups that open by themselves always have
   room.

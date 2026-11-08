@@ -1,10 +1,10 @@
-import {announceRiderPopupChange} from "./rider_popups"
-
-// A popup opens compact, as a row of route numbers in their routes' colors,
-// and a click on the row shows the popup's details under it, or hides them
-// again. The row is a button, so the details are one key away as well.
+// A popup is compact, a row of route numbers in their routes' colors and a
+// short note, and a click on the row opens the popup's item in the details
+// view of the panel sheet. The row is a button, so the details are one key
+// away as well.
 
 const CHIP_ROW_CLASS_NAME = "popup-title route-chip-row"
+const CHIP_NOTE_CLASS_NAME = "route-chip-note"
 const CHIP_CLASS_NAME = "route-chip"
 const DARK_TEXT_COLOR = "#0f172a"
 const LIGHT_TEXT_COLOR = "#ffffff"
@@ -85,7 +85,7 @@ function chipElement({name, color}) {
 
 // The chips of `chips`, the first `countMax` of them and a chip that counts
 // the rest, or `emptyText` alone when there is none.
-function chipElements({chips, countMax, emptyText}) {
+export function chipElements({chips, countMax, emptyText}) {
   if (chips.length === 0) {
     return [document.createTextNode(emptyText)]
   }
@@ -107,28 +107,34 @@ function chipElements({chips, countMax, emptyText}) {
   return elements
 }
 
-// A popup's content: the row of `chips`, which a click turns into the
-// popup's `details` and back. `label` names the row for a screen reader.
-export function compactPopupContent({chips, countMax, emptyText, label, details}) {
+// A popup's content: the row of `chips` and of a note whose text starts as
+// `noteText`, which a click hands to `onSelect`. `label` names the row for
+// a screen reader. The note is returned to be written again, as a stop's
+// next arrival is when its arrivals come.
+export function compactPopupContent({chips, countMax, emptyText, noteText, label, onSelect}) {
   const content = document.createElement("div")
   const row = document.createElement("button")
   row.type = "button"
   row.className = CHIP_ROW_CLASS_NAME
-  row.setAttribute("aria-expanded", "false")
   row.setAttribute("aria-label", label)
 
   for (const element of chipElements({chips, countMax, emptyText})) {
     row.append(element)
   }
 
-  details.hidden = true
-  row.addEventListener("click", () => {
-    details.hidden = !details.hidden
-    row.setAttribute("aria-expanded", String(details.hidden === false))
-    // The popup's size has changed, so the popups placed around it move.
-    announceRiderPopupChange()
-  })
+  const note = document.createElement("span")
+  note.className = CHIP_NOTE_CLASS_NAME
+  writeChipNote(note, noteText)
+  row.append(note)
 
-  content.append(row, details)
-  return content
+  row.addEventListener("click", onSelect)
+  content.append(row)
+  return {content, row, note}
+}
+
+// Writes `text` into the note of a compact popup, which shows only while it
+// has text.
+export function writeChipNote(note, text) {
+  note.replaceChildren(text)
+  note.toggleAttribute("hidden", text === "")
 }

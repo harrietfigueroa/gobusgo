@@ -362,7 +362,54 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
     end
   end
 
+  describe "the details view" do
+    setup :write_manifest
+
+    test "starts hidden" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @sheet <> " #panel-detail[hidden]")
+    end
+
+    test "has a back button a keyboard reaches" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, "#panel-detail button#panel-detail-back[type=button]")
+      assert attribute(view, "#panel-detail-back", "aria-label") == "Back"
+    end
+
+    test "leaves its content to the browser" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, "#panel-detail #panel-detail-content[phx-update=ignore]")
+    end
+
+    test "leaves whether it is shown, and the back button's name, to the browser across patches" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      for {selector, attributes} <- [
+            {"#panel-detail", ["hidden"]},
+            {"#panel-detail-back", ["aria-label"]}
+          ] do
+        commands = view |> attribute(selector, "phx-mounted") |> JSON.decode!()
+        assert [["ignore_attrs", %{"attrs" => ^attributes}]] = commands
+      end
+    end
+
+    test "sends the server no event for the back button" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, "#panel-detail-back[phx-click]")
+    end
+  end
+
   describe "without a basemap" do
+    test "holds no details view" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, "#panel-detail")
+    end
+
     test "offers the About tab alone" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
