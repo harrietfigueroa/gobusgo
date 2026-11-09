@@ -13,6 +13,12 @@ defmodule GobusgoWeb.RouteStopTilesTest do
 
   @built_at ~U[2026-10-05 01:00:00.123456Z]
   @age_seconds 3_600
+  @content_sha256 :crypto.hash(:sha256, "features")
+  @old_destination "tiles/route-stops/dt=2026-10-05/route-stops-20261005T010000123456Z.pmtiles"
+
+  defp destination(built_at) do
+    RouteStopTiles.destination(%{built_at: built_at, content_sha256: @content_sha256})
+  end
 
   describe "built_at/1" do
     for {name, built_at} <- [
@@ -22,7 +28,7 @@ defmodule GobusgoWeb.RouteStopTilesTest do
         ] do
       test "reads the build time of a destination built at #{name}" do
         built_at = unquote(Macro.escape(built_at))
-        destination = RouteStopTiles.destination(built_at)
+        destination = destination(built_at)
 
         assert {:ok, read} = RouteStopTiles.built_at(destination)
         assert DateTime.compare(read, built_at) == :eq
@@ -38,6 +44,20 @@ defmodule GobusgoWeb.RouteStopTilesTest do
         assert RouteStopTiles.built_at(unquote(destination)) == :unrecognized
       end
     end
+
+    test "reads the build time of a destination stored before names held a SHA-256" do
+      assert RouteStopTiles.built_at(@old_destination) == {:ok, @built_at}
+    end
+  end
+
+  describe "content_sha256/1" do
+    test "reads the SHA-256 of the features a destination was built from" do
+      assert RouteStopTiles.content_sha256(destination(@built_at)) == {:ok, @content_sha256}
+    end
+
+    test "is :unrecognized for a destination stored before names held it" do
+      assert RouteStopTiles.content_sha256(@old_destination) == :unrecognized
+    end
   end
 
   describe "freshness/1" do
@@ -47,7 +67,7 @@ defmodule GobusgoWeb.RouteStopTilesTest do
 
     test "is current with its age while younger than the renewal age" do
       now = DateTime.add(@built_at, @age_seconds, :second)
-      destination = RouteStopTiles.destination(@built_at)
+      destination = destination(@built_at)
 
       assert RouteStopTiles.freshness(%{destination: destination, now: now}) ==
                {:current, @age_seconds}
@@ -55,7 +75,7 @@ defmodule GobusgoWeb.RouteStopTilesTest do
 
     test "is stale with its age at the renewal age" do
       now = DateTime.add(@built_at, Build.renewal_age_seconds(), :second)
-      destination = RouteStopTiles.destination(@built_at)
+      destination = destination(@built_at)
 
       assert RouteStopTiles.freshness(%{destination: destination, now: now}) ==
                {:stale, Build.renewal_age_seconds()}
@@ -69,27 +89,39 @@ defmodule GobusgoWeb.RouteStopTilesTest do
     end
   end
 
-  test "judges a discovered archive by the build time its name holds", %{tmp_dir: tmp_dir} do
-    destination = RouteStopTiles.destination(@built_at)
-
+  defp discover(tmp_dir, destination) do
     :ok =
       Writer.write(%{destination: destination, content: "archive"},
         backend: Gobusgo.Writer.LocalFile,
         base_dir: tmp_dir
       )
 
-    server =
-      start_supervised!(
-        {RouteStopTiles,
-         name: :discovered, read_options: [backend: Gobusgo.Reader.LocalFile, base_dir: tmp_dir]}
-      )
+    start_supervised!(
+      {RouteStopTiles,
+       name: :discovered, read_options: [backend: Gobusgo.Reader.LocalFile, base_dir: tmp_dir]}
+    )
+  end
 
+  test "judges a discovered archive by the build time its name holds", %{tmp_dir: tmp_dir} do
+    server = discover(tmp_dir, destination(@built_at))
     discovered = RouteStopTiles.current_destination(server)
     now = DateTime.add(@built_at, @age_seconds, :second)
 
-    assert RouteStopTiles.built(server) == nil
-
     assert RouteStopTiles.freshness(%{destination: discovered, now: now}) ==
              {:current, @age_seconds}
+  end
+
+  test "holds what a discovered archive was built from, read from its name", %{tmp_dir: tmp_dir} do
+    server = discover(tmp_dir, destination(@built_at))
+
+    assert RouteStopTiles.built(server) == %{content_sha256: @content_sha256, built_at: @built_at}
+  end
+
+  test "holds nothing of what an archive whose name holds no SHA-256 was built from",
+       %{tmp_dir: tmp_dir} do
+    server = discover(tmp_dir, @old_destination)
+
+    assert RouteStopTiles.current_destination(server) == @old_destination
+    assert RouteStopTiles.built(server) == nil
   end
 end

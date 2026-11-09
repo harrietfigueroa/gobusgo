@@ -83,11 +83,16 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     tmp_dir |> Path.join("data") |> Path.join(destination) |> File.read!()
   end
 
-  test "stores the archive of the lines and stops at the destination of its build", context do
-    destination = RouteStopTiles.destination(@built_at)
+  defp built_at(destination) do
+    {:ok, built_at} = RouteStopTiles.built_at(destination)
+    built_at
+  end
 
-    assert {:ok, %{destination: ^destination, route_count: 1, stop_count: 1}} =
+  test "stores the archive of the lines and stops at the destination of its build", context do
+    assert {:ok, %{destination: destination, route_count: 1, stop_count: 1}} =
              run(context, @content)
+
+    assert built_at(destination) == @built_at
 
     features =
       context
@@ -137,7 +142,20 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
     assert {:ok, %{destination: destination}} =
              run(context, @content, now: fn -> renewal_at end)
 
-    assert destination == RouteStopTiles.destination(renewal_at)
+    assert built_at(destination) == renewal_at
+  end
+
+  test "builds nothing after a start for the content of the archive it discovers", context do
+    {:ok, _build} = run(context, @content)
+
+    restarted =
+      start_supervised!(
+        {RouteStopTiles, name: :restarted_tiles, read_options: read_options(context.tmp_dir)},
+        id: :restarted_tiles
+      )
+
+    assert run(%{context | server: restarted}, @content, now: fn -> @later end) ==
+             {:ok, :unchanged}
   end
 
   test "renews the current archive at least a day before retention can delete it" do
@@ -170,7 +188,7 @@ defmodule GobusgoWeb.RouteStopTiles.BuildTest do
       assert {:ok, %{destination: destination}} =
                run(context, unquote(change), now: fn -> @later end)
 
-      assert destination == RouteStopTiles.destination(@later)
+      assert built_at(destination) == @later
     end
   end
 
