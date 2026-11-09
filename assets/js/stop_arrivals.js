@@ -13,6 +13,10 @@ const ARRIVAL_NOW = "now"
 const ARRIVAL_SCHEDULED_NOTE = " (scheduled)"
 const ARRIVAL_UNNAMED = "Arrival"
 const ARRIVALS_NEED_CONNECTION = "Live arrivals need a connection"
+const LIVE_LABEL = "live time"
+
+/** The class of the dot beside a time that is a live prediction. */
+export const LIVE_DOT_CLASS_NAME = "live-dot"
 
 /** The class of an element the stylesheet hides while the page is offline. */
 export const NEEDS_CONNECTION_CLASS_NAME = "needs-connection"
@@ -27,8 +31,8 @@ export function appendParagraph(element, text) {
 }
 
 // One arrival as a line: where it goes, and how soon. A time that is the
-// schedule and no prediction says so.
-function arrivalText({route, headsign, minutes, predicted}) {
+// schedule and no prediction says so, and a prediction is live.
+function arrivalLine({route, headsign, minutes, predicted}) {
   const names = []
 
   if (typeof route === "string") {
@@ -55,7 +59,7 @@ function arrivalText({route, headsign, minutes, predicted}) {
     note = ""
   }
 
-  return `${name}: ${time}${note}`
+  return {text: `${name}: ${time}${note}`, isLive: predicted}
 }
 
 /**
@@ -78,27 +82,59 @@ function arrivalsHeadingText({ageMinutes, isScheduled}) {
   }
 }
 
-// The lines a popup shows for what the server says of its stop's arrivals.
-function arrivalsLines(shown) {
+/**
+ * The lines a page shows for what the server says of a stop's arrivals, each
+ * its text and whether it is a live prediction.
+ */
+export function arrivalLines(shown) {
   const {status, age_minutes: ageMinutes, arrivals} = shown
   const heading = arrivalsHeadingText({ageMinutes, isScheduled: isScheduledShown(shown)})
 
   switch (status) {
     case "waiting":
-      return [ARRIVALS_WAITING]
+      return [plainLine(ARRIVALS_WAITING)]
     case "refused":
-      return [ARRIVALS_REFUSED]
+      return [plainLine(ARRIVALS_REFUSED)]
     case "busy":
-      return [ARRIVALS_BUSY]
+      return [plainLine(ARRIVALS_BUSY)]
     case "arrivals":
       if (arrivals.length === 0) {
-        return [heading, ARRIVALS_NONE]
+        return [plainLine(heading), plainLine(ARRIVALS_NONE)]
       } else {
-        return [heading, ...Array.from(arrivals, arrivalText)]
+        const lines = Array.from(arrivals, arrivalLine)
+        return [plainLine(heading), ...lines]
       }
     default:
       return unreachable(status, "arrivals status")
   }
+}
+
+function plainLine(text) {
+  return {text, isLive: false}
+}
+
+/** Whether the next arrival of what the server says of a stop's arrivals is a live prediction. */
+export function isNextArrivalLive({status, arrivals}) {
+  const hasArrival = status === "arrivals" && arrivals.length > 0
+
+  if (hasArrival === false) {
+    return false
+  }
+
+  const [{predicted}] = arrivals
+  return predicted === true
+}
+
+/**
+ * The dot beside a live time: an image whose accessible name says the time
+ * is live, so a screen reader reads it after the time.
+ */
+export function liveDot() {
+  const dot = document.createElement("span")
+  dot.className = LIVE_DOT_CLASS_NAME
+  dot.setAttribute("role", "img")
+  dot.setAttribute("aria-label", LIVE_LABEL)
+  return dot
 }
 
 // The next arrival of what the server says of a stop's arrivals, as its
@@ -152,8 +188,13 @@ export function writeArrivals(element, shown) {
     className = ""
   }
 
-  for (const line of arrivalsLines(shown)) {
-    const paragraph = classedParagraph({text: line, className})
+  for (const {text, isLive} of arrivalLines(shown)) {
+    const paragraph = classedParagraph({text, className})
+
+    if (isLive) {
+      paragraph.append(liveDot())
+    }
+
     element.append(paragraph)
   }
 

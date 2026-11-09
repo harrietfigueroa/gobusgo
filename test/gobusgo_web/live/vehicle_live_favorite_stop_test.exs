@@ -128,6 +128,19 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
 
       assert count == Integer.to_string(OpenStops.auto_open_count_max())
     end
+
+    test "hands the stops' hook the most arrivals a stop shows" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      [count] =
+        view
+        |> element("#stop-markers")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("data-arrival-count-max")
+
+      assert count == Integer.to_string(GobusgoWeb.StopArrivals.arrival_count_max())
+    end
   end
 
   describe "a favorite's position" do
