@@ -20,14 +20,14 @@
     },
     {
       "name": "maplibre-gl",
-      "version": "6.12.0",
-      "tarball": "https://registry.npmjs.org/maplibre-gl/-/maplibre-gl-6.12.0.tgz",
-      "integrity": "sha512-DwgganVi2BhNxOpD7ob3lJC0dQQz4HfJfuQQV3XxCY3XdOzFrMqp9ylMXhRzryRsOnIezdZcklWXIIs/Q8JPjA==",
+      "version": "6.17.0",
+      "tarball": "https://registry.npmjs.org/maplibre-gl/-/maplibre-gl-6.17.0.tgz",
+      "integrity": "sha512-2chIZwpLGenoUQOcnm9Pk4SLbA8ppNFq8jlpXiq9vcYm3Y1wJ3fc82FL0GLwBaPYJCLzPv/mC46KEupVov75rQ==",
       "files": [
-        {"path": "dist/maplibre-gl-shared.mjs", "sha256": "df3d0b4ba965ebafd2deae3c568500308be2982d87dadd771ba82dc5a49a4631"},
-        {"path": "dist/maplibre-gl-worker.mjs", "sha256": "1ecca7178f0a496b7980dc7a3c6a8c3575eda673cf3e9fa3324dcce7ef3890c2"},
-        {"path": "dist/maplibre-gl.css", "sha256": "8456072adc2cbf04f7b845bc83b90cec571b293bd37816970e6566f34946ab8b"},
-        {"path": "dist/maplibre-gl.mjs", "sha256": "8e0545d1042293cb8c1e09949f36ba83237f69b4fbc080958cf38829615bcf69"}
+        {"path": "dist/maplibre-gl-shared.mjs", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+        {"path": "dist/maplibre-gl-worker.mjs", "sha256": "73d7a024a4efe1a46e49db193e18cfe33271e3ecc652ec7542c281a4ef5f0f04"},
+        {"path": "dist/maplibre-gl.css", "sha256": "a90798a1953017790e590f7e1bd35ff103a8a4263972cb47290b78adf86f8c20"},
+        {"path": "dist/maplibre-gl.mjs", "sha256": "e02cb08c572fd0950a75343cd558099c2a1dbbaf67f26b0c96f115431962d1ae"}
       ]
     },
     {
