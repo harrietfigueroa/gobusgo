@@ -92,6 +92,49 @@ defmodule Gobusgo.Routing.SnapshotFormat do
     header(kind, length(records)) <> body
   end
 
+  @doc """
+  Returns the record of `connection`, the #{@connection_bytes} bytes the
+  connections file holds for it, so a builder can write a file's records one
+  at a time and put them under a header with `encode_packed/2`.
+  """
+  @spec encode_connection(connection()) :: binary()
+  def encode_connection(connection), do: encode_record(:connections, connection)
+
+  @doc """
+  Returns the departure in seconds of the record at `index` of `body`, a
+  body of connection records.
+  """
+  @spec connection_departure_s(binary(), non_neg_integer()) :: integer()
+  def connection_departure_s(body, index) when is_integer(index) and index >= 0 do
+    offset = index * @connection_bytes
+    <<_before::binary-size(^offset), departure_s::little-signed-32, _rest::binary>> = body
+    departure_s
+  end
+
+  @doc """
+  Returns the arrival in seconds of the record at `index` of `body`, a body
+  of connection records.
+  """
+  @spec connection_arrival_s(binary(), non_neg_integer()) :: integer()
+  def connection_arrival_s(body, index) when is_integer(index) and index >= 0 do
+    offset = index * @connection_bytes + 4
+    <<_before::binary-size(^offset), arrival_s::little-signed-32, _rest::binary>> = body
+    arrival_s
+  end
+
+  @doc "The bytes of one connection record."
+  @spec connection_bytes() :: pos_integer()
+  def connection_bytes, do: @connection_bytes
+
+  @doc """
+  Returns the connections file whose records are `body`, records already in
+  this format's layout, as `encode_connection/1` returns them.
+  """
+  @spec encode_packed(:connections, binary()) :: binary()
+  def encode_packed(:connections, body) when rem(byte_size(body), @connection_bytes) == 0 do
+    header(:connections, div(byte_size(body), @connection_bytes)) <> body
+  end
+
   defp header(kind, count) do
     <<@magic, @version::little-16, Map.fetch!(@kinds, kind)::little-16, count::little-32,
       0::little-32>>

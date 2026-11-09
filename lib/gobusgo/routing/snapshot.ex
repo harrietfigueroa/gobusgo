@@ -19,6 +19,7 @@ defmodule Gobusgo.Routing.Snapshot do
   its files again under that day.
   """
 
+  alias Gobusgo.Assert
   alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Routing.Timetable
   alias Gobusgo.Routing.Transfers
@@ -61,16 +62,22 @@ defmodule Gobusgo.Routing.Snapshot do
       file(directory, :positions, position_records(timetable.stop_ids, input.positions))
 
     chunks =
-      timetable.connections
-      |> Enum.chunk_by(&Integer.floor_div(&1.departure_s, @chunk_s))
-      |> Enum.map(fn [first | _rest] = connections ->
+      for {first_index, last_index} <- chunk_ranges(timetable) do
+        record_bytes = SnapshotFormat.connection_bytes()
+        count = last_index - first_index + 1
+
+        body =
+          binary_part(timetable.connections, first_index * record_bytes, count * record_bytes)
+
         %{
-          file: file(directory, :connections, connections),
-          departure_s_min: first.departure_s,
-          departure_s_max: List.last(connections).departure_s,
-          count: length(connections)
+          file: packed_file(directory, :connections, body),
+          departure_s_min:
+            SnapshotFormat.connection_departure_s(timetable.connections, first_index),
+          departure_s_max:
+            SnapshotFormat.connection_departure_s(timetable.connections, last_index),
+          count: count
         }
-      end)
+      end
 
     entry = %{
       "serviceDate" => Date.to_iso8601(timetable.service_date),
@@ -84,7 +91,7 @@ defmodule Gobusgo.Routing.Snapshot do
       "routeCount" => timetable.route_count,
       "stopCount" => length(timetable.stop_ids),
       "tripCount" => length(timetable.trips),
-      "connectionCount" => length(timetable.connections),
+      "connectionCount" => timetable.connection_count,
       "transferRules" => transfer_rules(),
       "walkingLinkCount" => length(walking_links),
       "files" => %{
@@ -133,8 +140,38 @@ defmodule Gobusgo.Routing.Snapshot do
     }
   end
 
+  # The first and last index of each run of connections departing in one
+  # chunk's span, in order. The connections are in departure order, so a run
+  # ends where the next connection departs in a later span.
+  defp chunk_ranges(%{connections: connections, connection_count: connection_count}) do
+    Assert.condition(
+      byte_size(connections) == connection_count * SnapshotFormat.connection_bytes(),
+      "the timetable must hold #{connection_count} connection records"
+    )
+
+    {ranges, _span} =
+      Enum.reduce(0..(connection_count - 1)//1, {[], nil}, fn index, {ranges, span} ->
+        index_span =
+          Integer.floor_div(SnapshotFormat.connection_departure_s(connections, index), @chunk_s)
+
+        case {index_span, ranges} do
+          {^span, [{first_index, _last_index} | rest]} -> {[{first_index, index} | rest], span}
+          {_other, _ranges} -> {[{index, index} | ranges], index_span}
+        end
+      end)
+
+    Enum.reverse(ranges)
+  end
+
   defp file(directory, kind, records) do
-    content = SnapshotFormat.encode(kind, records)
+    content_file(directory, kind, SnapshotFormat.encode(kind, records))
+  end
+
+  defp packed_file(directory, kind, body) do
+    content_file(directory, kind, SnapshotFormat.encode_packed(kind, body))
+  end
+
+  defp content_file(directory, kind, content) do
     sha256 = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
     %{destination: "#{directory}/#{kind}-#{sha256}.bin", content: content, sha256: sha256}
   end

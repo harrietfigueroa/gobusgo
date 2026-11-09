@@ -207,6 +207,60 @@ defmodule Gobusgo.OneBusAway.CompactSchedule do
   defp flag(true, bit), do: bit
   defp flag(false, _bit), do: 0
 
+  @typedoc """
+  Two consecutive stop times of a trip: `sequence` is the position of the
+  first in the trip, the stops are indexes into the schedule's `stop_ids`,
+  the departure is the first stop's and the arrival the second's, and
+  `boarding` and `alighting` say whether riders may board at the first and
+  leave at the second.
+  """
+  @type hop :: %{
+          sequence: non_neg_integer(),
+          from_index: non_neg_integer(),
+          to_index: non_neg_integer(),
+          departure_s: non_neg_integer(),
+          arrival_s: non_neg_integer(),
+          boarding: boolean(),
+          alighting: boolean()
+        }
+
+  @doc """
+  Reduces each hop of `trip`, every two consecutive stop times in the order
+  the trip serves them, with `fun`, starting from `acc`. The hops are read
+  from the trip's binaries one at a time, so a date's trips are reduced with
+  no list of their stop times.
+  """
+  @spec reduce_hops(trip(), acc, (hop(), acc -> acc)) :: acc when acc: term()
+  def reduce_hops(%{enabled_flags: enabled_flags} = trip, acc, fun) when is_function(fun, 2) do
+    hop_count = byte_size(enabled_flags) - 1
+    Enum.reduce(0..(hop_count - 1)//1, acc, &fun.(hop(trip, &1), &2))
+  end
+
+  defp hop(trip, sequence) do
+    index_bytes = sequence * 2
+    departure_bytes = sequence * 4
+    arrival_bytes = departure_bytes + 4
+
+    <<_before::binary-size(^index_bytes), from_index::16, to_index::16, _rest::binary>> =
+      trip.stop_indexes
+
+    <<_before::binary-size(^departure_bytes), departure_s::32, _rest::binary>> = trip.departure_s
+    <<_before::binary-size(^arrival_bytes), arrival_s::32, _rest::binary>> = trip.arrival_s
+
+    <<_before::binary-size(^sequence), from_flags::8, to_flags::8, _rest::binary>> =
+      trip.enabled_flags
+
+    %{
+      sequence: sequence,
+      from_index: from_index,
+      to_index: to_index,
+      departure_s: departure_s,
+      arrival_s: arrival_s,
+      boarding: Bitwise.band(from_flags, @departure_enabled_bit) != 0,
+      alighting: Bitwise.band(to_flags, @arrival_enabled_bit) != 0
+    }
+  end
+
   @doc """
   Returns the stop times of `trip`, a trip of `schedule`, as maps, in the
   order the trip serves them.
