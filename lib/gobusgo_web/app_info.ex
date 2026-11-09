@@ -3,6 +3,7 @@ defmodule GobusgoWeb.AppInfo do
   @ms_per_minute 60_000
   @minutes_per_hour 60
   @hours_per_day 24
+  @seconds_per_day 86_400
 
   @moduledoc """
   What the info panel of a map page says about the application: what it is,
@@ -13,7 +14,8 @@ defmodule GobusgoWeb.AppInfo do
   what works offline and what needs a connection,
   how it uses shared scooter and bike data,
   what donations fund,
-  what it records of a page connection, the terms that data is provided under, and
+  what it records of a page connection, what its session cookie holds,
+  the terms that data is provided under, and
   the licenses of the application and of what a page ships to the browser.
   Everything here is pure, so the cadences a text states are the ones it is
   given and a test reads every text.
@@ -310,6 +312,28 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of what a usage record never holds."
   @spec recorded_never() :: String.t()
   def recorded_never, do: @recorded_never
+
+  @doc """
+  The statement of what the session cookie holds and how long it lasts, for
+  a cookie that lasts `age_seconds`, a whole count of days.
+  """
+  @spec session_cookie(pos_integer()) :: String.t()
+  def session_cookie(age_seconds) when is_integer(age_seconds) do
+    Assert.condition(
+      age_seconds >= @seconds_per_day,
+      "age_seconds must be a day or more, got: #{age_seconds}"
+    )
+
+    Assert.condition(
+      rem(age_seconds, @seconds_per_day) == 0,
+      "age_seconds must be whole days, got: #{age_seconds}"
+    )
+
+    day_count = div(age_seconds, @seconds_per_day)
+
+    "Your browser keeps one cookie, for #{day_count} days. It holds only the security " <>
+      "token that protects the page's forms, and Gobusgo's server records nothing about it."
+  end
 
   @doc "The statement of what donations fund and what a donation does not buy."
   @spec donation() :: String.t()
