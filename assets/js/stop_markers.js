@@ -8,7 +8,7 @@ import {
   RIDER_POPUP_CHANGE_EVENT_NAME,
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
-import {compactPopupContent, writeChipNote} from "./route_chips"
+import {compactPopupContent, nameCloseButton, writeChipNote} from "./route_chips"
 import {NEEDS_CONNECTION_CLASS_NAME, markArrivalNote, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
@@ -180,7 +180,8 @@ function popupElements({stop, noteText, onSelect}) {
     countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
     noteText,
-    label: `${suppliedName(stop)}: show the stop`,
+    itemName: suppliedName(stop),
+    action: "show the stop",
     onSelect
   })
 
@@ -492,6 +493,7 @@ export const StopMarkers = {
     })
 
     popup.addTo(this.map)
+    nameCloseButton({content: open.content, itemName: suppliedName(stop)})
 
     const isSelected = this.view !== null && this.view.stop.id === stopId
     popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)

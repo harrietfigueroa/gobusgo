@@ -2,7 +2,7 @@ import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
-import {compactPopupContent} from "./route_chips"
+import {compactPopupContent, nameCloseButton} from "./route_chips"
 import {alertLines} from "./service_alerts"
 import {mapColors} from "./theme"
 import {
@@ -306,7 +306,8 @@ function compactVehicleContent({properties, onSelect}) {
     countMax: 1,
     emptyText: vehicleName(properties),
     noteText,
-    label: `${vehicleName(properties)}: show the vehicle`,
+    itemName: vehicleViewTitle(properties),
+    action: "show the vehicle",
     onSelect
   })
 
@@ -463,9 +464,10 @@ export const VehicleMarkers = {
     const lngLat = feature.geometry.coordinates
     const onSelect = () => { this.selectVehicle({properties, lngLat}) }
 
+    const content = compactVehicleContent({properties, onSelect})
     const popup = new this.maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
       .setLngLat(lngLat)
-      .setDOMContent(compactVehicleContent({properties, onSelect}))
+      .setDOMContent(content)
 
     const riderPopup = {popup, markerId: properties.markerId}
 
@@ -478,6 +480,7 @@ export const VehicleMarkers = {
     })
 
     popup.addTo(map)
+    nameCloseButton({content, itemName: vehicleViewTitle(properties)})
     this.riderPopup = riderPopup
     this.selectVehicle({properties, lngLat})
     announceRiderPopupChange()
