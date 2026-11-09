@@ -1,5 +1,7 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
-import {appendParagraph, nextArrivalText, writeArrivals} from "./stop_arrivals"
+import {appendParagraph, isNextArrivalLive, liveDot, nextArrivalText, writeArrivals} from "./stop_arrivals"
+import {shownAt} from "./arrival_countdown"
+import {startArrivalTicker} from "./arrival_ticker"
 import {tripEndButtons} from "./trip_ends"
 import {FavoriteChangeKind, storedSettings} from "./stored_settings"
 import {FIT_EVENT_DATA, READY_EVENT_NAME} from "./basemap"
@@ -14,7 +16,8 @@ import {pageEvents} from "./page_events"
 // wherever its map is, with the next arrival at the first favorite in the
 // badge of the Favorites tab. Each favorite's stop is open for the server
 // while the panel shows it, as an open popup's stop is, so its arrivals
-// come with the "stop-arrivals:arrivals" event.
+// come with the "stop-arrivals:arrivals" event, and count down between
+// events from each arrival's time.
 
 const ELEMENT_ID = "favorite-stop"
 const BADGE_ID = "favorite-stop-badge"
@@ -84,14 +87,11 @@ function moveFavorite({stopId, index}) {
   announceChange(change)
 }
 
-// What the panel shows of the server's answer for a favorite: its first
-// arrivals.
-function shownInPanel(shown) {
-  if (shown.status === "arrivals") {
-    return {...shown, arrivals: shown.arrivals.slice(0, ARRIVAL_COUNT_MAX)}
-  } else {
-    return shown
-  }
+// Writes what the panel shows of the server's answer for a favorite at
+// `nowMs`: its first arrivals still to come.
+function writeEntryArrivals({entry, nowMs}) {
+  const shown = shownAt({shown: entry.shown, nowMs, countMax: ARRIVAL_COUNT_MAX})
+  writeArrivals(entry.arrivalsElement, shown)
 }
 
 function iconButton({text, label, className}) {
@@ -201,11 +201,16 @@ export const FavoriteStop = {
       const entry = this.entries.get(shown.stop_id)
 
       if (entry !== undefined) {
-        entry.shown = shownInPanel(shown)
-        writeArrivals(entry.arrivalsElement, entry.shown)
-        this.writeBadge()
+        // The whole answer is kept, so an arrival that passes before the
+        // next event leaves its place to the one after it.
+        entry.shown = shown
+        const nowMs = Date.now()
+        writeEntryArrivals({entry, nowMs})
+        this.writeBadge(nowMs)
       }
     })
+
+    this.stopTicker = startArrivalTicker((nowMs) => { this.tick(nowMs) })
 
     // The page that is live again knows nothing of the stops this hook has
     // open, and is told them again.
@@ -261,7 +266,16 @@ export const FavoriteStop = {
     }
 
     this.list.replaceChildren(elements)
-    this.writeBadge()
+    this.writeBadge(Date.now())
+  },
+
+  // Writes every favorite's arrivals and the badge again as of `nowMs`.
+  tick(nowMs) {
+    for (const entry of this.entries.values()) {
+      writeEntryArrivals({entry, nowMs})
+    }
+
+    this.writeBadge(nowMs)
   },
 
   callbacksOf(stopId) {
@@ -441,9 +455,10 @@ export const FavoriteStop = {
     this.map.easeTo(camera, FIT_EVENT_DATA)
   },
 
-  // The badge of the Favorites tab: the next arrival at the first favorite,
-  // hidden while there is none.
-  writeBadge() {
+  // The badge of the Favorites tab: the next arrival at the first favorite
+  // as of `nowMs`, with the live dot for a prediction, hidden while there is
+  // none.
+  writeBadge(nowMs) {
     const badge = document.getElementById(BADGE_ID)
 
     if (badge === null) {
@@ -452,16 +467,25 @@ export const FavoriteStop = {
 
     const [first] = this.entries.values()
     let text = ""
+    let isLive = false
 
     if (first !== undefined) {
-      text = nextArrivalText(first.shown)
+      const next = shownAt({shown: first.shown, nowMs, countMax: 1})
+      text = nextArrivalText(next)
+      isLive = isNextArrivalLive(next)
     }
 
-    badge.textContent = text
+    badge.replaceChildren(text)
+
+    if (isLive) {
+      badge.append(liveDot())
+    }
+
     badge.hidden = text === ""
   },
 
   destroyed() {
+    this.stopTicker()
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     this.events.release()

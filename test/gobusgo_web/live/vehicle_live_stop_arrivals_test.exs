@@ -234,7 +234,9 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
         stop_id: @stop_id,
         status: :arrivals,
         age_minutes: 0,
-        arrivals: [%{route: "36", headsign: "Othello Station", minutes: 12, predicted: true}]
+        arrivals: [
+          %{route: "36", headsign: "Othello Station", minutes: 12, predicted: true, time_ms: _}
+        ]
       })
     end
 
