@@ -40,9 +40,17 @@ const flavorCases = [
   {theme: Theme.dark, flavor: "dark"}
 ]
 
+// Each theme cases a route line, and strokes a marker, in a color that
+// stands apart from its basemap's land: dark on the light map, light on the
+// dark one.
 const casingCases = [
-  {theme: Theme.light, kind: CasingKind.none},
-  {theme: Theme.dark, kind: CasingKind.casing}
+  {theme: Theme.light, casing: {kind: CasingKind.casing, color: "#334155"}},
+  {theme: Theme.dark, casing: {kind: CasingKind.casing, color: "#e2e8f0"}}
+]
+
+const strokeCases = [
+  {theme: Theme.light, stroke: "#334155"},
+  {theme: Theme.dark, stroke: "#e2e8f0"}
 ]
 
 const statusCases = [
@@ -64,8 +72,12 @@ for (const {theme, flavor} of flavorCases) {
   deepStrictEqual(flavorName(theme), flavor, `the flavor of the ${theme} theme`)
 }
 
-for (const {theme, kind} of casingCases) {
-  deepStrictEqual(mapColors(theme).routeCasing.kind, kind, `the route casing of the ${theme} theme`)
+for (const {theme, casing} of casingCases) {
+  deepStrictEqual(mapColors(theme).routeCasing, casing, `the route casing of the ${theme} theme`)
+}
+
+for (const {theme, stroke} of strokeCases) {
+  deepStrictEqual(mapColors(theme).vehicleStroke, stroke, `the marker stroke of the ${theme} theme`)
 }
 
 for (const {setting, theme, text} of statusCases) {
