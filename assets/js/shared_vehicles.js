@@ -2,6 +2,7 @@ import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
+import {pageEvents} from "./page_events"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {DecodeKind, decodeBlock, fileUrl, readIndex} from "./shared_vehicle_format"
 import {ViewKind, namesToFetch, tilesInView} from "./shared_vehicle_tiles"
@@ -457,6 +458,8 @@ export const SharedVehicleToggle = {
 
     this.onConnectionChange = () => { this.followConnection() }
     window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    this.events = pageEvents(this)
+    this.events.whenLive(() => { this.restore() })
     this.followConnection()
     this.restore()
   },
@@ -469,14 +472,11 @@ export const SharedVehicleToggle = {
 
   destroyed() {
     window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    this.events.release()
   },
 
   followConnection() {
     this.input.disabled = isOffline()
-  },
-
-  reconnected() {
-    this.restore()
   },
 
   restore() {
@@ -489,9 +489,9 @@ export const SharedVehicleToggle = {
 
   sendShown(shown) {
     if (shown) {
-      this.pushEvent(this.el.dataset.showEvent, {})
+      this.events.push({name: this.el.dataset.showEvent, payload: {}})
     } else {
-      this.pushEvent(this.el.dataset.hideEvent, {})
+      this.events.push({name: this.el.dataset.hideEvent, payload: {}})
     }
   }
 }

@@ -544,6 +544,12 @@
   display: none;
 }
 
+/* While the page shows a trip's filter for itself, offline, its own summary
+   line stands in place of the server's. */
+:root[data-local-trip] #panel-sheet-summary > p:not(.local-trip-summary) {
+  display: none;
+}
+
 /* On a phone the signal and the collapsed sheet stand at opposite ends of
    the screen, so the sheet's summary line says offline as well. */
 @media (width < 48rem) {

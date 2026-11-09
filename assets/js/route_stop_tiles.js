@@ -4,7 +4,9 @@ import {READY_EVENT_NAME} from "./basemap"
 // over the route and stop tile archive, which the basemap's protocol reads
 // with range requests. The archive's address and the routes the page's
 // filter keeps are data attributes of one element, which the server renders
-// with the page and patches.
+// with the page and patches. While the page is offline, a trip's filter is
+// held here instead, in place of the routes the element carries, since no
+// server patches the element then.
 
 const PROTOCOL_NAME = "pmtiles"
 const ELEMENT_ID = "route-stop-tiles"
@@ -17,11 +19,18 @@ export const CHANGE_EVENT_NAME = "route-stop-tiles:change"
 // The kinds of a read of the current archive.
 const ArchiveKind = Object.freeze({found: "found", none: "none"})
 
-// The kinds of a read of the routes the filter keeps.
-const KeptKind = Object.freeze({every: "every", routes: "routes"})
+/** The kinds of a read of the routes the filter keeps. */
+export const KeptKind = Object.freeze({every: "every", routes: "routes"})
 
 /** The kinds of a layer's filter: none, which draws everything, or a filter. */
 export const FilterKind = Object.freeze({none: "none", filter: "filter"})
+
+// Whether the page shows routes of its own in place of the element's.
+const LocalKind = Object.freeze({none: "none", kept: "kept"})
+
+// The routes the page shows for itself while offline, or none while the
+// element's routes stand.
+let local = {kind: LocalKind.none}
 
 function element() {
   return document.getElementById(ELEMENT_ID)
@@ -65,6 +74,30 @@ function archiveChanged(previous, current) {
 // The routes the filter keeps, or every route for a page with no filter,
 // which draws every route of the archive.
 function keptRoutes() {
+  if (local.kind === LocalKind.kept) {
+    return local.kept
+  }
+
+  return elementRouteIds()
+}
+
+function showLocal(kept) {
+  local = {kind: LocalKind.kept, kept}
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME))
+}
+
+/** Shows the routes of `routeIds` in place of the element's, until `endLocalRoutes`. */
+export function showLocalRoutes(routeIds) {
+  showLocal({kind: KeptKind.routes, routeIds: Array.from(routeIds)})
+}
+
+/** Shows every route in place of the element's routes, until `endLocalRoutes`. */
+export function showLocalEveryRoute() {
+  showLocal({kind: KeptKind.every})
+}
+
+/** The routes the element carries, whatever the page shows for itself: every route, or the list it holds. */
+export function elementRouteIds() {
   const found = element()
 
   if (found === null) {
@@ -78,6 +111,16 @@ function keptRoutes() {
   } else {
     return {kind: KeptKind.routes, routeIds: JSON.parse(routeIds)}
   }
+}
+
+/** Brings back the routes the element carries, where `showLocalRoutes` replaced them. */
+export function endLocalRoutes() {
+  if (local.kind === LocalKind.none) {
+    return
+  }
+
+  local = {kind: LocalKind.none}
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME))
 }
 
 // Whether the page's filter keeps the route.

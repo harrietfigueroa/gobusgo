@@ -293,6 +293,12 @@ defmodule GobusgoWeb.AppInfoTest do
       assert Enum.any?(works, &(&1 =~ "favorite stops, your filter, and your settings"))
     end
 
+    test "says trip planning and centering on a favorite work from the saved schedules" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "plan a trip and center the map on a favorite stop"))
+    end
+
     test "lists each thing that needs a connection by the text it says in place" do
       %{needs_connection: needs_connection} = AppInfo.offline()
 

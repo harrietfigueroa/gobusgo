@@ -6,6 +6,7 @@ import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
 import {CHANGE_EVENT_NAME as OFFLINE_BASEMAP_CHANGE_EVENT_NAME, drawnArchiveUrl, savedBasemapOf} from "./offline_basemap"
 import {readSavedBasemap} from "./offline_basemap_setting"
 import {flavorName} from "./theme"
+import {pageEvents} from "./page_events"
 
 const PROTOCOL_NAME = "pmtiles"
 const SOURCE_NAME = "protomaps"
@@ -141,7 +142,8 @@ export const Basemap = {
     window.addEventListener(OFFLINE_BASEMAP_CHANGE_EVENT_NAME, this.onOfflineBasemapChange)
     this.readSaved()
 
-    this.handleEvent("basemap:fit", (event) => {
+    this.events = pageEvents(this)
+    this.events.handle("basemap:fit", (event) => {
       this.fitBounds = cornerBounds(event.bounds)
 
       if (this.map !== null) {
@@ -251,6 +253,7 @@ export const Basemap = {
 
   destroyed() {
     window.removeEventListener(THEME_CHANGE_EVENT_NAME, this.onThemeChange)
+    this.events.release()
     window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
     window.removeEventListener(OFFLINE_BASEMAP_CHANGE_EVENT_NAME, this.onOfflineBasemapChange)
 
