@@ -1029,6 +1029,14 @@
   display: none;
 }
 
+/* The location hook writes each turn's duration inline, so the rule takes
+   `!important` to hold the cone still wherever a turn comes from. */
+@media (prefers-reduced-motion: reduce) {
+  .rider-heading-cone-shape {
+    transition: none !important;
+  }
+}
+
 .trip-field-label {
   flex: none;
   width: 2.5rem;
