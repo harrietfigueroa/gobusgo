@@ -52,7 +52,53 @@ defmodule Gobusgo.Test.Accessibility do
       main_violations(document) ++
       heading_one_violations(document) ++
       reference_violations(document) ++
-      name_violations(document)
+      name_violations(document) ++
+      landmark_violations(document)
+  end
+
+  # The elements that carry what a page says or does, each of which stands
+  # in a landmark, and the landmarks themselves.
+  @content_selector "a[href], button, input, select, textarea, h1, h2, h3, h4, h5, h6, p, table"
+  @landmark_tags [["main"], ["header"], ["footer"], ["nav"], ["aside"], ["form"], ["section"]]
+  @landmark_roles [
+    "main",
+    "banner",
+    "contentinfo",
+    "navigation",
+    "complementary",
+    "region",
+    "search"
+  ]
+
+  @doc """
+  Every element that carries content or a control stands in a landmark,
+  so a screen reader's landmark list reaches all of the page. A `hidden`
+  element, out of the accessibility tree, is passed over.
+  https://www.w3.org/WAI/ARIA/apg/practices/landmark-regions/ — checked 2026-11-09
+  """
+  @spec landmark_violations(LazyHTML.t()) :: [violation()]
+  def landmark_violations(document) do
+    for element <- LazyHTML.query(document, "body " <> @content_selector),
+        not hidden_or_in_landmark?(element) do
+      {:landmark, "#{describe(element)} stands outside every landmark"}
+    end
+  end
+
+  defp hidden_or_in_landmark?(element) do
+    cond do
+      Enum.empty?(element) -> false
+      LazyHTML.tag(element) == ["body"] -> false
+      LazyHTML.attribute(element, "hidden") != [] -> true
+      landmark?(element) -> true
+      true -> element |> LazyHTML.parent_node() |> hidden_or_in_landmark?()
+    end
+  end
+
+  defp landmark?(element) do
+    case LazyHTML.attribute(element, "role") do
+      [role] -> role in @landmark_roles
+      [] -> LazyHTML.tag(element) in @landmark_tags
+    end
   end
 
   @doc "The root element carries a `lang` attribute."

@@ -24,17 +24,25 @@ defmodule GobusgoWeb.RenderedPagesTest do
     "agencies" => [%{"agencyId" => "1", "archive" => @archive, "bounds" => @bounds}]
   }
 
+  # A page links the donation address where one is set, so the pages are
+  # rendered with one.
+  @donation_url "https://ko-fi.com/example"
+
   # The rules each page still breaks, each with the issue that fixes it. A
   # page must still break every rule it lists, so the fix removes its entry.
-  @known_failures %{
-    "error-404" => %{main: "GOB-309"},
-    "error-500" => %{main: "GOB-309"}
-  }
+  @known_failures %{}
 
   setup %{tmp_dir: tmp_dir} do
-    configured = Application.fetch_env!(:gobusgo, :basemap)
+    configured_basemap = Application.fetch_env!(:gobusgo, :basemap)
+    configured_donation = Application.get_env(:gobusgo, :donation)
     Application.put_env(:gobusgo, :basemap, dir: tmp_dir)
-    on_exit(fn -> Application.put_env(:gobusgo, :basemap, configured) end)
+    Application.put_env(:gobusgo, :donation, url: @donation_url)
+
+    on_exit(fn ->
+      Application.put_env(:gobusgo, :basemap, configured_basemap)
+      Application.put_env(:gobusgo, :donation, configured_donation)
+    end)
+
     File.mkdir_p!(@output_dir)
     :ok
   end

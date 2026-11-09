@@ -121,9 +121,7 @@ const recommended = html.configs["flat/recommended"]
 
 // The rules a rendered page still breaks, each with the issue that fixes
 // it and the files it is off for; the fix removes its entry.
-const KNOWN_FAILURES = [
-  {issue: "GOB-309", files: ["rendered/error-*.html"], rule: "@html-eslint/require-meta-viewport"}
-]
+const KNOWN_FAILURES = []
 
 function knownFailureBlock({files, rule}) {
   return {files, rules: {[rule]: "off"}}
