@@ -25,6 +25,13 @@ defmodule Gobusgo.Routing.Timetable do
   the order a connection scan reads them in. The calendar is the source's:
   OneBusAway answers each date with the services that run on it, calendar
   exceptions applied, so every trip a schedule holds runs on its date.
+
+  The connections stay packed from the schedules' binaries to the records
+  of the connections file, so no map is held per stop time, hop, or
+  connection. A first pass names the stops and trips; a second writes each
+  trip's records, in trip and sequence order, into one binary; and the
+  records are put in connection order by sorting one integer per record
+  that holds its departure, its duration, and its position in that binary.
   """
 
   alias Gobusgo.Assert
@@ -33,6 +40,11 @@ defmodule Gobusgo.Routing.Timetable do
 
   @type schedule :: CompactSchedule.t()
 
+  @typedoc """
+  `connections` holds the connection records in the layout of the
+  connections file, without its header, in connection order;
+  `connection_count` is how many.
+  """
   @type t :: %{
           service_date: Date.t(),
           service_day_start_ms: integer(),
@@ -40,7 +52,8 @@ defmodule Gobusgo.Routing.Timetable do
           route_count: non_neg_integer(),
           stop_ids: [String.t()],
           trips: [SnapshotFormat.trip()],
-          connections: [SnapshotFormat.connection()]
+          connections: binary(),
+          connection_count: non_neg_integer()
         }
 
   @doc """
@@ -60,31 +73,22 @@ defmodule Gobusgo.Routing.Timetable do
     previous_schedules = Map.fetch!(input, :previous_schedules)
     start_ms = day_start_ms(schedules)
 
-    previous =
-      case previous_schedules do
-        [] ->
-          []
+    days = [
+      %{schedules: schedules, offset: 0, shift_s: 0}
+      | previous_day(previous_schedules, start_ms)
+    ]
 
-        _schedules ->
-          shift_s = div(start_ms - day_start_ms(previous_schedules), @ms_per_second)
-          Assert.condition(shift_s > 0, "the previous day must start before this one")
-          hops(previous_schedules, %{offset: 1, shift_s: shift_s})
-      end
-
-    # A hop is a tuple whose first four elements are the connection order:
-    # a trip key `{offset, id}` sorts as the index the sorted trips give it,
-    # so the hops sort as tuples, with no key built per hop.
-    hops = Enum.sort(hops(schedules, %{offset: 0, shift_s: 0}) ++ previous)
-    stop_ids = hops |> Enum.reduce(MapSet.new(), &put_stop_ids/2) |> Enum.sort()
+    named = Enum.reduce(days, %{stops: MapSet.new(), trips: MapSet.new(), runs: %{}}, &name_day/2)
+    stop_ids = Enum.sort(named.stops)
     stop_index = stop_ids |> Enum.with_index() |> Map.new()
-    trips = hops |> Enum.reduce(MapSet.new(), &put_trip/2) |> Enum.sort()
+    trips = Enum.sort(named.trips)
 
     trip_index =
       trips
       |> Enum.with_index()
       |> Map.new(fn {{offset, id, _route}, index} -> {{offset, id}, index} end)
 
-    connections = for hop <- hops, do: connection(hop, stop_index, trip_index)
+    unsorted = trip_records(%{runs: named.runs, trip_index: trip_index, stop_index: stop_index})
 
     %{
       service_date: service_date,
@@ -96,8 +100,17 @@ defmodule Gobusgo.Routing.Timetable do
         for {offset, id, route_id} <- trips do
           %{id: id, route_id: route_id, service_day_offset: offset}
         end,
-      connections: connections
+      connections: in_connection_order(unsorted),
+      connection_count: unsorted.count
     }
+  end
+
+  defp previous_day([], _start_ms), do: []
+
+  defp previous_day(previous_schedules, start_ms) do
+    shift_s = div(start_ms - day_start_ms(previous_schedules), @ms_per_second)
+    Assert.condition(shift_s > 0, "the previous day must start before this one")
+    [%{schedules: previous_schedules, offset: 1, shift_s: shift_s}]
   end
 
   defp day_start_ms([%{schedule_date_ms: start_ms} | _rest] = schedules) do
@@ -109,45 +122,118 @@ defmodule Gobusgo.Routing.Timetable do
     start_ms
   end
 
-  # Every hop of every trip, its times moved back by `shift_s`, keeping
-  # those that depart at or after the start of the snapshot's day.
-  defp hops(schedules, %{offset: offset, shift_s: shift_s}) do
-    for schedule <- schedules,
-        trip <- schedule.trips,
-        stop_times = CompactSchedule.stop_times(schedule, trip),
-        {{from, to}, sequence} <- stop_times |> Enum.zip(tl(stop_times)) |> Enum.with_index(),
-        from.departure_s - shift_s >= 0 do
-      {from.departure_s - shift_s, to.arrival_s - shift_s, {offset, trip.id}, sequence,
-       from.stop_id, to.stop_id, from.departure_enabled, to.arrival_enabled, schedule.route_id}
+  # The hops of `trip` that depart at or after the start of the snapshot's
+  # day, their times moved back by `shift_s`, in sequence order.
+  defp kept_hops(trip, shift_s) do
+    trip
+    |> CompactSchedule.reduce_hops([], fn hop, kept ->
+      departure_s = hop.departure_s - shift_s
+
+      if departure_s >= 0 do
+        [%{hop | departure_s: departure_s, arrival_s: hop.arrival_s - shift_s} | kept]
+      else
+        kept
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  # The first pass: the stops and trips the kept hops use, and each trip's
+  # runs, the schedule trips that bear its key, to read again in the second.
+  defp name_day(%{offset: offset, shift_s: shift_s} = day, named) do
+    for schedule <- day.schedules, trip <- schedule.trips, reduce: named do
+      named ->
+        case kept_hops(trip, shift_s) do
+          [] ->
+            named
+
+          hops ->
+            stops =
+              Enum.reduce(hops, named.stops, fn hop, stops ->
+                stops
+                |> MapSet.put(elem(schedule.stop_ids, hop.from_index))
+                |> MapSet.put(elem(schedule.stop_ids, hop.to_index))
+              end)
+
+            run = %{schedule: schedule, trip: trip, shift_s: shift_s}
+
+            %{
+              stops: stops,
+              trips: MapSet.put(named.trips, {offset, trip.id, schedule.route_id}),
+              runs: Map.update(named.runs, {offset, trip.id}, [run], &[run | &1])
+            }
+        end
     end
   end
 
-  defp put_stop_ids(hop, stop_ids) do
-    stop_ids |> MapSet.put(elem(hop, 4)) |> MapSet.put(elem(hop, 5))
+  # The second pass: every connection record, trip by trip in index order,
+  # and within a trip by sequence, then stops and flags, the order the
+  # connections keep among themselves where departure and arrival tie. Also
+  # the range of departures and durations the records span.
+  defp trip_records(%{runs: runs, trip_index: trip_index, stop_index: stop_index}) do
+    initial = %{body: <<>>, count: 0, departure_s_max: 0, duration_s_min: 0, duration_s_max: 0}
+
+    for {trip_key, index} <- Enum.sort_by(trip_index, &elem(&1, 1)),
+        connection <- trip_connections(Map.fetch!(runs, trip_key), index, stop_index),
+        reduce: initial do
+      records ->
+        duration_s = connection.arrival_s - connection.departure_s
+
+        %{
+          body: records.body <> SnapshotFormat.encode_connection(connection),
+          count: records.count + 1,
+          departure_s_max: max(records.departure_s_max, connection.departure_s),
+          duration_s_min: min(records.duration_s_min, duration_s),
+          duration_s_max: max(records.duration_s_max, duration_s)
+        }
+    end
   end
 
-  defp put_trip(
-         {_departure_s, _arrival_s, {offset, id}, _sequence, _from, _to, _boarding, _alighting,
-          route_id},
-         trips
-       ) do
-    MapSet.put(trips, {offset, id, route_id})
+  defp trip_connections(runs, trip, stop_index) do
+    connections =
+      for %{schedule: schedule, trip: schedule_trip, shift_s: shift_s} <- runs,
+          hop <- kept_hops(schedule_trip, shift_s) do
+        %{
+          departure_s: hop.departure_s,
+          arrival_s: hop.arrival_s,
+          departure_stop: Map.fetch!(stop_index, elem(schedule.stop_ids, hop.from_index)),
+          arrival_stop: Map.fetch!(stop_index, elem(schedule.stop_ids, hop.to_index)),
+          trip: trip,
+          sequence: hop.sequence,
+          boarding: hop.boarding,
+          alighting: hop.alighting
+        }
+      end
+
+    Enum.sort_by(
+      connections,
+      &{&1.sequence, &1.departure_stop, &1.arrival_stop, &1.boarding, &1.alighting}
+    )
   end
 
-  defp connection(
-         {departure_s, arrival_s, trip_key, sequence, from, to, boarding, alighting, _route_id},
-         stop_index,
-         trip_index
-       ) do
-    %{
-      departure_s: departure_s,
-      arrival_s: arrival_s,
-      departure_stop: Map.fetch!(stop_index, from),
-      arrival_stop: Map.fetch!(stop_index, to),
-      trip: Map.fetch!(trip_index, trip_key),
-      sequence: sequence,
-      boarding: boarding,
-      alighting: alighting
-    }
+  # Sorts the records by one non-negative integer each, departure, then
+  # duration, then position in `body`. The position orders records whose
+  # departure and arrival tie as the second pass wrote them. The ranges come
+  # from the records, so the integer of a date of 677,000 connections fits a
+  # machine word and the sort holds no object per record.
+  defp in_connection_order(%{count: 0}), do: <<>>
+
+  defp in_connection_order(%{body: body, count: count} = records) do
+    duration_s_count = records.duration_s_max - records.duration_s_min + 1
+    Assert.condition(records.departure_s_max >= 0, "a kept departure is never negative")
+
+    keys =
+      for index <- 0..(count - 1)//1 do
+        departure_s = SnapshotFormat.connection_departure_s(body, index)
+        duration_s = SnapshotFormat.connection_arrival_s(body, index) - departure_s
+        (departure_s * duration_s_count + duration_s - records.duration_s_min) * count + index
+      end
+
+    sorted = Enum.sort(keys)
+    record_bytes = SnapshotFormat.connection_bytes()
+
+    for key <- sorted, into: <<>> do
+      binary_part(body, rem(key, count) * record_bytes, record_bytes)
+    end
   end
 end

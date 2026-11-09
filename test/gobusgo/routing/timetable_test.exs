@@ -6,6 +6,7 @@ defmodule Gobusgo.Routing.TimetableTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.OneBusAway.CompactSchedule
+  alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Routing.Timetable
 
   # 2026-11-07 and 2026-11-08 at midnight in Seattle; 2026-11-01, the end of
@@ -45,6 +46,7 @@ defmodule Gobusgo.Routing.TimetableTest do
     compact
   end
 
+  # The timetable with its packed connection records read back as maps.
   defp build(trips, previous_trips, starts \\ {@start_ms, @previous_start_ms}) do
     {start_ms, previous_start_ms} = starts
 
@@ -53,11 +55,30 @@ defmodule Gobusgo.Routing.TimetableTest do
           trips != [],
           do: schedule(%{start_ms: previous_start_ms, trips: trips})
 
-    Timetable.build(%{
-      service_date: ~D[2026-11-08],
-      schedules: [schedule(%{start_ms: start_ms, trips: trips})],
-      previous_schedules: previous
-    })
+    timetable =
+      Timetable.build(%{
+        service_date: ~D[2026-11-08],
+        schedules: [schedule(%{start_ms: start_ms, trips: trips})],
+        previous_schedules: previous
+      })
+
+    file = SnapshotFormat.encode_packed(:connections, timetable.connections)
+    {:ok, %{records: connections}} = SnapshotFormat.decode(file)
+    %{timetable | connections: connections}
+  end
+
+  test "counts the connection records it packs" do
+    timetable = build([{"t1", [3_600, 3_900, 4_200]}, {"t2", [100, 200]}], [])
+
+    assert timetable.connection_count == 3
+    assert length(timetable.connections) == 3
+  end
+
+  test "orders connections that depart together by arrival, then trip" do
+    timetable = build([{"t2", [100, 200]}, {"t1", [100, 300]}, {"t3", [100, 200]}], [])
+
+    assert Enum.map(timetable.connections, &{&1.arrival_s, &1.trip}) ==
+             [{200, 1}, {200, 2}, {300, 0}]
   end
 
   test "makes one connection per hop of a trip, from one stop's departure to the next stop's arrival" do

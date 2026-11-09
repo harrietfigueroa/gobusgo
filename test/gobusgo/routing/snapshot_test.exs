@@ -28,7 +28,13 @@ defmodule Gobusgo.Routing.SnapshotTest do
         route_count: 1,
         stop_ids: ["1_A", "1_B"],
         trips: [%{id: "t", route_id: "1_R", service_day_offset: 0}],
-        connections: connections
+        connections:
+          for(
+            connection <- connections,
+            into: <<>>,
+            do: SnapshotFormat.encode_connection(connection)
+          ),
+        connection_count: length(connections)
       },
       walking_links: [],
       positions: %{"1_A" => %{lat: 47.6080131, lon: -122.3351669}},

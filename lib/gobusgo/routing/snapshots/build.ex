@@ -1,5 +1,5 @@
 defmodule Gobusgo.Routing.Snapshots.Build do
-  @date_heap_words_max 120_000_000
+  @date_heap_words_max 60_000_000
 
   @moduledoc """
   One run of the routing snapshot build: for every service date the
@@ -233,7 +233,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           built_on: DateTime.to_date(now)
         })
 
-      {:built, length(timetable.connections)}
+      {:built, timetable.connection_count}
     else
       :failed
     end
