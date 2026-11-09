@@ -40,7 +40,7 @@
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
   --connection-signal-age-color: #334155;
-  --panel-sheet-grip-color: #94a3b8;
+  --panel-sheet-grip-color: #64748b;
   --panel-sheet-rule-color: #cbd5e1;
   --panel-sheet-chip-fill: #e2e8f0;
   --panel-sheet-badge-fill: #0f172a;
@@ -1077,6 +1077,14 @@ a.inline-target {
 
 .rider-heading-cone-shape[hidden] {
   display: none;
+}
+
+/* The location hook writes each turn's duration inline, so the rule takes
+   `!important` to hold the cone still wherever a turn comes from. */
+@media (prefers-reduced-motion: reduce) {
+  .rider-heading-cone-shape {
+    transition: none !important;
+  }
 }
 
 .trip-field-label {

@@ -104,8 +104,6 @@ const markNames = ["border", "border-color", "border-bottom", "border-bottom-col
 const shownBorderNames = ["border-bottom-color", "border-color"]
 
 const knownFailures = new Map([
-  ["contrast light --panel-sheet-grip-color on --surface-fill", "GOB-311"],
-  ["reduced motion .rider-heading-cone-shape", "GOB-314"]
 ])
 
 // The stylesheet as a list of rules, each with its selectors, its
