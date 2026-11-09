@@ -1,7 +1,7 @@
 defmodule GobusgoWeb.Layouts do
   @moduledoc """
   The layouts browser pages render inside. `root/1` is the HTML document:
-  the head with the CSRF token, the commit the application was built from
+  the head with the CSRF token, the page's title, the commit the application was built from
   where the build names one, the time the page was rendered, which tells
   the browser a copy from a cache, the web app manifest, the icon a home screen
   draws, the theme color of each color scheme, the script that draws the
@@ -66,7 +66,8 @@ defmodule GobusgoWeb.Layouts do
           DateTime.utc_now() |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601(),
         theme_script: @theme_script,
         theme_color_light: @theme_color_light,
-        theme_color_dark: @theme_color_dark
+        theme_color_dark: @theme_color_dark,
+        title_suffix: title_suffix(assigns[:page_title])
       )
 
     # `revision` is the WHATWG MetaExtensions name for the revision a version
@@ -81,7 +82,7 @@ defmodule GobusgoWeb.Layouts do
         <meta name="csrf-token" content={get_csrf_token()} />
         <meta :if={@revision} name="revision" content={@revision} />
         <meta name="gobusgo:rendered-at" content={@rendered_at} />
-        <title>Gobusgo</title>
+        <.live_title default="Gobusgo" suffix={@title_suffix}>{assigns[:page_title]}</.live_title>
         <meta
           name="theme-color"
           media="(prefers-color-scheme: light)"
@@ -117,4 +118,9 @@ defmodule GobusgoWeb.Layouts do
     </html>
     """
   end
+
+  # A page that names itself in `page_title` is titled "<name> · Gobusgo";
+  # one that names nothing is titled "Gobusgo" alone.
+  defp title_suffix(nil), do: nil
+  defp title_suffix(page_title) when is_binary(page_title), do: " · Gobusgo"
 end
