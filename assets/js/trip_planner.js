@@ -39,6 +39,7 @@ import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
 import {isNotSaved} from "./offline_bundle"
 import {pageEvents} from "./page_events"
+import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
 import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
 
 const NAMES_EVENT_NAME = "trip:names"
@@ -256,7 +257,32 @@ export const TripPlanner = {
     this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
     // A page that is live again holds no trip's filter, and is sent it again.
     this.events.whenLive(() => { this.resendFilter() })
+    this.takeHandedEnds()
     this.startFromLocation()
+  },
+
+  // The ends of a trip the offline host's planner held, planned again so
+  // the page joining LiveView keeps the rider's trip.
+  takeHandedEnds() {
+    const handed = takeHandoffState(this.el.id)
+
+    if (handed.kind === HandoffKind.found) {
+      this.ends = handed.state.ends
+      this.writeFields()
+      this.plan()
+    }
+  },
+
+  // The ends chosen, for the planner LiveView mounts on the same element.
+  handoffState() {
+    const hasFrom = this.ends[TripEnd.from].kind !== EndKind.none
+    const hasEnd = hasFrom || this.ends[TripEnd.to].kind !== EndKind.none
+
+    if (!hasEnd) {
+      return NO_HANDOFF
+    }
+
+    return {kind: HandoffKind.found, state: {ends: {...this.ends}}}
   },
 
   resendFilter() {
