@@ -108,15 +108,7 @@ const knownFailures = new Map([
   ["contrast dark --close-button-focus-color on --surface-border-color", "GOB-301"],
   ["contrast dark --filter-kind-color on --filter-suggestion-active-fill", "GOB-301"],
   ["contrast light --panel-sheet-grip-color on --surface-fill", "GOB-311"],
-  ["reduced motion .rider-heading-cone-shape", "GOB-314"],
-  ["forced colors fill .popup-selected .maplibregl-popup-content", "GOB-313"],
-  ["forced colors fill .popup-selected .maplibregl-popup-tip", "GOB-313"],
-  ["forced colors fill .panel-detail-action[aria-pressed=\"true\"]", "GOB-313"],
-  ["forced colors fill .filter-suggestion[aria-selected=\"true\"]", "GOB-313"],
-  ["forced colors background image .close-button", "GOB-313"],
-  ["forced colors background image .maplibregl-popup-close-button", "GOB-313"],
-  ["forced colors filter .maplibregl-ctrl-icon", "GOB-313"],
-  ["forced colors transparent border .panel-sheet-tab[aria-selected=\"true\"]", "GOB-313"]
+  ["reduced motion .rider-heading-cone-shape", "GOB-314"]
 ])
 
 // The stylesheet as a list of rules, each with its selectors, its
