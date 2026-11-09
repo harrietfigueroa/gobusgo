@@ -6,6 +6,7 @@ import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
 import {CHANGE_EVENT_NAME as OFFLINE_BASEMAP_CHANGE_EVENT_NAME, drawnArchiveUrl, savedBasemapOf} from "./offline_basemap"
 import {readSavedBasemap} from "./offline_basemap_setting"
 import {flavorName} from "./theme"
+import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
 import {pageEvents} from "./page_events"
 
 const PROTOCOL_NAME = "pmtiles"
@@ -123,6 +124,7 @@ export const Basemap = {
     const bounds = cornerBounds(JSON.parse(element.dataset.bounds))
     this.map = null
     this.fitBounds = bounds
+    this.handedCamera = takeHandoffState(element.id)
     this.theme = null
     this.restyling = false
     this.archiveUrl = element.dataset.archiveUrl
@@ -170,8 +172,7 @@ export const Basemap = {
     this.map = new maplibre.Map({
       container: element,
       style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
-      bounds: this.fitBounds,
-      fitBoundsOptions: {padding},
+      ...this.firstView(padding),
       attributionControl: false,
       // `setStyle` takes this as its default, so a restyle follows it too.
       validateStyle: element.dataset.styleValidated !== undefined
@@ -196,6 +197,29 @@ export const Basemap = {
       bubbles: true,
       detail: {map: this.map, maplibre}
     }))
+  },
+
+  // The map's first view: the camera the offline host's map handed over,
+  // so the page joining LiveView keeps the place the rider was looking at,
+  // and otherwise the element's bounds.
+  firstView(padding) {
+    if (this.handedCamera.kind === HandoffKind.found) {
+      return this.handedCamera.state
+    }
+
+    return {bounds: this.fitBounds, fitBoundsOptions: {padding}}
+  },
+
+  // The camera of a map the offline host made, for the map LiveView makes
+  // on the same element.
+  handoffState() {
+    if (this.map === null) {
+      return NO_HANDOFF
+    }
+
+    const center = this.map.getCenter()
+    const camera = {center: [center.lng, center.lat], zoom: this.map.getZoom(), bearing: this.map.getBearing(), pitch: this.map.getPitch()}
+    return {kind: HandoffKind.found, state: camera}
   },
 
   // Reads whether the page's offline extract is saved, and draws from it

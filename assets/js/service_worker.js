@@ -2,8 +2,9 @@
 // library when it installs, keeps the basemap's fonts and sprites as the
 // page asks for them, answers the routing snapshot and tile files from the
 // saved offline bundle first and the basemap's offline extract from the
-// saved map first, keeps the latest copy of the network-first paths, and
-// answers a page it cannot fetch with the offline screen.
+// saved map first, keeps the latest copy of the network-first paths, keeps
+// a bare copy of the vehicle page to open it with no network, and answers
+// any other page it cannot fetch with the offline screen.
 //
 // A new worker waits after it installs, so a page keeps the release it
 // started with; it takes over when a page asks it to, which the page does
@@ -18,8 +19,17 @@ import {assertCondition, unreachable} from "./assert.js"
 import {OFFLINE_BASEMAP_CACHE_NAME} from "./offline_basemap.js"
 import {OFFLINE_SCHEDULES_CACHE_NAME} from "./offline_bundle.js"
 import {answerNetworkFirst, answerSavedFile, savedFileReader, storedOf} from "./saved_files.js"
-import {CacheRole, MessageKind, StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "./service_worker_strategy.js"
+import {
+  CacheRole,
+  MessageKind,
+  StrategyKind,
+  VEHICLE_PAGE_PATH,
+  cacheNames,
+  requestStrategy,
+  staleCacheNames
+} from "./service_worker_strategy.js"
 import {OFFLINE_SCREEN} from "./offline_screen.js"
+import {VEHICLE_PAGE_COPY_WAIT_MS, answerVehiclePage, refreshVehiclePageCopy} from "./vehicle_page_copy.js"
 
 const NETWORK_TIMEOUT_MS = 15 * 1000
 const OFFLINE_STATUS = 503
@@ -55,6 +65,48 @@ async function precache() {
   // copy the browser's HTTP cache held from an earlier build.
   const requests = Array.from(build.precachePaths, revalidatedRequest)
   await cache.addAll(requests)
+  await refreshVehiclePageCopy({fetchNetwork: fetchBareVehiclePage, storeCopy: storeVehiclePageCopy})
+}
+
+// The bare copy is fetched when the worker installs, while the worker in
+// use still answers the pages: an activating worker holds every fetch until
+// it has activated. A copy that cannot be fetched leaves the install whole,
+// and the next bare page the rider opens stores it.
+function fetchBareVehiclePage() {
+  const request = revalidatedRequest(VEHICLE_PAGE_PATH)
+  return fetchWithTimeout(request)
+}
+
+function storeVehiclePageCopy(response) {
+  return storeResponse({cacheName: names.release, path: VEHICLE_PAGE_PATH, response})
+}
+
+async function readVehiclePageCopy() {
+  const response = await caches.match(VEHICLE_PAGE_PATH, {cacheName: names.release})
+  return storedOf(response)
+}
+
+function copyWait() {
+  return new Promise(copyWaitExecutor)
+}
+
+function copyWaitExecutor(resolve) {
+  setTimeout(resolve, VEHICLE_PAGE_COPY_WAIT_MS)
+}
+
+function vehiclePage({isBare, request}) {
+  function fetchNetwork() {
+    return fetchWithTimeout(request)
+  }
+
+  return answerVehiclePage({
+    isBare,
+    fetchNetwork,
+    readCopy: readVehiclePageCopy,
+    storeCopy: storeVehiclePageCopy,
+    copyWait,
+    offlineAnswer: offlineScreen
+  })
 }
 
 function revalidatedRequest(path) {
@@ -154,13 +206,17 @@ function savedFile({path, cache, request}) {
   return answerSavedFile({path, rangeHeader, reader, fetchNetwork})
 }
 
+function offlineScreen() {
+  const headers = {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"}
+  return new Response(OFFLINE_SCREEN, {status: OFFLINE_STATUS, headers})
+}
+
 async function navigation(request) {
   try {
     return await fetchWithTimeout(request)
   } catch (error) {
     console.warn("Page not fetched, offline screen shown", error)
-    const headers = {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"}
-    return new Response(OFFLINE_SCREEN, {status: OFFLINE_STATUS, headers})
+    return offlineScreen()
   }
 }
 
@@ -186,6 +242,9 @@ function fetched(event) {
       break
     case StrategyKind.networkFirst:
       event.respondWith(networkFirst({path: strategy.path, fallbacks: strategy.fallbacks, request}))
+      break
+    case StrategyKind.vehiclePage:
+      event.respondWith(vehiclePage({isBare: strategy.isBare, request}))
       break
     case StrategyKind.navigation:
       event.respondWith(navigation(request))
