@@ -21,12 +21,9 @@ import {
   MoveEventKind,
   nearestPlace,
   PlaceKind,
-  viewBox,
   viewSentence
 } from "./map_view_text"
-import {sheetInsets} from "./panel_sheet"
-import {MARKER_LAYER_NAME as STOP_LAYER_NAME, ZOOM_MIN as STOP_ZOOM_MIN} from "./stop_markers"
-import {markerLayerNames as vehicleLayerNames} from "./vehicle_markers"
+import {readView, screenPoint} from "./map_view_reading"
 import {unreachable} from "./assert.js"
 
 const CANVAS_NAME = "Vehicle map"
@@ -36,40 +33,6 @@ const CANVAS_ROLE_DESCRIPTION = "map"
 // it this hook writes.
 const DESCRIPTION_ID = "map-description"
 const VIEW_TEXT_ID = "map-description-view"
-
-// The layers of `layerNames` the map's style holds now; a style being set
-// anew holds none of them, and a map with no tile archive no stop layer.
-function presentLayers({map, layerNames}) {
-  const present = []
-
-  for (const layerName of layerNames) {
-    if (map.getLayer(layerName) !== undefined) {
-      present.push(layerName)
-    }
-  }
-
-  return present
-}
-
-// The features of `layerNames` drawn inside `box`, one per value of the
-// property `idName`: a point near a tile's edge comes back from each tile
-// that holds it.
-function renderedById({map, box, layerNames, idName}) {
-  const layers = presentLayers({map, layerNames})
-  const byId = new Map()
-
-  if (layers.length === 0) {
-    return byId
-  }
-
-  const features = map.queryRenderedFeatures(box, {layers})
-
-  for (const feature of features) {
-    byId.set(feature.properties[idName], feature)
-  }
-
-  return byId
-}
 
 function isNamedStop(feature) {
   const {name} = feature.properties
@@ -82,8 +45,8 @@ function stopPlaces({map, stops}) {
 
   for (const feature of stops.values()) {
     if (isNamedStop(feature)) {
-      const point = map.project(feature.geometry.coordinates)
-      places.push({name: feature.properties.name, x: point.x, y: point.y})
+      const {x, y} = screenPoint({map, feature})
+      places.push({name: feature.properties.name, x, y})
     }
   }
 
@@ -92,26 +55,15 @@ function stopPlaces({map, stops}) {
 
 // The sentence of what `map` shows beside the panel sheet.
 function viewTextOf(map) {
-  const container = map.getContainer()
-  const {box, center} = viewBox({
-    width: container.clientWidth,
-    height: container.clientHeight,
-    insets: sheetInsets()
-  })
+  const {center, vehicles, stops, stopsDrawn} = readView(map)
 
-  const vehicles = renderedById({map, box, layerNames: vehicleLayerNames, idName: "markerId"})
-  const hasStopLayer = map.getLayer(STOP_LAYER_NAME) !== undefined
-  const isZoomedOut = map.getZoom() < STOP_ZOOM_MIN
-  const isStopsHidden = hasStopLayer && isZoomedOut
-
-  if (isStopsHidden) {
-    return viewSentence({vehicleCount: vehicles.size, stopCount: 0, stopsDrawn: false, nearest: {kind: PlaceKind.missing}})
+  if (!stopsDrawn) {
+    return viewSentence({vehicleCount: vehicles.size, stopCount: 0, stopsDrawn, nearest: {kind: PlaceKind.missing}})
   }
 
-  const stops = renderedById({map, box, layerNames: [STOP_LAYER_NAME], idName: "stopId"})
   const places = stopPlaces({map, stops})
   const nearest = nearestPlace({places, center})
-  return viewSentence({vehicleCount: vehicles.size, stopCount: stops.size, stopsDrawn: true, nearest})
+  return viewSentence({vehicleCount: vehicles.size, stopCount: stops.size, stopsDrawn, nearest})
 }
 
 function describeCanvas(canvas) {

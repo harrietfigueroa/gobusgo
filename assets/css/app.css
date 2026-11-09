@@ -1216,3 +1216,58 @@
   }
 }
 
+
+/* The list of the vehicles and stops in view stays out of sight, as a skip
+   link does, until it or an option in it takes focus; then it stands in
+   the map's top left corner, beside the panel from the md breakpoint up,
+   over the donation button. */
+.map-items:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.map-items:focus-within {
+  position: fixed;
+  top: var(--donation-button-inset);
+  left: var(--donation-button-inset);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(20rem, calc(100vw - 2 * var(--donation-button-inset)));
+  max-height: 50vh;
+  padding: 8px;
+  font-size: 0.875rem;
+}
+
+@media (width >= 48rem) {
+  .map-items:focus-within {
+    left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
+  }
+}
+
+.map-items-label {
+  font-weight: 600;
+}
+
+.map-items-list {
+  overflow-y: auto;
+}
+
+.map-items-list [role="option"] {
+  padding: 8px;
+  border-radius: var(--control-radius-inner);
+  cursor: pointer;
+}
+
+.map-items-list [role="option"]:hover,
+.map-items-list [aria-selected="true"] {
+  background-color: var(--filter-suggestion-active-fill);
+}
