@@ -703,6 +703,22 @@ defmodule GobusgoWeb.VehicleLive do
     >
     </div>
 
+    <div id="map-items" phx-hook="MapItemList" phx-update="ignore" class="map-items surface">
+      <p id="map-items-label" class="map-items-label">
+        Vehicles and stops in view, nearest the middle first
+      </p>
+      <ul
+        id="map-items-list"
+        role="listbox"
+        tabindex="0"
+        aria-labelledby="map-items-label"
+        aria-describedby="map-items-rest"
+        class="map-items-list"
+      >
+      </ul>
+      <p id="map-items-rest"></p>
+    </div>
+
     <div
       id="route-stop-tiles"
       phx-hook="RouteStopTiles"

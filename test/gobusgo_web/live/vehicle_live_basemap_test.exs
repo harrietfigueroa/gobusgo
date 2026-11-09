@@ -160,6 +160,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "connection-announcement",
                "panel-sheet",
                "basemap-basemap-20261004-01",
+               "map-items",
                "route-stop-tiles",
                "shared-vehicles-layer",
                "stop-markers",
@@ -244,6 +245,30 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles?agency=east")
 
       assert bounds(view, @follow) == @east_bounds
+    end
+
+    test "mounts the list of what is in view on an element a patch leaves alone" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, "#map-items", "phx-hook") == "MapItemList"
+      assert attribute(view, "#map-items", "phx-update") == "ignore"
+    end
+
+    test "makes the list of what is in view a focusable listbox named by its label" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, "#map-items-list", "role") == "listbox"
+      assert attribute(view, "#map-items-list", "tabindex") == "0"
+      assert attribute(view, "#map-items-list", "aria-labelledby") == "map-items-label"
+
+      assert text(view, "#map-items-label") ==
+               "Vehicles and stops in view, nearest the middle first"
+    end
+
+    test "starts the list of what is in view with no option" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, "#map-items-list [role=option]")
     end
 
     test "mounts the map description's hook on a visually hidden element" do
