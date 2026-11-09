@@ -1,6 +1,5 @@
-// Checks the status badge and shared vehicle drawing of
-// assets/js/status_badges.js against a canvas whose context records what it
-// is told: each badge's disc is in the ink and its glyph in the paper, the
+// Checks the status badge and shared vehicle drawing against a canvas whose
+// context records what it is told: each badge's disc is in the ink and its glyph in the paper, the
 // three glyphs differ, an unknown badge is refused, a low-range vehicle has
 // its upper half white and a dark letter, and every image name reads back
 // as the badge or vehicle it names. Run it with
