@@ -51,7 +51,9 @@ function popupAlerts({routeIds, stopId}) {
 }
 
 // Opens the alerts panel's tab of the panel sheet and, for an alert it
-// lists, shows that alert with its details open.
+// lists, shows that alert with its details open and moves focus to it, so
+// a screen reader reads the alert the rider chose; the entry takes focus
+// from a script alone, and Tab passes it by.
 function openPanel(alertId) {
   const panel = document.getElementById(document.getElementById(ROUTES_ELEMENT_ID).dataset.panelId)
   panel.dispatchEvent(new CustomEvent(PANEL_OPEN_EVENT_NAME, {bubbles: true}))
@@ -66,6 +68,8 @@ function openPanel(alertId) {
       details.open = true
     }
 
+    entry.tabIndex = -1
+    entry.focus({preventScroll: true})
     entry.scrollIntoView({block: "start"})
   }
 }

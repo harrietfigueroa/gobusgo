@@ -271,6 +271,21 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       end
     end
 
+    for %{status: status, badge: badge} <- VehicleMarkers.statuses(), badge != nil do
+      test "draws the #{status} status's #{badge} badge beside its swatch" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        badge = @panel <> " #app-info-status-#{unquote(status)} [data-badge=#{unquote(badge)}]"
+
+        assert has_element?(view, badge)
+      end
+    end
+
+    test "draws no badge beside the reported status's swatch" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @panel <> " #app-info-status-reported [data-badge]")
+    end
+
     test "draws the schedule-only swatch in its own color" do
       scheduled = Enum.find(VehicleMarkers.statuses(), &(&1.status == :scheduled))
 

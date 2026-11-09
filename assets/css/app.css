@@ -14,6 +14,7 @@
   --control-radius-inner: calc(var(--surface-radius) - var(--surface-border-width));
   --close-button-size: 28px;
   --close-button-hit-size: 44px;
+  --inline-target-size: 24px;
   --close-button-inset: 8px;
   --close-button-mark-size: 14px;
   --close-button-fill: #dc2626;
@@ -51,7 +52,9 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
-  --popup-selected-text-color: #ffffff;
+  --popup-selected-text-color: #0f172a;
+  --popup-selected-focus-color: var(--popup-selected-text-color);
+  --panel-sheet-filter-badge-color: #0f172a;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
   --filter-bar-height-min: 44px;
@@ -60,11 +63,17 @@
   --filter-suggestion-height-min: 44px;
   --filter-suggestion-active-fill: #dcfce7;
   --filter-kind-color: #475569;
+  --filter-kind-active-color: #475569;
   --trip-origin-color: #16a34a;
   --trip-destination-color: #dc2626;
   /* MapLibre's location dot is #1da1f2, which the cone repeats. */
   --rider-heading-color: rgb(29 161 242);
   --rider-heading-size: 72px;
+  --badge-ink: #0f172a;
+  --badge-paper: #ffffff;
+  --shared-vehicle-letter-color: #ffffff;
+  --shared-vehicle-low-letter-color: #0f172a;
+  --rider-dot-border-color: #334155;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -109,9 +118,13 @@
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
+  --filter-kind-active-color: #e2e8f0;
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
   --rider-heading-color: rgb(56 189 248);
+  --badge-ink: #e2e8f0;
+  --badge-paper: #0f172a;
+  --rider-dot-border-color: #ffffff;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -321,6 +334,11 @@
   box-shadow: 0 0 0 1px var(--popup-selected-text-color);
 }
 
+/* A focus ring inside the selected popup stands on its fill. */
+.popup-selected :focus-visible {
+  outline-color: var(--popup-selected-focus-color);
+}
+
 /* A popup's alert line is one line of the popup's width, cut with an
    ellipsis, so an alert's length leaves the popup's size as it is. The
    whole text is the button's title and the alerts panel's entry. */
@@ -349,6 +367,24 @@
   .popup-alert {
     min-height: var(--popup-alert-hit-size);
   }
+}
+
+/* A link or a toggle that stands on a line of its own, such as an alert's
+   disclosure or a setting's checkbox label, is at least 24px tall, and a
+   finger's size on a coarse pointer, with its line centered. */
+@media (pointer: coarse) {
+  :root {
+    --inline-target-size: var(--close-button-hit-size);
+  }
+}
+
+.inline-target {
+  min-height: var(--inline-target-size);
+  padding-block: max(0px, calc((var(--inline-target-size) - 1lh) / 2));
+}
+
+a.inline-target {
+  display: inline-block;
 }
 
 /* A map control's button is a finger's size at every width. */
@@ -679,6 +715,7 @@
 
 #panel-tab-filter-badge {
   background-color: var(--surface-border-color);
+  color: var(--panel-sheet-filter-badge-color);
 }
 
 #panel-tab-alerts-badge {
@@ -942,6 +979,11 @@
   background-color: var(--filter-suggestion-active-fill);
 }
 
+.filter-suggestion:hover .filter-kind,
+.filter-suggestion[aria-selected="true"] .filter-kind {
+  color: var(--filter-kind-active-color);
+}
+
 /* The Trip tab: the two ends beside the swap button, then the journeys,
    each a button that selects it, with the steps of the selected one under
    it. */
@@ -1001,6 +1043,60 @@
 
 .trip-dot-to {
   background-color: var(--trip-destination-color);
+}
+
+/* The legend's status badge: a disc in the theme's ink with its glyph in
+   the theme's paper. Forced colors would draw both in one system color, so
+   the badge keeps its own, as the map's canvas does. */
+.status-badge {
+  forced-color-adjust: none;
+}
+
+.status-badge-ink {
+  fill: var(--badge-ink);
+}
+
+.status-badge-paper {
+  fill: var(--badge-paper);
+}
+
+.status-badge-stroke {
+  fill: none;
+  stroke: var(--badge-paper);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* The legend's shared vehicle swatch: a disc in the kind's color with the
+   kind's letter, and for low range the upper half white, as the map draws
+   them. Forced colors would drop the fill that carries the kind and the
+   range, so the swatch keeps its own colors. */
+.shared-vehicle-swatch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: var(--shared-vehicle-letter-color);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  forced-color-adjust: none;
+}
+
+.shared-vehicle-swatch-low {
+  background: linear-gradient(#ffffff 50%, var(--swatch-color) 50%);
+  box-shadow: inset 0 0 0 1px var(--swatch-color);
+  color: var(--shared-vehicle-low-letter-color);
+}
+
+/* MapLibre rings the rider's dot in white, which the light map's land
+   matches; the ring takes the theme's color, dark on the light map, as a
+   marker's stroke does. */
+.maplibregl-user-location-dot::after {
+  border-color: var(--rider-dot-border-color);
 }
 
 /* The cone on the rider's dot: a wedge centered on the top, fading out from

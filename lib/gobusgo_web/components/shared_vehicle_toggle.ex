@@ -45,7 +45,7 @@ defmodule GobusgoWeb.SharedVehicleToggle do
       aria-labelledby="shared-vehicles-label"
       class="mt-4 flex flex-col gap-2 text-sm"
     >
-      <label id="shared-vehicles-label" class="flex items-center gap-2 font-medium">
+      <label id="shared-vehicles-label" class="inline-target flex items-center gap-2 font-medium">
         <input id="shared-vehicles-shown" type="checkbox" checked={@shown} />
         Show shared scooters and bikes
       </label>
@@ -57,11 +57,24 @@ defmodule GobusgoWeb.SharedVehicleToggle do
       >
         <li :for={form <- @form_colors} class="flex items-center gap-1">
           <span
-            class="inline-block h-3 w-3 rounded-full"
+            class="shared-vehicle-swatch"
+            data-form-factor={form.form_factor}
             style={"background-color: #{form.color}"}
             aria-hidden="true"
-          ></span>
+          >
+            {form.letter}
+          </span>
           {form.label}
+        </li>
+        <li id="shared-vehicles-low-range" class="flex items-center gap-1">
+          <span
+            class="shared-vehicle-swatch shared-vehicle-swatch-low"
+            style={"--swatch-color: #{hd(@form_colors).color}"}
+            aria-hidden="true"
+          >
+            {hd(@form_colors).letter}
+          </span>
+          Low range: the upper half is white
         </li>
       </ul>
       <p

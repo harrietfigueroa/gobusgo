@@ -218,6 +218,7 @@ defmodule GobusgoWeb.VehicleLive do
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
+        page_title: "Vehicle map",
         manifest: read_manifest(),
         basemap: nil,
         filter: nil,
@@ -507,6 +508,7 @@ defmodule GobusgoWeb.VehicleLive do
   def render(assigns) do
     ~H"""
     <main>
+      <h1 class="sr-only">Vehicle map</h1>
       <ConnectionSignal.state_hook />
       <DonationButton.button class="donation-button-map" />
       <ConnectionSignal.signal :if={@basemap != nil} />

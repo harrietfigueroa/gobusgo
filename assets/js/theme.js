@@ -12,18 +12,22 @@ export const Theme = Object.freeze({light: "light", dark: "dark"})
 /** The kinds of a route line's casing: none, or a casing in one color. */
 export const CasingKind = Object.freeze({none: "none", casing: "casing"})
 
-// The colors of the layers the hooks add, per theme. On the dark map a
-// route's own color can be as dark as the land under it, so its line gets
-// a light casing, and the stops and the labels turn light on dark.
+// The colors of the layers the hooks add, per theme. A route's own color
+// can be as light as the land of the light map or as dark as the land of
+// the dark one, so its line gets a casing, and a marker a stroke, in a
+// color that stands apart from the land: dark on the light map, light on
+// the dark one. On the dark map the stops and the labels turn light on dark.
 const lightMapColors = Object.freeze({
-  routeCasing: {kind: CasingKind.none},
+  routeCasing: {kind: CasingKind.casing, color: "#334155"},
   stopFill: "#ffffff",
   stopStroke: "#334155",
   stopLabel: "#334155",
   stopHalo: "#ffffff",
-  vehicleStroke: "#ffffff",
+  vehicleStroke: "#334155",
   vehicleLabel: "#0f172a",
   vehicleHalo: "#ffffff",
+  badgeInk: "#0f172a",
+  badgePaper: "#ffffff",
   tripCasing: "#ffffff",
   tripWalk: "#475569",
   tripOrigin: "#16a34a",
@@ -39,6 +43,8 @@ const darkMapColors = Object.freeze({
   vehicleStroke: "#e2e8f0",
   vehicleLabel: "#e2e8f0",
   vehicleHalo: "#0f172a",
+  badgeInk: "#e2e8f0",
+  badgePaper: "#0f172a",
   tripCasing: "#e2e8f0",
   tripWalk: "#cbd5e1",
   tripOrigin: "#22c55e",
