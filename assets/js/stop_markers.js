@@ -1,7 +1,7 @@
 import {assertCondition} from "./assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {placePopups} from "./popup_placement"
+import {coveredBoxes, placePopups} from "./popup_placement"
 import {
   announceRiderPopupChange,
   riderPopupBoxes,
@@ -21,7 +21,7 @@ import {
 } from "./panel_detail"
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
 import {isPicking, pickStop} from "./trip_ends"
-import {revealOnMap} from "./panel_sheet"
+import {revealOnMap, sheetInsets} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {
   addSource,
@@ -41,6 +41,7 @@ export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
 const ZOOM_MIN = 14
+const SHEET_ID = "panel-sheet"
 const MARKER_RADIUS_PIXELS = 7
 const MARKER_STROKE_WIDTH_PIXELS = 2
 const LABEL_LAYER_NAME = "stop-markers-label"
@@ -338,6 +339,15 @@ export const StopMarkers = {
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
+    // A sheet that expands or collapses covers another part of the map, so
+    // the popups are placed again beside it.
+    this.sheetObserver = new ResizeObserver(() => { this.scheduleFollow() })
+    const sheet = document.getElementById(SHEET_ID)
+
+    if (sheet !== null) {
+      this.sheetObserver.observe(sheet)
+    }
+
     // Arrivals of a stop with neither a popup nor the view are dropped.
     this.events.handle("stop-arrivals:arrivals", (shown) => {
       const open = this.openPopups.get(shown.stop_id)
@@ -556,13 +566,20 @@ export const StopMarkers = {
       return {id: stopId, point: {x: Math.round(point.x), y: Math.round(point.y)}, size: this.popupSize(stop)}
     })
     const container = this.map.getContainer()
+    const view = {width: container.clientWidth, height: container.clientHeight}
+    const obstacles = riderPopupBoxes(this.map)
+
+    // The map fills the viewport, so the sheet's insets are the map's.
+    for (const covered of coveredBoxes({insets: sheetInsets(), view})) {
+      obstacles.push(covered)
+    }
 
     assertCondition(this.tipLength !== null, "a popup's size is known before the length of a popup's tip")
 
     return placePopups({
       popups,
-      obstacles: riderPopupBoxes(this.map),
-      view: {width: container.clientWidth, height: container.clientHeight},
+      obstacles,
+      view,
       tipLength: this.tipLength,
       gapPixels: POPUP_GAP_PIXELS
     })
@@ -834,6 +851,7 @@ export const StopMarkers = {
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.clearTimeout(this.followTimer)
+    this.sheetObserver.disconnect()
     this.events.release()
   }
 }

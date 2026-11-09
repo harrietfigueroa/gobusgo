@@ -6,6 +6,9 @@
 export const sides = ["above", "below", "left", "right"]
 const HALVING_DIVISOR = 2
 const SQUARE_EXPONENT = 2
+// A covered box reaches this many views' widths and heights from the
+// view's origin, past any popup the view places.
+const REACH_PAST_VIEW_FACTOR = 2
 
 // The box of a popup of `size`, the size of its content, that stands on
 // `side` of `point` with a tip of `tipLength` between the two.
@@ -122,6 +125,31 @@ function freeSide({popup, sidesTried, taken, view, tipLength, gapPixels}) {
   }
 
   return partial
+}
+
+/**
+ * The boxes of `view` that the panel sheet covers, as `insets` gives them:
+ * the left side the side panel covers, and the bottom a phone's sheet
+ * covers, each reaching past the view so that a popup crossing it anywhere
+ * crosses it. Given as obstacles to `placePopups`, they keep every popup
+ * where the rider sees it, with its button where focus shows.
+ * https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum — checked 2026-11-09
+ */
+export function coveredBoxes({insets, view}) {
+  const boxes = []
+
+  const farRight = view.width * REACH_PAST_VIEW_FACTOR
+  const farBottom = view.height * REACH_PAST_VIEW_FACTOR
+
+  if (insets.left > 0) {
+    boxes.push({left: -view.width, top: -view.height, right: insets.left, bottom: farBottom})
+  }
+
+  if (insets.bottom > 0) {
+    boxes.push({left: -view.width, top: view.height - insets.bottom, right: farRight, bottom: farBottom})
+  }
+
+  return boxes
 }
 
 // The side each popup of `popups` stands on, by the popup's `id`, so that
