@@ -42,6 +42,27 @@ defmodule GobusgoWeb.AccessibilityRulesTest do
     assert rules(document("<main>again</main>")) == [:main]
   end
 
+  test "a link before main, outside every landmark, breaks the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><a href="/give">Give</a><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == [:landmark]
+  end
+
+  test "a link in a header before main keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><header><a href="/give">Give</a></header><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == []
+  end
+
+  test "a hidden element outside every landmark keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h1>Page</h1></main><div role="status" hidden><p>New</p></div></body></html>)
+
+    assert rules(html) == []
+  end
+
   test "a reference to an identifier no element has breaks the reference rule" do
     assert rules(document(~s(<p aria-describedby="nowhere">x</p>))) == [:reference]
   end
