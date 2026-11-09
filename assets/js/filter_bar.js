@@ -4,6 +4,9 @@
 // that add and remove a value; this hook holds which suggestion is active,
 // which no render carries, and moves it from the keyboard.
 
+import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
+import {ConnectionKind} from "./connection_rules.js"
+
 const INPUT_SELECTOR = "[role=combobox]"
 const OPTION_SELECTOR = "[role=option]"
 const REMOVE_SELECTOR = ".filter-token-remove"
@@ -39,13 +42,33 @@ export const FilterBar = {
     this.input.addEventListener("keydown", (event) => { this.keydownCallback(event) })
     this.listbox.addEventListener("click", (event) => { this.optionClickCallback(event) })
     this.el.addEventListener("click", (event) => { this.barClickCallback(event) })
+    this.onConnectionChange = () => { this.followConnection() }
+    window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
     this.showActive()
+    this.followConnection()
   },
 
   // A render resets every attribute this hook writes, so the active
-  // suggestion is marked again, or none when the render no longer holds it.
+  // suggestion is marked again, or none when the render no longer holds it,
+  // and the bar is made read-only again while offline.
   updated() {
     this.showActive()
+    this.followConnection()
+  },
+
+  destroyed() {
+    window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+  },
+
+  // Offline the filter is read-only: the server answers no suggestion and
+  // no change, so the text box and the tokens' remove buttons are disabled.
+  followConnection() {
+    const isReadOnly = connectionState().kind === ConnectionKind.offline
+    this.input.disabled = isReadOnly
+
+    for (const button of this.el.querySelectorAll(REMOVE_SELECTOR)) {
+      button.disabled = isReadOnly
+    }
   },
 
   options() {

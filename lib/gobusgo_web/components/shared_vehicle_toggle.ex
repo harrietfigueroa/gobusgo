@@ -11,11 +11,14 @@ defmodule GobusgoWeb.SharedVehicleToggle do
   `#{@show_event}` when the rider checks it and `#{@hide_event}` when the
   rider clears it, keeps the rider's choice in the browser, and sends
   `#{@show_event}` on mount where the browser keeps the layer on. The
-  server renders the checkbox as the page holds the layer.
+  server renders the checkbox as the page holds the layer. While the page
+  is offline the hook disables the checkbox, and the stylesheet shows the
+  note that scooters and bikes need a connection.
   """
 
   use Phoenix.Component
 
+  alias GobusgoWeb.AppInfo
   alias GobusgoWeb.VehicleLive.SharedVehicles
 
   @doc """
@@ -46,7 +49,12 @@ defmodule GobusgoWeb.SharedVehicleToggle do
         <input id="shared-vehicles-shown" type="checkbox" checked={@shown} />
         Show shared scooters and bikes
       </label>
-      <ul :if={@shown} id="shared-vehicles-legend" class="flex flex-wrap gap-x-3 gap-y-1">
+      <p class="offline-note">{AppInfo.needs_connection(:shared_vehicles)}</p>
+      <ul
+        :if={@shown}
+        id="shared-vehicles-legend"
+        class="needs-connection flex flex-wrap gap-x-3 gap-y-1"
+      >
         <li :for={form <- @form_colors} class="flex items-center gap-1">
           <span
             class="inline-block h-3 w-3 rounded-full"
@@ -56,7 +64,13 @@ defmodule GobusgoWeb.SharedVehicleToggle do
           {form.label}
         </li>
       </ul>
-      <p :if={@status != nil} id="shared-vehicles-status" data-status={@status} aria-live="polite">
+      <p
+        :if={@status != nil}
+        id="shared-vehicles-status"
+        class="needs-connection"
+        data-status={@status}
+        aria-live="polite"
+      >
         {SharedVehicles.status_text(@status)}
       </p>
     </section>
