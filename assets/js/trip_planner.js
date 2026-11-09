@@ -315,7 +315,6 @@ export const TripPlanner = {
     for (const end of [TripEnd.from, TripEnd.to]) {
       const field = button({className: "trip-field"})
       field.id = `trip-${end}`
-      field.setAttribute("aria-haspopup", "true")
       field.setAttribute("aria-expanded", "false")
       field.setAttribute("aria-controls", `trip-${end}-menu`)
       field.append(element({tag: "span", className: `trip-dot trip-dot-${end}`}))
@@ -410,10 +409,20 @@ export const TripPlanner = {
     }
   },
 
+  // A field's list is a disclosure of plain buttons: closing a list that
+  // holds focus, as a choice, Escape, or "Pick a stop on the map" does,
+  // hands focus back to its field, so a keyboard keeps its place.
   closeMenus() {
     for (const end of [TripEnd.from, TripEnd.to]) {
-      this.menus[end].hidden = true
-      this.fields[end].field.setAttribute("aria-expanded", "false")
+      const menu = this.menus[end]
+      const {field} = this.fields[end]
+      const hasFocus = menu.contains(document.activeElement)
+      menu.hidden = true
+      field.setAttribute("aria-expanded", "false")
+
+      if (hasFocus) {
+        field.focus()
+      }
     }
 
     this.openMenu = null
