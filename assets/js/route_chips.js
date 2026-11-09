@@ -6,6 +6,8 @@
 const CHIP_ROW_CLASS_NAME = "popup-title route-chip-row"
 const CHIP_NOTE_CLASS_NAME = "route-chip-note"
 const CHIP_CLASS_NAME = "route-chip"
+const HIDDEN_TEXT_CLASS_NAME = "sr-only"
+const CLOSE_BUTTON_SELECTOR = ".maplibregl-popup-close-button"
 const DARK_TEXT_COLOR = "#0f172a"
 const LIGHT_TEXT_COLOR = "#ffffff"
 const HEX_DIGIT_COUNT = 6
@@ -107,16 +109,52 @@ export function chipElements({chips, countMax, emptyText}) {
   return elements
 }
 
+/**
+ * The text a popup's row adds after what it shows, hidden from sight, so
+ * its accessible name starts with its visible text, as speech input reads
+ * it, and goes on to name `itemName` and the `action` a press takes. A row
+ * with no chips shows the item's name already.
+ * https://www.w3.org/WAI/WCAG22/Understanding/label-in-name — checked 2026-11-09
+ */
+export function popupNameSuffix({hasChips, itemName, action}) {
+  if (hasChips) {
+    return `, ${itemName}: ${action}`
+  }
+
+  return `: ${action}`
+}
+
+/** The accessible name of the close button of the popup of `itemName`. */
+export function closeButtonName(itemName) {
+  return `Close ${itemName}`
+}
+
+// Names the close button MapLibre puts beside `content` once a popup has
+// been given it, after the popup's item; content outside a popup, or in a
+// popup with no close button, is left as it is.
+export function nameCloseButton({content, itemName}) {
+  const popupContent = content.parentElement
+
+  if (popupContent === null) {
+    return
+  }
+
+  const button = popupContent.querySelector(CLOSE_BUTTON_SELECTOR)
+
+  if (button !== null) {
+    button.setAttribute("aria-label", closeButtonName(itemName))
+  }
+}
+
 // A popup's content: the row of `chips` and of a note whose text starts as
-// `noteText`, which a click hands to `onSelect`. `label` names the row for
-// a screen reader. The note is returned to be written again, as a stop's
-// next arrival is when its arrivals come.
-export function compactPopupContent({chips, countMax, emptyText, noteText, label, onSelect}) {
+// `noteText`, which a click hands to `onSelect`. Hidden text after them
+// names `itemName` and the `action` a press takes. The note is returned to
+// be written again, as a stop's next arrival is when its arrivals come.
+export function compactPopupContent({chips, countMax, emptyText, noteText, itemName, action, onSelect}) {
   const content = document.createElement("div")
   const row = document.createElement("button")
   row.type = "button"
   row.className = CHIP_ROW_CLASS_NAME
-  row.setAttribute("aria-label", label)
 
   for (const element of chipElements({chips, countMax, emptyText})) {
     row.append(element)
@@ -126,6 +164,11 @@ export function compactPopupContent({chips, countMax, emptyText, noteText, label
   note.className = CHIP_NOTE_CLASS_NAME
   writeChipNote(note, noteText)
   row.append(note)
+
+  const suffix = document.createElement("span")
+  suffix.className = HIDDEN_TEXT_CLASS_NAME
+  suffix.textContent = popupNameSuffix({hasChips: chips.length > 0, itemName, action})
+  row.append(suffix)
 
   row.addEventListener("click", onSelect)
   content.append(row)
