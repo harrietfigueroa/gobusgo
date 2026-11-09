@@ -1,6 +1,8 @@
 # Builds the routing snapshots of the benchmark from the stored responses
 # under a data directory, through the application's own rebuilds and build:
-# the route rebuild fills the stop view from the stored stops-for-route
+# the agency view takes the newest stored agencies-with-coverage response
+# of the day, the route rebuild fills the route view and the stop view from
+# the stored routes-for-agency and stops-for-route
 # responses, the route schedule rebuild fills the schedule view from the
 # stored schedule-for-route responses, and one snapshot build writes the
 # files and prints the manifest.
@@ -13,6 +15,8 @@
 # manifest.json.
 
 alias Gobusgo.OneBusAway.{
+  AgencyBatch,
+  AgencyView,
   FetchView,
   RouteBatch,
   RoutePathBatch,
@@ -57,9 +61,11 @@ Logger.configure(level: :info)
 {:ok, _schedules} =
   RouteScheduleView.start_link(name: BenchmarkScheduleView, route_count_max: 5_000)
 
+{:ok, _agencies} = AgencyView.start_link(name: BenchmarkAgencyView, pubsub: BenchmarkPubSub)
 {:ok, _snapshots} = Gobusgo.Routing.Snapshots.start_link(name: BenchmarkSnapshots)
 
 subscribers = %{
+  "oba.agencies-with-coverage.state" => {AgencyView, :apply_records, [BenchmarkAgencyView]},
   "oba.routes.state" =>
     {FetchView, :apply_records_to_each, [[BenchmarkRouteView, BenchmarkRoutePathView]]},
   "oba.stops.state" => {StopView, :apply_records, [BenchmarkStopView]},
@@ -72,6 +78,22 @@ rebuild_options = [
   publish_options: [backend: Gobusgo.Publisher.InProcess, subscribers: subscribers]
 ]
 
+agency_prefix = "raw/oba/agencies-with-coverage/dt=#{Date.to_iso8601(DateTime.to_date(now))}/"
+
+{:ok, %{destinations: [agency_destination]}} =
+  Gobusgo.Reader.discover(
+    %{prefix: agency_prefix, limit: 1, order: :descending, cursor: nil},
+    Keyword.fetch!(rebuild_options, :read_options)
+  )
+
+IO.inspect(
+  AgencyBatch.process(agency_destination,
+    read_options: Keyword.fetch!(rebuild_options, :read_options),
+    publish_options: Keyword.fetch!(rebuild_options, :publish_options)
+  ),
+  label: "agency batch"
+)
+
 IO.inspect(RouteRebuild.run(rebuild_options), label: "route rebuild")
 IO.inspect(RouteScheduleRebuild.run(rebuild_options), label: "route schedule rebuild")
 
@@ -81,6 +103,8 @@ IO.inspect(RouteScheduleRebuild.run(rebuild_options), label: "route schedule reb
       server: BenchmarkSnapshots,
       schedule_view: BenchmarkScheduleView,
       stop_view: BenchmarkStopView,
+      route_view: BenchmarkRouteView,
+      agency_view: BenchmarkAgencyView,
       clock: fn -> now end,
       write_options: [backend: Gobusgo.Writer.LocalFile, base_dir: output_dir]
     )
