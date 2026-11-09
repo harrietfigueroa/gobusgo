@@ -147,6 +147,37 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "session_cookie/1" do
+    @fourteen_days_seconds 1_209_600
+    @one_day_seconds 86_400
+
+    test "says the cookie lasts the days it is given" do
+      assert AppInfo.session_cookie(@fourteen_days_seconds) =~ "for 14 days"
+    end
+
+    test "says the cookie holds only the token that protects the forms" do
+      assert AppInfo.session_cookie(@fourteen_days_seconds) =~
+               "holds only the security token that protects the page's forms"
+    end
+
+    test "says the server records nothing about the cookie" do
+      assert AppInfo.session_cookie(@fourteen_days_seconds) =~ "records nothing about it"
+    end
+
+    test "states the endpoint's cookie lifetime" do
+      day_count = div(GobusgoWeb.Endpoint.session_cookie_age_seconds(), @one_day_seconds)
+
+      assert AppInfo.session_cookie(GobusgoWeb.Endpoint.session_cookie_age_seconds()) =~
+               "for #{day_count} days"
+    end
+
+    test "refuses an age that is not whole days" do
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        AppInfo.session_cookie(@one_day_seconds + 1)
+      end
+    end
+  end
+
   describe "location/0" do
     test "says the rider's position stays in the browser" do
       assert AppInfo.location() =~ "never leaves your browser"
