@@ -126,6 +126,16 @@ function isSelectedTab(tab) {
   return tab.getAttribute("aria-selected") === "true"
 }
 
+// Whether `element` has been removed or hidden, which leaves focus that was
+// on it on the document's body.
+function isGone(element) {
+  if (!element.isConnected) {
+    return true
+  }
+
+  return element.closest("[hidden]") !== null
+}
+
 export const PanelSheet = {
   mounted() {
     this.handle = this.el.querySelector("#panel-sheet-handle")
@@ -172,8 +182,12 @@ export const PanelSheet = {
   // Opens the panel of the tab at `openIndex`, closes the others, and
   // expands the sheet. The open tab is the one a keyboard reaches. A tab
   // opened from the details view, as an alert line in it opens Alerts,
-  // closes the view.
+  // closes the view. A control that opened the tab from a panel it hides,
+  // or from the view it empties, hands focus to the opened tab, so a
+  // keyboard keeps its place.
   open(openIndex) {
+    const focused = document.activeElement
+    const wasFocusInSheet = focused !== null && this.el.contains(focused)
     closeDetail()
 
     for (const [index, tab] of this.tabs.entries()) {
@@ -189,6 +203,12 @@ export const PanelSheet = {
     }
 
     this.setExpanded(true)
+
+    const isFocusDropped = wasFocusInSheet && isGone(focused)
+
+    if (isFocusDropped) {
+      this.tabs[openIndex].focus()
+    }
   },
 
   // Opens the tab of the panel that holds `element`.
