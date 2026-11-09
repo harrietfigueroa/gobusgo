@@ -14,6 +14,7 @@
   --control-radius-inner: calc(var(--surface-radius) - var(--surface-border-width));
   --close-button-size: 28px;
   --close-button-hit-size: 44px;
+  --inline-target-size: 24px;
   --close-button-inset: 8px;
   --close-button-mark-size: 14px;
   --close-button-fill: #dc2626;
@@ -51,7 +52,9 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
-  --popup-selected-text-color: #ffffff;
+  --popup-selected-text-color: #0f172a;
+  --popup-selected-focus-color: var(--popup-selected-text-color);
+  --panel-sheet-filter-badge-color: #0f172a;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
   --filter-bar-height-min: 44px;
@@ -60,11 +63,13 @@
   --filter-suggestion-height-min: 44px;
   --filter-suggestion-active-fill: #dcfce7;
   --filter-kind-color: #475569;
+  --filter-kind-active-color: #475569;
   --trip-origin-color: #16a34a;
   --trip-destination-color: #dc2626;
   /* MapLibre's location dot is #1da1f2, which the cone repeats. */
   --rider-heading-color: rgb(29 161 242);
   --rider-heading-size: 72px;
+  --rider-dot-border-color: #334155;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -109,9 +114,11 @@
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
+  --filter-kind-active-color: #e2e8f0;
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
   --rider-heading-color: rgb(56 189 248);
+  --rider-dot-border-color: #ffffff;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -321,6 +328,11 @@
   box-shadow: 0 0 0 1px var(--popup-selected-text-color);
 }
 
+/* A focus ring inside the selected popup stands on its fill. */
+.popup-selected :focus-visible {
+  outline-color: var(--popup-selected-focus-color);
+}
+
 /* A popup's alert line is one line of the popup's width, cut with an
    ellipsis, so an alert's length leaves the popup's size as it is. The
    whole text is the button's title and the alerts panel's entry. */
@@ -349,6 +361,24 @@
   .popup-alert {
     min-height: var(--popup-alert-hit-size);
   }
+}
+
+/* A link or a toggle that stands on a line of its own, such as an alert's
+   disclosure or a setting's checkbox label, is at least 24px tall, and a
+   finger's size on a coarse pointer, with its line centered. */
+@media (pointer: coarse) {
+  :root {
+    --inline-target-size: var(--close-button-hit-size);
+  }
+}
+
+.inline-target {
+  min-height: var(--inline-target-size);
+  padding-block: max(0px, calc((var(--inline-target-size) - 1lh) / 2));
+}
+
+a.inline-target {
+  display: inline-block;
 }
 
 /* A map control's button is a finger's size at every width. */
@@ -679,6 +709,7 @@
 
 #panel-tab-filter-badge {
   background-color: var(--surface-border-color);
+  color: var(--panel-sheet-filter-badge-color);
 }
 
 #panel-tab-alerts-badge {
@@ -942,6 +973,11 @@
   background-color: var(--filter-suggestion-active-fill);
 }
 
+.filter-suggestion:hover .filter-kind,
+.filter-suggestion[aria-selected="true"] .filter-kind {
+  color: var(--filter-kind-active-color);
+}
+
 /* The Trip tab: the two ends beside the swap button, then the journeys,
    each a button that selects it, with the steps of the selected one under
    it. */
@@ -1003,6 +1039,13 @@
   background-color: var(--trip-destination-color);
 }
 
+/* MapLibre rings the rider's dot in white, which the light map's land
+   matches; the ring takes the theme's color, dark on the light map, as a
+   marker's stroke does. */
+.maplibregl-user-location-dot::after {
+  border-color: var(--rider-dot-border-color);
+}
+
 /* The cone on the rider's dot: a wedge centered on the top, fading out from
    the dot, whose width in degrees and turn the location hook sets. */
 .rider-heading-cone {
@@ -1027,6 +1070,14 @@
 
 .rider-heading-cone-shape[hidden] {
   display: none;
+}
+
+/* The location hook writes each turn's duration inline, so the rule takes
+   `!important` to hold the cone still wherever a turn comes from. */
+@media (prefers-reduced-motion: reduce) {
+  .rider-heading-cone-shape {
+    transition: none !important;
+  }
 }
 
 .trip-field-label {
@@ -1213,6 +1264,68 @@
     border-bottom-color: var(--surface-border-color);
     color: var(--panel-sheet-selected-color);
     font-weight: 600;
+  }
+}
+
+/* Forced colors replace the page's colors with the system's, which drops a
+   mark drawn by a fill, a background image, or a filter. Each such mark is
+   drawn here again in system colors, which forced colors keep. */
+@media (forced-colors: active) {
+  /* MapLibre swaps in its own icons for forced colors, which the dark
+     theme's filter would turn back to the colors of the canvas. */
+  .maplibregl-ctrl-icon {
+    filter: none;
+  }
+
+  /* The × is a mask over the button's text color, since forced colors
+     fill the button with the canvas color the white × is drawn in. */
+  .close-button,
+  .maplibregl-popup-close-button {
+    border: 1px solid ButtonText;
+    background-image: none;
+  }
+
+  .close-button::before,
+  .maplibregl-popup-close-button::before {
+    position: absolute;
+    inset: 0;
+    background-color: ButtonText;
+    content: "";
+    forced-color-adjust: none;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M2.5 2.5l9 9M11.5 2.5l-9 9'/%3E%3C/svg%3E")
+      center / var(--close-button-mark-size) no-repeat;
+  }
+
+  .popup-selected .maplibregl-popup-content,
+  .popup-selected .maplibregl-popup-tip {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+  }
+
+  .panel-detail-action[aria-pressed="true"],
+  .filter-suggestion[aria-selected="true"] {
+    background-color: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .filter-suggestion[aria-selected="true"] * {
+    color: HighlightText;
+  }
+
+  /* Forced colors draw a transparent border, so every tab's would show. */
+  .panel-sheet-tab {
+    border-bottom-color: Canvas;
+  }
+
+  .panel-sheet[data-expanded="true"] .panel-sheet-tab[aria-selected="true"] {
+    border-bottom-color: Highlight;
+  }
+
+  @media (width >= 48rem) {
+    .panel-sheet-tab[aria-selected="true"] {
+      border-bottom-color: Highlight;
+    }
   }
 }
 
