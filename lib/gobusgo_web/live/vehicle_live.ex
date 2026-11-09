@@ -188,6 +188,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.ServiceAlerts
   alias GobusgoWeb.ServiceAlertsPanel
   alias GobusgoWeb.SharedVehicleToggle
+  alias GobusgoWeb.StopArrivals
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
@@ -748,6 +749,7 @@ defmodule GobusgoWeb.VehicleLive do
       id="stop-markers"
       phx-hook="StopMarkers"
       data-auto-open-count-max={OpenStops.auto_open_count_max()}
+      data-arrival-count-max={StopArrivals.arrival_count_max()}
       hidden
     >
     </div>
