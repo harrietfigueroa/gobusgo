@@ -101,6 +101,21 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuildTest do
              [~D[2026-11-06], ~D[2026-11-07], ~D[2026-11-08]]
   end
 
+  test "fills the view processing one response at a time", context do
+    for {service_date, fetched_at, index} <- [
+          {~D[2026-11-06], ~U[2026-11-05 10:00:00Z], 1},
+          {~D[2026-11-07], ~U[2026-11-06 10:00:00Z], 2}
+        ] do
+      store(context, %{service_date: service_date, fetched_at: fetched_at, index: index})
+    end
+
+    assert %{processed_count: 2, failed_count: 0} =
+             RouteScheduleRebuild.run(context.options ++ [process_count_max: 1])
+
+    assert RouteScheduleView.service_dates(context.view, @route_id) ==
+             [~D[2026-11-06], ~D[2026-11-07]]
+  end
+
   test "leaves out a service date the view does not want today", context do
     store(context, %{service_date: ~D[2026-11-05], fetched_at: ~U[2026-11-05 10:00:00Z], index: 1})
 
