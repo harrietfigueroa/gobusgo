@@ -51,7 +51,46 @@ defmodule Gobusgo.Test.Accessibility do
       title_violations(document) ++
       main_violations(document) ++
       reference_violations(document) ++
-      name_violations(document)
+      name_violations(document) ++
+      description_list_violations(document)
+  end
+
+  @doc """
+  A `<dl>` holds `<dt>` and `<dd>` elements, directly or in `<div>` groups
+  that hold nothing else, and a `<dt>` or `<dd>` stands in such a list, so
+  a screen reader can count the terms and move through them.
+  https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element — checked 2026-11-09
+  """
+  @spec description_list_violations(LazyHTML.t()) :: [violation()]
+  def description_list_violations(document) do
+    list_children =
+      for child <- LazyHTML.query(document, "dl > *"),
+          LazyHTML.tag(child) not in [["dt"], ["dd"], ["div"], ["script"], ["template"]] do
+        {:description_list, "#{describe(child)} stands directly in a dl"}
+      end
+
+    group_children =
+      for child <- LazyHTML.query(document, "dl > div > *"),
+          LazyHTML.tag(child) not in [["dt"], ["dd"], ["script"], ["template"]] do
+        {:description_list, "#{describe(child)} stands in a dl's group"}
+      end
+
+    items =
+      LazyHTML.query(document, "dt, dd")
+      |> Enum.reject(&in_description_list?/1)
+      |> Enum.map(&{:description_list, "#{describe(&1)} stands outside a dl"})
+
+    list_children ++ group_children ++ items
+  end
+
+  defp in_description_list?(item) do
+    parent = LazyHTML.parent_node(item)
+
+    case LazyHTML.tag(parent) do
+      ["dl"] -> true
+      ["div"] -> parent |> LazyHTML.parent_node() |> LazyHTML.tag() == ["dl"]
+      _other -> false
+    end
   end
 
   @doc "The root element carries a `lang` attribute."

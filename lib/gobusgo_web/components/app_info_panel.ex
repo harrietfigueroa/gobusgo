@@ -232,16 +232,18 @@ defmodule GobusgoWeb.AppInfoPanel do
         trust its position:
       </p>
       <dl class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
-        <div
-          :for={status <- @statuses}
-          id={"app-info-status-#{status.status}"}
-          class="flex items-start gap-2"
-        >
-          <span class="mt-1 h-3 w-3 shrink-0 rounded-full" style={swatch_style(status)}></span>
-          <div>
-            <dt class="font-medium">{status.label}</dt>
-            <dd>{status.description}</dd>
-          </div>
+        <%!-- A group holds its term and definition alone, so the swatch
+        stands in the term, set in the group's left padding. --%>
+        <div :for={status <- @statuses} id={"app-info-status-#{status.status}"} class="relative pl-5">
+          <dt class="font-medium">
+            <span
+              class="absolute top-1 left-0 h-3 w-3 rounded-full"
+              style={swatch_style(status)}
+              aria-hidden="true"
+            ></span>
+            {status.label}
+          </dt>
+          <dd>{status.description}</dd>
         </div>
       </dl>
       <p>
