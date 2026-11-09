@@ -18,8 +18,12 @@ defmodule Gobusgo.Basemap.ExtractPlanTest do
     %{id: id, coverage: %{lat: lat, lon: lon, lat_span: lat_span, lon_span: lon_span}}
   end
 
-  defp plan(agencies, snapshot \\ @snapshot) do
-    ExtractPlan.build(%{agencies: Enum.map(agencies, &agency/1), snapshot: snapshot})
+  defp plan(agencies, snapshot \\ @snapshot, offline_zoom_max \\ nil) do
+    ExtractPlan.build(%{
+      agencies: Enum.map(agencies, &agency/1),
+      snapshot: snapshot,
+      offline_zoom_max: offline_zoom_max
+    })
   end
 
   describe "valid_snapshot?/1" do
@@ -34,6 +38,22 @@ defmodule Gobusgo.Basemap.ExtractPlanTest do
         ] do
       test "is #{expected} for #{inspect(snapshot)}" do
         assert ExtractPlan.valid_snapshot?(unquote(snapshot)) == unquote(expected)
+      end
+    end
+  end
+
+  describe "valid_offline_zoom_max?/1" do
+    for {zoom, expected} <- [
+          {13, true},
+          {0, true},
+          {14, true},
+          {15, false},
+          {-1, false},
+          {13.0, false},
+          {"13", false}
+        ] do
+      test "is #{expected} for #{inspect(zoom)}" do
+        assert ExtractPlan.valid_offline_zoom_max?(unquote(zoom)) == unquote(expected)
       end
     end
   end
@@ -107,6 +127,29 @@ defmodule Gobusgo.Basemap.ExtractPlanTest do
         plan([@west], "latest")
       end
     end
+
+    test "plans no offline extract when no offline zoom bound is given" do
+      assert [%{offline: nil}] = plan([@west]).archives
+    end
+
+    test "plans an offline extract of each archive, named for its zoom bound" do
+      assert [
+               %{
+                 name: "basemap-20261004-01.pmtiles",
+                 offline: %{name: "basemap-20261004-01-z13.pmtiles", zoom_max: 13}
+               },
+               %{
+                 name: "basemap-20261004-02.pmtiles",
+                 offline: %{name: "basemap-20261004-02-z13.pmtiles", zoom_max: 13}
+               }
+             ] = plan([@east, @west], @snapshot, 13).archives
+    end
+
+    test "raises for an offline zoom bound that is not below the archive's" do
+      assert_raise AssertionError, ~r/offline zoom/, fn ->
+        plan([@west], @snapshot, 15)
+      end
+    end
   end
 
   describe "extract_arguments/1" do
@@ -124,6 +167,23 @@ defmodule Gobusgo.Basemap.ExtractPlanTest do
                "/out/basemap.pmtiles",
                "--bbox=#{bounds.west},#{bounds.south},#{bounds.east},#{bounds.north}",
                "--maxzoom=15"
+             ]
+    end
+  end
+
+  describe "offline_extract_arguments/1" do
+    test "cuts the zooms up to the offline bound out of the extracted archive" do
+      [%{offline: offline}] = plan([@west], @snapshot, 13).archives
+
+      assert ExtractPlan.offline_extract_arguments(%{
+               offline: offline,
+               archive_path: "/out/basemap-20261004-01.pmtiles",
+               output_path: "/out/basemap-20261004-01-z13.pmtiles.partial"
+             }) == [
+               "extract",
+               "/out/basemap-20261004-01.pmtiles",
+               "/out/basemap-20261004-01-z13.pmtiles.partial",
+               "--maxzoom=13"
              ]
     end
   end
@@ -166,6 +226,31 @@ defmodule Gobusgo.Basemap.ExtractPlanTest do
                ],
                "skipped" => [%{"agencyId" => "missing", "reason" => "coverage_missing"}]
              }
+    end
+
+    test "records each archive's offline extract with its size and zoom bound" do
+      plan = plan([@west], @snapshot, 13)
+
+      assert %{
+               "archives" => [
+                 %{
+                   "name" => "basemap-20261004-01.pmtiles",
+                   "offline" => %{
+                     "name" => "basemap-20261004-01-z13.pmtiles",
+                     "bytes" => 345,
+                     "zoomMax" => 13
+                   }
+                 }
+               ]
+             } =
+               ExtractPlan.manifest(%{
+                 plan: plan,
+                 archive_bytes: %{
+                   "basemap-20261004-01.pmtiles" => 1_234,
+                   "basemap-20261004-01-z13.pmtiles" => 345
+                 },
+                 response_destination: "a"
+               })
     end
 
     test "names the field of an invalid coverage" do

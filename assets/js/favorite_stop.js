@@ -6,6 +6,7 @@ import {FIT_EVENT_DATA, READY_EVENT_NAME} from "./basemap"
 import {COLLAPSE_EVENT_NAME, sheetInsets} from "./panel_sheet"
 import {AUTO_OPEN_ZOOM_MIN} from "./open_stop_budget"
 import {dropIndex, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
+import {pageEvents} from "./page_events"
 
 // The rider's favorite stops, which the stored settings module keeps as
 // each stop's identifier and name, in the rider's order, and the panel that
@@ -177,7 +178,8 @@ export const FavoriteStop = {
     this.drag = null
     this.map = null
     this.positionRequestCount = 0
-    this.push = (event, payload) => { this.pushEvent(event, payload) }
+    this.events = pageEvents(this)
+    this.push = (name, payload) => { this.events.push({name, payload}) }
 
     this.list = document.createElement("div")
     this.list.className = "flex flex-col gap-2"
@@ -195,7 +197,7 @@ export const FavoriteStop = {
     this.onBasemapReady = (event) => { this.map = event.detail.map }
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
 
-    this.handleEvent("stop-arrivals:arrivals", (shown) => {
+    this.events.handle("stop-arrivals:arrivals", (shown) => {
       const entry = this.entries.get(shown.stop_id)
 
       if (entry !== undefined) {
@@ -205,12 +207,13 @@ export const FavoriteStop = {
       }
     })
 
+    // The page that is live again knows nothing of the stops this hook has
+    // open, and is told them again.
+    this.events.whenLive(() => { this.sendOpenStops() })
     this.show(storedFavorites())
   },
 
-  // The page that connects again knows nothing of the stops this hook has
-  // open, and is told them again.
-  reconnected() {
+  sendOpenStops() {
     for (const stopId of this.entries.keys()) {
       holdStop({pushEvent: this.push, stopId, holder: FAVORITE_HOLDER})
     }
@@ -399,13 +402,15 @@ export const FavoriteStop = {
     const requestCount = this.positionRequestCount + 1
     this.positionRequestCount = requestCount
 
-    this.pushEvent(POSITION_EVENT_NAME, {stop_id: stopId}, (reply) => {
+    const onReply = (reply) => {
       const isLatest = requestCount === this.positionRequestCount
 
       if (isLatest) {
         this.centerOn(reply)
       }
-    })
+    }
+
+    this.events.push({name: POSITION_EVENT_NAME, payload: {stop_id: stopId}, onReply})
   },
 
   // On a phone the sheet collapses first, so the stop stands in the part of
@@ -459,5 +464,6 @@ export const FavoriteStop = {
   destroyed() {
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
+    this.events.release()
   }
 }

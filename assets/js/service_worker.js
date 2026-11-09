@@ -1,6 +1,8 @@
 // The service worker. It stores the release's stylesheet, script, and map
 // library when it installs, keeps the basemap's fonts and sprites as the
-// page asks for them, keeps the latest copy of the network-first paths, and
+// page asks for them, answers the routing snapshot and tile files from the
+// saved offline bundle first and the basemap's offline extract from the
+// saved map first, keeps the latest copy of the network-first paths, and
 // answers a page it cannot fetch with the offline screen.
 //
 // A new worker waits after it installs, so a page keeps the release it
@@ -13,17 +15,39 @@
 // basemap's fonts and sprites.
 
 import {assertCondition, unreachable} from "./assert.js"
-import {MessageKind, StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "./service_worker_strategy.js"
+import {OFFLINE_BASEMAP_CACHE_NAME} from "./offline_basemap.js"
+import {OFFLINE_SCHEDULES_CACHE_NAME} from "./offline_bundle.js"
+import {answerNetworkFirst, answerSavedFile, savedFileReader, storedOf} from "./saved_files.js"
+import {CacheRole, MessageKind, StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "./service_worker_strategy.js"
 import {OFFLINE_SCREEN} from "./offline_screen.js"
 
 const NETWORK_TIMEOUT_MS = 15 * 1000
 const OFFLINE_STATUS = 503
+// The saved files whose stored bodies are held between requests: the tile
+// archive, which a map reads in many ranges, and a few more.
+const HELD_FILE_COUNT_MAX = 4
+// The saved map holds one extract, which a map reads in many ranges.
+const HELD_BASEMAP_COUNT_MAX = 1
 
 const build = SERVICE_WORKER_BUILD
 assertCondition(typeof build.release === "string", "the build must name a release, got: " + String(build.release))
 assertCondition(Array.isArray(build.precachePaths), "the build must name the paths to store")
 
 const names = cacheNames({release: build.release, basemapAssetsId: build.basemapAssetsId})
+
+// CacheStorage's match with a cache name opens no cache, so a read never
+// makes a store that the rider turned off.
+function savedFileReaderOf({cacheName, heldCountMax}) {
+  async function readStored(path) {
+    const response = await caches.match(path, {cacheName})
+    return storedOf(response)
+  }
+
+  return savedFileReader({readStored, heldCountMax})
+}
+
+const savedFiles = savedFileReaderOf({cacheName: OFFLINE_SCHEDULES_CACHE_NAME, heldCountMax: HELD_FILE_COUNT_MAX})
+const savedBasemap = savedFileReaderOf({cacheName: OFFLINE_BASEMAP_CACHE_NAME, heldCountMax: HELD_BASEMAP_COUNT_MAX})
 
 async function precache() {
   const cache = await caches.open(names.release)
@@ -76,26 +100,58 @@ async function cacheFirst({cacheName, path, request}) {
   return response
 }
 
-async function networkFirst({path, request}) {
-  try {
-    const response = await fetchWithTimeout(request)
-
-    if (response.ok) {
-      const copy = response.clone()
-      await storeResponse({cacheName: names.release, path, response: copy})
-    }
-
-    return response
-  } catch (error) {
-    const cache = await caches.open(names.release)
-    const cached = await cache.match(path)
-
-    if (cached === undefined) {
-      throw error
-    }
-
-    return cached
+function cacheNameOf(role) {
+  switch (role) {
+    case CacheRole.release:
+      return names.release
+    case CacheRole.offlineSchedules:
+      return OFFLINE_SCHEDULES_CACHE_NAME
+    case CacheRole.offlineBasemap:
+      return OFFLINE_BASEMAP_CACHE_NAME
+    default:
+      return unreachable(role, "cache role")
   }
+}
+
+function savedReaderOf(role) {
+  switch (role) {
+    case CacheRole.offlineSchedules:
+      return savedFiles
+    case CacheRole.offlineBasemap:
+      return savedBasemap
+    case CacheRole.release:
+      return unreachable(role, "a saved file is never read from the release's cache")
+    default:
+      return unreachable(role, "cache role")
+  }
+}
+
+async function readFallback(fallback) {
+  const cacheName = cacheNameOf(fallback.cache)
+  const response = await caches.match(fallback.path, {cacheName})
+  return storedOf(response)
+}
+
+function networkFirst({path, fallbacks, request}) {
+  function fetchNetwork() {
+    return fetchWithTimeout(request)
+  }
+
+  function storeCopy(response) {
+    return storeResponse({cacheName: names.release, path, response})
+  }
+
+  return answerNetworkFirst({fetchNetwork, fallbacks, readStored: readFallback, storeCopy})
+}
+
+function savedFile({path, cache, request}) {
+  function fetchNetwork() {
+    return fetchWithTimeout(request)
+  }
+
+  const rangeHeader = request.headers.get("range")
+  const reader = savedReaderOf(cache)
+  return answerSavedFile({path, rangeHeader, reader, fetchNetwork})
 }
 
 async function navigation(request) {
@@ -125,8 +181,11 @@ function fetched(event) {
     case StrategyKind.basemapAsset:
       event.respondWith(cacheFirst({cacheName: names.basemapAssets, path: strategy.path, request}))
       break
+    case StrategyKind.savedFile:
+      event.respondWith(savedFile({path: strategy.path, cache: strategy.cache, request}))
+      break
     case StrategyKind.networkFirst:
-      event.respondWith(networkFirst({path: strategy.path, request}))
+      event.respondWith(networkFirst({path: strategy.path, fallbacks: strategy.fallbacks, request}))
       break
     case StrategyKind.navigation:
       event.respondWith(navigation(request))

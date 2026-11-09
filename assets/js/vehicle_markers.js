@@ -13,6 +13,7 @@ import {
   updateDetail
 } from "./panel_detail"
 import {revealOnMap} from "./panel_sheet"
+import {pageEvents} from "./page_events"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -345,13 +346,15 @@ export const VehicleMarkers = {
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
 
-    this.handleEvent("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
+    this.events = pageEvents(this)
+
+    this.events.handle("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
       this.markersByAgency.set(agencyId, markers)
       this.draw()
       this.updateView(markers)
     })
 
-    this.pushEvent("vehicle-markers:ready", {})
+    this.events.push({name: "vehicle-markers:ready", payload: {}})
   },
 
   attach(map, maplibre) {
@@ -610,5 +613,6 @@ export const VehicleMarkers = {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    this.events.release()
   }
 }

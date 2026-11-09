@@ -38,6 +38,7 @@
   --panel-sheet-tab-height: 52px;
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
+  --connection-signal-age-color: #334155;
   --panel-sheet-grip-color: #94a3b8;
   --panel-sheet-rule-color: #cbd5e1;
   --panel-sheet-chip-fill: #e2e8f0;
@@ -88,6 +89,7 @@
   --route-chip-outline: 0 0 0 1px #e2e8f0;
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.5);
   --panel-sheet-text-color: #e2e8f0;
+  --connection-signal-age-color: #cbd5e1;
   --panel-sheet-grip-color: #64748b;
   --panel-sheet-rule-color: #334155;
   --panel-sheet-chip-fill: #1e293b;
@@ -452,6 +454,108 @@
 @media (width >= 48rem) {
   .donation-button-map {
     left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
+  }
+}
+
+/* The offline signal stands at the top of the map, centered between the
+   donation button and the map's controls, and from the md breakpoint up
+   centered on the part of the map beside the panel. It shows only while
+   the document's root element says the page is offline, and never moves
+   or fades. Its text keeps the panel sheet's colors, at a contrast of
+   4.5:1 or more against the surface fill in both themes. */
+.connection-signal {
+  position: fixed;
+  top: var(--donation-button-inset);
+  left: 50%;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  /* Standing at the middle, the box would otherwise shrink to the half of
+     the viewport right of it. */
+  width: max-content;
+  max-width: calc(100vw - 2 * (var(--donation-button-inset) + var(--map-control-size) + 8px));
+  min-height: var(--map-control-size);
+  padding: 4px 12px;
+  box-shadow: var(--control-shadow);
+  color: var(--panel-sheet-text-color);
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-align: left;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+:root[data-connection="offline"] .connection-signal {
+  display: flex;
+}
+
+@media (width >= 48rem) {
+  .connection-signal {
+    left: calc((100vw + 2 * var(--panel-sheet-margin) + var(--panel-sheet-width)) / 2);
+    max-width: calc(100vw - 2 * var(--panel-sheet-margin) - var(--panel-sheet-width) - 2 * (var(--donation-button-inset) + var(--map-control-size) + 8px));
+  }
+}
+
+.connection-signal:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 2px;
+}
+
+.connection-signal-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.connection-signal-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.connection-signal-age {
+  color: var(--connection-signal-age-color);
+  font-weight: 400;
+}
+
+/* What needs a connection is hidden while the page is offline, and a note
+   saying so is shown in its place. The badges of the Alerts and Favorites
+   tabs and the alert lines of the details view are hidden with it. */
+.offline-note,
+.offline-prefix {
+  display: none;
+}
+
+:root[data-connection="offline"] .offline-note {
+  display: block;
+}
+
+:root[data-connection="offline"] .needs-connection,
+:root[data-connection="offline"] .panel-detail-alerts,
+:root[data-connection="offline"] #panel-tab-alerts-badge,
+:root[data-connection="offline"] #favorite-stop-badge {
+  display: none;
+}
+
+/* While the page shows a trip's filter for itself, offline, its own summary
+   line stands in place of the server's. */
+:root[data-local-trip] #panel-sheet-summary > p:not(.local-trip-summary) {
+  display: none;
+}
+
+/* On a phone the signal and the collapsed sheet stand at opposite ends of
+   the screen, so the sheet's summary line says offline as well. */
+@media (width < 48rem) {
+  :root[data-connection="offline"] .offline-prefix {
+    display: inline;
+    font-weight: 600;
   }
 }
 

@@ -7,25 +7,34 @@
 // the copies kept of the network-first paths, and one per content of the
 // basemap's fonts and sprites, which outlives a release while the archive is
 // the same. Any other cache belongs to another part of the page and is
-// never deleted here.
+// never deleted here; the offline schedules' cache and the saved map's are
+// read, never written.
+
+import {BUNDLE_MANIFEST_PATH} from "./offline_bundle.js"
 
 const RELEASE_CACHE_PREFIX = "gobusgo-release-"
 const BASEMAP_ASSETS_CACHE_PREFIX = "gobusgo-basemap-assets-"
 const BASEMAP_ASSETS_PATH_PREFIX = "/vendor/basemaps-assets/"
+const SAVED_FILE_PATH_PREFIXES = Object.freeze(["/tiles/", "/routing/"])
+// A basemap offline extract, which the saved map holds. The full archives
+// beside it match no pattern here and are left to the network.
+const OFFLINE_BASEMAP_PATH_PATTERN = /^\/basemap\/basemap-[0-9]{8}-[0-9]{2}-z[0-9]{1,2}\.pmtiles$/
 const SOCKET_PATH = "/live"
-const NETWORK_FIRST_PATHS = Object.freeze(["/api/routing/manifest"])
+const MANIFEST_PATH = "/api/routing/manifest"
 const OWNED_CACHE_PREFIXES = Object.freeze([RELEASE_CACHE_PREFIX, BASEMAP_ASSETS_CACHE_PREFIX])
 
 /**
  * The kinds of answer: from the release's cache, falling back to the
  * network; from the basemap assets' cache, stored on first use; from the
- * network, falling back to the stored copy; a page from the network, falling
- * back to the offline screen; or no answer, which leaves the request to the
+ * offline schedules' cache or the saved map's, falling back to the network; from the network,
+ * falling back to the stored copies; a page from the network, falling back
+ * to the offline screen; or no answer, which leaves the request to the
  * browser.
  */
 export const StrategyKind = Object.freeze({
   precached: "precached",
   basemapAsset: "basemapAsset",
+  savedFile: "savedFile",
   networkFirst: "networkFirst",
   navigation: "navigation",
   untouched: "untouched"
@@ -33,6 +42,17 @@ export const StrategyKind = Object.freeze({
 
 /** The messages a page sends the worker: take over from the worker in use. */
 export const MessageKind = Object.freeze({activate: "activate"})
+
+/** The caches a stored copy is read from: the release's, the offline schedules', or the saved map's. */
+export const CacheRole = Object.freeze({release: "release", offlineSchedules: "offlineSchedules", offlineBasemap: "offlineBasemap"})
+
+// The routing manifest's stored copies, in the order they are tried without
+// a network: the saved bundle's own, which names only files the bundle
+// holds, then the latest one fetched.
+const MANIFEST_FALLBACKS = Object.freeze([
+  Object.freeze({cache: CacheRole.offlineSchedules, path: BUNDLE_MANIFEST_PATH}),
+  Object.freeze({cache: CacheRole.release, path: MANIFEST_PATH})
+])
 
 /** The names of the caches of `release` and of the basemap assets `basemapAssetsId`. */
 export function cacheNames({release, basemapAssetsId}) {
@@ -46,11 +66,26 @@ function isSocketPath(pathname) {
   return pathname === SOCKET_PATH || pathname.startsWith(SOCKET_PATH + "/")
 }
 
+function isSavedFilePath(pathname) {
+  for (const prefix of SAVED_FILE_PATH_PREFIXES) {
+    if (pathname.startsWith(prefix)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 /**
  * How the worker of origin `origin`, which stores `precachePaths` when it
  * installs, answers a request of `method` for `url` in `mode`. A kind that
  * reads a cache carries the `path` it is stored under: the address without
- * its query, since a digested asset's query adds nothing to its name.
+ * its query, since a digested asset's query adds nothing to its name. The
+ * network-first kind also carries the stored copies it falls back to, in
+ * order, and the saved-file kind the `cache` its file is saved in. The
+ * routing snapshot and tile files and the basemap's offline extract are
+ * answered from their saved copy first online too, since each file's
+ * address holds one content.
  */
 export function requestStrategy({method, url, mode, origin, precachePaths}) {
   const target = new URL(url)
@@ -76,8 +111,16 @@ export function requestStrategy({method, url, mode, origin, precachePaths}) {
     return {kind: StrategyKind.basemapAsset, path}
   }
 
-  if (NETWORK_FIRST_PATHS.includes(path)) {
-    return {kind: StrategyKind.networkFirst, path}
+  if (isSavedFilePath(path)) {
+    return {kind: StrategyKind.savedFile, path, cache: CacheRole.offlineSchedules}
+  }
+
+  if (OFFLINE_BASEMAP_PATH_PATTERN.test(path)) {
+    return {kind: StrategyKind.savedFile, path, cache: CacheRole.offlineBasemap}
+  }
+
+  if (path === MANIFEST_PATH) {
+    return {kind: StrategyKind.networkFirst, path, fallbacks: MANIFEST_FALLBACKS}
   }
 
   if (mode === "navigate") {

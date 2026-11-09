@@ -10,6 +10,7 @@ defmodule GobusgoWeb.AppInfo do
   how it uses the rider's location,
   how it keeps favorite stops,
   how it keeps the theme,
+  what works offline and what needs a connection,
   how it uses shared scooter and bike data,
   what donations fund,
   what it records of a page connection, the terms that data is provided under, and
@@ -116,6 +117,30 @@ defmodule GobusgoWeb.AppInfo do
                        "on your device for offline use. It saves them after the page has " <>
                        "loaded and updates them while you are online, and turning this off " <>
                        "removes them."
+
+  @megabyte_bytes 1_000_000
+
+  @needs_connection %{
+    arrivals: "Live arrivals need a connection",
+    alerts: "Service alerts need a connection",
+    suggestions: "Suggestions need a connection",
+    shared_vehicles: "Scooters and bikes need a connection"
+  }
+
+  # The parts of the page that need a connection, in the order the offline
+  # section lists them.
+  @needs_connection_order [:arrivals, :alerts, :suggestions, :shared_vehicles]
+
+  @offline_works [
+    "The map keeps the route lines, stops, and vehicles it has drawn. The vehicles stay " <>
+      "where they were last seen and do not move.",
+    "With Save the map for offline use on, the map draws its streets and places from " <>
+      "the saved map. With it off, the route lines and stops stand on an empty background.",
+    "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
+      "stays as it is until you are back online.",
+    "From the saved schedules you can still plan a trip and center the map on a favorite " <>
+      "stop, and a trip's routes are shown on the map."
+  ]
 
   @theme "Your browser remembers the theme you choose, and Match system follows the light " <>
            "or dark setting of your device while the page is open. Gobusgo's server never " <>
@@ -309,6 +334,37 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page saves schedules for offline use."
   @spec offline_schedules() :: String.t()
   def offline_schedules, do: @offline_schedules
+
+  @doc """
+  The statement of how a map page saves the map for offline use, with the
+  size of the saved copy, `bytes`, in whole megabytes.
+  """
+  @spec offline_basemap(%{bytes: non_neg_integer()}) :: String.t()
+  def offline_basemap(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+    megabytes = div(bytes + div(@megabyte_bytes, 2), @megabyte_bytes)
+
+    "With this on, your browser saves a copy of the map of the region, about " <>
+      "#{megabytes} MB, so the map draws its streets and places while you are offline, " <>
+      "with less detail close in. It saves the copy after the page has loaded, and " <>
+      "turning this off removes it."
+  end
+
+  @doc """
+  What a map page does while it is offline: `works`, the sentences of what
+  still works, and `needs_connection`, one sentence per part of the page
+  that needs a connection, each the text that part says in place.
+  """
+  @spec offline() :: %{works: [String.t()], needs_connection: [String.t()]}
+  def offline do
+    %{
+      works: @offline_works,
+      needs_connection: for(part <- @needs_connection_order, do: needs_connection(part) <> ".")
+    }
+  end
+
+  @doc "The text a part of a map page says in place while the page is offline."
+  @spec needs_connection(:arrivals | :alerts | :suggestions | :shared_vehicles) :: String.t()
+  def needs_connection(part), do: Map.fetch!(@needs_connection, part)
 
   @doc "The statement of how a map page keeps a rider's theme setting."
   @spec theme() :: String.t()

@@ -164,7 +164,7 @@ defmodule GobusgoWeb.VehicleLivePanelSheetTest do
   defp summary_parts(view) do
     view
     |> fragment("#panel-sheet-summary")
-    |> LazyHTML.query("p > span")
+    |> LazyHTML.query("p > span:not(.offline-prefix)")
     |> Enum.map(&LazyHTML.text/1)
   end
 

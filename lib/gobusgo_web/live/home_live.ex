@@ -6,11 +6,13 @@ defmodule GobusgoWeb.HomeLive do
 
   use Phoenix.LiveView
 
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
 
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
+    <ConnectionSignal.state_hook />
     <DonationButton.button class="donation-button-page" />
     <main class="mx-auto max-w-2xl p-8">
       <h1 class="text-2xl font-semibold">Gobusgo</h1>

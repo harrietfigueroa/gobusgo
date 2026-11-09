@@ -15,7 +15,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The five mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The six mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -136,10 +136,36 @@ jobs:
       - if: failure()
         run: docker logs gobusgo-ci
 
+  # Starts the image under production's memory limit against synthetic schedules of production's size, and fails when the container's anonymous memory passes the threshold of Gobusgo.StartMemory.
+  start-memory:
+    name: start-memory
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      # The runner's architecture is in the key, since the other mix jobs build for another one.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: docker build --platform linux/arm64 --tag gobusgo:start-memory .
+      - run: mix gobusgo.start_memory --image gobusgo:start-memory
+
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, image]
+    needs: [compile, format, test, assets, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:

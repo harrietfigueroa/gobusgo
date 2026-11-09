@@ -1,3 +1,4 @@
+import {assertCondition} from "./assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {placePopups} from "./popup_placement"
@@ -8,7 +9,7 @@ import {
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
 import {compactPopupContent, writeChipNote} from "./route_chips"
-import {nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {NEEDS_CONNECTION_CLASS_NAME, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
 import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
@@ -21,6 +22,7 @@ import {
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
 import {isPicking, pickStop} from "./trip_ends"
 import {revealOnMap} from "./panel_sheet"
+import {pageEvents} from "./page_events"
 import {
   addSource,
   CHANGE_EVENT_NAME,
@@ -169,9 +171,10 @@ export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
 
 // A popup's compact content: the stop's first route numbers and, in the
 // note beside them, its next arrival once the page has sent its arrivals.
-// A click on it hands the stop to `onSelect`.
+// A click on it hands the stop to `onSelect`. The next arrival is a live
+// one, so the stylesheet hides the note while the page is offline.
 function popupElements({stop, noteText, onSelect}) {
-  return compactPopupContent({
+  const elements = compactPopupContent({
     chips: stop.routeChips,
     countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
@@ -179,6 +182,9 @@ function popupElements({stop, noteText, onSelect}) {
     label: `${suppliedName(stop)}: show the stop`,
     onSelect
   })
+
+  elements.note.classList.add(NEEDS_CONNECTION_CLASS_NAME)
+  return elements
 }
 
 function favoriteStopId(favorite) {
@@ -251,7 +257,8 @@ export const StopMarkers = {
     this.popupSizes = new Map()
     this.tipLength = null
     this.zoom = null
-    this.push = (event, payload) => { this.pushEvent(event, payload) }
+    this.events = pageEvents(this)
+    this.push = (name, payload) => { this.events.push({name, payload}) }
     // The most stops on screen whose popups open by themselves, which the
     // page's element carries.
     this.autoOpenCountMax = Number(this.el.dataset.autoOpenCountMax)
@@ -332,7 +339,7 @@ export const StopMarkers = {
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
     // Arrivals of a stop with neither a popup nor the view are dropped.
-    this.handleEvent("stop-arrivals:arrivals", (shown) => {
+    this.events.handle("stop-arrivals:arrivals", (shown) => {
       const open = this.openPopups.get(shown.stop_id)
       const isViewStop = this.view !== null && this.view.stop.id === shown.stop_id
 
@@ -346,11 +353,13 @@ export const StopMarkers = {
         writeArrivals(this.view.arrivalsElement, shown)
       }
     })
+
+    // The page that is live again knows nothing of the stops this hook has
+    // open, and is told them again.
+    this.events.whenLive(() => { this.sendOpenStops() })
   },
 
-  // The page that connects again knows nothing of the stops this hook has
-  // open, and is told them again.
-  reconnected() {
+  sendOpenStops() {
     const stopIds = new Set(this.openPopups.keys())
 
     if (this.view !== null) {
@@ -358,7 +367,7 @@ export const StopMarkers = {
     }
 
     for (const stopId of stopIds) {
-      this.pushEvent("stop-arrivals:open", {stop_id: stopId})
+      this.events.push({name: "stop-arrivals:open", payload: {stop_id: stopId}})
     }
   },
 
@@ -547,9 +556,7 @@ export const StopMarkers = {
     })
     const container = this.map.getContainer()
 
-    if (this.tipLength === null) {
-      throw new Error("a popup's size is known before the length of a popup's tip")
-    }
+    assertCondition(this.tipLength !== null, "a popup's size is known before the length of a popup's tip")
 
     return placePopups({
       popups,
@@ -826,5 +833,6 @@ export const StopMarkers = {
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.clearTimeout(this.followTimer)
+    this.events.release()
   }
 }

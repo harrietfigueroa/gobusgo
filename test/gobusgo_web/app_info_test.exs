@@ -250,6 +250,88 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "offline_basemap/1" do
+    for {bytes, size} <- [
+          {34_355_445, "about 34 MB"},
+          {33_500_000, "about 34 MB"},
+          {1_499_999, "about 1 MB"}
+        ] do
+      test "states the size of #{bytes} bytes as #{size}" do
+        assert AppInfo.offline_basemap(%{bytes: unquote(bytes)}) =~ unquote(size)
+      end
+    end
+
+    test "says the saved map has less detail close in" do
+      assert AppInfo.offline_basemap(%{bytes: 1}) =~ "with less detail close in"
+    end
+
+    test "says the saving waits for the page to load and turning it off removes the copy" do
+      text = AppInfo.offline_basemap(%{bytes: 1})
+
+      assert text =~ "after the page has loaded"
+      assert text =~ "turning this off removes it"
+    end
+  end
+
+  describe "offline/0" do
+    test "says the map draws its background offline only from a saved map" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "Save the map for offline use"))
+    end
+
+    test "says the map keeps what it has drawn and its vehicles stop moving" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "keeps the route lines, stops, and vehicles it has drawn"))
+      assert Enum.any?(works, &(&1 =~ "do not move"))
+    end
+
+    test "says the browser keeps the favorites, the filter, and the settings" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "favorite stops, your filter, and your settings"))
+    end
+
+    test "says trip planning and centering on a favorite work from the saved schedules" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "plan a trip and center the map on a favorite stop"))
+    end
+
+    test "lists each thing that needs a connection by the text it says in place" do
+      %{needs_connection: needs_connection} = AppInfo.offline()
+
+      assert needs_connection ==
+               Enum.map(
+                 [:arrivals, :alerts, :suggestions, :shared_vehicles],
+                 &(AppInfo.needs_connection(&1) <> ".")
+               )
+    end
+  end
+
+  describe "needs_connection/1" do
+    test "names each part of the page that needs a connection, in the decided terms" do
+      texts = %{
+        arrivals: "Live arrivals need a connection",
+        alerts: "Service alerts need a connection",
+        suggestions: "Suggestions need a connection",
+        shared_vehicles: "Scooters and bikes need a connection"
+      }
+
+      for {part, text} <- texts do
+        assert AppInfo.needs_connection(part) == text
+      end
+    end
+
+    test "says the same of live arrivals as the arrivals' texts in the browser" do
+      source = File.read!("assets/js/stop_arrivals.js")
+
+      assert source =~
+               ~s(const ARRIVALS_NEED_CONNECTION = "#{AppInfo.needs_connection(:arrivals)}")
+    end
+  end
+
   describe "theme/0" do
     test "says the browser remembers the theme" do
       assert AppInfo.theme() =~ "Your browser remembers the theme you choose"

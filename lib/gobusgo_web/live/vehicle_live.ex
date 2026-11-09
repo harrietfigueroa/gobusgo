@@ -176,6 +176,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.Usage
   alias GobusgoWeb.AppInfoPanel
   alias GobusgoWeb.BasemapSources
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
   alias GobusgoWeb.FilterBar
   alias GobusgoWeb.FilterParams
@@ -506,7 +507,9 @@ defmodule GobusgoWeb.VehicleLive do
   def render(assigns) do
     ~H"""
     <main>
+      <ConnectionSignal.state_hook />
       <DonationButton.button class="donation-button-map" />
+      <ConnectionSignal.signal :if={@basemap != nil} />
 
       <p :if={@basemap == nil} id="no-basemap" class="px-8 pt-16 pb-8">No basemap yet.</p>
 
@@ -580,7 +583,10 @@ defmodule GobusgoWeb.VehicleLive do
         </:tab>
 
         <:tab name="settings" label="Settings">
-          <AppInfoPanel.content agencies={@agencies} />
+          <AppInfoPanel.content
+            agencies={@agencies}
+            offline_archive={@basemap && @basemap.offline_archive}
+          />
         </:tab>
       </PanelSheet.sheet>
 
@@ -606,7 +612,8 @@ defmodule GobusgoWeb.VehicleLive do
   defp filter_summary(%{filter: :refused} = assigns) do
     ~H"""
     <p id="filter-refused">
-      This filter is not valid. <.link patch="/vehicles" class="underline">Remove the filter</.link>
+      <.offline_prefix />This filter is not valid.
+      <.link patch="/vehicles" class="underline">Remove the filter</.link>
     </p>
     """
   end
@@ -617,7 +624,7 @@ defmodule GobusgoWeb.VehicleLive do
 
     ~H"""
     <p id="filter-trip" class="panel-sheet-summary-line">
-      Showing the trip's routes: {Enum.join(@route_names, ", ")}
+      <.offline_prefix />Showing the trip's routes: {Enum.join(@route_names, ", ")}
     </p>
     """
   end
@@ -631,7 +638,7 @@ defmodule GobusgoWeb.VehicleLive do
 
     ~H"""
     <p class="panel-sheet-summary-line">
-      <span class="text-slate-600">Showing</span>{" "}
+      <.offline_prefix /><span class="text-slate-600">Showing</span>{" "}
       <span :if={@agency_names == [] and @route_names == []}>every vehicle</span>
       <%= for name <- @agency_names do %>
         <span class="panel-sheet-chip">{name}</span>{" "}
@@ -641,6 +648,14 @@ defmodule GobusgoWeb.VehicleLive do
         <span class="panel-sheet-chip">{name}</span>{" "}
       <% end %>
     </p>
+    """
+  end
+
+  # The stylesheet shows the prefix on a phone's collapsed sheet while the
+  # page is offline.
+  defp offline_prefix(assigns) do
+    ~H"""
+    <span class="offline-prefix">{"Offline · "}</span>
     """
   end
 
@@ -673,6 +688,7 @@ defmodule GobusgoWeb.VehicleLive do
       class="h-screen w-full"
       data-library-url={@basemap.sources.library_url}
       data-archive-url={@basemap.sources.archive_url}
+      data-offline-archive-url={offline_archive_url(@basemap.offline_archive)}
       data-fonts-url={@basemap.sources.fonts_url}
       data-sprites-url={@basemap.sources.sprites_url}
       data-attribution={@basemap.sources.attribution}
@@ -736,6 +752,10 @@ defmodule GobusgoWeb.VehicleLive do
     </p>
     """
   end
+
+  # An archive without an offline extract carries no attribute.
+  defp offline_archive_url(nil), do: nil
+  defp offline_archive_url(%{url: url}), do: url
 
   # A filter that names nothing draws every route, which no list names.
   defp route_ids_attribute(:every), do: nil

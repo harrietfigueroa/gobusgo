@@ -22,6 +22,7 @@ import {
   QueryKind,
   StateKind,
   TripEnd,
+  failureState,
   isRetryable,
   journeyFeatures,
   journeyRows,
@@ -36,6 +37,8 @@ import {
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
+import {isNotSaved} from "./offline_bundle"
+import {pageEvents} from "./page_events"
 import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
 
 const NAMES_EVENT_NAME = "trip:names"
@@ -116,6 +119,10 @@ function fragmentOf(elements) {
 async function fetchFile({path, signal}) {
   const response = await fetch(path, {signal, cache: "default", credentials: "same-origin"})
 
+  if (isNotSaved(response)) {
+    return {kind: FetchKind.failed, reason: FailureReason.notSaved}
+  }
+
   if (!response.ok) {
     return {kind: FetchKind.failed, reason: FailureReason.fetchFailed}
   }
@@ -131,6 +138,10 @@ async function fetchManifest(url) {
 
   try {
     const response = await fetch(url, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
+
+    if (isNotSaved(response)) {
+      return {kind: JourneysKind.failed, reason: FailureReason.notSaved, path: url}
+    }
 
     if (!response.ok) {
       return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: url}
@@ -230,6 +241,7 @@ export const TripPlanner = {
     this.nameCountMax = Number(this.el.dataset.nameCountMax)
     this.routeCountMax = Number(this.el.dataset.routeCountMax)
     this.tripMap = createTripMap()
+    this.events = pageEvents(this)
     this.build()
 
     this.onEnd = (event) => {
@@ -241,12 +253,13 @@ export const TripPlanner = {
     this.onFavoriteChange = () => { this.writeMenus() }
     window.addEventListener(END_EVENT_NAME, this.onEnd)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
-    this.handleEvent(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
+    this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
+    // A page that is live again holds no trip's filter, and is sent it again.
+    this.events.whenLive(() => { this.resendFilter() })
     this.startFromLocation()
   },
 
-  // A page that connects again holds no trip's filter, and is sent it again.
-  reconnected() {
+  resendFilter() {
     if (this.isFilterSent) {
       this.sendFilter()
     }
@@ -434,7 +447,7 @@ export const TripPlanner = {
     this.tripMap.clear()
 
     if (this.isFilterSent) {
-      this.pushEvent(CLEAR_EVENT_NAME, {})
+      this.events.push({name: CLEAR_EVENT_NAME, payload: {}})
       this.isFilterSent = false
     }
   },
@@ -480,7 +493,7 @@ export const TripPlanner = {
     if (queryNumber !== this.queryCount) {
       return
     } else if (manifestOutcome.kind === JourneysKind.failed) {
-      this.showState({kind: JourneysKind.failed, retry: true})
+      this.showState({kind: failureState(manifestOutcome), retry: true})
       return
     }
 
@@ -524,7 +537,7 @@ export const TripPlanner = {
         break
       case JourneysKind.failed:
         console.warn("Journeys not routed", answer.reason, answer.path)
-        this.showState({kind: JourneysKind.failed, retry: isRetryable(answer)})
+        this.showState({kind: failureState(answer), retry: isRetryable(answer)})
         return
       case JourneysKind.none:
       case JourneysKind.unknownStop:
@@ -565,7 +578,9 @@ export const TripPlanner = {
     const {queryNumber} = this.shown
     const request = nameRequest({journeys: this.shown.journeys, countMax: this.nameCountMax})
 
-    this.pushEvent(NAMES_EVENT_NAME, {stop_ids: request.stopIds, route_ids: request.routeIds}, (reply) => {
+    const payload = {stop_ids: request.stopIds, route_ids: request.routeIds}
+
+    const onReply = (reply) => {
       const isCurrent = this.shown !== null && this.shown.queryNumber === queryNumber
 
       if (!isCurrent) {
@@ -579,7 +594,9 @@ export const TripPlanner = {
       const rows = this.rows()
       this.writeJourneys(rows)
       this.draw(rows[this.selectedIndex])
-    })
+    }
+
+    this.events.push({name: NAMES_EVENT_NAME, payload, onReply})
   },
 
   writeJourneys(rows) {
@@ -645,14 +662,14 @@ export const TripPlanner = {
 
     if (routeIds.length === 0) {
       if (this.isFilterSent) {
-        this.pushEvent(CLEAR_EVENT_NAME, {})
+        this.events.push({name: CLEAR_EVENT_NAME, payload: {}})
       }
 
       this.isFilterSent = false
       return
     }
 
-    this.pushEvent(FILTER_EVENT_NAME, {route_ids: routeIds})
+    this.events.push({name: FILTER_EVENT_NAME, payload: {route_ids: routeIds}})
     this.isFilterSent = true
   },
 
@@ -662,5 +679,6 @@ export const TripPlanner = {
     this.tripMap.destroy()
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})
+    this.events.release()
   }
 }

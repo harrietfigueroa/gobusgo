@@ -17,6 +17,7 @@ defmodule GobusgoWeb.AgencyLive do
   use Phoenix.LiveView
 
   alias Gobusgo.OneBusAway.AgencyView
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
 
   @pubsub Gobusgo.PubSub
@@ -39,6 +40,7 @@ defmodule GobusgoWeb.AgencyLive do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
+    <ConnectionSignal.state_hook />
     <DonationButton.button class="donation-button-page" />
     <main class="mx-auto max-w-5xl p-8">
       <h1 class="text-2xl font-semibold">Agencies</h1>

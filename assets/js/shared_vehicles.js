@@ -1,5 +1,8 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
+import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
+import {ConnectionKind} from "./connection_rules.js"
+import {pageEvents} from "./page_events"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {DecodeKind, decodeBlock, fileUrl, readIndex} from "./shared_vehicle_format"
 import {ViewKind, namesToFetch, tilesInView} from "./shared_vehicle_tiles"
@@ -34,6 +37,20 @@ const POPUP_TITLE_CLASS_NAME = "popup-title"
 
 /** The kinds of a file read from the static path. */
 const ReadKind = Object.freeze({read: "read", failed: "failed"})
+
+function isOffline() {
+  return connectionState().kind === ConnectionKind.offline
+}
+
+// The layer is off while the page is offline: its files are never saved,
+// so what it would draw is no longer current.
+function layerVisibility() {
+  if (isOffline()) {
+    return "none"
+  }
+
+  return "visible"
+}
 
 function emptyCollection() {
   return {type: "FeatureCollection", features: []}
@@ -164,8 +181,19 @@ export const SharedVehicles = {
       }
     }
 
+    this.onConnectionChange = () => { this.followConnection() }
+
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
+    window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+  },
+
+  followConnection() {
+    const hasLayer = this.map !== null && this.map.getLayer(LAYER_NAME) !== undefined
+
+    if (hasLayer) {
+      this.map.setLayoutProperty(LAYER_NAME, "visibility", layerVisibility())
+    }
   },
 
   updated() {
@@ -209,6 +237,7 @@ export const SharedVehicles = {
       type: "circle",
       source: SOURCE_NAME,
       minzoom: this.zoomMin,
+      layout: {visibility: layerVisibility()},
       paint: {
         "circle-radius": MARKER_RADIUS_PIXELS,
         "circle-color": ["match", ["get", "formFactor"], ...colorCases, FALLBACK_COLOR],
@@ -409,6 +438,7 @@ export const SharedVehicles = {
   destroyed() {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
+    window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
   }
 }
 
@@ -426,11 +456,27 @@ export const SharedVehicleToggle = {
       this.sendShown(shown)
     })
 
+    this.onConnectionChange = () => { this.followConnection() }
+    window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    this.events = pageEvents(this)
+    this.events.whenLive(() => { this.restore() })
+    this.followConnection()
     this.restore()
   },
 
-  reconnected() {
-    this.restore()
+  // A render of the control enables the checkbox, which stays disabled
+  // while offline, since the server holds the layer.
+  updated() {
+    this.followConnection()
+  },
+
+  destroyed() {
+    window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    this.events.release()
+  },
+
+  followConnection() {
+    this.input.disabled = isOffline()
   },
 
   restore() {
@@ -443,9 +489,9 @@ export const SharedVehicleToggle = {
 
   sendShown(shown) {
     if (shown) {
-      this.pushEvent(this.el.dataset.showEvent, {})
+      this.events.push({name: this.el.dataset.showEvent, payload: {}})
     } else {
-      this.pushEvent(this.el.dataset.hideEvent, {})
+      this.events.push({name: this.el.dataset.hideEvent, payload: {}})
     }
   }
 }
