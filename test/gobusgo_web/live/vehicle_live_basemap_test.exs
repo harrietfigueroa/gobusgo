@@ -247,7 +247,13 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
         |> Enum.map(&elem(&1, 0))
 
       assert Enum.sort(names) ==
-               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-library-url data-sprites-url id phx-hook phx-update)
+               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-library-url data-sprites-url data-style-validated id phx-hook phx-update)
+    end
+
+    test "has the map check its styles outside production" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @west_map, "data-style-validated") == ""
     end
   end
 

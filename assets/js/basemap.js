@@ -105,7 +105,8 @@ function fitPadding({left, bottom}) {
 
 // The hook of the element the map is drawn in. The element's data
 // attributes hold the library's address, the basemap's sources, and the
-// bounds of the first view;
+// bounds of the first view, and `data-style-validated` is present where the
+// map checks each style it loads against the style specification;
 // the server moves the view with the "basemap:fit" event. A new map is
 // announced on the element as a bubbling "basemap:ready" DOM event whose
 // detail holds the map and the library. The map is drawn in the page's
@@ -171,7 +172,9 @@ export const Basemap = {
       style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
       bounds: this.fitBounds,
       fitBoundsOptions: {padding},
-      attributionControl: false
+      attributionControl: false,
+      // `setStyle` takes this as its default, so a restyle follows it too.
+      validateStyle: element.dataset.styleValidated !== undefined
     })
 
     // The attribution stays written out; the compact form hides it
