@@ -22,6 +22,7 @@ import {
   failureState,
   journeyFeatures,
   journeyRows,
+  journeysAnnouncement,
   nameRequest,
   queryOf,
   stateText,
@@ -156,6 +157,12 @@ deepStrictEqual(tomorrowRow.timesText, "Tomorrow 5:12 am → 5:40 am", "the next
 const pastMidnight = {...tomorrow, serviceDate: "2026-11-08", arrivalS: seconds("24:30"), legs: [ride({routeId: "1_100275", from: "1_431", departs: "23:50", to: "1_11920", arrives: "24:30"})]}
 const [pastMidnightRow] = journeyRows({journeys: [pastMidnight], departure: lateDeparture, serviceDayStartsMs, names, timeZone: TIME_ZONE})
 deepStrictEqual(pastMidnightRow.timesText, "11:50 pm → 12:30 am", "past midnight of the same service date")
+
+// The status line a screen reader hears once the journeys are written.
+deepStrictEqual(journeysAnnouncement(rows), "2 journeys. The earliest arrives at 9:02 am.", "several journeys")
+deepStrictEqual(journeysAnnouncement([rows[1]]), "1 journey. It arrives at 9:02 am.", "one journey")
+deepStrictEqual(journeysAnnouncement([tomorrowRow]), "1 journey. It arrives tomorrow at 5:40 am.", "a journey on the next service date")
+deepStrictEqual(journeysAnnouncement([pastMidnightRow]), "1 journey. It arrives at 12:30 am.", "past midnight of the same service date")
 
 // The window line names the earliest arrival plus 45 minutes.
 deepStrictEqual(windowText({journeys: [earliest, direct], serviceDayStartsMs, timeZone: TIME_ZONE}), "Leaving now · journeys arriving by 9:47 am", "the window")

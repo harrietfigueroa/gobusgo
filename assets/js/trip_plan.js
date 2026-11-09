@@ -321,10 +321,14 @@ export function journeyRows({journeys, departure, serviceDayStartsMs, names, tim
       badgeText = `Earliest · ${badgeText}`
     }
 
+    const arrivalText = clockText({ms: arrivalMs, timeZone})
+
     rows.push({
       journey,
       isEarliest: journey.isEarliest,
-      timesText: leaveText + ARROW + clockText({ms: arrivalMs, timeZone}),
+      isTomorrow,
+      arrivalText,
+      timesText: leaveText + ARROW + arrivalText,
       badgeText,
       changesText: changesText(journey.changes),
       summary: summaryParts({journey, names}),
@@ -333,6 +337,36 @@ export function journeyRows({journeys, departure, serviceDayStartsMs, names, tim
   }
 
   return rows
+}
+
+function arrivalPhrase(row) {
+  if (row.isTomorrow) {
+    return `tomorrow at ${row.arrivalText}`
+  }
+
+  return `at ${row.arrivalText}`
+}
+
+/**
+ * The sentence the Trip tab's status line holds once `rows`, the rows of
+ * a found answer, are written: how many journeys there are and when the
+ * earliest arrives, which a screen reader announces in place of the list
+ * a sighted rider sees appear.
+ */
+export function journeysAnnouncement(rows) {
+  assertCondition(rows.length > 0, `trip plan: an announcement needs a journey, got ${rows.length}`)
+
+  if (rows.length === 1) {
+    return `1 journey. It arrives ${arrivalPhrase(rows[0])}.`
+  }
+
+  const earliest = rows.find(isEarliestRow)
+  assertCondition(earliest !== undefined, "trip plan: a found answer marks its earliest journey")
+  return `${rows.length} journeys. The earliest arrives ${arrivalPhrase(earliest)}.`
+}
+
+function isEarliestRow(row) {
+  return row.isEarliest
 }
 
 /**
