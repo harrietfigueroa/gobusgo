@@ -46,6 +46,10 @@
   --panel-sheet-badge-fill: #0f172a;
   --panel-sheet-badge-color: #ffffff;
   --panel-sheet-alert-badge-fill: #b45309;
+  /* A live time's dot: 4.70:1 on the surface fill and 10.25:1 on the badge
+     fill, over the 3:1 a graphic needs (WCAG 2.2, 1.4.11). */
+  --live-dot-color: #15803d;
+  --live-dot-badge-color: #4ade80;
   --panel-sheet-selected-color: #15803d;
   --map-control-icon-filter: none;
   --map-attribution-fill: rgb(255 255 255 / 0.5);
@@ -105,6 +109,9 @@
   --panel-sheet-badge-fill: #e2e8f0;
   --panel-sheet-badge-color: #0f172a;
   --panel-sheet-alert-badge-fill: #fbbf24;
+  /* 10.10:1 on the surface fill and 4.07:1 on the badge fill. */
+  --live-dot-color: #4ade80;
+  --live-dot-badge-color: #15803d;
   --panel-sheet-selected-color: #4ade80;
   /* MapLibre draws its control icons dark; turned, they are light and keep
      their hue. */
@@ -1312,3 +1319,107 @@ a.inline-target {
   }
 }
 
+
+/* The dot beside a live time. The dot keeps its color whole; a ring that
+   grows and fades around it shows the time is live, and stands still where
+   the browser asks for reduced motion. */
+.live-dot {
+  --live-dot-fill: var(--live-dot-color);
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.35em;
+  border-radius: 50%;
+  background-color: var(--live-dot-fill);
+  vertical-align: middle;
+  animation: live-dot-ring 2s ease-out infinite;
+}
+
+.panel-sheet-badge .live-dot {
+  --live-dot-fill: var(--live-dot-badge-color);
+  width: 6px;
+  height: 6px;
+  margin-left: 3px;
+  vertical-align: 1px;
+}
+
+@keyframes live-dot-ring {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live-dot-fill) 60%, transparent);
+  }
+
+  to {
+    box-shadow: 0 0 0 0.35em transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* The list of the vehicles and stops in view stays out of sight, as a skip
+   link does, until it or an option in it takes focus; then it stands in
+   the map's top left corner, beside the panel from the md breakpoint up,
+   over the donation button. */
+.map-items:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.map-items:focus-within {
+  position: fixed;
+  top: var(--donation-button-inset);
+  left: var(--donation-button-inset);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(20rem, calc(100vw - 2 * var(--donation-button-inset)));
+  max-height: 50vh;
+  padding: 8px;
+  font-size: 0.875rem;
+}
+
+@media (width >= 48rem) {
+  .map-items:focus-within {
+    left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
+  }
+}
+
+.map-items-label {
+  font-weight: 600;
+}
+
+.map-items-list {
+  overflow-y: auto;
+}
+
+.map-items-list [role="option"] {
+  padding: 8px;
+  border-radius: var(--control-radius-inner);
+  cursor: pointer;
+}
+
+.map-items-list [role="option"]:hover,
+.map-items-list [aria-selected="true"] {
+  background-color: var(--filter-suggestion-active-fill);
+}
+
+/* Forced colors drop the active option's fill, so it is drawn again in the
+   system's selection colors, which forced colors keep. */
+@media (forced-colors: active) {
+  .map-items-list [aria-selected="true"] {
+    background-color: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}

@@ -538,6 +538,7 @@ function lineOf({arrival, nowMs}) {
     route: routeNameOf({names, routeId}),
     headsign,
     minutes: Math.floor((arrival.timeMs - nowMs) / MINUTE_MS),
+    time_ms: arrival.timeMs,
     predicted: false
   }
 }
