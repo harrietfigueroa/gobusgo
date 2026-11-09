@@ -1,5 +1,6 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
+import {assertCondition} from "./assert"
 import {sheetInsets} from "./panel_sheet"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
@@ -127,6 +128,9 @@ export const Basemap = {
     this.handedCamera = takeHandoffState(element.id)
     this.theme = null
     this.restyling = false
+    // The theme and the archive the map was drawn in when its WebGL context
+    // was lost, and whether a style set anew had not loaded by then.
+    this.lostStyle = null
     this.archiveUrl = element.dataset.archiveUrl
     this.offlineArchiveUrl = offlineArchiveUrlOf(element)
     this.saved = savedBasemapOf({url: this.offlineArchiveUrl, isStored: false})
@@ -192,6 +196,16 @@ export const Basemap = {
         }))
       }
     })
+
+    // MapLibre keeps the style the map has when its WebGL context is lost,
+    // and sets that style again when the context is restored, over any
+    // style set in between (maplibre-gl 6.17.0, Map._restoreStyleSnapshot). A
+    // page in the background can lose its context, so the theme can change
+    // while it is lost.
+    this.map.on("webglcontextlost", () => {
+      this.lostStyle = {theme: this.theme, archiveUrl: this.drawnUrl, isRestyling: this.restyling}
+    })
+    this.map.on("webglcontextrestored", () => { this.restoreStyle() })
 
     element.dispatchEvent(new CustomEvent(READY_EVENT_NAME, {
       bubbles: true,
@@ -268,13 +282,42 @@ export const Basemap = {
     const isRestyled = hasMap && isStyleChanged
 
     if (isRestyled) {
-      this.theme = theme
-      this.drawnUrl = archiveUrl
-      this.restyling = true
-      // The style is set whole, not diffed, which fires "style.load" once
-      // it has loaded.
-      const style = basemapStyle({archiveUrl, sources: this.el.dataset, theme})
-      this.map.setStyle(style, {diff: false})
+      this.setStyleAnew({theme, archiveUrl})
+    }
+  },
+
+  // Sets the style of the map anew in `theme` from the archive at
+  // `archiveUrl`, and has the other hooks add theirs once it has loaded.
+  setStyleAnew({theme, archiveUrl}) {
+    this.theme = theme
+    this.drawnUrl = archiveUrl
+    this.restyling = true
+    // The style is set whole, not diffed, which fires "style.load" once
+    // it has loaded.
+    const style = basemapStyle({archiveUrl, sources: this.el.dataset, theme})
+    this.map.setStyle(style, {diff: false})
+  },
+
+  // Once the context is restored the map holds the style it had when the
+  // context was lost, with the other hooks' sources and layers as they
+  // were then. The style is set anew when the page wants another theme or
+  // archive since, and when a style set anew had not loaded at the loss,
+  // since the other hooks may not have added theirs to it.
+  restoreStyle() {
+    assertCondition(this.lostStyle !== null, "a restored context must have been lost")
+    const {theme, archiveUrl, isRestyling} = this.lostStyle
+    const wanted = {theme: this.theme, archiveUrl: this.drawnUrl}
+    this.lostStyle = null
+    const isThemeChanged = theme !== wanted.theme
+    const isArchiveChanged = archiveUrl !== wanted.archiveUrl
+    const isStyleChanged = isThemeChanged || isArchiveChanged
+    const isSetAnew = isRestyling || isStyleChanged
+
+    if (isSetAnew) {
+      this.setStyleAnew(wanted)
+    } else {
+      // The restored style holds the other hooks' layers already.
+      this.restyling = false
     }
   },
 
