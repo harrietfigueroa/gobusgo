@@ -10,7 +10,7 @@ defmodule GobusgoWeb.AccessibilityRulesTest do
     language = Keyword.get(options, :lang, ~s( lang="en"))
     title = Keyword.get(options, :title, "<title>Page</title>")
 
-    ~s(<!DOCTYPE html><html#{language}><head>#{title}</head><body><main>#{body}</main></body></html>)
+    ~s(<!DOCTYPE html><html#{language}><head>#{title}</head><body><main><h1>Page</h1>#{body}</main></body></html>)
   end
 
   defp rules(html), do: html |> Accessibility.violations() |> Enum.map(&elem(&1, 0))
@@ -38,8 +38,43 @@ defmodule GobusgoWeb.AccessibilityRulesTest do
     assert rules(document("", title: "<title> </title>")) == [:title]
   end
 
+  test "a document with no h1 breaks the heading rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h2>Part</h2></main></body></html>)
+
+    assert rules(html) == [:heading_one]
+  end
+
+  test "a visually hidden h1 keeps the heading rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h1 class="sr-only">Page</h1></main></body></html>)
+
+    assert rules(html) == []
+  end
+
   test "a document with two main elements breaks the main rule" do
     assert rules(document("<main>again</main>")) == [:main]
+  end
+
+  test "a link before main, outside every landmark, breaks the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><a href="/give">Give</a><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == [:landmark]
+  end
+
+  test "a link in a header before main keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><header><a href="/give">Give</a></header><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == []
+  end
+
+  test "a hidden element outside every landmark keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h1>Page</h1></main><div role="status" hidden><p>New</p></div></body></html>)
+
+    assert rules(html) == []
   end
 
   test "a reference to an identifier no element has breaks the reference rule" do
