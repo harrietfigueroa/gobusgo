@@ -583,7 +583,10 @@ defmodule GobusgoWeb.VehicleLive do
         </:tab>
 
         <:tab name="settings" label="Settings">
-          <AppInfoPanel.content agencies={@agencies} />
+          <AppInfoPanel.content
+            agencies={@agencies}
+            offline_archive={@basemap && @basemap.offline_archive}
+          />
         </:tab>
       </PanelSheet.sheet>
 
@@ -685,6 +688,7 @@ defmodule GobusgoWeb.VehicleLive do
       class="h-screen w-full"
       data-library-url={@basemap.sources.library_url}
       data-archive-url={@basemap.sources.archive_url}
+      data-offline-archive-url={offline_archive_url(@basemap.offline_archive)}
       data-fonts-url={@basemap.sources.fonts_url}
       data-sprites-url={@basemap.sources.sprites_url}
       data-attribution={@basemap.sources.attribution}
@@ -748,6 +752,10 @@ defmodule GobusgoWeb.VehicleLive do
     </p>
     """
   end
+
+  # An archive without an offline extract carries no attribute.
+  defp offline_archive_url(nil), do: nil
+  defp offline_archive_url(%{url: url}), do: url
 
   # A filter that names nothing draws every route, which no list names.
   defp route_ids_attribute(:every), do: nil

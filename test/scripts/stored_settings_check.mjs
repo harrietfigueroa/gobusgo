@@ -27,7 +27,7 @@ const COUNT_PAST_MAX = COUNT_MAX + 1
 const VERSION_TEXT = String(SCHEMA_VERSION)
 // Under storage that throws: one warning for the migration, one per read
 // and per write, and the add and the remove each read before they write.
-const THROWING_WARNING_COUNT = 18
+const THROWING_WARNING_COUNT = 20
 
 // Every key the module reads, each held as null until it is written, since
 // Storage's getItem answers null for a key it does not hold.
@@ -295,6 +295,30 @@ for (const writeCase of sharedVehicleWriteCases) {
   deepStrictEqual(storage.entries()[StorageKey.sharedVehicles], writeCase.stored, `shared vehicles write: ${writeCase.shown}`)
 }
 
+const offlineBasemapCases = [
+  {name: "on", entries: {[StorageKey.offlineBasemap]: "on"}, enabled: true},
+  {name: "another text", entries: {[StorageKey.offlineBasemap]: "true"}, enabled: false},
+  {name: "a missing key, the default", entries: {}, enabled: false}
+]
+
+for (const offlineBasemapCase of offlineBasemapCases) {
+  const {settings} = settingsOver(new MemoryStorage(offlineBasemapCase.entries))
+  const enabled = settings.readOfflineBasemapEnabled()
+  deepStrictEqual(enabled, offlineBasemapCase.enabled, `offline basemap read: ${offlineBasemapCase.name}`)
+}
+
+const offlineBasemapWriteCases = [
+  {enabled: true, stored: "on"},
+  {enabled: false, stored: undefined}
+]
+
+for (const writeCase of offlineBasemapWriteCases) {
+  const storage = new MemoryStorage({[StorageKey.offlineBasemap]: "on"})
+  const {settings} = settingsOver(storage)
+  settings.writeOfflineBasemapEnabled(writeCase.enabled)
+  deepStrictEqual(storage.entries()[StorageKey.offlineBasemap], writeCase.stored, `offline basemap write: ${writeCase.enabled}`)
+}
+
 const malformedEntries = [{stopId: ""}, {stopId: 7, name: "x"}, {stopId: "1_1"}, null, "1_2", favoriteB]
 const extraFieldEntry = {...favoriteA, color: "red"}
 const repeatedEntry = {stopId: favoriteA.stopId, name: "Other"}
@@ -504,6 +528,7 @@ for (const throwingCase of throwingCases) {
   const favorites = settings.listFavorites(COUNT_MAX)
   const isShown = settings.readShowDirection()
   const isDenied = settings.readMotionPermissionDenied()
+  const isBasemapSaved = settings.readOfflineBasemapEnabled()
   settings.writeTheme(ThemeSetting.dark)
   settings.writeVehicleFilter(filter)
   settings.removeVehicleFilter()
@@ -511,6 +536,7 @@ for (const throwingCase of throwingCases) {
   settings.writeOfflineSchedulesEnabled(false)
   settings.writeShowDirection(false)
   settings.writeMotionPermissionDenied()
+  settings.writeOfflineBasemapEnabled(true)
   const added = settings.addFavorite({favorite: favoriteA, countMax: COUNT_MAX})
   const removed = settings.removeFavorite({stopId: favoriteA.stopId, countMax: COUNT_MAX})
 
@@ -521,6 +547,7 @@ for (const throwingCase of throwingCases) {
   deepStrictEqual(favorites, [], `${throwingCase.name}: favorites`)
   deepStrictEqual(isShown, true, `${throwingCase.name}: direction setting`)
   deepStrictEqual(isDenied, false, `${throwingCase.name}: motion denial`)
+  deepStrictEqual(isBasemapSaved, false, `${throwingCase.name}: offline basemap`)
   deepStrictEqual(added, {kind: FavoriteChangeKind.changed, favorites: [favoriteA]}, `${throwingCase.name}: add`)
   deepStrictEqual(removed, {kind: FavoriteChangeKind.unchanged}, `${throwingCase.name}: remove`)
   deepStrictEqual(warnings.length, THROWING_WARNING_COUNT, `${throwingCase.name}: warnings`)
