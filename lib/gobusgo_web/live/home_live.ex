@@ -13,7 +13,9 @@ defmodule GobusgoWeb.HomeLive do
   def render(assigns) do
     ~H"""
     <ConnectionSignal.state_hook />
-    <DonationButton.button class="donation-button-page" />
+    <header>
+      <DonationButton.button class="donation-button-page" />
+    </header>
     <main class="mx-auto max-w-2xl p-8">
       <h1 class="text-2xl font-semibold">Gobusgo</h1>
       <p class="mt-2">The front end is running.</p>

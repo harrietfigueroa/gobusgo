@@ -1,0 +1,120 @@
+defmodule GobusgoWeb.AccessibilityRulesTest do
+  # Checks each rule of Gobusgo.Test.Accessibility against a small document
+  # that breaks it and one that keeps it, so a rule that stops finding its
+  # failure fails here before it lets a page through.
+  use ExUnit.Case, async: true
+
+  alias Gobusgo.Test.Accessibility
+
+  defp document(body, options \\ []) do
+    language = Keyword.get(options, :lang, ~s( lang="en"))
+    title = Keyword.get(options, :title, "<title>Page</title>")
+
+    ~s(<!DOCTYPE html><html#{language}><head>#{title}</head><body><main><h1>Page</h1>#{body}</main></body></html>)
+  end
+
+  defp rules(html), do: html |> Accessibility.violations() |> Enum.map(&elem(&1, 0))
+
+  test "a document that keeps every rule has no violation" do
+    html =
+      document(~s"""
+      <button type="button">Save</button>
+      <a href="/x" aria-label="Next page">→</a>
+      <label for="q">Search</label><input id="q" type="text">
+      <label>Remember <input type="checkbox"></label>
+      <button type="button" aria-labelledby="t"><svg aria-hidden="true"></svg></button>
+      <h2 id="t">Close</h2>
+      <a href="/y"><img src="/i.png" alt="Home"></a>
+      """)
+
+    assert Accessibility.violations(html) == []
+  end
+
+  test "a document with no lang breaks the language rule" do
+    assert rules(document("", lang: "")) == [:language]
+  end
+
+  test "a document with an empty title breaks the title rule" do
+    assert rules(document("", title: "<title> </title>")) == [:title]
+  end
+
+  test "a document with no h1 breaks the heading rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h2>Part</h2></main></body></html>)
+
+    assert rules(html) == [:heading_one]
+  end
+
+  test "a visually hidden h1 keeps the heading rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h1 class="sr-only">Page</h1></main></body></html>)
+
+    assert rules(html) == []
+  end
+
+  test "a document with two main elements breaks the main rule" do
+    assert rules(document("<main>again</main>")) == [:main]
+  end
+
+  test "a link before main, outside every landmark, breaks the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><a href="/give">Give</a><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == [:landmark]
+  end
+
+  test "a link in a header before main keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><header><a href="/give">Give</a></header><main><h1>Page</h1></main></body></html>)
+
+    assert rules(html) == []
+  end
+
+  test "a hidden element outside every landmark keeps the landmark rule" do
+    html =
+      ~s(<!DOCTYPE html><html lang="en"><head><title>Page</title></head><body><main><h1>Page</h1></main><div role="status" hidden><p>New</p></div></body></html>)
+
+    assert rules(html) == []
+  end
+
+  test "a reference to an identifier no element has breaks the reference rule" do
+    assert rules(document(~s(<p aria-describedby="nowhere">x</p>))) == [:reference]
+  end
+
+  test "a hidden element may name an identifier the browser writes before it shows it" do
+    assert rules(document(~s(<section hidden aria-labelledby="later"></section>))) == []
+  end
+
+  test "a description list of terms and definitions, grouped or not, keeps the list rule" do
+    html =
+      document(~s"""
+      <dl><dt>A</dt><dd>a</dd><div><dt>B</dt><dd>b</dd></div></dl>
+      """)
+
+    assert Accessibility.violations(html) == []
+  end
+
+  for {case_name, body} <- [
+        {"a group holding a nested div",
+         ~s(<dl><div><span></span><div><dt>A</dt><dd>a</dd></div></div></dl>)},
+        {"a list holding a paragraph", ~s(<dl><p>x</p></dl>)},
+        {"a term outside a list", ~s(<div><dt>A</dt></div>)}
+      ] do
+    test "#{case_name} breaks the description list rule" do
+      assert :description_list in rules(document(unquote(body)))
+    end
+  end
+
+  for {case_name, body} <- [
+        {"an empty button", ~s(<button type="button"></button>)},
+        {"a button whose only content is hidden",
+         ~s(<button type="button"><span aria-hidden="true">×</span></button>)},
+        {"a link with an image and no alt", ~s(<a href="/x"><img src="/i.png"></a>)},
+        {"an input with no label", ~s(<input type="text">)},
+        {"a tab with no text", ~s(<div role="tab"></div>)}
+      ] do
+    test "#{case_name} breaks the name rule" do
+      assert rules(document(unquote(body))) == [:name]
+    end
+  end
+end
