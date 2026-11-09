@@ -118,6 +118,8 @@ defmodule GobusgoWeb.AppInfo do
                        "loaded and updates them while you are online, and turning this off " <>
                        "removes them."
 
+  @megabyte_bytes 1_000_000
+
   @needs_connection %{
     arrivals: "Live arrivals need a connection",
     alerts: "Service alerts need a connection",
@@ -133,6 +135,8 @@ defmodule GobusgoWeb.AppInfo do
     "The map keeps its route lines and stops, and shows the vehicles where the saved " <>
       "schedules place them, in gray, with delays, cancellations, and detours unknown. " <>
       "A stop's arrivals are its scheduled times.",
+    "With Save the map for offline use on, the map draws its streets and places from " <>
+      "the saved map. With it off, the route lines and stops stand on an empty background.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
       "stays as it is until you are back online.",
     "From the saved schedules you can still plan a trip and center the map on a favorite " <>
@@ -331,6 +335,20 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The statement of how a map page saves schedules for offline use."
   @spec offline_schedules() :: String.t()
   def offline_schedules, do: @offline_schedules
+
+  @doc """
+  The statement of how a map page saves the map for offline use, with the
+  size of the saved copy, `bytes`, in whole megabytes.
+  """
+  @spec offline_basemap(%{bytes: non_neg_integer()}) :: String.t()
+  def offline_basemap(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+    megabytes = div(bytes + div(@megabyte_bytes, 2), @megabyte_bytes)
+
+    "With this on, your browser saves a copy of the map of the region, about " <>
+      "#{megabytes} MB, so the map draws its streets and places while you are offline, " <>
+      "with less detail close in. It saves the copy after the page has loaded, and " <>
+      "turning this off removes it."
+  end
 
   @doc """
   What a map page does while it is offline: `works`, the sentences of what

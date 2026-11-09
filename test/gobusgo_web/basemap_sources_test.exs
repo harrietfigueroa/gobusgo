@@ -14,8 +14,12 @@ defmodule GobusgoWeb.BasemapSourcesTest do
   @manifest %{
     snapshot: "20261004",
     archives: [
-      %{name: @west_archive, bounds: @west_bounds},
-      %{name: @east_archive, bounds: @east_bounds}
+      %{
+        name: @west_archive,
+        bounds: @west_bounds,
+        offline: %{name: "basemap-20261004-01-z13.pmtiles", bytes: 34_000_000, zoom_max: 13}
+      },
+      %{name: @east_archive, bounds: @east_bounds, offline: nil}
     ],
     agencies: [
       %{agency_id: "near-west", archive: @west_archive, bounds: @agency_bounds},
@@ -44,8 +48,16 @@ defmodule GobusgoWeb.BasemapSourcesTest do
                bounds: @west_bounds,
                archive_bounds: @west_bounds,
                agency_id: nil,
-               agency_ids: ["near-west", "east"]
+               agency_ids: ["near-west", "east"],
+               offline_archive: %{
+                 url: "/basemap/basemap-20261004-01-z13.pmtiles",
+                 bytes: 34_000_000
+               }
              }
+    end
+
+    test "names no offline archive for an archive without an offline extract" do
+      assert %{offline_archive: nil} = BasemapSources.view(@manifest, "east")
     end
 
     test "names the bounds of the whole archive beside a chosen agency's coverage" do

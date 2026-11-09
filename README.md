@@ -381,12 +381,14 @@ The map pages read a self-hosted basemap: regional [PMTiles](https://docs.protom
 mise exec -- mix gobusgo.basemap.extract \
   --response "raw/oba/agencies-with-coverage/dt=2026-10-03/<name>.json.gz" \
   --snapshot 20261004 \
-  --output-dir data/basemap
+  --output-dir data/basemap \
+  --offline-zoom-max 13
 ```
 
 - `--response` is the logical destination of the stored `agencies-with-coverage` response whose agencies decide the regions.
 - `--snapshot` is the date of the build, `YYYYMMDD`. https://maps.protomaps.com/builds lists the builds; Protomaps keeps the builds of the past week and the latest build of each version.
-- `--output-dir` receives `basemap-<snapshot>-<number>.pmtiles` per region and `manifest.json`, which records the build, the zoom range, each archive's bounds, size, and agencies, each agency's own bounds and archive, and the agencies skipped for having no coverage. `data/` is ignored by git.
+- `--output-dir` receives `basemap-<snapshot>-<number>.pmtiles` per region and `manifest.json`, which records the build, the zoom range, each archive's bounds, size, agencies, and offline extract, each agency's own bounds and archive, and the agencies skipped for having no coverage. `data/` is ignored by git.
+- `--offline-zoom-max` is optional, an integer from 0 to 14. With it, the task also cuts each archive's offline extract, `basemap-<snapshot>-<number>-z<zoom>.pmtiles`, which keeps the zooms up to it over the archive's whole area; the manifest names it beside its archive with its size and highest zoom. The vehicle page's "Save the map for offline use" setting saves that extract. The extract is cut from the archive the task has just written, so it downloads nothing more. Without the option the task cuts no extract and the page offers no such setting. The decided bound is 13 (GOB-271).
 
 The task downloads only the tiles inside each region, keeps every zoom of the build (0 to 15), and replaces an archive of the same name. `pmtiles show <archive>` prints an archive's header and `pmtiles verify <archive>` checks it.
 
@@ -401,9 +403,16 @@ Measured on 2026-10-04 with build `20261004` (Protomaps basemap 4.15.2) and the 
 
 The sizes for zooms 12 to 14 come from `pmtiles extract --dry-run`. The basemap is an Open Database License produced work, so a page that shows it has to show the OpenStreetMap attribution.
 
+Measured on 2026-11-08 with build `20261108` (Protomaps basemap 4.15.2), the agency response fetched at 2026-11-08T16:46:07Z, and `--offline-zoom-max 13`: the agencies fall in the same one region, and the task took 11 seconds.
+
+| Archive | Size |
+| --- | --- |
+| `basemap-20261108-01.pmtiles`, zooms 0 to 15 | 189 MB (189,377,463 bytes, 43,063 tile entries) |
+| `basemap-20261108-01-z13.pmtiles`, the offline extract, zooms 0 to 13 | 34 MB (34,355,445 bytes, 3,012 tile entries) |
+
 ### Serving the archives
 
-The server serves the files of `<GOBUSGO_DATA_DIR>/basemap` (`data/basemap` by default, `/data/basemap` in the container) under `/basemap`: the archives and `manifest.json`. So an extraction with `--output-dir data/basemap` is served with no further step, and a refreshed basemap is published by extracting a newer build into that directory; `manifest.json` then names the new archives, and the old ones can be deleted.
+The server serves the files of `<GOBUSGO_DATA_DIR>/basemap` (`data/basemap` by default, `/data/basemap` in the container) under `/basemap`: the archives, their offline extracts, and `manifest.json`. So an extraction with `--output-dir data/basemap` is served with no further step, and a refreshed basemap is published by extracting a newer build into that directory; `manifest.json` then names the new archives, and the old ones can be deleted. A browser that saved an earlier build's offline extract replaces it with the new one the next time a page saves while online.
 
 A PMTiles reader fetches parts of an archive with HTTP `Range` requests. To check that against a running server:
 
