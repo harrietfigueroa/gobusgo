@@ -83,6 +83,26 @@ async function readIndex(cache) {
   return {kind: IndexKind.found, index}
 }
 
+/**
+ * A read of the saved index of the offline schedules, which reads the
+ * browser's store alone and so answers offline: none where the browser
+ * cannot save schedules or holds no saved bundle.
+ */
+export async function readSavedIndex() {
+  if (!isSupported()) {
+    return {kind: IndexKind.none}
+  }
+
+  const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)
+
+  if (!hasStore) {
+    return {kind: IndexKind.none}
+  }
+
+  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
+  return await readIndex(cache)
+}
+
 async function storedPaths(cache) {
   const requests = await cache.keys()
   return Array.from(requests, pathOf)

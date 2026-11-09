@@ -19,11 +19,14 @@ defmodule GobusgoWeb.VehicleFilterForm do
   `id`. A value is sent as `id`, because the click of a list item sends
   the item's own `value` property under `value`. The form mounts the
   `VehicleFilter` hook, and the bar the `FilterBar` hook, which moves
-  through the suggestions from the keyboard.
+  through the suggestions from the keyboard and makes the bar read-only
+  while the page is offline, when the stylesheet shows the note that
+  suggestions need a connection in place of them.
   """
 
   use Phoenix.Component
 
+  alias GobusgoWeb.AppInfo
   alias GobusgoWeb.RouteOptions
 
   @field_labels %{"agency" => "Agency", "route" => "Route"}
@@ -113,7 +116,7 @@ defmodule GobusgoWeb.VehicleFilterForm do
           id="vehicle-filter-suggestions"
           role="listbox"
           aria-label="Suggestions"
-          class="filter-suggestions"
+          class="filter-suggestions needs-connection"
           hidden={@suggestions == []}
         >
           <li
@@ -133,9 +136,14 @@ defmodule GobusgoWeb.VehicleFilterForm do
             </span>
           </li>
         </ul>
-        <p :if={@rest_count > 0} id="vehicle-filter-rest" class="mt-1 px-2 text-slate-600">
+        <p
+          :if={@rest_count > 0}
+          id="vehicle-filter-rest"
+          class="needs-connection mt-1 px-2 text-slate-600"
+        >
           {@rest_count} more; type more to narrow them
         </p>
+        <p class="offline-note mt-1 px-2">{AppInfo.needs_connection(:suggestions)}</p>
       </div>
     </form>
     """

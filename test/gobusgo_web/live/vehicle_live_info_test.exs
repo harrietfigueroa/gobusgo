@@ -145,12 +145,13 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert ids(view, @panel <> " > section") == ["app-info-settings", "app-info-about"]
     end
 
-    test "holds installing the app, the theme, offline schedules, and the direction in the settings group, in that order" do
+    test "holds installing the app, the theme, offline, offline schedules, and the direction in the settings group, in that order" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert ids(view, "#app-info-settings > section") == [
                "app-info-install",
                "app-info-theme",
+               "app-info-offline",
                "app-info-offline-schedules",
                "app-info-show-direction"
              ]
@@ -364,6 +365,34 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
         |> LazyHTML.text()
 
       assert text =~ AppInfo.favorite_stop()
+    end
+
+    test "heads the offline section with an Offline heading" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element(@panel <> " #app-info-offline > h3") |> render() =~ ">Offline<"
+    end
+
+    test "lists what works offline and what needs a connection in the offline section" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      %{works: works, needs_connection: needs_connection} = AppInfo.offline()
+
+      items = fn list ->
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#app-info-offline #{list} li")
+        |> Enum.map(&LazyHTML.text/1)
+      end
+
+      assert items.("#app-info-offline-works") == works
+      assert items.("#app-info-offline-needs-connection") == needs_connection
+    end
+
+    test "lets the offline signal move focus to the offline section" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @panel <> ~s( #app-info-offline[tabindex="-1"]))
     end
 
     test "says how schedules are saved for offline use, in a section of its own" do

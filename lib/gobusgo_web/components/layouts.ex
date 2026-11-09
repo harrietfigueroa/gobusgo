@@ -2,7 +2,8 @@ defmodule GobusgoWeb.Layouts do
   @moduledoc """
   The layouts browser pages render inside. `root/1` is the HTML document:
   the head with the CSRF token, the commit the application was built from
-  where the build names one, the web app manifest, the icon a home screen
+  where the build names one, the time the page was rendered, which tells
+  the browser a copy from a cache, the web app manifest, the icon a home screen
   draws, the theme color of each color scheme, the script that draws the
   page in the rider's theme, and the built assets, and the page as the body
   with the offer to reload into a new release.
@@ -61,6 +62,8 @@ defmodule GobusgoWeb.Layouts do
     assigns =
       assign(assigns,
         revision: revision,
+        rendered_at:
+          DateTime.utc_now() |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601(),
         theme_script: @theme_script,
         theme_color_light: @theme_color_light,
         theme_color_dark: @theme_color_dark
@@ -77,6 +80,7 @@ defmodule GobusgoWeb.Layouts do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <meta :if={@revision} name="revision" content={@revision} />
+        <meta name="gobusgo:rendered-at" content={@rendered_at} />
         <title>Gobusgo</title>
         <meta
           name="theme-color"

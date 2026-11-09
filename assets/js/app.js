@@ -3,6 +3,8 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Basemap} from "./basemap"
 import {ColorTheme, followSystemTheme} from "./color_theme"
+import {ConnectionSignal} from "./connection_signal.js"
+import {ConnectionState, watchConnection} from "./connection_state.js"
 import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
 import {FollowLocation} from "./follow_location"
@@ -45,6 +47,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     Basemap,
     ColorTheme,
+    ConnectionSignal,
+    ConnectionState,
     FavoriteStop,
     FilterBar,
     FollowLocation,
@@ -66,6 +70,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 followSystemTheme()
+// The state is read before the socket connects, so every hook reads it.
+watchConnection()
 liveSocket.connect()
 registerServiceWorker()
 
