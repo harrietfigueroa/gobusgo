@@ -45,7 +45,7 @@ defmodule GobusgoWeb.SharedVehicleToggle do
       aria-labelledby="shared-vehicles-label"
       class="mt-4 flex flex-col gap-2 text-sm"
     >
-      <label id="shared-vehicles-label" class="flex items-center gap-2 font-medium">
+      <label id="shared-vehicles-label" class="inline-target flex items-center gap-2 font-medium">
         <input id="shared-vehicles-shown" type="checkbox" checked={@shown} />
         Show shared scooters and bikes
       </label>
