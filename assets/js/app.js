@@ -12,6 +12,7 @@ import {InstallApp} from "./install_app"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineBasemap} from "./offline_basemap_setting"
+import {handOffOfflineHost, startOfflineHost} from "./offline_boot"
 import {OfflineSchedules} from "./offline_schedules"
 import {PanelSheet} from "./panel_sheet"
 import {registerServiceWorker} from "./release_update"
@@ -42,32 +43,36 @@ function client() {
   }
 }
 
+const hooks = {
+  Basemap,
+  ColorTheme,
+  ConnectionSignal,
+  ConnectionState,
+  FavoriteStop,
+  FilterBar,
+  FollowLocation,
+  InstallApp,
+  LocalTime,
+  OfflineBasemap,
+  OfflineSchedules,
+  PanelSheet,
+  RouteLines,
+  RouteStopTiles,
+  SharedVehicles,
+  SharedVehicleToggle,
+  ShowDirection,
+  StopMarkers,
+  TripPlanner,
+  VehicleFilter,
+  VehicleMarkers
+}
+
 // The parameters are a function, so each connection sends the viewport of
-// its own moment.
+// its own moment. A patch's start hands a page the offline host mounted
+// over to LiveView before LiveView mounts its own hooks.
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: {
-    Basemap,
-    ColorTheme,
-    ConnectionSignal,
-    ConnectionState,
-    FavoriteStop,
-    FilterBar,
-    FollowLocation,
-    InstallApp,
-    LocalTime,
-    OfflineBasemap,
-    OfflineSchedules,
-    PanelSheet,
-    RouteLines,
-    RouteStopTiles,
-    SharedVehicles,
-    SharedVehicleToggle,
-    ShowDirection,
-    StopMarkers,
-    TripPlanner,
-    VehicleFilter,
-    VehicleMarkers
-  },
+  hooks,
+  dom: {onPatchStart: handOffOfflineHost},
   params: () => ({_csrf_token: csrfToken, client: client()})
 })
 
@@ -75,6 +80,7 @@ followSystemTheme()
 // The state is read before the socket connects, so every hook reads it.
 watchConnection()
 liveSocket.connect()
+startOfflineHost({hookDefinitions: hooks, socket: liveSocket})
 registerServiceWorker()
 
 // Exposed for debugging from the browser console, such as liveSocket.enableDebug().
