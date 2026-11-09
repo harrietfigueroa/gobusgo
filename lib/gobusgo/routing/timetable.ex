@@ -71,26 +71,20 @@ defmodule Gobusgo.Routing.Timetable do
           hops(previous_schedules, %{offset: 1, shift_s: shift_s})
       end
 
-    hops = hops(schedules, %{offset: 0, shift_s: 0}) ++ previous
-
-    stop_ids =
-      hops
-      |> Enum.flat_map(&[&1.departure_stop_id, &1.arrival_stop_id])
-      |> Enum.uniq()
-      |> Enum.sort()
-
+    # A hop is a tuple whose first four elements are the connection order:
+    # a trip key `{offset, id}` sorts as the index the sorted trips give it,
+    # so the hops sort as tuples, with no key built per hop.
+    hops = Enum.sort(hops(schedules, %{offset: 0, shift_s: 0}) ++ previous)
+    stop_ids = hops |> Enum.reduce(MapSet.new(), &put_stop_ids/2) |> Enum.sort()
     stop_index = stop_ids |> Enum.with_index() |> Map.new()
-    trips = hops |> Enum.map(&{&1.offset, &1.trip_id, &1.route_id}) |> Enum.uniq() |> Enum.sort()
+    trips = hops |> Enum.reduce(MapSet.new(), &put_trip/2) |> Enum.sort()
 
     trip_index =
       trips
       |> Enum.with_index()
       |> Map.new(fn {{offset, id, _route}, index} -> {{offset, id}, index} end)
 
-    connections =
-      hops
-      |> Enum.map(&connection(&1, stop_index, trip_index))
-      |> Enum.sort_by(&{&1.departure_s, &1.arrival_s, &1.trip, &1.sequence})
+    connections = for hop <- hops, do: connection(hop, stop_index, trip_index)
 
     %{
       service_date: service_date,
@@ -123,31 +117,37 @@ defmodule Gobusgo.Routing.Timetable do
         stop_times = CompactSchedule.stop_times(schedule, trip),
         {{from, to}, sequence} <- stop_times |> Enum.zip(tl(stop_times)) |> Enum.with_index(),
         from.departure_s - shift_s >= 0 do
-      %{
-        offset: offset,
-        trip_id: trip.id,
-        route_id: schedule.route_id,
-        sequence: sequence,
-        departure_stop_id: from.stop_id,
-        arrival_stop_id: to.stop_id,
-        departure_s: from.departure_s - shift_s,
-        arrival_s: to.arrival_s - shift_s,
-        boarding: from.departure_enabled,
-        alighting: to.arrival_enabled
-      }
+      {from.departure_s - shift_s, to.arrival_s - shift_s, {offset, trip.id}, sequence,
+       from.stop_id, to.stop_id, from.departure_enabled, to.arrival_enabled, schedule.route_id}
     end
   end
 
-  defp connection(hop, stop_index, trip_index) do
+  defp put_stop_ids(hop, stop_ids) do
+    stop_ids |> MapSet.put(elem(hop, 4)) |> MapSet.put(elem(hop, 5))
+  end
+
+  defp put_trip(
+         {_departure_s, _arrival_s, {offset, id}, _sequence, _from, _to, _boarding, _alighting,
+          route_id},
+         trips
+       ) do
+    MapSet.put(trips, {offset, id, route_id})
+  end
+
+  defp connection(
+         {departure_s, arrival_s, trip_key, sequence, from, to, boarding, alighting, _route_id},
+         stop_index,
+         trip_index
+       ) do
     %{
-      departure_s: hop.departure_s,
-      arrival_s: hop.arrival_s,
-      departure_stop: Map.fetch!(stop_index, hop.departure_stop_id),
-      arrival_stop: Map.fetch!(stop_index, hop.arrival_stop_id),
-      trip: Map.fetch!(trip_index, {hop.offset, hop.trip_id}),
-      sequence: hop.sequence,
-      boarding: hop.boarding,
-      alighting: hop.alighting
+      departure_s: departure_s,
+      arrival_s: arrival_s,
+      departure_stop: Map.fetch!(stop_index, from),
+      arrival_stop: Map.fetch!(stop_index, to),
+      trip: Map.fetch!(trip_index, trip_key),
+      sequence: sequence,
+      boarding: boarding,
+      alighting: alighting
     }
   end
 end
