@@ -190,6 +190,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
+  alias GobusgoWeb.VehicleLive.MapDescription
   alias GobusgoWeb.VehicleLive.OpenStops
   alias GobusgoWeb.VehicleLive.Routes
   alias GobusgoWeb.VehicleLive.SharedVehicles
@@ -596,6 +597,9 @@ defmodule GobusgoWeb.VehicleLive do
         tile_archive_url={@tile_archive_url}
         kept_route_ids={@kept_route_ids}
         shared_vehicles={@shared_vehicles}
+        filter_sentence={
+          MapDescription.filter_sentence(%{filter: @filter, tokens: @filter_bar.tokens, trip: @trip})
+        }
       />
     </main>
     """
@@ -678,6 +682,7 @@ defmodule GobusgoWeb.VehicleLive do
   attr :tile_archive_url, :string, required: true
   attr :kept_route_ids, :any, required: true
   attr :shared_vehicles, :map, required: true
+  attr :filter_sentence, :string, required: true
 
   defp map_elements(assigns) do
     ~H"""
@@ -739,15 +744,28 @@ defmodule GobusgoWeb.VehicleLive do
 
     <div id="route-lines" phx-hook="RouteLines" hidden></div>
 
-    <p
+    <div id="map-description" phx-hook="MapDescription" class="sr-only">
+      <p id="map-description-filter">{@filter_sentence}</p>
+      <p id="map-description-view" phx-update="ignore"></p>
+      <p id="map-description-keys">
+        Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it.
+      </p>
+    </div>
+
+    <div
       id="follow-location"
       phx-hook="FollowLocation"
+      data-bounds={JSON.encode!(@basemap.archive_bounds)}
+      hidden
+    >
+    </div>
+
+    <p
+      id="map-live-region"
       phx-update="ignore"
       role="status"
       aria-live="polite"
-      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow data-[shown=false]:pointer-events-none data-[shown=false]:opacity-0"
-      data-bounds={JSON.encode!(@basemap.archive_bounds)}
-      data-shown="false"
+      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow pointer-events-none opacity-0 [&.map-live-region-shown]:pointer-events-auto [&.map-live-region-shown]:opacity-100"
     >
     </p>
     """

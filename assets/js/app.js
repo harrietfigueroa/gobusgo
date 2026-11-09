@@ -9,6 +9,7 @@ import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
 import {FollowLocation} from "./follow_location"
 import {InstallApp} from "./install_app"
+import {MapDescription} from "./map_description"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineBasemap} from "./offline_basemap_setting"
@@ -55,6 +56,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     FollowLocation,
     InstallApp,
     LocalTime,
+    MapDescription,
     OfflineBasemap,
     OfflineSchedules,
     PanelSheet,
