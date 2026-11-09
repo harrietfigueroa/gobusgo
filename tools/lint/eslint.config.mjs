@@ -1,8 +1,6 @@
-// The html-eslint rules over the pages the application renders, which
-// test/gobusgo_web/accessibility/rendered_pages_test.exs and
-// test/scripts/write_offline_screen.mjs write to rendered/ beside this file.
-// The templates are HEEx, which html-eslint's parser cannot read, so the
-// rendered documents are what is linted.
+// The html-eslint rules over the rendered pages in rendered/ beside this
+// file. The templates are HEEx, which html-eslint's parser cannot read, so
+// the rendered documents are what is linted.
 // https://html-eslint.org/docs/rules — checked 2026-11-09
 
 import html from "@html-eslint/eslint-plugin"
