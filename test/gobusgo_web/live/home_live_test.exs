@@ -13,7 +13,8 @@ defmodule GobusgoWeb.HomeLiveTest do
     test "answers 200 with the page inside the root layout" do
       html = build_conn() |> get("/") |> html_response(200)
 
-      assert html =~ "<title>Gobusgo</title>"
+      title = html |> LazyHTML.from_document() |> LazyHTML.query("head title") |> LazyHTML.text()
+      assert title == "Gobusgo"
       assert html =~ ~s(<meta name="csrf-token")
       assert html =~ ~s(href="/assets/css/app.css")
       assert html =~ ~s(src="/assets/js/app.js")

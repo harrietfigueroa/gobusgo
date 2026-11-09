@@ -60,6 +60,28 @@ defmodule GobusgoWeb.RenderedPagesTest do
 
   defp page(path), do: build_conn() |> get(path) |> html_response(200)
 
+  defp title(html) do
+    html |> LazyHTML.from_document() |> LazyHTML.query("head title") |> LazyHTML.text()
+  end
+
+  # Each page's title names it, so a rider tells its tab, its window, and
+  # its history entry from the others.
+  for {path, expected} <- [
+        {"/", "Gobusgo"},
+        {"/agencies", "Agencies · Gobusgo"},
+        {"/vehicles", "Vehicle map · Gobusgo"}
+      ] do
+    test "#{path} is titled #{expected}" do
+      assert title(page(unquote(path))) == unquote(expected)
+    end
+  end
+
+  test "the vehicle page with a basemap is titled Vehicle map · Gobusgo", %{tmp_dir: tmp_dir} do
+    write_manifest(tmp_dir)
+
+    assert title(page("/vehicles")) == "Vehicle map · Gobusgo"
+  end
+
   test "the home page" do
     check("home", page("/"))
   end

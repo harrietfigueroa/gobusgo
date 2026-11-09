@@ -50,6 +50,7 @@ defmodule Gobusgo.Test.Accessibility do
     language_violations(document) ++
       title_violations(document) ++
       main_violations(document) ++
+      heading_one_violations(document) ++
       reference_violations(document) ++
       name_violations(document)
   end
@@ -80,6 +81,18 @@ defmodule Gobusgo.Test.Accessibility do
     case Enum.count(LazyHTML.query(document, "main")) do
       1 -> []
       count -> [{:main, "expected one main element, found #{count}"}]
+    end
+  end
+
+  @doc """
+  The document has exactly one `<h1>`, which names the page at the top of
+  a screen reader's list of headings; it may be visually hidden.
+  """
+  @spec heading_one_violations(LazyHTML.t()) :: [violation()]
+  def heading_one_violations(document) do
+    case Enum.count(LazyHTML.query(document, "h1")) do
+      1 -> []
+      count -> [{:heading_one, "expected one h1, found #{count}"}]
     end
   end
 

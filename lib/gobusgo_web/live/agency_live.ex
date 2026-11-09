@@ -29,7 +29,7 @@ defmodule GobusgoWeb.AgencyLive do
       :ok = AgencyView.subscribe(%{view: AgencyView, pubsub: @pubsub})
     end
 
-    {:ok, assign_fetch(socket)}
+    {:ok, socket |> assign(page_title: "Agencies") |> assign_fetch()}
   end
 
   @impl Phoenix.LiveView
