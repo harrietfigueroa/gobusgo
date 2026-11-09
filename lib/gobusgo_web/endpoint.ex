@@ -69,14 +69,26 @@ defmodule GobusgoWeb.Endpoint do
   # so a cache keeps a shared vehicle file a minute, well inside them.
   @shared_vehicles_cache_seconds 60
 
+  # The session cookie lasts as long as LiveView's session token, 14 days in
+  # Phoenix LiveView 1.2.12 (`@max_session_age` in
+  # `Phoenix.LiveView.Static`), so a vehicle page the service worker saved
+  # joins again with the cookie it was rendered under after the browser
+  # restarts, and a saved copy older than that reloads once.
+  @session_cookie_age_seconds 1_209_600
+
   # The salt separates the session's signing key from the other keys derived
   # from the secret; it is not itself a secret.
   @session_options [
     store: :cookie,
     key: "_gobusgo_session",
     signing_salt: "session",
-    same_site: "Lax"
+    same_site: "Lax",
+    max_age: @session_cookie_age_seconds
   ]
+
+  @doc "How long the session cookie lasts, in seconds."
+  @spec session_cookie_age_seconds() :: pos_integer()
+  def session_cookie_age_seconds, do: @session_cookie_age_seconds
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [compress: true, connect_info: [:user_agent, :uri, session: @session_options]],

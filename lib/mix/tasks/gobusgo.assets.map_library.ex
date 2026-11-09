@@ -17,6 +17,10 @@ defmodule Mix.Tasks.Gobusgo.Assets.MapLibrary do
 
   alias GobusgoWeb.MapLibrary
 
+  # The directory is read from the module compiled from the lock file, so a
+  # lock file moved to another version is compiled before the copy is named.
+  @requirements ["compile"]
+
   @esbuild_profile "vendor"
   # Relative to the directory the profile runs in, `assets`.
   @built_dir "../priv/static/assets/vendor"
