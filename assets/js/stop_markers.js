@@ -22,6 +22,7 @@ import {
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
 import {isPicking, pickStop} from "./trip_ends"
 import {revealOnMap} from "./panel_sheet"
+import {pageEvents} from "./page_events"
 import {
   addSource,
   CHANGE_EVENT_NAME,
@@ -256,7 +257,8 @@ export const StopMarkers = {
     this.popupSizes = new Map()
     this.tipLength = null
     this.zoom = null
-    this.push = (event, payload) => { this.pushEvent(event, payload) }
+    this.events = pageEvents(this)
+    this.push = (name, payload) => { this.events.push({name, payload}) }
     // The most stops on screen whose popups open by themselves, which the
     // page's element carries.
     this.autoOpenCountMax = Number(this.el.dataset.autoOpenCountMax)
@@ -337,7 +339,7 @@ export const StopMarkers = {
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
     // Arrivals of a stop with neither a popup nor the view are dropped.
-    this.handleEvent("stop-arrivals:arrivals", (shown) => {
+    this.events.handle("stop-arrivals:arrivals", (shown) => {
       const open = this.openPopups.get(shown.stop_id)
       const isViewStop = this.view !== null && this.view.stop.id === shown.stop_id
 
@@ -351,11 +353,13 @@ export const StopMarkers = {
         writeArrivals(this.view.arrivalsElement, shown)
       }
     })
+
+    // The page that is live again knows nothing of the stops this hook has
+    // open, and is told them again.
+    this.events.whenLive(() => { this.sendOpenStops() })
   },
 
-  // The page that connects again knows nothing of the stops this hook has
-  // open, and is told them again.
-  reconnected() {
+  sendOpenStops() {
     const stopIds = new Set(this.openPopups.keys())
 
     if (this.view !== null) {
@@ -363,7 +367,7 @@ export const StopMarkers = {
     }
 
     for (const stopId of stopIds) {
-      this.pushEvent("stop-arrivals:open", {stop_id: stopId})
+      this.events.push({name: "stop-arrivals:open", payload: {stop_id: stopId}})
     }
   },
 
@@ -829,5 +833,6 @@ export const StopMarkers = {
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.clearTimeout(this.followTimer)
+    this.events.release()
   }
 }

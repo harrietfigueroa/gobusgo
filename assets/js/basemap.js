@@ -3,6 +3,7 @@ import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.
 import {sheetInsets} from "./panel_sheet"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {flavorName} from "./theme"
+import {pageEvents} from "./page_events"
 
 const PROTOCOL_NAME = "pmtiles"
 const SOURCE_NAME = "protomaps"
@@ -109,7 +110,8 @@ export const Basemap = {
     this.onThemeChange = (event) => { this.restyle(event.detail.theme) }
     window.addEventListener(THEME_CHANGE_EVENT_NAME, this.onThemeChange)
 
-    this.handleEvent("basemap:fit", (event) => {
+    this.events = pageEvents(this)
+    this.events.handle("basemap:fit", (event) => {
       this.fitBounds = cornerBounds(event.bounds)
 
       if (this.map !== null) {
@@ -179,6 +181,7 @@ export const Basemap = {
 
   destroyed() {
     window.removeEventListener(THEME_CHANGE_EVENT_NAME, this.onThemeChange)
+    this.events.release()
 
     if (this.map !== null) {
       this.map.remove()

@@ -133,7 +133,9 @@ defmodule GobusgoWeb.AppInfo do
     "The map keeps the route lines, stops, and vehicles it has drawn. The vehicles stay " <>
       "where they were last seen and do not move.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
-      "stays as it is until you are back online."
+      "stays as it is until you are back online.",
+    "From the saved schedules you can still plan a trip and center the map on a favorite " <>
+      "stop, and a trip's routes are shown on the map."
   ]
 
   @theme "Your browser remembers the theme you choose, and Match system follows the light " <>
