@@ -1,6 +1,8 @@
 // The texts of a stop's arrivals, as the server sends them with the
 // "stop-arrivals:arrivals" event.
 
+import {unreachable} from "./assert.js"
+
 const ARRIVALS_HEADING = "Arrivals"
 const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
 const ARRIVALS_NONE = "No arrivals soon"
@@ -9,6 +11,13 @@ const ARRIVALS_BUSY = "Too many stops open; close one to see this stop's arrival
 const ARRIVAL_NOW = "now"
 const ARRIVAL_SCHEDULED_NOTE = " (scheduled)"
 const ARRIVAL_UNNAMED = "Arrival"
+const ARRIVALS_NEED_CONNECTION = "Live arrivals need a connection"
+
+/** The class of an element the stylesheet hides while the page is offline. */
+export const NEEDS_CONNECTION_CLASS_NAME = "needs-connection"
+
+/** The class of an element the stylesheet shows only while the page is offline. */
+export const OFFLINE_NOTE_CLASS_NAME = "offline-note"
 
 export function appendParagraph(element, text) {
   const paragraph = document.createElement("p")
@@ -74,7 +83,7 @@ function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
         return [arrivalsHeadingText(ageMinutes), ...Array.from(arrivals, arrivalText)]
       }
     default:
-      throw new Error(`unknown arrivals status: ${status}`)
+      return unreachable(status, "arrivals status")
   }
 }
 
@@ -116,11 +125,24 @@ export function nextArrivalTimeText({status, arrivals}) {
 }
 
 // Writes a stop's arrivals into `element` as text nodes: the names come
-// from outside the application and are never parsed as HTML.
+// from outside the application and are never parsed as HTML. The
+// stylesheet shows the arrivals while the page is connected and the note
+// that they need a connection while it is offline.
 export function writeArrivals(element, shown) {
   element.replaceChildren()
 
   for (const line of arrivalsLines(shown)) {
-    appendParagraph(element, line)
+    const paragraph = classedParagraph({text: line, className: NEEDS_CONNECTION_CLASS_NAME})
+    element.append(paragraph)
   }
+
+  const note = classedParagraph({text: ARRIVALS_NEED_CONNECTION, className: OFFLINE_NOTE_CLASS_NAME})
+  element.append(note)
+}
+
+function classedParagraph({text, className}) {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = text
+  paragraph.className = className
+  return paragraph
 }

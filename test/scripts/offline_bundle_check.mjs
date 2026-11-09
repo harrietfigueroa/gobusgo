@@ -3,10 +3,23 @@
 // bundle holds, what a rider is told about a saved one, and the sentence
 // that says whether the browser keeps it. Run it with
 // `node test/scripts/offline_bundle_check.mjs`; it exits non-zero on the
-// first case that differs.
+// first case that differs. The bundle's own manifest names only the dates it
+// saves.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "../../assets/js/offline_bundle.js"
+import {
+  BUNDLE_MANIFEST_PATH,
+  INDEX_PATH,
+  IndexKind,
+  PersistenceKind,
+  PlanKind,
+  StatusKind,
+  bundleStatus,
+  persistenceText,
+  planBundle,
+  savedIndex as indexOf,
+  stalePaths
+} from "../../assets/js/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -60,6 +73,22 @@ deepStrictEqual(morning.paths[morning.paths.length - 1], TILE_ARCHIVE_PATH)
 deepStrictEqual(morning.paths.includes(firstDate.files.positions.path), true)
 deepStrictEqual(morning.paths.includes(secondDate.files.positions.path), true)
 
+// The bundle's manifest keeps the manifest's other fields and names only the
+// dates the bundle saves, so it names no file the bundle lacks.
+deepStrictEqual(morning.manifest, {formatVersion: 2, snapshots: [firstDate, secondDate]})
+deepStrictEqual(morning.tileArchivePath, TILE_ARCHIVE_PATH)
+
+// The index names the bundle's manifest and its tile archive.
+const savedAtMs = DAY_START_MS + HOUR_MS
+deepStrictEqual(indexOf({plan: morning, savedAtMs}), {
+  savedAtMs,
+  formatVersion: 2,
+  dates: morning.dates,
+  paths: morning.paths,
+  manifestPath: BUNDLE_MANIFEST_PATH,
+  tileArchivePath: TILE_ARCHIVE_PATH
+})
+deepStrictEqual(BUNDLE_MANIFEST_PATH === INDEX_PATH, false)
 // Each date's names file is saved with its other files.
 deepStrictEqual(morning.paths.includes(firstDate.files.names.path), true)
 deepStrictEqual(morning.paths.includes(secondDate.files.names.path), true)
@@ -69,6 +98,8 @@ const afterLastDepartureMs = DAY_START_MS + (LAST_DEPARTURE_HOUR + 1) * HOUR_MS
 const afterLastDeparture = planBundle({manifest, nowMs: afterLastDepartureMs, tileArchivePath: ""})
 deepStrictEqual(datesOf(afterLastDeparture), [secondDate.serviceDate, thirdDate.serviceDate])
 deepStrictEqual(afterLastDeparture.paths.includes(TILE_ARCHIVE_PATH), false)
+deepStrictEqual(afterLastDeparture.tileArchivePath, "")
+deepStrictEqual(afterLastDeparture.manifest.snapshots, [secondDate, thirdDate])
 
 // Nothing to save once every date has ended.
 deepStrictEqual(planBundle({manifest, nowMs: pastEveryDateMs, tileArchivePath: ""}), {kind: PlanKind.nothingToSave})

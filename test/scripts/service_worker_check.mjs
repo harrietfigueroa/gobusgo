@@ -5,7 +5,8 @@
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "../../assets/js/service_worker_strategy.js"
+import {BUNDLE_MANIFEST_PATH} from "../../assets/js/offline_bundle.js"
+import {CacheRole, StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "../../assets/js/service_worker_strategy.js"
 
 const ORIGIN = "https://gobusgo.example"
 const precachePaths = ["/assets/js/app-0123.js", "/assets/css/app-4567.css", "/assets/vendor/maplibre-gl-6.12.0/maplibre-gl.mjs"]
@@ -37,9 +38,16 @@ const strategyCases = [
     strategy: {kind: StrategyKind.basemapAsset, path: "/vendor/basemaps-assets/sprites/v4/light.json"}
   },
   {
-    name: "the routing manifest",
+    name: "the routing manifest, with the bundle's own copy before the latest one",
     request: {method: "GET", url: ORIGIN + "/api/routing/manifest", mode: "cors"},
-    strategy: {kind: StrategyKind.networkFirst, path: "/api/routing/manifest"}
+    strategy: {
+      kind: StrategyKind.networkFirst,
+      path: "/api/routing/manifest",
+      fallbacks: [
+        {cache: CacheRole.offlineSchedules, path: BUNDLE_MANIFEST_PATH},
+        {cache: CacheRole.release, path: "/api/routing/manifest"}
+      ]
+    }
   },
   {
     name: "the vehicle page opened from the home screen",
@@ -87,13 +95,23 @@ const strategyCases = [
     strategy: {kind: StrategyKind.untouched}
   },
   {
-    name: "a routing snapshot file",
+    name: "a routing snapshot file, from the saved bundle first",
     request: {method: "GET", url: ORIGIN + "/routing/2026-11-08/stops-abcd.bin", mode: "cors"},
+    strategy: {kind: StrategyKind.savedFile, path: "/routing/2026-11-08/stops-abcd.bin"}
+  },
+  {
+    name: "a route and stop tile archive, from the saved bundle first",
+    request: {method: "GET", url: ORIGIN + "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles", mode: "cors"},
+    strategy: {kind: StrategyKind.savedFile, path: "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles"}
+  },
+  {
+    name: "a path that starts like the tiles' directory",
+    request: {method: "GET", url: ORIGIN + "/tilesets", mode: "cors"},
     strategy: {kind: StrategyKind.untouched}
   },
   {
-    name: "a route and stop tile archive",
-    request: {method: "GET", url: ORIGIN + "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles", mode: "cors"},
+    name: "a saved path asked for with another method",
+    request: {method: "HEAD", url: ORIGIN + "/routing/2026-11-08/stops-abcd.bin", mode: "cors"},
     strategy: {kind: StrategyKind.untouched}
   }
 ]

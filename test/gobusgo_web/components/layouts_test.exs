@@ -37,6 +37,21 @@ defmodule GobusgoWeb.LayoutsTest do
     assert Enum.empty?(revision_meta())
   end
 
+  test "names the time the page was rendered in a rendered-at meta element" do
+    before = DateTime.utc_now()
+    [content] = head(~s(meta[name="gobusgo:rendered-at"])) |> LazyHTML.attribute("content")
+    {:ok, rendered_at, 0} = DateTime.from_iso8601(content)
+
+    assert DateTime.compare(rendered_at, DateTime.truncate(before, :millisecond)) in [:eq, :gt]
+    assert DateTime.compare(rendered_at, DateTime.utc_now()) in [:eq, :lt]
+  end
+
+  test "writes the render time in UTC to the millisecond, as the browser's Date.parse reads it" do
+    [content] = head(~s(meta[name="gobusgo:rendered-at"])) |> LazyHTML.attribute("content")
+
+    assert content =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\z/
+  end
+
   test "sets the theme from the stored setting in a script that runs before the stylesheet" do
     children = head("> *") |> Enum.map(&LazyHTML.tag/1) |> List.flatten()
     script_index = Enum.find_index(children, &(&1 == "script"))

@@ -7,7 +7,9 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
   The panel lists the current alerts, then the upcoming ones with the start
   of each, each with its summary, its routes, its description behind a
   disclosure, and its link. An alert's element carries its identifier in
-  `data-alert-id`, so a popup line can open the panel at it.
+  `data-alert-id`, so a popup line can open the panel at it. While the page
+  is offline the stylesheet hides the alerts and shows the note that
+  service alerts need a connection.
 
   The popups' element carries the routes' alerts as JSON in `data-routes`.
   A patch changes it only when the alerts change, and a page that connects
@@ -17,6 +19,7 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
 
   use Phoenix.Component
 
+  alias GobusgoWeb.AppInfo
   alias GobusgoWeb.ServiceAlerts
   alias Phoenix.LiveView.JS
 
@@ -47,7 +50,8 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
 
     <div id={@panel_id} class="flex flex-col gap-5">
       <h2 class="text-base font-semibold">Service alerts</h2>
-      <div class="flex flex-col gap-5">
+      <p class="offline-note">{AppInfo.needs_connection(:alerts)}</p>
+      <div class="needs-connection flex flex-col gap-5">
         <p>
           The agencies' alerts for the trips running now and for the stops open on the map, for
           the routes the filter shows.
