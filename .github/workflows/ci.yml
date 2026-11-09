@@ -110,7 +110,7 @@ jobs:
       - run: mix assets.setup
       - run: mix assets.build
 
-  # Renders the browser pages and checks them: the ExUnit rules of Gobusgo.Test.Accessibility, then html-eslint over the files the test writes, then the node scan of the front end's JavaScript.
+  # The accessibility checks: the ExUnit rules of Gobusgo.Test.Accessibility over the rendered pages, html-eslint over the files that test writes, the node scan of the front end's JavaScript, and the visual checks of the stylesheet and the route chip rule.
   accessibility:
     name: accessibility
     runs-on: ubuntu-24.04
@@ -141,6 +141,8 @@ jobs:
       - run: node test/scripts/write_offline_screen.mjs
       - run: npm run --prefix tools/lint lint
       - run: node test/scripts/a11y_source_check.mjs
+      - run: node test/scripts/css_accessibility_check.mjs
+      - run: node test/scripts/route_chip_color_check.mjs
 
   image:
     name: image
@@ -197,7 +199,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:
