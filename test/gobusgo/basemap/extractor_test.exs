@@ -105,7 +105,12 @@ defmodule Gobusgo.Basemap.ExtractorTest do
 
     request =
       Map.merge(
-        %{response_destination: destination, snapshot: @snapshot, output_dir: tmp_dir},
+        %{
+          response_destination: destination,
+          snapshot: @snapshot,
+          output_dir: tmp_dir,
+          offline_zoom_max: nil
+        },
         Keyword.get(overrides, :request, %{})
       )
 
@@ -240,6 +245,63 @@ defmodule Gobusgo.Basemap.ExtractorTest do
       {_destination, result} = run([@west], tmp_dir, runner: runner)
 
       assert result == {:error, {:extract, "basemap-20261004-01.pmtiles", :archive_missing}}
+    end
+
+    test "extracts no offline extract without an offline zoom bound", %{tmp_dir: tmp_dir} do
+      assert {_destination, {:ok, %{offline_archives: []}}} = run([@west], tmp_dir)
+    end
+
+    test "cuts each archive's offline extract out of the extracted archive", %{tmp_dir: tmp_dir} do
+      {_destination, result} = run([@west], tmp_dir, request: %{offline_zoom_max: 13})
+
+      assert {:ok, %{offline_archives: [%{path: path, bytes: bytes}]}} = result
+      assert path == Path.join(tmp_dir, "basemap-20261004-01-z13.pmtiles")
+      assert bytes == byte_size(@archive_content)
+      archive_path = Path.join(tmp_dir, "basemap-20261004-01.pmtiles")
+      assert_received {:ran, ["extract", ^archive_path, _output_path, "--maxzoom=13"], _deadline}
+    end
+
+    test "records each offline extract in the manifest", %{tmp_dir: tmp_dir} do
+      {_destination, {:ok, %{manifest_path: manifest_path}}} =
+        run([@west], tmp_dir, request: %{offline_zoom_max: 13})
+
+      assert %{
+               "archives" => [
+                 %{
+                   "name" => "basemap-20261004-01.pmtiles",
+                   "offline" => %{
+                     "name" => "basemap-20261004-01-z13.pmtiles",
+                     "bytes" => 13,
+                     "zoomMax" => 13
+                   }
+                 }
+               ]
+             } = manifest_path |> File.read!() |> JSON.decode!()
+    end
+
+    test "returns an offline zoom bound it cannot extract and runs nothing", %{tmp_dir: tmp_dir} do
+      {_destination, result} = run([@west], tmp_dir, request: %{offline_zoom_max: 15})
+
+      assert result == {:error, {:invalid_offline_zoom_max, 15}}
+      refute_received {:ran, _arguments, _deadline_ms}
+    end
+
+    test "returns a failed offline extraction with the extract's name", %{tmp_dir: tmp_dir} do
+      runner = fn
+        ["extract", "https://" <> _rest, output_path | _flags], _deadline_ms ->
+          File.write!(output_path, @archive_content)
+          :ok
+
+        ["extract", _archive_path, output_path, _flag], _deadline_ms ->
+          File.write!(output_path, "half an extract")
+          {:error, {:exit_status, 1}}
+      end
+
+      {_destination, result} =
+        run([@west], tmp_dir, runner: runner, request: %{offline_zoom_max: 13})
+
+      assert result == {:error, {:extract, "basemap-20261004-01-z13.pmtiles", {:exit_status, 1}}}
+      assert File.ls!(tmp_dir) == ["basemap-20261004-01.pmtiles"]
     end
   end
 end

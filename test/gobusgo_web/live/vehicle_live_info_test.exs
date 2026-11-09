@@ -31,6 +31,22 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     "archives" => [%{"name" => "basemap-20261004-01.pmtiles", "bounds" => @bounds}],
     "agencies" => []
   }
+  @offline_bytes 34_355_445
+  @offline_manifest %{
+    "snapshot" => "20261004",
+    "archives" => [
+      %{
+        "name" => "basemap-20261004-01.pmtiles",
+        "bounds" => @bounds,
+        "offline" => %{
+          "name" => "basemap-20261004-01-z13.pmtiles",
+          "bytes" => @offline_bytes,
+          "zoomMax" => 13
+        }
+      }
+    ],
+    "agencies" => []
+  }
 
   setup %{tmp_dir: tmp_dir} do
     configured = Application.fetch_env!(:gobusgo, :basemap)
@@ -50,8 +66,8 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, AgencyView)
   end
 
-  defp write_manifest(tmp_dir) do
-    File.write!(Path.join(tmp_dir, "manifest.json"), JSON.encode!(@manifest))
+  defp write_manifest(tmp_dir, manifest \\ @manifest) do
+    File.write!(Path.join(tmp_dir, "manifest.json"), JSON.encode!(manifest))
   end
 
   # Publishes a fetch of agencies, each `{id, name}`.
@@ -422,6 +438,63 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                @panel <>
                  ~s( #app-info-offline-schedules[phx-hook="OfflineSchedules"][phx-update="ignore"])
              )
+    end
+
+    test "offers no offline map setting for a basemap without an offline extract", %{
+      tmp_dir: tmp_dir
+    } do
+      write_manifest(tmp_dir)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @panel <> " #app-info-offline-basemap")
+    end
+
+    test "puts the offline map setting after the offline schedules", %{tmp_dir: tmp_dir} do
+      write_manifest(tmp_dir, @offline_manifest)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert ids(view, "#app-info-settings > section") == [
+               "app-info-install",
+               "app-info-theme",
+               "app-info-offline",
+               "app-info-offline-schedules",
+               "app-info-offline-basemap",
+               "app-info-show-direction"
+             ]
+    end
+
+    test "says how the map is saved for offline use, with its size", %{tmp_dir: tmp_dir} do
+      write_manifest(tmp_dir, @offline_manifest)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      text =
+        view
+        |> element(@panel <> " #app-info-offline-basemap")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text =~ AppInfo.offline_basemap(%{bytes: @offline_bytes})
+      assert text =~ "Save the map for offline use"
+    end
+
+    test "offers the offline map setting unchecked, the default", %{tmp_dir: tmp_dir} do
+      write_manifest(tmp_dir, @offline_manifest)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @panel <> " #offline-basemap-enabled[type=checkbox]")
+      refute has_element?(view, @panel <> " #offline-basemap-enabled[checked]")
+    end
+
+    test "hands the offline map setting the extract's address", %{tmp_dir: tmp_dir} do
+      write_manifest(tmp_dir, @offline_manifest)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      selector =
+        @panel <> ~s( #app-info-offline-basemap[phx-hook="OfflineBasemap"][phx-update="ignore"])
+
+      assert attribute(view, selector, "data-archive-url") ==
+               "/basemap/basemap-20261004-01-z13.pmtiles"
     end
 
     test "says what Show my direction draws, in a section of its own" do

@@ -250,7 +250,36 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "offline_basemap/1" do
+    for {bytes, size} <- [
+          {34_355_445, "about 34 MB"},
+          {33_500_000, "about 34 MB"},
+          {1_499_999, "about 1 MB"}
+        ] do
+      test "states the size of #{bytes} bytes as #{size}" do
+        assert AppInfo.offline_basemap(%{bytes: unquote(bytes)}) =~ unquote(size)
+      end
+    end
+
+    test "says the saved map has less detail close in" do
+      assert AppInfo.offline_basemap(%{bytes: 1}) =~ "with less detail close in"
+    end
+
+    test "says the saving waits for the page to load and turning it off removes the copy" do
+      text = AppInfo.offline_basemap(%{bytes: 1})
+
+      assert text =~ "after the page has loaded"
+      assert text =~ "turning this off removes it"
+    end
+  end
+
   describe "offline/0" do
+    test "says the map draws its background offline only from a saved map" do
+      %{works: works} = AppInfo.offline()
+
+      assert Enum.any?(works, &(&1 =~ "Save the map for offline use"))
+    end
+
     test "says the map keeps what it has drawn and its vehicles stop moving" do
       %{works: works} = AppInfo.offline()
 
