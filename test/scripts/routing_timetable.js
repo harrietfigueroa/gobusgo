@@ -122,10 +122,10 @@ function tripsFile(trips) {
   header({view, kind: KIND_TRIPS, count: encoded.length})
   let offset = HEADER_BYTES
 
-  for (const {id, routeId} of encoded) {
+  for (const [index, {id, routeId}] of encoded.entries()) {
     offset = writeString({view, buffer, offset, bytes: id})
     offset = writeString({view, buffer, offset, bytes: routeId})
-    view.setUint8(offset, 0)
+    view.setUint8(offset, trips[index].serviceDayOffset)
     offset += SERVICE_DAY_OFFSET_BYTES
   }
 
@@ -224,9 +224,9 @@ function hops({trip, tripIndex, stopIndex}) {
   const noBoarding = new Set(listed(trip.noBoarding))
   const noAlighting = new Set(listed(trip.noAlighting))
 
-  for (let sequence = 0; sequence + 1 < trip.stopTimes.length; sequence++) {
-    const from = trip.stopTimes[sequence]
-    const to = trip.stopTimes[sequence + 1]
+  for (let stopIndexInTrip = 0; stopIndexInTrip + 1 < trip.stopTimes.length; stopIndexInTrip++) {
+    const from = trip.stopTimes[stopIndexInTrip]
+    const to = trip.stopTimes[stopIndexInTrip + 1]
     const departureClock = from[from.length - 1]
 
     result.push({
@@ -235,7 +235,7 @@ function hops({trip, tripIndex, stopIndex}) {
       departureStop: stopIndex.get(from[0]),
       arrivalStop: stopIndex.get(to[0]),
       trip: tripIndex,
-      sequence,
+      sequence: firstSequenceOf(trip) + stopIndexInTrip,
       boarding: !noBoarding.has(from[0]),
       alighting: !noAlighting.has(to[0]),
     })
@@ -268,14 +268,36 @@ function tripId(trip) {
   return trip.id
 }
 
+// A previous date's trip in a snapshot keeps only its connections departing
+// after the date starts, so its first one need not have sequence 0.
+function firstSequenceOf(trip) {
+  if (trip.firstSequence === undefined) {
+    return 0
+  }
+
+  return trip.firstSequence
+}
+
+// A trip runs on the snapshot's own date unless the fixture says it is the
+// previous date's.
+function serviceDayOffsetOf(trip) {
+  if (trip.serviceDayOffset === undefined) {
+    return 0
+  }
+
+  return trip.serviceDayOffset
+}
+
 // A trip's route is the fixture's where it names one, and a route of its
 // own otherwise.
 function tripRecord(trip) {
+  const serviceDayOffset = serviceDayOffsetOf(trip)
+
   if (trip.route === undefined) {
-    return {id: trip.id, routeId: "route " + trip.id}
+    return {id: trip.id, routeId: "route " + trip.id, serviceDayOffset}
   }
 
-  return {id: trip.id, routeId: trip.route}
+  return {id: trip.id, routeId: trip.route, serviceDayOffset}
 }
 
 // The connections, in departure order, cut where the hour of departure

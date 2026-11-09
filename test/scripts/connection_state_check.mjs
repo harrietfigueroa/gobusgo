@@ -215,7 +215,7 @@ const signalCases = [
         date({serviceDate: "2026-11-09", builtAgoMs: FIVE_HOURS_MS, validForMs: DAY_MS})
       ]
     }),
-    expected: [SignalTitle.positionsNotUpdating, "Schedules updated 3 h ago"]
+    expected: [SignalTitle.scheduledPositions, "Schedules updated 3 h ago"]
   },
   {
     name: "a saved index whose ended date is the newest build",
@@ -226,7 +226,7 @@ const signalCases = [
         date({serviceDate: "2026-11-08", builtAgoMs: SIX_HOURS_MS, validForMs: HOUR_MS})
       ]
     }),
-    expected: [SignalTitle.positionsNotUpdating, "Schedules updated 6 h ago"]
+    expected: [SignalTitle.scheduledPositions, "Schedules updated 6 h ago"]
   }
 ]
 
@@ -235,7 +235,7 @@ for (const {name, savedIndex: index, expected} of signalCases) {
 }
 
 deepStrictEqual(SignalTitle, {
-  positionsNotUpdating: "Offline · positions not updating",
+  scheduledPositions: "Offline · scheduled positions",
   noSavedSchedules: "Offline · no saved schedules",
   savedSchedulesEnded: "Offline · saved schedules ended"
 }, "the signal's titles")

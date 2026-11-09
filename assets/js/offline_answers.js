@@ -3,11 +3,12 @@
 // manifest, and the time are given as values, and each answer is a function
 // of them alone.
 //
-// A saved snapshot, as the page reads it from the offline bundle, is
-// `{serviceDate, stopIndexes, positions, names}`: `stopIndexes` maps each
-// stop identifier of its stops file to the stop's index, and `positions`
-// and `names` are each a table keyed by `kind`, found with the decoded
-// positions file or names file, or missing where the bundle holds none.
+// A saved snapshot, as the page reads it from the offline bundle, holds at
+// least `{serviceDate, stopIndexes, positions, names}`, the fields read
+// here: `stopIndexes` maps each stop identifier of its
+// stops file to the stop's index, and `positions` and `names` are each a
+// table keyed by `kind`, found with the decoded positions file or names
+// file, or missing where the bundle holds none.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {ServiceDateKind, serviceDateAt} from "./routing_journeys.js"
@@ -37,6 +38,7 @@ export const LocalAnswerKind = Object.freeze({
   filterRestore: "filterRestore",
   deferClose: "deferClose",
   cancelClose: "cancelClose",
+  scheduledMarkers: "scheduledMarkers",
   unanswered: "unanswered"
 })
 
@@ -77,6 +79,7 @@ export function localAnswerOf(name) {
     case PageEventName.arrivalsClose:
       return LocalAnswerKind.deferClose
     case PageEventName.markersReady:
+      return LocalAnswerKind.scheduledMarkers
     case PageEventName.sharedVehiclesShow:
     case PageEventName.sharedVehiclesHide:
       return LocalAnswerKind.unanswered
@@ -161,9 +164,11 @@ export function positionReply({snapshots, payload}) {
   return REFUSED_REPLY
 }
 
-// The name a route is shown under, as the server names it: its short name,
-// its long name, or its identifier.
-function routeNameOf({route, routeId}) {
+/**
+ * The name the saved route `route` of `routeId` is shown under, as the
+ * server names it: its short name, its long name, or its identifier.
+ */
+export function savedRouteName({route, routeId}) {
   if (isText(route.shortName)) {
     return route.shortName
   } else if (isText(route.longName)) {
@@ -245,7 +250,7 @@ export function namesReply({snapshots, payload, countMax}) {
     const saved = savedRoute({snapshots, routeId})
 
     if (saved.kind === TableKind.found) {
-      routes[routeId] = {name: routeNameOf({route: saved.route, routeId}), color: routeColorOf(saved.route)}
+      routes[routeId] = {name: savedRouteName({route: saved.route, routeId}), color: routeColorOf(saved.route)}
     }
   }
 
@@ -279,7 +284,7 @@ export function tripSummaryText({snapshots, routeIds}) {
     const saved = savedRoute({snapshots, routeId})
 
     if (saved.kind === TableKind.found) {
-      names.push(routeNameOf({route: saved.route, routeId}))
+      names.push(savedRouteName({route: saved.route, routeId}))
     } else {
       names.push(routeId)
     }

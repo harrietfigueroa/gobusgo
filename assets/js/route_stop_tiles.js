@@ -1,4 +1,5 @@
 import {READY_EVENT_NAME} from "./basemap"
+import {KeptKind} from "./scheduled_service"
 
 // The source the route lines and the stops are drawn from: one vector source
 // over the route and stop tile archive, which the basemap's protocol reads
@@ -19,8 +20,7 @@ export const CHANGE_EVENT_NAME = "route-stop-tiles:change"
 // The kinds of a read of the current archive.
 const ArchiveKind = Object.freeze({found: "found", none: "none"})
 
-/** The kinds of a read of the routes the filter keeps. */
-export const KeptKind = Object.freeze({every: "every", routes: "routes"})
+export {KeptKind}
 
 /** The kinds of a layer's filter: none, which draws everything, or a filter. */
 export const FilterKind = Object.freeze({none: "none", filter: "filter"})
@@ -71,9 +71,12 @@ function archiveChanged(previous, current) {
   }
 }
 
-// The routes the filter keeps, or every route for a page with no filter,
-// which draws every route of the archive.
-function keptRoutes() {
+/**
+ * The routes the page shows, a trip's filter shown offline included: every
+ * route for a page with no filter, which draws every route of the archive,
+ * or the list the filter keeps.
+ */
+export function keptRoutes() {
   if (local.kind === LocalKind.kept) {
     return local.kept
   }
