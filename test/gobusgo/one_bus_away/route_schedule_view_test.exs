@@ -110,6 +110,15 @@ defmodule Gobusgo.OneBusAway.RouteScheduleViewTest do
     assert RouteScheduleView.schedules_on(view, ~D[2026-11-09]) == []
   end
 
+  test "returns the identifier of every route it holds a schedule of on one service date", %{
+    view: view
+  } do
+    :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-07]), value(~D[2026-11-08])])
+
+    assert RouteScheduleView.route_ids_on(view, ~D[2026-11-08]) == ["19_41"]
+    assert RouteScheduleView.route_ids_on(view, ~D[2026-11-09]) == []
+  end
+
   test "returns every service date it holds a schedule of", %{view: view} do
     :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-08]), value(~D[2026-11-07])])
 
