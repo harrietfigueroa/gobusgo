@@ -116,7 +116,7 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @west_map) == @west_bounds
     end
 
-    test "shows the panel sheet, the map, and the hooks' elements, and nothing else" do
+    test "shows the offline signal, the panel sheet, the map, and the hooks' elements, and nothing else" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       ids =
@@ -127,6 +127,9 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
         |> LazyHTML.attribute("id")
 
       assert ids == [
+               "connection-state",
+               "connection-signal",
+               "connection-announcement",
                "panel-sheet",
                "basemap-basemap-20261004-01",
                "route-stop-tiles",

@@ -7,12 +7,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   the previous date's, writes its files, and records its manifest entry.
 
   A date is passed over when the SHA-256 of its inputs, the request
-  identifiers of both dates' schedules and the positions of the stop view's
-  stops, is that of its current entry and the entry was built today. A file
-  whose destination already exists holds the same content, since its name
-  is the content's hash, and counts as written. A date whose files are not
-  all written keeps the entry it had. Entries of dates the view no longer
-  holds are dropped.
+  identifiers of both dates' schedules, the positions and names of the stop
+  view's stops, the names of the route view's routes, and the agency view's
+  agency names, is that of its current entry and the entry was built today.
+  The names are hashed as values, so a view fetched again unchanged builds
+  nothing. A file whose destination already exists holds the same content,
+  since its name is the content's hash, and counts as written. A date whose
+  files are not all written keeps the entry it had. Entries of dates the
+  view no longer holds are dropped.
 
   ## Logs
 
@@ -30,9 +32,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   ## Options
 
     * `:server` (required): the `Gobusgo.Routing.Snapshots` process.
-    * `:schedule_view` and `:stop_view`: the views read. Default to
-      `Gobusgo.OneBusAway.RouteScheduleView` and
-      `Gobusgo.OneBusAway.StopView`.
+    * `:schedule_view`, `:stop_view`, `:route_view`, and `:agency_view`:
+      the views read. Default to `Gobusgo.OneBusAway.RouteScheduleView`,
+      `Gobusgo.OneBusAway.StopView`, `Gobusgo.OneBusAway.RouteView`, and
+      `Gobusgo.OneBusAway.AgencyView`.
     * `:clock`: returns the current UTC time. Defaults to
       `DateTime.utc_now/0`.
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
@@ -43,8 +46,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   require Logger
 
   alias Gobusgo.Assert
+  alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.Routing.Names
   alias Gobusgo.Routing.Snapshot
   alias Gobusgo.Routing.Snapshots
   alias Gobusgo.Routing.Timetable
@@ -66,6 +72,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         :server,
         schedule_view: RouteScheduleView,
         stop_view: StopView,
+        route_view: Gobusgo.OneBusAway.RouteView,
+        agency_view: AgencyView,
         clock: &DateTime.utc_now/0,
         write_options: [],
         date_heap_words_max: @date_heap_words_max
@@ -77,7 +85,16 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     now = Keyword.fetch!(options, :clock).()
     today = DateTime.to_date(now)
     dates = RouteScheduleView.held_dates(schedule_view)
-    positions = positions(Keyword.fetch!(options, :stop_view))
+    held_stops = StopView.current(Keyword.fetch!(options, :stop_view))
+    positions = positions(held_stops)
+
+    sources =
+      packed_sources(%{
+        stops: stop_names(held_stops),
+        routes: route_names(Keyword.fetch!(options, :route_view)),
+        agency_names: agency_names(Keyword.fetch!(options, :agency_view))
+      })
+
     built = Snapshots.built(server)
 
     outcomes =
@@ -86,6 +103,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           date: date,
           built: Map.get(built, date),
           positions: positions,
+          sources: sources,
           today: today,
           now: now,
           options: options
@@ -170,7 +188,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     today = input.today
     schedules = RouteScheduleView.schedules_on(schedule_view, date)
     previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
-    inputs_sha256 = inputs_sha256(schedules, previous, input.positions)
+
+    inputs_sha256 =
+      inputs_sha256(%{
+        schedules: schedules,
+        previous: previous,
+        positions: input.positions,
+        sources: input.sources
+      })
 
     case input.built do
       %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
@@ -182,6 +207,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           schedules: schedules,
           previous: previous,
           positions: input.positions,
+          sources: input.sources,
           inputs_sha256: inputs_sha256,
           now: input.now,
           options: options
@@ -189,17 +215,65 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     end
   end
 
-  defp positions(stop_view) do
-    for %{id: id, stop: %{"lat" => lat, "lon" => lon}} <- StopView.current(stop_view),
+  defp positions(held_stops) do
+    for %{id: id, stop: %{"lat" => lat, "lon" => lon}} <- held_stops,
         into: %{},
         do: {id, %{lat: lat, lon: lon}}
   end
 
-  defp inputs_sha256(schedules, previous, positions) do
+  defp stop_names(held_stops) do
+    for %{id: id, stop: stop} <- held_stops,
+        into: %{},
+        do: {id, %{name: stop["name"], code: stop["code"]}}
+  end
+
+  defp route_names(route_view) do
+    for %{routes: routes} <- FetchView.current(route_view),
+        {route_id, route} <- routes,
+        into: %{} do
+      {route_id,
+       %{
+         short_name: route["shortName"],
+         long_name: route["longName"],
+         color: route["color"],
+         agency_id: route["agencyId"]
+       }}
+    end
+  end
+
+  defp agency_names(agency_view) do
+    case AgencyView.current(agency_view) do
+      nil ->
+        %{}
+
+      %{agencies: agencies} ->
+        for {id, agency} <- agencies, into: %{}, do: {id, agency["name"]}
+    end
+  end
+
+  # The names reach each date's process as one binary, which is stored off
+  # the process heap, and are decoded only once the timetable is built, so
+  # they take no room under the heap cap while the timetable's build peaks.
+  # They are sorted before they are packed, so the same names pack to the
+  # same binary and hash to the same SHA-256.
+  defp packed_sources(%{stops: stops, routes: routes, agency_names: agency_names}) do
+    packed =
+      :erlang.term_to_binary({Enum.sort(stops), Enum.sort(routes), Enum.sort(agency_names)})
+
+    %{packed: packed, sha256: :crypto.hash(:sha256, packed)}
+  end
+
+  defp unpacked_sources(%{packed: packed}) do
+    {stops, routes, agency_names} = :erlang.binary_to_term(packed, [:safe])
+    %{stops: Map.new(stops), routes: Map.new(routes), agency_names: Map.new(agency_names)}
+  end
+
+  defp inputs_sha256(%{schedules: schedules, previous: previous} = inputs) do
     requests =
       for fetch <- schedules ++ previous, do: {fetch.id, fetch.service_date, fetch.request_id}
 
-    :crypto.hash(:sha256, :erlang.term_to_binary({Enum.sort(requests), Enum.sort(positions)}))
+    hashed = {Enum.sort(requests), Enum.sort(inputs.positions), inputs.sources.sha256}
+    :crypto.hash(:sha256, :erlang.term_to_binary(hashed))
   end
 
   defp build_date(%{date: date, schedules: schedules, previous: previous, now: now} = input) do
@@ -211,12 +285,31 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       })
 
     fetch_times = Enum.map(schedules ++ previous, & &1.fetched_at)
+    walking_links = Transfers.walking_links(timetable.stop_ids, input.positions)
+    sources = unpacked_sources(input.sources)
+
+    headsigns =
+      Names.headsigns(%{
+        schedules: Enum.map(schedules, & &1.schedule),
+        previous_schedules: Enum.map(previous, & &1.schedule)
+      })
+
+    names =
+      Names.build(%{
+        stop_ids: timetable.stop_ids,
+        trips: timetable.trips,
+        headsigns: headsigns,
+        stops: sources.stops,
+        routes: sources.routes,
+        agency_names: sources.agency_names
+      })
 
     %{files: files, entry: entry} =
       Snapshot.build(%{
         timetable: timetable,
-        walking_links: Transfers.walking_links(timetable.stop_ids, input.positions),
+        walking_links: walking_links,
         positions: input.positions,
+        names: names,
         built_at: now,
         fetched_at_oldest: Enum.min(fetch_times, DateTime),
         fetched_at_newest: Enum.max(fetch_times, DateTime)

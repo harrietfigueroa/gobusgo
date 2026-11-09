@@ -1,3 +1,4 @@
+import {assertCondition} from "./assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {placePopups} from "./popup_placement"
@@ -8,7 +9,7 @@ import {
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
 import {compactPopupContent, writeChipNote} from "./route_chips"
-import {nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {NEEDS_CONNECTION_CLASS_NAME, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
 import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
@@ -169,9 +170,10 @@ export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
 
 // A popup's compact content: the stop's first route numbers and, in the
 // note beside them, its next arrival once the page has sent its arrivals.
-// A click on it hands the stop to `onSelect`.
+// A click on it hands the stop to `onSelect`. The next arrival is a live
+// one, so the stylesheet hides the note while the page is offline.
 function popupElements({stop, noteText, onSelect}) {
-  return compactPopupContent({
+  const elements = compactPopupContent({
     chips: stop.routeChips,
     countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
@@ -179,6 +181,9 @@ function popupElements({stop, noteText, onSelect}) {
     label: `${suppliedName(stop)}: show the stop`,
     onSelect
   })
+
+  elements.note.classList.add(NEEDS_CONNECTION_CLASS_NAME)
+  return elements
 }
 
 function favoriteStopId(favorite) {
@@ -547,9 +552,7 @@ export const StopMarkers = {
     })
     const container = this.map.getContainer()
 
-    if (this.tipLength === null) {
-      throw new Error("a popup's size is known before the length of a popup's tip")
-    }
+    assertCondition(this.tipLength !== null, "a popup's size is known before the length of a popup's tip")
 
     return placePopups({
       popups,

@@ -22,6 +22,7 @@ import {
   QueryKind,
   StateKind,
   TripEnd,
+  failureState,
   isRetryable,
   journeyFeatures,
   journeyRows,
@@ -36,6 +37,7 @@ import {
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
+import {isNotSaved} from "./offline_bundle"
 import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
 
 const NAMES_EVENT_NAME = "trip:names"
@@ -116,6 +118,10 @@ function fragmentOf(elements) {
 async function fetchFile({path, signal}) {
   const response = await fetch(path, {signal, cache: "default", credentials: "same-origin"})
 
+  if (isNotSaved(response)) {
+    return {kind: FetchKind.failed, reason: FailureReason.notSaved}
+  }
+
   if (!response.ok) {
     return {kind: FetchKind.failed, reason: FailureReason.fetchFailed}
   }
@@ -131,6 +137,10 @@ async function fetchManifest(url) {
 
   try {
     const response = await fetch(url, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
+
+    if (isNotSaved(response)) {
+      return {kind: JourneysKind.failed, reason: FailureReason.notSaved, path: url}
+    }
 
     if (!response.ok) {
       return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: url}
@@ -480,7 +490,7 @@ export const TripPlanner = {
     if (queryNumber !== this.queryCount) {
       return
     } else if (manifestOutcome.kind === JourneysKind.failed) {
-      this.showState({kind: JourneysKind.failed, retry: true})
+      this.showState({kind: failureState(manifestOutcome), retry: true})
       return
     }
 
@@ -524,7 +534,7 @@ export const TripPlanner = {
         break
       case JourneysKind.failed:
         console.warn("Journeys not routed", answer.reason, answer.path)
-        this.showState({kind: JourneysKind.failed, retry: isRetryable(answer)})
+        this.showState({kind: failureState(answer), retry: isRetryable(answer)})
         return
       case JourneysKind.none:
       case JourneysKind.unknownStop:
