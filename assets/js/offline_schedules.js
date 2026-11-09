@@ -7,14 +7,28 @@
 // runs again while the page stays open. Every file of a bundle is stored
 // before the index that names them, so a save that stops part way leaves the
 // previous complete bundle in use, and the files the new index no longer
-// names are deleted only after it is written. A file the browser evicted is
-// missing from the store and is fetched again by the next save.
+// names are deleted only after it is written. The bundle's own manifest is
+// written just before the index, so the service worker's offline answer for
+// the manifest names the dates of the bundle that index describes. A file
+// the browser evicted is missing from the store and is fetched again by the
+// next save.
 
-import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "./offline_bundle"
+import {
+  BUNDLE_MANIFEST_PATH,
+  INDEX_PATH,
+  IndexKind,
+  OFFLINE_SCHEDULES_CACHE_NAME,
+  PersistenceKind,
+  PlanKind,
+  StatusKind,
+  bundleStatus,
+  persistenceText,
+  planBundle,
+  savedIndex,
+  stalePaths
+} from "./offline_bundle"
 import {storedSettings} from "./stored_settings"
 
-const CACHE_NAME = "gobusgo-offline-schedules-v1"
-const INDEX_PATH = "/offline-schedules/index.json"
 const MANIFEST_PATH = "/api/routing/manifest"
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const IDLE_TIMEOUT_MS = 10 * 1000
@@ -106,7 +120,7 @@ async function save(signal) {
     return {kind: SaveKind.nothingToSave}
   }
 
-  const cache = await caches.open(CACHE_NAME)
+  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
 
   for (const path of plan.paths) {
     if (signal.aborted) {
@@ -120,12 +134,16 @@ async function save(signal) {
     }
   }
 
-  const index = {savedAtMs: Date.now(), formatVersion: plan.formatVersion, dates: plan.dates, paths: plan.paths}
+  const jsonHeaders = {"content-type": "application/json"}
+  const manifestText = JSON.stringify(plan.manifest)
+  const manifestCopy = new Response(manifestText, {headers: jsonHeaders})
+  await cache.put(BUNDLE_MANIFEST_PATH, manifestCopy)
+  const index = savedIndex({plan, savedAtMs: Date.now()})
   const indexText = JSON.stringify(index)
-  const indexResponse = new Response(indexText, {headers: {"content-type": "application/json"}})
+  const indexResponse = new Response(indexText, {headers: jsonHeaders})
   await cache.put(INDEX_PATH, indexResponse)
   const present = await storedPaths(cache)
-  const keptPaths = [INDEX_PATH, ...plan.paths]
+  const keptPaths = [INDEX_PATH, BUNDLE_MANIFEST_PATH, ...plan.paths]
   const stale = stalePaths({index: {paths: keptPaths}, storedPaths: present})
 
   for (const path of stale) {
@@ -220,7 +238,7 @@ async function requestPersistence() {
 }
 
 async function describe(persistence) {
-  const cache = await caches.open(CACHE_NAME)
+  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
   const savedIndex = await readIndex(cache)
   const present = await storedPaths(cache)
   const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
@@ -327,7 +345,7 @@ export const OfflineSchedules = {
 
   async clear() {
     this.stop()
-    await caches.delete(CACHE_NAME)
+    await caches.delete(OFFLINE_SCHEDULES_CACHE_NAME)
     this.status.textContent = "Schedules are not saved for offline use."
   },
 

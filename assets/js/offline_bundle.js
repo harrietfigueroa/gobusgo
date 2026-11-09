@@ -6,12 +6,33 @@
 // A bundle holds the routing snapshots of the service dates that have not
 // ended, at most BUNDLE_DATE_COUNT_MAX of them, and the route and stop tile
 // archive, which holds the stops and route shapes a snapshot leaves out. A
-// service date ends at its last departure, which can be past midnight.
+// service date ends at its last departure, which can be past midnight. A
+// bundle also holds a manifest of its own, which names its dates alone, so
+// that a page reading it offline asks for no file the bundle lacks.
 
 import {unreachable} from "./assert.js"
 
 const BUNDLE_DATE_COUNT_MAX = 2
 const SECOND_MS = 1000
+const NOT_SAVED_HEADER_NAME = "gobusgo-offline"
+const NOT_SAVED_HEADER_VALUE = "not-saved"
+
+/** The Cache API store of the bundle, which the service worker reads and never deletes. */
+export const OFFLINE_SCHEDULES_CACHE_NAME = "gobusgo-offline-schedules-v1"
+
+/** The path the bundle's index is stored under. */
+export const INDEX_PATH = "/offline-schedules/index.json"
+
+/** The path the bundle's own manifest is stored under. */
+export const BUNDLE_MANIFEST_PATH = "/offline-schedules/manifest.json"
+
+/** The header, and its value, that mark the service worker's answer for a file no bundle holds and no network gives. */
+export const NOT_SAVED_HEADER = Object.freeze({name: NOT_SAVED_HEADER_NAME, value: NOT_SAVED_HEADER_VALUE})
+
+/** Whether `response` is the service worker's answer for a file that is not saved. */
+export function isNotSaved(response) {
+  return response.headers.get(NOT_SAVED_HEADER_NAME) === NOT_SAVED_HEADER_VALUE
+}
 
 /** The kinds of a bundle plan. */
 export const PlanKind = Object.freeze({bundle: "bundle", nothingToSave: "nothingToSave"})
@@ -61,7 +82,9 @@ function summaryOf(entry) {
 /**
  * The bundle to save at `nowMs` from `manifest`, with `tileArchivePath`, the
  * address of the current tile archive, or the empty string where the page
- * names none: the summaries of its service dates and every file it holds.
+ * names none: the summaries of its service dates, every file it holds, the
+ * tile archive's address, and its own manifest, `manifest` with the chosen
+ * snapshots alone.
  */
 export function planBundle({manifest, nowMs, tileArchivePath}) {
   const current = []
@@ -91,7 +114,25 @@ export function planBundle({manifest, nowMs, tileArchivePath}) {
     paths.push(tileArchivePath)
   }
 
-  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates: Array.from(chosen, summaryOf), paths}
+  const bundleManifest = {...manifest, snapshots: chosen}
+  const dates = Array.from(chosen, summaryOf)
+  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates, paths, tileArchivePath, manifest: bundleManifest}
+}
+
+/**
+ * The index saved with the bundle `plan` at `savedAtMs`: what the bundle
+ * holds, and where its manifest and its tile archive are stored, the
+ * archive's address being the empty string where it holds none.
+ */
+export function savedIndex({plan, savedAtMs}) {
+  return {
+    savedAtMs,
+    formatVersion: plan.formatVersion,
+    dates: plan.dates,
+    paths: plan.paths,
+    manifestPath: BUNDLE_MANIFEST_PATH,
+    tileArchivePath: plan.tileArchivePath
+  }
 }
 
 /**
