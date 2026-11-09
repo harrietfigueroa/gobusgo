@@ -132,9 +132,9 @@ async function readBundle(index) {
 }
 
 /**
- * The saved snapshots, the service date running when they were read first, each as
- * `offline_answers.js` describes them; none where the browser holds no
- * saved bundle.
+ * The saved snapshots, the service date running when they were read first,
+ * each `{serviceDate, stopIndexes, positions, names}` with each table found
+ * or missing; none where the browser holds no saved bundle.
  */
 export async function savedSnapshots() {
   const read = await readSavedIndex()
