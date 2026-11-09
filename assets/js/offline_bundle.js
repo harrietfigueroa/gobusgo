@@ -4,8 +4,9 @@
 // no storage.
 //
 // A bundle holds the routing snapshots of the service dates that have not
-// ended, at most BUNDLE_DATE_COUNT_MAX of them, and the route and stop tile
-// archive, which holds the stops and route shapes a snapshot leaves out. A
+// ended, at most BUNDLE_DATE_COUNT_MAX of them, each with its names file,
+// and the route and stop tile archive, which holds the stops and route
+// shapes a snapshot leaves out. A
 // service date ends at its last departure, which can be past midnight.
 
 import {unreachable} from "./assert.js"
@@ -35,7 +36,8 @@ function lastDepartureMs(entry) {
 }
 
 function snapshotPaths(entry) {
-  const paths = [entry.files.stops.path, entry.files.trips.path, entry.files.transfers.path, entry.files.positions.path]
+  const {stops, trips, transfers, positions, names} = entry.files
+  const paths = [stops.path, trips.path, transfers.path, positions.path, names.path]
 
   for (const chunk of entry.connectionChunks) {
     paths.push(chunk.path)

@@ -1,14 +1,21 @@
 defmodule Gobusgo.Routing.Snapshots.BuildTest do
-  # Drives run/1 against a schedule view, a stop view, and a snapshots
-  # process started for the test, filled with records built from the live
-  # schedule fixture, and a writer double defined here. What a run built is
-  # read from the manifest, the destinations written, and the counts.
+  # Drives run/1 against a schedule view, a stop view, a route view, an
+  # agency view, and a snapshots process started for the test, filled with
+  # records built from the live schedule fixture and by hand, and a writer
+  # double defined here. What a run built is read from the manifest, the
+  # destinations and contents written, and the counts.
   use ExUnit.Case, async: true
 
+  alias Gobusgo.Compression
+  alias Gobusgo.OneBusAway.AgencyBatch.Records, as: AgencyRecords
+  alias Gobusgo.OneBusAway.AgencyView
+  alias Gobusgo.OneBusAway.FetchView
+  alias Gobusgo.OneBusAway.RouteBatch
   alias Gobusgo.OneBusAway.RouteScheduleBatch.Records
   alias Gobusgo.OneBusAway.RouteSchedules
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.Routing.Names
   alias Gobusgo.Routing.Snapshots
   alias Gobusgo.Routing.Snapshots.Build
 
@@ -18,8 +25,9 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
     @behaviour Gobusgo.Writer
 
     @impl Gobusgo.Writer
-    def write(%{destination: destination}, options) do
+    def write(%{destination: destination, content: content}, options) do
       send(Keyword.fetch!(options, :recipient), {:written, destination})
+      send(Keyword.fetch!(options, :recipient), {:content, destination, content})
       Keyword.get(options, :result, :ok)
     end
   end
@@ -37,8 +45,84 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
       {StopView, name: stop_view, pubsub: Gobusgo.PubSub, route_count_max: 8, stop_count_max: 8}
     )
 
+    route_view = Module.concat(__MODULE__, "RouteView#{context.line}")
+    agency_view = Module.concat(__MODULE__, "AgencyView#{context.line}")
+
+    start_supervised!(
+      {FetchView,
+       name: route_view, pubsub: Gobusgo.PubSub, records: RouteBatch.Records, id_count_max: 8}
+    )
+
+    start_supervised!({AgencyView, name: agency_view, pubsub: Gobusgo.PubSub})
     start_supervised!({Snapshots, name: server})
-    %{schedule_view: schedule_view, stop_view: stop_view, server: server}
+
+    %{
+      schedule_view: schedule_view,
+      stop_view: stop_view,
+      route_view: route_view,
+      agency_view: agency_view,
+      server: server
+    }
+  end
+
+  # A fetch of agency 19's routes holding route 19_41 in `color`, under a
+  # request identifier of its own, so a later fetch replaces an earlier one.
+  defp hold_route(context, %{color: color, fetched_at: fetched_at}) do
+    record =
+      RouteBatch.Records.build(%{
+        agency_id: "19",
+        destination: "raw/oba/routes-for-agency/test.json.gz",
+        fetched_at: fetched_at,
+        data_sha256: String.duplicate("ab", 32),
+        request_id: Gobusgo.RequestId.generate(),
+        routes: [
+          %{
+            id: "19_41",
+            agency_id: "19",
+            short_name: "41",
+            long_name: nil,
+            description: nil,
+            type: 3,
+            color: color,
+            text_color: nil,
+            url: nil
+          }
+        ]
+      })
+
+    :ok = FetchView.apply_records(context.route_view, [record.value])
+  end
+
+  defp hold_agency(context) do
+    %{agencies: agencies, manifest: manifest} =
+      AgencyRecords.build(%{
+        destination: "raw/oba/agencies-with-coverage/dt=2026-11-07/file.json",
+        fetched_at: ~U[2026-11-07 03:15:00Z],
+        data_sha256: String.duplicate("ab", 32),
+        request_id: "0199c4a2-7e1b-7a3f-9d20-000000000001",
+        agencies: [
+          %{
+            id: "19",
+            name: "Intercity Transit",
+            url: "https://intercitytransit.example.test",
+            timezone: "America/Los_Angeles",
+            coverage: %{lat: 47.0, lon: -122.9, lat_span: 0.5, lon_span: 0.5}
+          }
+        ]
+      })
+
+    :ok =
+      AgencyView.apply_records(context.agency_view, Enum.map(agencies ++ [manifest], & &1.value))
+  end
+
+  # The names the run wrote to the destination `entry` names, which the
+  # backend receives as the gzip stream it stores.
+  defp written_names(entry) do
+    destination = String.trim_leading(entry["files"]["names"]["path"], "/")
+    assert_received {:content, ^destination, stream}
+    {:ok, content} = Compression.decompress(stream, Compression.content_bytes_max())
+    {:ok, names} = Names.decode(content)
+    names
   end
 
   defp hold(context, service_date) do
@@ -69,6 +153,8 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
       server: context.server,
       schedule_view: context.schedule_view,
       stop_view: context.stop_view,
+      route_view: context.route_view,
+      agency_view: context.agency_view,
       clock: fn -> @now end,
       write_options: [backend: RecordingBackend, recipient: self()]
     ]
@@ -82,6 +168,64 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
     after
       0 -> Enum.reverse(destinations)
     end
+  end
+
+  test "names the route view's route and its agency's name in the names file", context do
+    hold(context, ~D[2026-11-07])
+    hold_route(context, %{color: "005BAA", fetched_at: ~U[2026-11-06 23:00:00Z]})
+    hold_agency(context)
+
+    {:ok, _counts} = run(context)
+    [entry] = Snapshots.manifest(context.server)["snapshots"]
+
+    assert %{
+             "routes" => %{"19_41" => %{"color" => "005BAA", "agencyId" => "19"}},
+             "agencyNames" => %{"19" => "Intercity Transit"}
+           } = written_names(entry)
+  end
+
+  test "names a headsign for every trip of the trips file", context do
+    hold(context, ~D[2026-11-07])
+
+    {:ok, _counts} = run(context)
+    [entry] = Snapshots.manifest(context.server)["snapshots"]
+    headsigns = written_names(entry)["tripHeadsigns"]
+
+    assert {length(headsigns), Enum.all?(headsigns, &is_binary/1)} ==
+             {entry["tripCount"], true}
+  end
+
+  test "builds a date again when a route's names change", context do
+    hold(context, ~D[2026-11-07])
+    hold_route(context, %{color: "005BAA", fetched_at: ~U[2026-11-06 23:00:00Z]})
+    {:ok, _first} = run(context)
+    hold_route(context, %{color: "C00000", fetched_at: ~U[2026-11-07 11:00:00Z]})
+
+    assert {:ok, %{built_count: 1}} = run(context)
+  end
+
+  test "passes over a date when a route is fetched again with the same names", context do
+    hold(context, ~D[2026-11-07])
+    hold_route(context, %{color: "005BAA", fetched_at: ~U[2026-11-06 23:00:00Z]})
+    {:ok, _first} = run(context)
+    hold_route(context, %{color: "005BAA", fetched_at: ~U[2026-11-07 11:00:00Z]})
+
+    assert {:ok, %{built_count: 0, unchanged_count: 1}} = run(context)
+  end
+
+  @tag :tmp_dir
+  test "stores the names file as the gzip stream the manifest names", context do
+    hold(context, ~D[2026-11-07])
+
+    {:ok, _counts} =
+      run(context, write_options: [backend: Gobusgo.Writer.LocalFile, base_dir: context.tmp_dir])
+
+    [entry] = Snapshots.manifest(context.server)["snapshots"]
+    %{"path" => path, "byteSize" => byte_size, "sha256" => sha256} = entry["files"]["names"]
+    stored = File.read!(Path.join(context.tmp_dir, path))
+
+    assert {byte_size(stored), Base.encode16(:crypto.hash(:sha256, stored), case: :lower)} ==
+             {byte_size, sha256}
   end
 
   test "builds one snapshot per held service date and names it in the manifest", context do
@@ -106,7 +250,8 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
       entry["files"]["stops"],
       entry["files"]["trips"],
       entry["files"]["transfers"],
-      entry["files"]["positions"] | entry["connectionChunks"]
+      entry["files"]["positions"],
+      entry["files"]["names"] | entry["connectionChunks"]
     ]
 
     assert Enum.sort(written()) ==

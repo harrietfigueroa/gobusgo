@@ -15,7 +15,7 @@ const HOUR_SECONDS = 60 * 60
 const DAY_START_MS = 1794038400000
 const SERVICE_DATES = ["2026-11-07", "2026-11-08", "2026-11-09"]
 const LAST_DEPARTURE_HOUR = 26
-const FILES_PER_DATE = 6
+const FILES_PER_DATE = 7
 const BUNDLE_DATE_COUNT = 2
 const DAYS_PAST_EVERY_DATE = 4
 const TILE_ARCHIVE_PATH = "/tiles/route-stops/dt=2026-11-07/route-stops-1.pmtiles"
@@ -32,7 +32,7 @@ function entry(dayIndex) {
     serviceDayStartMs: DAY_START_MS + dayIndex * DAY_MS,
     builtAt: "2026-11-07T12:00:00Z",
     sourceFetchedAt: {newest: "2026-11-07T11:00:00Z"},
-    files: {stops: file("stops"), trips: file("trips"), transfers: file("transfers"), positions: file("positions")},
+    files: {stops: file("stops"), trips: file("trips"), transfers: file("transfers"), positions: file("positions"), names: {path: "/routing/" + serviceDate + "-names.json.gz"}},
     connectionChunks: [{...file("chunk-0"), departureSMax: HOUR_SECONDS}, {...file("chunk-1"), departureSMax: LAST_DEPARTURE_HOUR * HOUR_SECONDS}],
   }
 }
@@ -59,6 +59,10 @@ deepStrictEqual(morning.paths[morning.paths.length - 1], TILE_ARCHIVE_PATH)
 // Each date's stop positions are saved with its other tables.
 deepStrictEqual(morning.paths.includes(firstDate.files.positions.path), true)
 deepStrictEqual(morning.paths.includes(secondDate.files.positions.path), true)
+
+// Each date's names file is saved with its other files.
+deepStrictEqual(morning.paths.includes(firstDate.files.names.path), true)
+deepStrictEqual(morning.paths.includes(secondDate.files.names.path), true)
 
 // A date ends at its last departure, two hours past the next midnight here.
 const afterLastDepartureMs = DAY_START_MS + (LAST_DEPARTURE_HOUR + 1) * HOUR_MS
