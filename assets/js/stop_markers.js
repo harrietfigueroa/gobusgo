@@ -9,7 +9,7 @@ import {
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
 import {compactPopupContent, writeChipNote} from "./route_chips"
-import {NEEDS_CONNECTION_CLASS_NAME, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {NEEDS_CONNECTION_CLASS_NAME, markArrivalNote, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
 import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
@@ -345,6 +345,7 @@ export const StopMarkers = {
 
       if (open !== undefined) {
         writeChipNote(open.note, nextArrivalTimeText(shown))
+        markArrivalNote({note: open.note, shown})
         // The popup has another size with its next arrival.
         this.scheduleFollow()
       }

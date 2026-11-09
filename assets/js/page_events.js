@@ -3,8 +3,11 @@
 // connection state is live, every event goes to LiveView as it would from
 // the hook itself. Otherwise the page answers for itself from the saved
 // offline bundle: a stop's position, the names of a trip, the trip's
-// filter, and the stored filter's restore. What the page cannot answer gets
-// no reply, and the stylesheet says in place that it needs a connection.
+// filter, and the stored filter's restore. While the page is offline it
+// also sends itself the vehicle markers and the open stops' arrivals the
+// saved schedules give, through the hooks' own `handle` callbacks. What the
+// page cannot answer gets no reply, and the stylesheet says in place that
+// it needs a connection.
 //
 // A trip's filter shown while offline is held by the page alone: the routes
 // the map draws and a summary line of its own, which the stylesheet shows
@@ -31,6 +34,7 @@ import {
 } from "./offline_answers"
 import {KeptKind, elementRouteIds, endLocalRoutes, showLocalEveryRoute, showLocalRoutes} from "./route_stop_tiles"
 import {savedSnapshots} from "./saved_snapshots"
+import {refreshOfflineService, startOfflineService, stopOfflineService} from "./offline_service"
 
 const SUMMARY_ID = "panel-sheet-summary"
 const LOCAL_SUMMARY_CLASS_NAME = "panel-sheet-summary-line local-trip-summary"
@@ -48,9 +52,12 @@ const TripKind = Object.freeze({none: "none", shown: "shown"})
 const ReplyKind = Object.freeze({reply: "reply", none: "none"})
 const NO_REPLY = Object.freeze({kind: ReplyKind.none})
 
-// The hooks that hold page events, each with its `whenLive` callbacks, in
-// the order they took them.
+// The hooks that hold page events, in the order they took them, each with
+// its `whenLive` callbacks and the callbacks it takes each event by.
 const holders = new Map()
+// The stops the page holds open for their arrivals, live or offline, which
+// an offline page writes the scheduled arrivals of.
+let openStops = []
 let isWatching = false
 let trip = {kind: TripKind.none}
 // The stops closed while offline, which the server still holds open when
@@ -222,6 +229,10 @@ async function answerLocally({hook, name, payload}) {
       return NO_REPLY
     case LocalAnswerKind.cancelClose:
       deferredCloses = withoutClose({closes: deferredCloses, stopId: payload.stop_id})
+      refreshOfflineService()
+      return NO_REPLY
+    case LocalAnswerKind.scheduledMarkers:
+      refreshOfflineService()
       return NO_REPLY
     case LocalAnswerKind.unanswered:
       return NO_REPLY
@@ -285,10 +296,42 @@ function wentLive() {
     }
   }
 
-  for (const callbacks of Array.from(holders.values())) {
-    for (const callback of callbacks) {
+  for (const holder of Array.from(holders.values())) {
+    for (const callback of holder.whenLive) {
       callback()
     }
+  }
+}
+
+// Hands `payload` to every callback that takes `name`, as though the server
+// had sent it.
+function dispatchLocally(name, payload) {
+  for (const holder of Array.from(holders.values())) {
+    const callbacks = holder.handlers.get(name)
+
+    if (callbacks !== undefined) {
+      for (const callback of callbacks) {
+        callback(payload)
+      }
+    }
+  }
+}
+
+function openStopIds() {
+  return Array.from(openStops)
+}
+
+function startScheduledService() {
+  startOfflineService({dispatch: dispatchLocally, openStopIds})
+}
+
+// The stops held open follow every open and close the hooks push, whatever
+// the connection.
+function noteOpenStops({name, payload}) {
+  if (name === PageEventName.arrivalsOpen) {
+    openStops = withClose({closes: openStops, stopId: payload.stop_id})
+  } else if (name === PageEventName.arrivalsClose) {
+    openStops = withoutClose({closes: openStops, stopId: payload.stop_id})
   }
 }
 
@@ -297,32 +340,57 @@ function connectionChanged(event) {
   const wasLive = previous.kind === ConnectionKind.live
   const isNowLive = connection.kind === ConnectionKind.live
   const becameLive = !wasLive && isNowLive
+  const wasOffline = previous.kind === ConnectionKind.offline
+  const isNowOffline = connection.kind === ConnectionKind.offline
+  const becameOffline = !wasOffline && isNowOffline
 
   if (becameLive) {
+    stopOfflineService()
     wentLive()
+  } else if (becameOffline) {
+    startScheduledService()
   }
 }
 
 function watch() {
-  if (!isWatching) {
-    window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, connectionChanged)
-    isWatching = true
+  if (isWatching) {
+    return
+  }
+
+  window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, connectionChanged)
+  isWatching = true
+
+  if (connectionState().kind === ConnectionKind.offline) {
+    startScheduledService()
   }
 }
 
 /**
  * The page events of `hook`: `push({name, payload, onReply})` sends an
  * event, the optional `onReply` taking the reply where one comes;
- * `handle(name, callback)` takes the events the server sends;
- * `whenLive(callback)` is called each time the page is live again after it
- * was not; and `release()`, from the hook's `destroyed`, lets go of them.
+ * `handle(name, callback)` takes the events the server sends, and those
+ * the page sends itself while offline; `whenLive(callback)` is called each
+ * time the page is live again after it was not; and `release()`, from the
+ * hook's `destroyed`, lets go of them.
  */
 export function pageEvents(hook) {
   assertCondition(!holders.has(hook), "a hook takes its page events once")
+  holders.set(hook, {whenLive: [], handlers: new Map()})
   watch()
-  holders.set(hook, [])
+
+  function takeLocally({name, callback}) {
+    const {handlers} = holders.get(hook)
+
+    if (!handlers.has(name)) {
+      handlers.set(name, [])
+    }
+
+    handlers.get(name).push(callback)
+  }
 
   function push({name, payload, onReply}) {
+    noteOpenStops({name, payload})
+
     if (isLive()) {
       noteLivePush(name)
       pushLive({hook, name, payload, onReply})
@@ -339,11 +407,12 @@ export function pageEvents(hook) {
       })
     } else {
       hook.handleEvent(name, callback)
+      takeLocally({name, callback})
     }
   }
 
   function whenLive(callback) {
-    holders.get(hook).push(callback)
+    holders.get(hook).whenLive.push(callback)
   }
 
   function release() {

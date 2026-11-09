@@ -130,8 +130,9 @@ defmodule GobusgoWeb.AppInfo do
   @needs_connection_order [:arrivals, :alerts, :suggestions, :shared_vehicles]
 
   @offline_works [
-    "The map keeps the route lines, stops, and vehicles it has drawn. The vehicles stay " <>
-      "where they were last seen and do not move.",
+    "The map keeps its route lines and stops, and shows the vehicles where the saved " <>
+      "schedules place them, in gray, with delays, cancellations, and detours unknown. " <>
+      "A stop's arrivals are its scheduled times.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
       "stays as it is until you are back online.",
     "From the saved schedules you can still plan a trip and center the map on a favorite " <>
