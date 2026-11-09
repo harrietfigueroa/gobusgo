@@ -11,26 +11,39 @@ defmodule Gobusgo.Basemap.Manifest do
   produces and accepts at most #{@archive_count_max} archives and
   #{@agency_count_max} agencies. An archive's name has the form
   `basemap-<snapshot>-<number>.pmtiles`, and every agency names an archive
-  the manifest holds.
+  the manifest holds. An archive may name its offline extract, the copy of
+  its lower zooms a browser saves for offline use, with its size in bytes
+  and its highest zoom, named `basemap-<snapshot>-<number>-z<zoom>.pmtiles`;
+  an archive without one reads as `offline: nil`.
   """
 
   alias Gobusgo.Schema
 
   @archive_name_pattern ~r/\Abasemap-[0-9]{8}-[0-9]{2}\.pmtiles\z/
+  @offline_name_pattern ~r/\Abasemap-[0-9]{8}-[0-9]{2}-z[0-9]{1,2}\.pmtiles\z/
 
   @bounds_schema {:map,
                   %{"south" => :number, "west" => :number, "north" => :number, "east" => :number}}
+  @offline_schema {:map, %{"name" => :string, "bytes" => :integer, "zoomMax" => :integer}}
   @schema {:map,
            %{
              "snapshot" => :string,
-             "archives" => {:list, {:map, %{"name" => :string, "bounds" => @bounds_schema}}},
+             "archives" =>
+               {:list,
+                {:map,
+                 %{
+                   "name" => :string,
+                   "bounds" => @bounds_schema,
+                   "offline" => {:optional, @offline_schema}
+                 }}},
              "agencies" =>
                {:list,
                 {:map, %{"agencyId" => :string, "archive" => :string, "bounds" => @bounds_schema}}}
            }}
 
   @type bounds :: %{south: number(), west: number(), north: number(), east: number()}
-  @type archive :: %{name: String.t(), bounds: bounds()}
+  @type offline :: %{name: String.t(), bytes: non_neg_integer(), zoom_max: non_neg_integer()}
+  @type archive :: %{name: String.t(), bounds: bounds(), offline: offline() | nil}
   @type agency :: %{agency_id: String.t(), archive: String.t(), bounds: bounds()}
   @type t :: %{snapshot: String.t(), archives: [archive(), ...], agencies: [agency()]}
   @type decode_error ::
@@ -84,7 +97,11 @@ defmodule Gobusgo.Basemap.Manifest do
   defp manifest(decoded) do
     %{
       snapshot: decoded["snapshot"],
-      archives: Enum.map(decoded["archives"], &%{name: &1["name"], bounds: bounds(&1["bounds"])}),
+      archives:
+        Enum.map(
+          decoded["archives"],
+          &%{name: &1["name"], bounds: bounds(&1["bounds"]), offline: offline(&1["offline"])}
+        ),
       agencies:
         Enum.map(
           decoded["agencies"],
@@ -97,10 +114,16 @@ defmodule Gobusgo.Basemap.Manifest do
     %{south: south, west: west, north: north, east: east}
   end
 
+  defp offline(nil), do: nil
+
+  defp offline(%{"name" => name, "bytes" => bytes, "zoomMax" => zoom_max}),
+    do: %{name: name, bytes: bytes, zoom_max: zoom_max}
+
   defp check(%{archives: archives, agencies: agencies}) do
     archive_count = length(archives)
     agency_count = length(agencies)
     names = Enum.map(archives, & &1.name)
+    offline_names = for %{offline: %{name: name}} <- archives, do: name
 
     cond do
       archive_count == 0 ->
@@ -113,6 +136,9 @@ defmodule Gobusgo.Basemap.Manifest do
         {:error, {:agency_count_exceeded, agency_count}}
 
       invalid = Enum.find(names, &(not (&1 =~ @archive_name_pattern))) ->
+        {:error, {:invalid_archive_name, invalid}}
+
+      invalid = Enum.find(offline_names, &(not (&1 =~ @offline_name_pattern))) ->
         {:error, {:invalid_archive_name, invalid}}
 
       unknown = Enum.find(agencies, &(&1.archive not in names)) ->

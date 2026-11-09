@@ -11,6 +11,7 @@ import {FollowLocation} from "./follow_location"
 import {InstallApp} from "./install_app"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
+import {OfflineBasemap} from "./offline_basemap_setting"
 import {OfflineSchedules} from "./offline_schedules"
 import {PanelSheet} from "./panel_sheet"
 import {registerServiceWorker} from "./release_update"
@@ -54,6 +55,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     FollowLocation,
     InstallApp,
     LocalTime,
+    OfflineBasemap,
     OfflineSchedules,
     PanelSheet,
     RouteLines,

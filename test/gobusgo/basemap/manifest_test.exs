@@ -33,7 +33,8 @@ defmodule Gobusgo.Basemap.ManifestTest do
                   archives: [
                     %{
                       name: @archive,
-                      bounds: %{south: 46.9, west: -123.1, north: 48.6, east: -121.5}
+                      bounds: %{south: 46.9, west: -123.1, north: 48.6, east: -121.5},
+                      offline: nil
                     }
                   ],
                   agencies: [
@@ -52,7 +53,8 @@ defmodule Gobusgo.Basemap.ManifestTest do
           agencies: [
             %{id: "1", coverage: %{lat: 47.5, lon: -122.0, lat_span: 1.0, lon_span: 0.5}}
           ],
-          snapshot: "20261004"
+          snapshot: "20261004",
+          offline_zoom_max: nil
         })
 
       written =
@@ -65,6 +67,38 @@ defmodule Gobusgo.Basemap.ManifestTest do
       assert {:ok,
               %{archives: [%{name: @archive}], agencies: [%{agency_id: "1", archive: @archive}]}} =
                written |> CanonicalJson.encode() |> Manifest.decode()
+    end
+
+    test "reads an archive's offline extract with its size and zoom bound" do
+      offline = %{"name" => "basemap-20261004-01-z13.pmtiles", "bytes" => 34, "zoomMax" => 13}
+      archives = [%{"name" => @archive, "bounds" => @bounds, "offline" => offline}]
+
+      assert {:ok, %{archives: [%{offline: decoded}]}} =
+               Manifest.decode(text(%{"archives" => archives}))
+
+      assert decoded == %{name: "basemap-20261004-01-z13.pmtiles", bytes: 34, zoom_max: 13}
+    end
+
+    for name <- [
+          "basemap-20261004-01.pmtiles",
+          "basemap-20261004-01-z.pmtiles",
+          "../basemap-20261004-01-z13.pmtiles"
+        ] do
+      test "returns the offline extract name #{name} as invalid" do
+        offline = %{"name" => unquote(name), "bytes" => 34, "zoomMax" => 13}
+        archives = [%{"name" => @archive, "bounds" => @bounds, "offline" => offline}]
+
+        assert Manifest.decode(text(%{"archives" => archives})) ==
+                 {:error, {:invalid_archive_name, unquote(name)}}
+      end
+    end
+
+    test "returns the mismatch for an offline extract without a size" do
+      offline = %{"name" => "basemap-20261004-01-z13.pmtiles", "zoomMax" => 13}
+      archives = [%{"name" => @archive, "bounds" => @bounds, "offline" => offline}]
+
+      assert {:error, {:schema_mismatch, %{path: ["archives", 0, "offline", "bytes"]}}} =
+               Manifest.decode(text(%{"archives" => archives}))
     end
 
     test "returns :invalid_json for text that is not JSON" do

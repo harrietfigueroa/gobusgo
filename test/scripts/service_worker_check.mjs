@@ -95,14 +95,29 @@ const strategyCases = [
     strategy: {kind: StrategyKind.untouched}
   },
   {
+    name: "the basemap's offline extract, from the saved map first",
+    request: {method: "GET", url: ORIGIN + "/basemap/basemap-20261004-01-z13.pmtiles", mode: "cors"},
+    strategy: {kind: StrategyKind.savedFile, path: "/basemap/basemap-20261004-01-z13.pmtiles", cache: CacheRole.offlineBasemap}
+  },
+  {
+    name: "the basemap's manifest",
+    request: {method: "GET", url: ORIGIN + "/basemap/manifest.json", mode: "cors"},
+    strategy: {kind: StrategyKind.untouched}
+  },
+  {
+    name: "a file named like an offline extract outside the basemap directory",
+    request: {method: "GET", url: ORIGIN + "/vendor/basemap-20261004-01-z13.pmtiles", mode: "cors"},
+    strategy: {kind: StrategyKind.untouched}
+  },
+  {
     name: "a routing snapshot file, from the saved bundle first",
     request: {method: "GET", url: ORIGIN + "/routing/2026-11-08/stops-abcd.bin", mode: "cors"},
-    strategy: {kind: StrategyKind.savedFile, path: "/routing/2026-11-08/stops-abcd.bin"}
+    strategy: {kind: StrategyKind.savedFile, path: "/routing/2026-11-08/stops-abcd.bin", cache: CacheRole.offlineSchedules}
   },
   {
     name: "a route and stop tile archive, from the saved bundle first",
     request: {method: "GET", url: ORIGIN + "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles", mode: "cors"},
-    strategy: {kind: StrategyKind.savedFile, path: "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles"}
+    strategy: {kind: StrategyKind.savedFile, path: "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles", cache: CacheRole.offlineSchedules}
   },
   {
     name: "a path that starts like the tiles' directory",
@@ -132,6 +147,11 @@ const staleCases = [
   {
     name: "the offline schedules' cache, which the worker does not own",
     names: [current.release, "gobusgo-offline-schedules-v1"],
+    stale: []
+  },
+  {
+    name: "the saved map's cache, which the worker does not own",
+    names: [current.release, "gobusgo-offline-basemap-v1"],
     stale: []
   },
   {
