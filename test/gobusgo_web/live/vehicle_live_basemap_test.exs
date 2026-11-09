@@ -38,6 +38,8 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
   @west_map "#basemap-basemap-20261004-01"
   @east_map "#basemap-basemap-20261004-02"
   @follow "#follow-location"
+  @live_region "#map-live-region"
+  @description "#map-description"
 
   setup %{tmp_dir: tmp_dir} do
     configured = Application.fetch_env!(:gobusgo, :basemap)
@@ -62,6 +64,15 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
   end
 
   defp bounds(view, selector), do: view |> attribute(selector, "data-bounds") |> JSON.decode!()
+
+  defp text(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.trim()
+  end
 
   describe "GET /vehicles without a basemap" do
     test "says that no basemap is available and draws no map" do
@@ -154,7 +165,9 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
                "stop-markers",
                "vehicle-markers",
                "route-lines",
-               "follow-location"
+               "map-description",
+               "follow-location",
+               "map-live-region"
              ]
     end
 
@@ -177,32 +190,38 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @west_map) == @west_bounds
     end
 
-    test "mounts the location button's hook on a notice that a patch leaves alone" do
+    test "mounts the location button's hook on an element that shows nothing" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert attribute(view, @follow, "phx-hook") == "FollowLocation"
-      assert attribute(view, @follow, "phx-update") == "ignore"
+      assert has_element?(view, @follow <> "[hidden]")
     end
 
-    test "makes the notice a polite live region that stays in the page" do
+    test "gives the map a live region that a patch leaves alone" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert attribute(view, @follow, "role") == "status"
-      assert attribute(view, @follow, "aria-live") == "polite"
-      refute has_element?(view, @follow <> "[hidden]")
+      assert attribute(view, @live_region, "phx-update") == "ignore"
     end
 
-    test "starts the notice not shown" do
+    test "makes the map's live region polite and keeps it in the page" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert attribute(view, @follow, "data-shown") == "false"
+      assert attribute(view, @live_region, "role") == "status"
+      assert attribute(view, @live_region, "aria-live") == "polite"
+      refute has_element?(view, @live_region <> "[hidden]")
     end
 
-    test "starts the notice empty" do
+    test "starts the live region's notice not shown" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @live_region <> ".map-live-region-shown")
+    end
+
+    test "starts the live region empty" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert view
-             |> element(@follow)
+             |> element(@live_region)
              |> render()
              |> LazyHTML.from_fragment()
              |> LazyHTML.text()
@@ -227,6 +246,50 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert bounds(view, @follow) == @east_bounds
     end
 
+    test "mounts the map description's hook on a visually hidden element" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @description, "phx-hook") == "MapDescription"
+      assert attribute(view, @description, "class") == "sr-only"
+    end
+
+    test "describes what a filter that names nothing keeps" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert text(view, "#map-description-filter") ==
+               "It shows the vehicles, route lines, and stops of every agency."
+    end
+
+    test "describes what the address's filter keeps" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles?agency=near")
+
+      assert text(view, "#map-description-filter") ==
+               "It shows the vehicles, route lines, and stops of near."
+    end
+
+    test "describes the filter a patch brings" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      render_patch(view, "/vehicles?agency=near")
+
+      assert text(view, "#map-description-filter") ==
+               "It shows the vehicles, route lines, and stops of near."
+    end
+
+    test "leaves the description's view to the browser" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, "#map-description-view", "phx-update") == "ignore"
+      assert text(view, "#map-description-view") == ""
+    end
+
+    test "says in the description which keys move the map" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert text(view, "#map-description-keys") ==
+               "Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it."
+    end
+
     test "hands the map the address of the library at the version in use" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
@@ -247,7 +310,13 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
         |> Enum.map(&elem(&1, 0))
 
       assert Enum.sort(names) ==
-               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-library-url data-sprites-url id phx-hook phx-update)
+               ~w(class data-archive-url data-attribution data-bounds data-fonts-url data-library-url data-sprites-url data-style-validated id phx-hook phx-update)
+    end
+
+    test "has the map check its styles outside production" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @west_map, "data-style-validated") == ""
     end
   end
 
