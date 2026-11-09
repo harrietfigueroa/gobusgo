@@ -85,6 +85,26 @@ defmodule GobusgoWeb.AccessibilityRulesTest do
     assert rules(document(~s(<section hidden aria-labelledby="later"></section>))) == []
   end
 
+  test "a description list of terms and definitions, grouped or not, keeps the list rule" do
+    html =
+      document(~s"""
+      <dl><dt>A</dt><dd>a</dd><div><dt>B</dt><dd>b</dd></div></dl>
+      """)
+
+    assert Accessibility.violations(html) == []
+  end
+
+  for {case_name, body} <- [
+        {"a group holding a nested div",
+         ~s(<dl><div><span></span><div><dt>A</dt><dd>a</dd></div></div></dl>)},
+        {"a list holding a paragraph", ~s(<dl><p>x</p></dl>)},
+        {"a term outside a list", ~s(<div><dt>A</dt></div>)}
+      ] do
+    test "#{case_name} breaks the description list rule" do
+      assert :description_list in rules(document(unquote(body)))
+    end
+  end
+
   for {case_name, body} <- [
         {"an empty button", ~s(<button type="button"></button>)},
         {"a button whose only content is hidden",

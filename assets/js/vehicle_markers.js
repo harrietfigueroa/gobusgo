@@ -4,6 +4,7 @@ import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {compactPopupContent, nameCloseButton} from "./route_chips"
 import {alertLines} from "./service_alerts"
+import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
 import {mapColors} from "./theme"
 import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
@@ -32,9 +33,15 @@ const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
 const POINTED_IMAGE_SIZE_PIXELS = 28
 const POINTED_IMAGE_PIXEL_RATIO = 2
 const POINTED_TIP_INSET_PIXELS = 2
+const BADGE_LAYER_NAME = "vehicle-markers-badge"
+const BADGE_IMAGE_PIXEL_RATIO = 2
 const HALVING_DIVISOR = 2
 const MARKER_RADIUS_PIXELS = 6
 const MARKER_STROKE_WIDTH_PIXELS = 1.5
+// The badge's lower left corner stands this far inside the marker's edge,
+// right of and above its center, so the badge sits on its upper right edge.
+const BADGE_INSET_PIXELS = 2
+const BADGE_OFFSET_PIXELS = [MARKER_RADIUS_PIXELS - BADGE_INSET_PIXELS, BADGE_INSET_PIXELS - MARKER_RADIUS_PIXELS]
 const STATUS_OPACITY_FALLBACK = 1
 const POSITION_NOTE = "Marker position: the source's estimate"
 const SCHEDULED_POSITION_NOTE = "Marker position: the saved schedule's, with delays, cancellations, and detours unknown"
@@ -162,6 +169,31 @@ function pointedImage({color, strokeColor}) {
   return context.getImageData(0, 0, size, size)
 }
 
+// The image of the status badge `badge` in the colors of `theme`.
+function badgeImage({badge, theme}) {
+  const size = MARK_SIZE_PIXELS * BADGE_IMAGE_PIXEL_RATIO
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size
+  const context = canvas.getContext("2d")
+  context.scale(BADGE_IMAGE_PIXEL_RATIO, BADGE_IMAGE_PIXEL_RATIO)
+  const colors = mapColors(theme)
+  drawStatusBadge(canvas, {badge, ink: colors.badgeInk, paper: colors.badgePaper, x: 0, y: 0})
+  return context.getImageData(0, 0, size, size)
+}
+
+function badgeCase({status, badge}) {
+  return [status, badgeImageName({badge, theme: currentTheme()})]
+}
+
+function hasBadge(definition) {
+  return typeof definition.badge === "string"
+}
+
+function statusOf(definition) {
+  return definition.status
+}
+
 function headingText(heading) {
   if (typeof heading === "number") {
     return `${heading}° clockwise from north`
@@ -286,10 +318,22 @@ function vehicleViewContent(properties, statusLabels) {
   return content
 }
 
+// The item a vehicle's popup names: the vehicle, and the status of a vehicle
+// whose marker carries a badge, so the status the badge shows is also text.
+function vehiclePopupItemName({properties, badgedLabels}) {
+  const statusLabel = badgedLabels.get(properties.status)
+
+  if (statusLabel === undefined) {
+    return vehicleViewTitle(properties)
+  }
+
+  return `${vehicleViewTitle(properties)}, ${statusLabel}`
+}
+
 // A vehicle's popup is its route's number in its marker's color, with its
 // lateness beside it where the marker has one. A click on it hands the
 // vehicle to `onSelect`.
-function compactVehicleContent({properties, onSelect}) {
+function compactVehicleContent({properties, badgedLabels, onSelect}) {
   const chips = []
   let noteText = ""
 
@@ -306,7 +350,7 @@ function compactVehicleContent({properties, onSelect}) {
     countMax: 1,
     emptyText: vehicleName(properties),
     noteText,
-    itemName: vehicleViewTitle(properties),
+    itemName: vehiclePopupItemName({properties, badgedLabels}),
     action: "show the vehicle",
     onSelect
   })
@@ -328,6 +372,9 @@ export const VehicleMarkers = {
     this.statuses = statuses
     const labelEntries = Array.from(statuses, statusLabelEntry)
     this.statusLabels = new Map(labelEntries)
+    const badged = statuses.filter(hasBadge)
+    const badgedEntries = Array.from(badged, statusLabelEntry)
+    this.badgedLabels = new Map(badgedEntries)
     this.markersByAgency = new Map()
     this.map = null
     this.maplibre = null
@@ -428,12 +475,19 @@ export const VehicleMarkers = {
     // gives it to every style the map is set to; its "styleimagemissing"
     // event comes after the tile has taken its images without the new one
     // (maplibre-gl 6.12.0, ImageManager._getImagesForIds).
+    // A badge's image names its theme, so a style set anew in the other
+    // theme asks for images of its own.
     map.setMissingStyleImageResolver((id) => {
+      const named = parseImageName(id)
+
       if (id.startsWith(POINTED_IMAGE_PREFIX)) {
         const color = id.slice(POINTED_IMAGE_PREFIX.length)
         const strokeColor = mapColors(currentTheme()).vehicleStroke
         const image = pointedImage({color, strokeColor})
         map.addImage(id, image, {pixelRatio: POINTED_IMAGE_PIXEL_RATIO})
+      } else if (named.kind === ImageNameKind.badge) {
+        const image = badgeImage({badge: named.badge, theme: named.theme})
+        map.addImage(id, image, {pixelRatio: BADGE_IMAGE_PIXEL_RATIO})
       }
     })
 
@@ -464,7 +518,7 @@ export const VehicleMarkers = {
     const lngLat = feature.geometry.coordinates
     const onSelect = () => { this.selectVehicle({properties, lngLat}) }
 
-    const content = compactVehicleContent({properties, onSelect})
+    const content = compactVehicleContent({properties, badgedLabels: this.badgedLabels, onSelect})
     const popup = new this.maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
       .setLngLat(lngLat)
       .setDOMContent(content)
@@ -535,6 +589,8 @@ export const VehicleMarkers = {
       paint: {"icon-opacity": opacity}
     })
 
+    this.addBadgeLayer(map)
+
     // A label is left out where it would cover another label, so a crowded
     // street shows the routes of some of its vehicles.
     map.addLayer({
@@ -554,6 +610,28 @@ export const VehicleMarkers = {
         "text-color": colors.vehicleLabel,
         "text-halo-color": colors.vehicleHalo,
         "text-halo-width": ROUTE_HALO_WIDTH_PIXELS
+      }
+    })
+  },
+
+  // A marker of a status a recent report lacks carries that status's badge
+  // on its upper right edge, at full opacity whatever the marker's.
+  addBadgeLayer(map) {
+    const badged = this.statuses.filter(hasBadge)
+    const badgeCases = badged.flatMap(badgeCase)
+    const badgedStatuses = Array.from(badged, statusOf)
+
+    map.addLayer({
+      id: BADGE_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      filter: ["in", ["get", "status"], ["literal", badgedStatuses]],
+      layout: {
+        "icon-image": ["match", ["get", "status"], ...badgeCases, ""],
+        "icon-anchor": "bottom-left",
+        "icon-offset": BADGE_OFFSET_PIXELS,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
       }
     })
   },

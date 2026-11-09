@@ -80,6 +80,18 @@ for (const {theme, stroke} of strokeCases) {
   deepStrictEqual(mapColors(theme).vehicleStroke, stroke, `the marker stroke of the ${theme} theme`)
 }
 
+// A status badge is a disc that stands apart from the land, dark on the
+// light map and light on the dark one, with its glyph in the other.
+const badgeCases = [
+  {theme: Theme.light, badgeInk: "#0f172a", badgePaper: "#ffffff"},
+  {theme: Theme.dark, badgeInk: "#e2e8f0", badgePaper: "#0f172a"}
+]
+
+for (const {theme, badgeInk, badgePaper} of badgeCases) {
+  const colors = mapColors(theme)
+  deepStrictEqual({badgeInk: colors.badgeInk, badgePaper: colors.badgePaper}, {badgeInk, badgePaper}, `the badge colors of the ${theme} theme`)
+}
+
 for (const {setting, theme, text} of statusCases) {
   deepStrictEqual(settingStatusText({setting, theme}), text, `the status of ${setting} in the ${theme} theme`)
 }

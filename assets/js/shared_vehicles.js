@@ -6,6 +6,7 @@ import {pageEvents} from "./page_events"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
 import {DecodeKind, decodeBlock, fileUrl, readIndex} from "./shared_vehicle_format"
 import {ViewKind, namesToFetch, tilesInView} from "./shared_vehicle_tiles"
+import {MARK_SIZE_PIXELS, drawSharedVehicle, sharedVehicleImageName} from "./status_badges"
 import {storedSettings} from "./stored_settings"
 import {MARKER_LAYER_NAME as STOP_LAYER_NAME} from "./stop_markers"
 import {mapColors} from "./theme"
@@ -25,14 +26,11 @@ const SOURCE_NAME = "shared-vehicles"
 const LAYER_NAME = "shared-vehicles"
 const FETCH_TIMEOUT_MS = 15_000
 const TILE_CACHE_COUNT_MAX = 256
-const MARKER_RADIUS_PIXELS = 4.5
-const MARKER_STROKE_WIDTH_PIXELS = 1
-const LOW_RANGE_OPACITY = 0.35
-const FULL_OPACITY = 1
+const IMAGE_PIXEL_RATIO = 2
+const FALLBACK_FORM_FACTOR = "other"
 const METERS_PER_KILOMETER = 1000
 const MS_PER_MINUTE = 60_000
 const COMPRESSION_FORMAT = "gzip"
-const FALLBACK_COLOR = "#64748b"
 const POPUP_TITLE_CLASS_NAME = "popup-title"
 
 /** The kinds of a file read from the static path. */
@@ -89,8 +87,28 @@ function shownIndexes(element) {
   return JSON.parse(element.dataset.indexes)
 }
 
-function formColorCase({form_factor: formFactor, color}) {
-  return [formFactor, color]
+// The expression case that draws `form`'s vehicles with its image.
+function imageCase({form, isLowRange, theme}) {
+  return [form.form_factor, sharedVehicleImageName({formFactor: form.form_factor, isLowRange, theme})]
+}
+
+// Adds the image of `form`'s vehicles in `theme` to `map`, once.
+function addSharedVehicleImage({map, form, isLowRange, theme, stroke}) {
+  const name = sharedVehicleImageName({formFactor: form.form_factor, isLowRange, theme})
+
+  if (map.hasImage(name)) {
+    return
+  }
+
+  const size = MARK_SIZE_PIXELS * IMAGE_PIXEL_RATIO
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size
+  const context = canvas.getContext("2d")
+  context.scale(IMAGE_PIXEL_RATIO, IMAGE_PIXEL_RATIO)
+  drawSharedVehicle(canvas, {color: form.color, letter: form.letter, isLowRange, stroke, x: 0, y: 0})
+  const image = context.getImageData(0, 0, size, size)
+  map.addImage(name, image, {pixelRatio: IMAGE_PIXEL_RATIO})
 }
 
 function formLabelEntry({form_factor: formFactor, label}) {
@@ -220,11 +238,25 @@ export const SharedVehicles = {
   },
 
   // Adds the source with the vehicles drawn now and the layer in the
-  // page's theme, under the stops where the map has them.
+  // page's theme, under the stops where the map has them. A vehicle is its
+  // kind's letter on a disc in its kind's color, with the upper half white
+  // for low range. A style set anew drops the images, so each add makes
+  // them again in the theme it draws.
   addLayer(map) {
-    const colors = mapColors(currentTheme())
-    const colorCases = this.formColors.flatMap(formColorCase)
+    const theme = currentTheme()
+    const stroke = mapColors(theme).vehicleStroke
     const isLowRange = ["all", ["==", ["typeof", ["get", "rangeMeters"]], "number"], ["<", ["get", "rangeMeters"], this.rangeLowMeters]]
+
+    for (const form of this.formColors) {
+      for (const lowRange of [false, true]) {
+        addSharedVehicleImage({map, form, isLowRange: lowRange, theme, stroke})
+      }
+    }
+
+    const fullCases = this.formColors.flatMap((form) => imageCase({form, isLowRange: false, theme}))
+    const lowCases = this.formColors.flatMap((form) => imageCase({form, isLowRange: true, theme}))
+    const fallbackFull = sharedVehicleImageName({formFactor: FALLBACK_FORM_FACTOR, isLowRange: false, theme})
+    const fallbackLow = sharedVehicleImageName({formFactor: FALLBACK_FORM_FACTOR, isLowRange: true, theme})
     map.addSource(SOURCE_NAME, {type: "geojson", data: this.collection})
     let beforeId
 
@@ -234,17 +266,19 @@ export const SharedVehicles = {
 
     map.addLayer({
       id: LAYER_NAME,
-      type: "circle",
+      type: "symbol",
       source: SOURCE_NAME,
       minzoom: this.zoomMin,
-      layout: {visibility: layerVisibility()},
-      paint: {
-        "circle-radius": MARKER_RADIUS_PIXELS,
-        "circle-color": ["match", ["get", "formFactor"], ...colorCases, FALLBACK_COLOR],
-        "circle-opacity": ["case", isLowRange, LOW_RANGE_OPACITY, FULL_OPACITY],
-        "circle-stroke-color": colors.vehicleStroke,
-        "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS,
-        "circle-stroke-opacity": ["case", isLowRange, LOW_RANGE_OPACITY, FULL_OPACITY]
+      layout: {
+        visibility: layerVisibility(),
+        "icon-image": [
+          "case",
+          isLowRange,
+          ["match", ["get", "formFactor"], ...lowCases, fallbackLow],
+          ["match", ["get", "formFactor"], ...fullCases, fallbackFull]
+        ],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
       }
     }, beforeId)
   },

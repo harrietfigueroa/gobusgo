@@ -427,6 +427,18 @@ defmodule GobusgoWeb.VehicleMarkersTest do
       assert opacities.unknown < opacities.reported
     end
 
+    test "gives each status a recent report lacks a badge of its own, and a recent one none" do
+      badges = Map.new(VehicleMarkers.statuses(), &{&1.status, &1.badge})
+
+      assert badges == %{reported: nil, stale: :clock, unknown: :question, scheduled: :timetable}
+    end
+
+    test "names its badge in the description of each status that has one" do
+      for %{badge: badge, description: description} <- VehicleMarkers.statuses(), badge != nil do
+        assert description =~ VehicleMarkers.badge_name(badge)
+      end
+    end
+
     test "names the stale threshold in the stale status's description" do
       stale = Enum.find(VehicleMarkers.statuses(), &(&1.status == :stale))
 

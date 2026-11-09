@@ -212,6 +212,32 @@ defmodule GobusgoWeb.VehicleLiveSharedVehiclesTest do
       refute has_element?(view, "#shared-vehicles-status")
     end
 
+    test "gives each kind of shared vehicle a letter of its own" do
+      letters = Enum.map(SharedVehicles.form_colors(), & &1.letter)
+
+      assert Enum.uniq(letters) == letters
+      assert Enum.all?(letters, &(String.length(&1) == 1))
+    end
+
+    test "shows each kind's letter in its swatch in the legend" do
+      {:ok, view, _html} = live(build_conn(), @path)
+
+      show(view)
+
+      for %{form_factor: form_factor, letter: letter} <- SharedVehicles.form_colors() do
+        swatch = "#shared-vehicles-legend [data-form-factor=#{form_factor}]"
+        assert view |> element(swatch) |> render() =~ letter
+      end
+    end
+
+    test "shows the low-range swatch in the legend" do
+      {:ok, view, _html} = live(build_conn(), @path)
+
+      show(view)
+
+      assert has_element?(view, "#shared-vehicles-legend #shared-vehicles-low-range")
+    end
+
     test "renders the toggle checked once the layer is on" do
       {:ok, view, _html} = live(build_conn(), @path)
 

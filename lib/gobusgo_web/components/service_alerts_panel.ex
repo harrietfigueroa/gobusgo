@@ -75,11 +75,17 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
 
   attr :alert, :map, required: true
 
+  # The summary names the alert's article and describes its Details and its
+  # link, whose text is the same on every alert, so a screen reader's list
+  # of links or controls tells them apart.
   defp entry(assigns) do
+    assigns = assign(assigns, summary_id: assigns.alert.dom_id <> "-summary")
+
     ~H"""
     <article
       id={@alert.dom_id}
       data-alert-id={@alert.id}
+      aria-labelledby={@summary_id}
       class="flex scroll-mt-16 flex-col gap-1 rounded-md border border-gray-300 bg-white p-3"
     >
       <p :if={@alert.starts_at} class="font-medium">
@@ -92,17 +98,23 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
           {Calendar.strftime(@alert.starts_at, "%a %b %-d, %H:%M UTC")}
         </time>
       </p>
-      <p>{@alert.summary}</p>
+      <p id={@summary_id}>{@alert.summary}</p>
       <p class="text-slate-600">{routes_text(@alert.route_names)}</p>
       <details
         :if={@alert.description}
         id={@alert.dom_id <> "-details"}
         phx-mounted={JS.ignore_attributes("open")}
       >
-        <summary class="inline-target cursor-pointer">Details</summary>
+        <summary class="inline-target cursor-pointer" aria-describedby={@summary_id}>Details</summary>
         <p class="mt-1 whitespace-pre-line">{@alert.description}</p>
       </details>
-      <a :if={@alert.url} href={@alert.url} class="inline-target underline" rel="noopener">
+      <a
+        :if={@alert.url}
+        href={@alert.url}
+        class="inline-target underline"
+        rel="noopener"
+        aria-describedby={@summary_id}
+      >
         More from the agency
       </a>
     </article>

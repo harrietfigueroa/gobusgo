@@ -232,16 +232,19 @@ defmodule GobusgoWeb.AppInfoPanel do
         trust its position:
       </p>
       <dl class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
-        <div
-          :for={status <- @statuses}
-          id={"app-info-status-#{status.status}"}
-          class="flex items-start gap-2"
-        >
-          <span class="mt-1 h-3 w-3 shrink-0 rounded-full" style={swatch_style(status)}></span>
-          <div>
-            <dt class="font-medium">{status.label}</dt>
-            <dd>{status.description}</dd>
-          </div>
+        <%!-- A group holds its term and definition alone, so the swatch
+        stands in the term, set in the group's left padding. --%>
+        <div :for={status <- @statuses} id={"app-info-status-#{status.status}"} class="relative pl-6">
+          <dt class="font-medium">
+            <span
+              class="absolute top-1 left-0 h-3 w-3 rounded-full"
+              style={swatch_style(status)}
+              aria-hidden="true"
+            ></span>
+            <.status_badge :if={status.badge} badge={status.badge} />
+            {status.label}
+          </dt>
+          <dd>{status.description}</dd>
         </div>
       </dl>
       <p>
@@ -250,6 +253,43 @@ defmodule GobusgoWeb.AppInfoPanel do
         its next stop. Stops appear when you zoom in.
       </p>
     </section>
+    """
+  end
+
+  # The badge of a status a recent report lacks, at the swatch's upper
+  # right, as the map draws it beside a marker, on a 14-unit square in the
+  # theme's badge colors.
+  attr :badge, :atom, required: true
+
+  defp status_badge(assigns) do
+    ~H"""
+    <svg
+      class="status-badge absolute -top-0.5 left-2 h-3.5 w-3.5"
+      viewBox="0 0 14 14"
+      data-badge={@badge}
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="6.5" class="status-badge-ink" />
+      <g :if={@badge == :clock} class="status-badge-stroke">
+        <circle cx="7" cy="7" r="3.6" />
+        <path d="M7 7V4.6M7 7l1.8 0.8" />
+      </g>
+      <text
+        :if={@badge == :question}
+        x="7"
+        y="10.5"
+        text-anchor="middle"
+        font-size="10"
+        font-weight="700"
+        class="status-badge-paper"
+      >
+        ?
+      </text>
+      <g :if={@badge == :timetable} class="status-badge-stroke">
+        <rect x="3.8" y="4.4" width="6.4" height="5.6" />
+        <path d="M3.8 6.4h6.4M5.6 3.4V5M8.4 3.4V5" />
+      </g>
+    </svg>
     """
   end
 
