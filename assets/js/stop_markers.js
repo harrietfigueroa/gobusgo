@@ -35,12 +35,13 @@ import {
 } from "./route_stop_tiles"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {mapColors} from "./theme"
+import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 
 // The layer a stop's marker is drawn in.
 export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
-const ZOOM_MIN = 14
+export const ZOOM_MIN = 14
 const MARKER_RADIUS_PIXELS = 7
 const MARKER_STROKE_WIDTH_PIXELS = 2
 const LABEL_LAYER_NAME = "stop-markers-label"
@@ -338,6 +339,18 @@ export const StopMarkers = {
     window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+
+    // The list of what is in view opens a stop as a click on its marker does.
+    this.onItemOpen = (event) => {
+      const {kind, feature} = event.detail
+      const isStop = kind === MapItemKind.stop && this.map !== null
+
+      if (isStop) {
+        this.openStop(stopFromFeature(feature))
+      }
+    }
+
+    window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     // Arrivals of a stop with neither a popup nor the view are dropped.
     this.events.handle("stop-arrivals:arrivals", (shown) => {
@@ -764,32 +777,34 @@ export const StopMarkers = {
   attachClicks() {
     const map = this.map
 
-    // A click on a stop shows it in the details view. A click on a stop
-    // whose popup opened by itself leaves that popup as it is, and any
-    // other opens the rider's popup. While the Trip tab waits for a stop,
-    // the stop clicked is its end instead.
     map.on("click", MARKER_LAYER_NAME, (event) => {
-      const stop = stopFromFeature(event.features[0])
-      const stopId = stop.id
-
-      if (isPicking()) {
-        pickStop({stopId, name: suppliedName(stop)})
-        return
-      }
-      const open = this.openPopups.get(stopId)
-
-      const isRiderOpenable = open === undefined || open.auto === false
-
-      if (isRiderOpenable) {
-        this.dismissedStopIds.delete(stopId)
-        this.openPopup({stop, auto: false, side: null})
-      }
-
-      this.selectStop(stop)
+      this.openStop(stopFromFeature(event.features[0]))
     })
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
+  },
+
+  // Shows `stop` in the details view. A stop whose popup opened by itself
+  // keeps that popup as it is, and any other opens the rider's popup. While
+  // the Trip tab waits for a stop, `stop` is its end instead.
+  openStop(stop) {
+    const stopId = stop.id
+
+    if (isPicking()) {
+      pickStop({stopId, name: suppliedName(stop)})
+      return
+    }
+
+    const open = this.openPopups.get(stopId)
+    const isRiderOpenable = open === undefined || open.auto === false
+
+    if (isRiderOpenable) {
+      this.dismissedStopIds.delete(stopId)
+      this.openPopup({stop, auto: false, side: null})
+    }
+
+    this.selectStop(stop)
   },
 
   // Adds the source and the layers that mark the stop the details view
@@ -835,6 +850,7 @@ export const StopMarkers = {
     window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     window.clearTimeout(this.followTimer)
     this.events.release()
   }

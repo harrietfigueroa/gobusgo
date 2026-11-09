@@ -5,13 +5,14 @@
 // the dot and leaves the map where the rider moved it. While the dot is
 // drawn and Show my direction is on, a cone on it points the way the rider
 // travels or faces. This hook carries out the imported rules on the map and
-// the notice.
+// in the notices of the map's live region.
 //
 // A position and a heading never leave the browser: no event to the server
 // carries either, and the browser stores only a flag that the button was
 // left on. The element's data-bounds are the area the map covers.
 
 import {READY_EVENT_NAME} from "./basemap"
+import {clearRegion, showNotice} from "./map_live_region"
 import {canRequestMotionPermission, isMotionPermissionDenied, requestMotionPermission} from "./motion_permission"
 import {CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME, DetailKind} from "./panel_detail"
 import {sheetInsets} from "./panel_sheet"
@@ -55,7 +56,6 @@ import {
   transition
 } from "./follow_state"
 
-const NOTICE_MS = 8_000
 const BUTTON_CLASS = "maplibregl-ctrl-geolocate"
 const GROUP_CLASSES = ["maplibregl-ctrl", "maplibregl-ctrl-group"]
 const ICON_CLASS = "maplibregl-ctrl-icon"
@@ -120,7 +120,6 @@ export const FollowLocation = {
     this.state = OFF
     this.fix = null
     this.frame = null
-    this.noticeTimer = null
     this.restoreOffered = false
     this.bounds = JSON.parse(this.el.dataset.bounds)
     this.isShown = isDirectionShown()
@@ -322,7 +321,7 @@ export const FollowLocation = {
         this.follow()
         break
       case EffectKind.notice:
-        this.showNotice(effect.text)
+        showNotice(effect.text)
         break
       default:
         unreachable(effect.kind, "follow location: an effect of unknown kind")
@@ -543,25 +542,6 @@ export const FollowLocation = {
     }
   },
 
-  // The notice is a polite live region that stays in the page, so a screen
-  // reader hears each text written into it; it shows while it has one.
-  showNotice(text) {
-    this.hideNotice()
-    this.el.textContent = text
-    this.el.dataset.shown = "true"
-    this.noticeTimer = window.setTimeout(() => { this.hideNotice() }, NOTICE_MS)
-  },
-
-  hideNotice() {
-    if (this.noticeTimer !== null) {
-      window.clearTimeout(this.noticeTimer)
-      this.noticeTimer = null
-    }
-
-    this.el.dataset.shown = "false"
-    this.el.textContent = ""
-  },
-
   destroyed() {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
@@ -575,6 +555,6 @@ export const FollowLocation = {
     }
 
     this.scheduleConeExpiry(NO_READING)
-    this.hideNotice()
+    clearRegion()
   }
 }

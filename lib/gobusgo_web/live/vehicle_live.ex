@@ -1,6 +1,7 @@
 defmodule GobusgoWeb.VehicleLive do
   @viewer_registration_retry_ms 100
   @viewer_registration_attempt_count_max 5
+  @map_style_validated Application.compile_env!(:gobusgo, [:map_style, :validated])
 
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
@@ -190,6 +191,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
+  alias GobusgoWeb.VehicleLive.MapDescription
   alias GobusgoWeb.VehicleLive.OpenStops
   alias GobusgoWeb.VehicleLive.Routes
   alias GobusgoWeb.VehicleLive.SharedVehicles
@@ -596,6 +598,9 @@ defmodule GobusgoWeb.VehicleLive do
         tile_archive_url={@tile_archive_url}
         kept_route_ids={@kept_route_ids}
         shared_vehicles={@shared_vehicles}
+        filter_sentence={
+          MapDescription.filter_sentence(%{filter: @filter, tokens: @filter_bar.tokens, trip: @trip})
+        }
       />
     </main>
     """
@@ -678,6 +683,7 @@ defmodule GobusgoWeb.VehicleLive do
   attr :tile_archive_url, :string, required: true
   attr :kept_route_ids, :any, required: true
   attr :shared_vehicles, :map, required: true
+  attr :filter_sentence, :string, required: true
 
   defp map_elements(assigns) do
     ~H"""
@@ -693,7 +699,24 @@ defmodule GobusgoWeb.VehicleLive do
       data-sprites-url={@basemap.sources.sprites_url}
       data-attribution={@basemap.sources.attribution}
       data-bounds={JSON.encode!(@basemap.bounds)}
+      data-style-validated={map_style_validated()}
     >
+    </div>
+
+    <div id="map-items" phx-hook="MapItemList" phx-update="ignore" class="map-items surface">
+      <p id="map-items-label" class="map-items-label">
+        Vehicles and stops in view, nearest the middle first
+      </p>
+      <ul
+        id="map-items-list"
+        role="listbox"
+        tabindex="0"
+        aria-labelledby="map-items-label"
+        aria-describedby="map-items-rest"
+        class="map-items-list"
+      >
+      </ul>
+      <p id="map-items-rest"></p>
     </div>
 
     <div
@@ -739,15 +762,28 @@ defmodule GobusgoWeb.VehicleLive do
 
     <div id="route-lines" phx-hook="RouteLines" hidden></div>
 
-    <p
+    <div id="map-description" phx-hook="MapDescription" class="sr-only">
+      <p id="map-description-filter">{@filter_sentence}</p>
+      <p id="map-description-view" phx-update="ignore"></p>
+      <p id="map-description-keys">
+        Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it.
+      </p>
+    </div>
+
+    <div
       id="follow-location"
       phx-hook="FollowLocation"
+      data-bounds={JSON.encode!(@basemap.archive_bounds)}
+      hidden
+    >
+    </div>
+
+    <p
+      id="map-live-region"
       phx-update="ignore"
       role="status"
       aria-live="polite"
-      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow data-[shown=false]:pointer-events-none data-[shown=false]:opacity-0"
-      data-bounds={JSON.encode!(@basemap.archive_bounds)}
-      data-shown="false"
+      class="fixed bottom-[calc(var(--panel-sheet-inset-bottom,0px)+3.5rem)] left-1/2 z-30 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2 surface px-3 py-2 text-sm shadow pointer-events-none opacity-0 [&.map-live-region-shown]:pointer-events-auto [&.map-live-region-shown]:opacity-100"
     >
     </p>
     """
@@ -756,6 +792,9 @@ defmodule GobusgoWeb.VehicleLive do
   # An archive without an offline extract carries no attribute.
   defp offline_archive_url(nil), do: nil
   defp offline_archive_url(%{url: url}), do: url
+
+  # A boolean attribute: present where the map checks its styles.
+  defp map_style_validated, do: @map_style_validated
 
   # A filter that names nothing draws every route, which no list names.
   defp route_ids_attribute(:every), do: nil

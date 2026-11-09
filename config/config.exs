@@ -130,6 +130,12 @@ config :gobusgo, GobusgoWeb.Endpoint,
 # request may leave the machine.
 config :gobusgo, :ingestion, scheduled: config_env() != :test
 
+# MapLibre checks a style against the style specification as it loads it,
+# which reports a malformed style or layer and costs time on every load.
+# A production build skips the check.
+# https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/StyleOptions/ — checked 2026-11-09
+config :gobusgo, :map_style, validated: config_env() != :prod
+
 # Page connections are recorded everywhere except under test, where the
 # pages the tests mount would be written into the data directory.
 config :gobusgo, :usage, recorded: config_env() != :test
