@@ -26,6 +26,7 @@ import {
   isRetryable,
   journeyFeatures,
   journeyRows,
+  journeysAnnouncement,
   nameRequest,
   queryOf,
   stateText,
@@ -52,6 +53,7 @@ const EMPTY_FIELD_TEXT = "Choose a stop"
 const LOCATION_TEXT = "My location"
 const PICK_TEXT = "Pick a stop on the map"
 const CHIP_COUNT_MAX = 1
+const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const NO_NAMES = Object.freeze({stops: {}, routes: {}})
 
 // The kinds of what the query's start resolves to.
@@ -313,7 +315,6 @@ export const TripPlanner = {
     for (const end of [TripEnd.from, TripEnd.to]) {
       const field = button({className: "trip-field"})
       field.id = `trip-${end}`
-      field.setAttribute("aria-haspopup", "true")
       field.setAttribute("aria-expanded", "false")
       field.setAttribute("aria-controls", `trip-${end}-menu`)
       field.append(element({tag: "span", className: `trip-dot trip-dot-${end}`}))
@@ -408,10 +409,20 @@ export const TripPlanner = {
     }
   },
 
+  // A field's list is a disclosure of plain buttons: closing a list that
+  // holds focus, as a choice, Escape, or "Pick a stop on the map" does,
+  // hands focus back to its field, so a keyboard keeps its place.
   closeMenus() {
     for (const end of [TripEnd.from, TripEnd.to]) {
-      this.menus[end].hidden = true
-      this.fields[end].field.setAttribute("aria-expanded", "false")
+      const menu = this.menus[end]
+      const {field} = this.fields[end]
+      const hasFocus = menu.contains(document.activeElement)
+      menu.hidden = true
+      field.setAttribute("aria-expanded", "false")
+
+      if (hasFocus) {
+        field.focus()
+      }
     }
 
     this.openMenu = null
@@ -589,7 +600,15 @@ export const TripPlanner = {
     this.selectedIndex = rows.findIndex(isEarliestRow)
     this.writeJourneys(rows)
     this.selectJourney({index: this.selectedIndex, rows})
+    this.announceJourneys(rows)
     this.requestNames()
+  },
+
+  // The status line says, out of sight, what the list that appeared holds,
+  // so a screen reader announces it.
+  announceJourneys(rows) {
+    const line = element({tag: "p", className: HIDDEN_TEXT_CLASS_NAME, text: journeysAnnouncement(rows)})
+    this.status.replaceChildren(line)
   },
 
   rows() {

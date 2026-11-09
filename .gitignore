@@ -34,3 +34,7 @@ gobusgo-*.tar
 /priv/static/assets/
 /priv/static/cache_manifest.json
 /priv/static/sw.js
+
+# The accessibility lint tool's packages, and the pages it lints
+/tools/lint/node_modules/
+/tools/lint/rendered/
