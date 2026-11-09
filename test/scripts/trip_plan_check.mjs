@@ -9,7 +9,7 @@
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
 import {LegKind} from "../../assets/js/routing_engine.js"
-import {JourneysKind} from "../../assets/js/routing_journeys.js"
+import {FailureReason, JourneysKind} from "../../assets/js/routing_journeys.js"
 import {
   BoundsKind,
   EndKind,
@@ -19,6 +19,7 @@ import {
   QueryKind,
   ROUTE_COLOR_DEFAULT,
   StateKind,
+  failureState,
   journeyFeatures,
   journeyRows,
   nameRequest,
@@ -187,6 +188,10 @@ deepStrictEqual(swappedEnds({from: NO_END, to: othello}).from.kind, EndKind.stop
 for (const kind of [...Object.values(StateKind), JourneysKind.none, JourneysKind.unknownStop, JourneysKind.noStartStop, JourneysKind.failed]) {
   deepStrictEqual(typeof stateText(kind), "string", `state text: ${kind}`)
 }
+
+// A query whose schedules are not saved says so, and any other failure says it failed.
+deepStrictEqual(failureState({kind: JourneysKind.failed, reason: FailureReason.notSaved, path: ""}), StateKind.notSaved, "a schedule not saved")
+deepStrictEqual(failureState({kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: ""}), JourneysKind.failed, "a fetch that failed")
 
 // The names asked for are the stops a leg boards, leaves, or walks between,
 // not the stops a ride only passes, and each ride's route, each once.

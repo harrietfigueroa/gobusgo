@@ -3,10 +3,23 @@
 // bundle holds, what a rider is told about a saved one, and the sentence
 // that says whether the browser keeps it. Run it with
 // `node test/scripts/offline_bundle_check.mjs`; it exits non-zero on the
-// first case that differs.
+// first case that differs. The bundle's own manifest names only the dates it
+// saves.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {IndexKind, PersistenceKind, PlanKind, StatusKind, bundleStatus, persistenceText, planBundle, stalePaths} from "../../assets/js/offline_bundle.js"
+import {
+  BUNDLE_MANIFEST_PATH,
+  INDEX_PATH,
+  IndexKind,
+  PersistenceKind,
+  PlanKind,
+  StatusKind,
+  bundleStatus,
+  persistenceText,
+  planBundle,
+  savedIndex as indexOf,
+  stalePaths
+} from "../../assets/js/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -15,7 +28,7 @@ const HOUR_SECONDS = 60 * 60
 const DAY_START_MS = 1794038400000
 const SERVICE_DATES = ["2026-11-07", "2026-11-08", "2026-11-09"]
 const LAST_DEPARTURE_HOUR = 26
-const FILES_PER_DATE = 6
+const FILES_PER_DATE = 7
 const BUNDLE_DATE_COUNT = 2
 const DAYS_PAST_EVERY_DATE = 4
 const TILE_ARCHIVE_PATH = "/tiles/route-stops/dt=2026-11-07/route-stops-1.pmtiles"
@@ -32,7 +45,7 @@ function entry(dayIndex) {
     serviceDayStartMs: DAY_START_MS + dayIndex * DAY_MS,
     builtAt: "2026-11-07T12:00:00Z",
     sourceFetchedAt: {newest: "2026-11-07T11:00:00Z"},
-    files: {stops: file("stops"), trips: file("trips"), transfers: file("transfers"), positions: file("positions")},
+    files: {stops: file("stops"), trips: file("trips"), transfers: file("transfers"), positions: file("positions"), names: {path: "/routing/" + serviceDate + "-names.json.gz"}},
     connectionChunks: [{...file("chunk-0"), departureSMax: HOUR_SECONDS}, {...file("chunk-1"), departureSMax: LAST_DEPARTURE_HOUR * HOUR_SECONDS}],
   }
 }
@@ -60,11 +73,33 @@ deepStrictEqual(morning.paths[morning.paths.length - 1], TILE_ARCHIVE_PATH)
 deepStrictEqual(morning.paths.includes(firstDate.files.positions.path), true)
 deepStrictEqual(morning.paths.includes(secondDate.files.positions.path), true)
 
+// The bundle's manifest keeps the manifest's other fields and names only the
+// dates the bundle saves, so it names no file the bundle lacks.
+deepStrictEqual(morning.manifest, {formatVersion: 2, snapshots: [firstDate, secondDate]})
+deepStrictEqual(morning.tileArchivePath, TILE_ARCHIVE_PATH)
+
+// The index names the bundle's manifest and its tile archive.
+const savedAtMs = DAY_START_MS + HOUR_MS
+deepStrictEqual(indexOf({plan: morning, savedAtMs}), {
+  savedAtMs,
+  formatVersion: 2,
+  dates: morning.dates,
+  paths: morning.paths,
+  manifestPath: BUNDLE_MANIFEST_PATH,
+  tileArchivePath: TILE_ARCHIVE_PATH
+})
+deepStrictEqual(BUNDLE_MANIFEST_PATH === INDEX_PATH, false)
+// Each date's names file is saved with its other files.
+deepStrictEqual(morning.paths.includes(firstDate.files.names.path), true)
+deepStrictEqual(morning.paths.includes(secondDate.files.names.path), true)
+
 // A date ends at its last departure, two hours past the next midnight here.
 const afterLastDepartureMs = DAY_START_MS + (LAST_DEPARTURE_HOUR + 1) * HOUR_MS
 const afterLastDeparture = planBundle({manifest, nowMs: afterLastDepartureMs, tileArchivePath: ""})
 deepStrictEqual(datesOf(afterLastDeparture), [secondDate.serviceDate, thirdDate.serviceDate])
 deepStrictEqual(afterLastDeparture.paths.includes(TILE_ARCHIVE_PATH), false)
+deepStrictEqual(afterLastDeparture.tileArchivePath, "")
+deepStrictEqual(afterLastDeparture.manifest.snapshots, [secondDate, thirdDate])
 
 // Nothing to save once every date has ended.
 deepStrictEqual(planBundle({manifest, nowMs: pastEveryDateMs, tileArchivePath: ""}), {kind: PlanKind.nothingToSave})
