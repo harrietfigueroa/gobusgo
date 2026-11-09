@@ -26,6 +26,7 @@ import {
   isRetryable,
   journeyFeatures,
   journeyRows,
+  journeysAnnouncement,
   nameRequest,
   queryOf,
   stateText,
@@ -51,6 +52,7 @@ const EMPTY_FIELD_TEXT = "Choose a stop"
 const LOCATION_TEXT = "My location"
 const PICK_TEXT = "Pick a stop on the map"
 const CHIP_COUNT_MAX = 1
+const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const NO_NAMES = Object.freeze({stops: {}, routes: {}})
 
 // The kinds of what the query's start resolves to.
@@ -563,7 +565,15 @@ export const TripPlanner = {
     this.selectedIndex = rows.findIndex(isEarliestRow)
     this.writeJourneys(rows)
     this.selectJourney({index: this.selectedIndex, rows})
+    this.announceJourneys(rows)
     this.requestNames()
+  },
+
+  // The status line says, out of sight, what the list that appeared holds,
+  // so a screen reader announces it.
+  announceJourneys(rows) {
+    const line = element({tag: "p", className: HIDDEN_TEXT_CLASS_NAME, text: journeysAnnouncement(rows)})
+    this.status.replaceChildren(line)
   },
 
   rows() {
