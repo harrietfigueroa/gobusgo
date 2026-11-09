@@ -196,7 +196,7 @@ export const Basemap = {
 
     // MapLibre keeps the style the map has when its WebGL context is lost,
     // and sets that style again when the context is restored, over any
-    // style set in between (maplibre-gl 6.12.0, Map._contextRestored). A
+    // style set in between (maplibre-gl 6.17.0, Map._restoreStyleSnapshot). A
     // page in the background can lose its context, so the theme can change
     // while it is lost.
     this.map.on("webglcontextlost", () => {
