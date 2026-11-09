@@ -1,0 +1,197 @@
+{
+  "source": "The color of every route in the newest stored routes-for-agency response of each agency, read on 2026-11-09.",
+  "colors": [
+    {
+      "color": "#000000",
+      "routeCount": 11
+    },
+    {
+      "color": "#0004ff",
+      "routeCount": 1
+    },
+    {
+      "color": "#002060",
+      "routeCount": 2
+    },
+    {
+      "color": "#005baa",
+      "routeCount": 11
+    },
+    {
+      "color": "#006b3f",
+      "routeCount": 11
+    },
+    {
+      "color": "#006cff",
+      "routeCount": 1
+    },
+    {
+      "color": "#0070c0",
+      "routeCount": 39
+    },
+    {
+      "color": "#007cad",
+      "routeCount": 1
+    },
+    {
+      "color": "#008080",
+      "routeCount": 1
+    },
+    {
+      "color": "#00aa00",
+      "routeCount": 1
+    },
+    {
+      "color": "#00b050",
+      "routeCount": 1
+    },
+    {
+      "color": "#1d1b11",
+      "routeCount": 3
+    },
+    {
+      "color": "#1f497d",
+      "routeCount": 1
+    },
+    {
+      "color": "#215867",
+      "routeCount": 1
+    },
+    {
+      "color": "#28813f",
+      "routeCount": 1
+    },
+    {
+      "color": "#2b376e",
+      "routeCount": 21
+    },
+    {
+      "color": "#2fc72a",
+      "routeCount": 5
+    },
+    {
+      "color": "#31859b",
+      "routeCount": 3
+    },
+    {
+      "color": "#32cd32",
+      "routeCount": 1
+    },
+    {
+      "color": "#403152",
+      "routeCount": 1
+    },
+    {
+      "color": "#4298cc",
+      "routeCount": 1
+    },
+    {
+      "color": "#448038",
+      "routeCount": 1
+    },
+    {
+      "color": "#4e6128",
+      "routeCount": 3
+    },
+    {
+      "color": "#5f259f",
+      "routeCount": 2
+    },
+    {
+      "color": "#604a7b",
+      "routeCount": 1
+    },
+    {
+      "color": "#677483",
+      "routeCount": 1
+    },
+    {
+      "color": "#6cb33f",
+      "routeCount": 31
+    },
+    {
+      "color": "#6d2f80",
+      "routeCount": 1
+    },
+    {
+      "color": "#7030a0",
+      "routeCount": 3
+    },
+    {
+      "color": "#803a66",
+      "routeCount": 1
+    },
+    {
+      "color": "#943734",
+      "routeCount": 2
+    },
+    {
+      "color": "#984807",
+      "routeCount": 1
+    },
+    {
+      "color": "#9ab6d3",
+      "routeCount": 2
+    },
+    {
+      "color": "#9c182f",
+      "routeCount": 8
+    },
+    {
+      "color": "#b2752d",
+      "routeCount": 2
+    },
+    {
+      "color": "#c00000",
+      "routeCount": 1
+    },
+    {
+      "color": "#c0504d",
+      "routeCount": 26
+    },
+    {
+      "color": "#c90000",
+      "routeCount": 1
+    },
+    {
+      "color": "#e27d1f",
+      "routeCount": 5
+    },
+    {
+      "color": "#e46c0a",
+      "routeCount": 5
+    },
+    {
+      "color": "#f24c21",
+      "routeCount": 1
+    },
+    {
+      "color": "#f38b00",
+      "routeCount": 1
+    },
+    {
+      "color": "#f47836",
+      "routeCount": 2
+    },
+    {
+      "color": "#fdb71a",
+      "routeCount": 104
+    },
+    {
+      "color": "#ff0000",
+      "routeCount": 4
+    },
+    {
+      "color": "#ffb819",
+      "routeCount": 2
+    },
+    {
+      "color": "#ffc000",
+      "routeCount": 2
+    },
+    {
+      "color": "#ffffff",
+      "routeCount": 1
+    }
+  ]
+}
