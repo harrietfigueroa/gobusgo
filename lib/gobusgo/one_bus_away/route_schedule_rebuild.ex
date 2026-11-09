@@ -1,6 +1,6 @@
 defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
   @day_count 3
-  @process_count_max 8
+  @read_count_max 8
   @process_timeout_ms 15_000
   @deadline_ms 60_000
 
@@ -21,8 +21,13 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
 
   Per fetch date, discovery makes at most
   `Gobusgo.OneBusAway.StoredListing.page_count_max/0` calls; a day with more
-  stored responses is left out and counted. At most #{@process_count_max}
-  responses are processed at a time, each with #{@process_timeout_ms} ms.
+  stored responses is left out and counted. At most #{@read_count_max}
+  responses are read at a time, and at most `:process_count_max` processed,
+  by default as many as the node has schedulers online and never more than
+  #{@read_count_max}: a decoded response is held whole while it is
+  processed, and processing more at once than runs in parallel holds more
+  responses for no gain in time. A read and a processing each have
+  #{@process_timeout_ms} ms.
 
   `start_link/1` is the form a supervisor runs it in: it runs `run/1` in a
   task under `options[:task_supervisor]`, waits at most
@@ -47,6 +52,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
     * `:read_options`: options for `Gobusgo.Reader.read/2` and
       `Gobusgo.Reader.discover/2`.
     * `:publish_options`: options for `Gobusgo.Publisher.publish/2`.
+    * `:process_count_max`: how many responses are processed at once.
   """
 
   require Logger
@@ -95,7 +101,12 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
   @spec run(Keyword.t()) :: result()
   def run(options) when is_list(options) do
     options =
-      Keyword.validate!(options, now: &DateTime.utc_now/0, read_options: [], publish_options: [])
+      Keyword.validate!(options,
+        now: &DateTime.utc_now/0,
+        read_options: [],
+        publish_options: [],
+        process_count_max: min(System.schedulers_online(), @read_count_max)
+      )
 
     now = Keyword.fetch!(options, :now)
     Assert.condition(is_function(now, 0), "now must be a zero-arity function")
@@ -108,10 +119,23 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
 
     {newest, undiscovered_day_count} = newest(fetch_dates, wanted, read_options)
 
+    process_count_max = Keyword.fetch!(options, :process_count_max)
+    Assert.condition(is_integer(process_count_max), "process_count_max must be an integer")
+    Assert.condition(process_count_max > 0, "process_count_max must be positive")
+
+    # The reads wait on the store and hold only the content, so more run at
+    # once than there are schedulers; a response decoded is held whole while
+    # it is processed, so no more are processed at once than run in parallel.
     outcomes =
       newest
-      |> Task.async_stream(&RouteScheduleBatch.process(&1, process_options),
-        max_concurrency: @process_count_max,
+      |> Task.async_stream(&{&1, RouteScheduleBatch.read_stored(&1, process_options)},
+        max_concurrency: @read_count_max,
+        timeout: @process_timeout_ms,
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Task.async_stream(&process_read(&1, process_options),
+        max_concurrency: process_count_max,
         timeout: @process_timeout_ms,
         on_timeout: :kill_task,
         ordered: false
@@ -119,6 +143,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
       |> Enum.map(fn
         {:ok, {:ok, _published}} -> :processed
         {:ok, {:error, _failure}} -> :failed
+        {:ok, :read_timeout} -> :failed
         {:exit, :timeout} -> :failed
       end)
 
@@ -133,6 +158,18 @@ defmodule Gobusgo.OneBusAway.RouteScheduleRebuild do
     log(result, System.monotonic_time(:millisecond) - started_ms)
     result
   end
+
+  defp process_read({:ok, {destination, {:ok, content}}}, process_options) do
+    RouteScheduleBatch.process_content(
+      %{destination: destination, content: content},
+      process_options
+    )
+  end
+
+  defp process_read({:ok, {_destination, {:error, failure}}}, _process_options),
+    do: {:error, failure}
+
+  defp process_read({:exit, :timeout}, _process_options), do: :read_timeout
 
   # The newest destination of each route and service date, the fetch dates
   # taken newest first, so an item keeps the destination of the latest day

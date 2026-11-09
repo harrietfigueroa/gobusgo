@@ -46,6 +46,7 @@ RUN mix gobusgo.vendor.fetch
 RUN mix assets.deploy
 
 COPY config/runtime.exs config/runtime.exs
+COPY rel/vm.args.eex rel/vm.args.eex
 RUN mix release
 
 FROM debian:${DEBIAN_VERSION}@${RUN_IMAGE_DIGEST} AS run

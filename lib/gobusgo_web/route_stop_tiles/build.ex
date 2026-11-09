@@ -163,7 +163,9 @@ defmodule GobusgoWeb.RouteStopTiles.Build do
 
   defp build_logged(%{encoded: encoded, built_at: built_at}, server, options) do
     started_ms = System.monotonic_time(:millisecond)
-    destination = RouteStopTiles.destination(built_at)
+
+    destination =
+      RouteStopTiles.destination(%{built_at: built_at, content_sha256: encoded.content_sha256})
 
     case build(%{encoded: encoded, destination: destination}, options) do
       {:ok, build} ->

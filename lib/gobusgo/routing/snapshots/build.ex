@@ -1,4 +1,6 @@
 defmodule Gobusgo.Routing.Snapshots.Build do
+  @date_heap_words_max 60_000_000
+
   @moduledoc """
   One run of the routing snapshot build: for every service date the
   schedule view holds, builds the snapshot from that date's schedules and
@@ -9,11 +11,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   view's stops, the names of the route view's routes, and the agency view's
   agency names, is that of its current entry and the entry was built today.
   The names are hashed as values, so a view fetched again unchanged builds
-  nothing. A file
-  whose destination already exists holds the same content, since its name
-  is the content's hash, and counts as written. A date whose files are not
-  all written keeps the entry it had. Entries of dates the view no longer
-  holds are dropped.
+  nothing. A file whose destination already exists holds the same content,
+  since its name is the content's hash, and counts as written. A date whose
+  files are not all written keeps the entry it had. Entries of dates the
+  view no longer holds are dropped.
 
   ## Logs
 
@@ -22,6 +23,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   were not written, with the counts built, passed over, and failed, the
   connection count of the dates built, and the time taken. A run that
   builds nothing and fails nothing logs `debug`.
+
+  Each date is built in a process of its own whose heap is capped at
+  `:date_heap_words_max` words. A date whose build outgrows the cap is
+  killed, logged as `Routing snapshot build killed` at `error`, and counted
+  as failed; the dates after it are still built.
 
   ## Options
 
@@ -33,10 +39,13 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     * `:clock`: returns the current UTC time. Defaults to
       `DateTime.utc_now/0`.
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
+    * `:date_heap_words_max`: the heap cap of a date's build, in words.
+      Defaults to #{@date_heap_words_max}.
   """
 
   require Logger
 
+  alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.AgencyView
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteScheduleView
@@ -66,7 +75,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         route_view: Gobusgo.OneBusAway.RouteView,
         agency_view: AgencyView,
         clock: &DateTime.utc_now/0,
-        write_options: []
+        write_options: [],
+        date_heap_words_max: @date_heap_words_max
       ])
 
     started_ms = System.monotonic_time(:millisecond)
@@ -78,43 +88,26 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     held_stops = StopView.current(Keyword.fetch!(options, :stop_view))
     positions = positions(held_stops)
 
-    sources = %{
-      stops: stop_names(held_stops),
-      routes: route_names(Keyword.fetch!(options, :route_view)),
-      agency_names: agency_names(Keyword.fetch!(options, :agency_view))
-    }
+    sources =
+      packed_sources(%{
+        stops: stop_names(held_stops),
+        routes: route_names(Keyword.fetch!(options, :route_view)),
+        agency_names: agency_names(Keyword.fetch!(options, :agency_view))
+      })
 
     built = Snapshots.built(server)
 
     outcomes =
       for date <- dates do
-        schedules = RouteScheduleView.schedules_on(schedule_view, date)
-        previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
-
-        inputs_sha256 =
-          inputs_sha256(%{
-            schedules: schedules,
-            previous: previous,
-            positions: positions,
-            sources: sources
-          })
-
-        case Map.get(built, date) do
-          %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
-            :unchanged
-
-          _other ->
-            build_date(%{
-              date: date,
-              schedules: schedules,
-              previous: previous,
-              positions: positions,
-              sources: sources,
-              inputs_sha256: inputs_sha256,
-              now: now,
-              options: options
-            })
-        end
+        date_outcome(%{
+          date: date,
+          built: Map.get(built, date),
+          positions: positions,
+          sources: sources,
+          today: today,
+          now: now,
+          options: options
+        })
       end
 
     :ok = Snapshots.retain(server, dates)
@@ -129,6 +122,97 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     log(counts, System.monotonic_time(:millisecond) - started_ms)
 
     if counts.failed_count == 0, do: {:ok, counts}, else: {:error, counts}
+  end
+
+  # A date is built in a process of its own, so its schedules and timetable
+  # are freed before the next date's are read, under a heap cap, so a build
+  # that outgrows it is killed alone and the date counts as failed, and with
+  # a full sweep at every collection, so garbage of the build's earlier steps
+  # is not kept in an old generation. The process is linked, so it dies with
+  # a run that is killed; the run traps exits while it waits, so the kill of
+  # the process reaches it as a message, and any other exit is raised again.
+  defp date_outcome(%{options: options} = input) do
+    heap_words_max = Keyword.fetch!(options, :date_heap_words_max)
+    Assert.condition(is_integer(heap_words_max), "date_heap_words_max must be an integer")
+
+    Assert.condition(
+      heap_words_max > 0,
+      "date_heap_words_max must be positive, got: #{heap_words_max}"
+    )
+
+    parent = self()
+    tag = make_ref()
+    trapping = Process.flag(:trap_exit, true)
+
+    {pid, monitor} =
+      :erlang.spawn_opt(fn -> send(parent, {tag, date_outcome_callback(input)}) end, [
+        :link,
+        :monitor,
+        fullsweep_after: 0,
+        max_heap_size: %{size: heap_words_max, kill: true, error_logger: true}
+      ])
+
+    result =
+      receive do
+        {^tag, outcome} -> {:ok, outcome}
+        {:DOWN, ^monitor, :process, ^pid, reason} -> {:exit, reason}
+      end
+
+    Process.demonitor(monitor, [:flush])
+
+    receive do
+      {:EXIT, ^pid, _reason} -> :ok
+    end
+
+    Process.flag(:trap_exit, trapping)
+
+    case result do
+      {:ok, outcome} ->
+        outcome
+
+      {:exit, :killed} ->
+        Logger.error("Routing snapshot build killed",
+          service_date: Date.to_iso8601(input.date),
+          heap_words_max: heap_words_max
+        )
+
+        :failed
+
+      {:exit, reason} ->
+        exit(reason)
+    end
+  end
+
+  defp date_outcome_callback(%{date: date, options: options} = input) do
+    schedule_view = Keyword.fetch!(options, :schedule_view)
+    today = input.today
+    schedules = RouteScheduleView.schedules_on(schedule_view, date)
+    previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
+
+    inputs_sha256 =
+      inputs_sha256(%{
+        schedules: schedules,
+        previous: previous,
+        positions: input.positions,
+        sources: input.sources
+      })
+
+    case input.built do
+      %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
+        :unchanged
+
+      _other ->
+        build_date(%{
+          date: date,
+          schedules: schedules,
+          previous: previous,
+          positions: input.positions,
+          sources: input.sources,
+          inputs_sha256: inputs_sha256,
+          now: input.now,
+          options: options
+        })
+    end
   end
 
   defp positions(held_stops) do
@@ -167,16 +251,28 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     end
   end
 
+  # The names reach each date's process as one binary, which is stored off
+  # the process heap, and are decoded only once the timetable is built, so
+  # they take no room under the heap cap while the timetable's build peaks.
+  # They are sorted before they are packed, so the same names pack to the
+  # same binary and hash to the same SHA-256.
+  defp packed_sources(%{stops: stops, routes: routes, agency_names: agency_names}) do
+    packed =
+      :erlang.term_to_binary({Enum.sort(stops), Enum.sort(routes), Enum.sort(agency_names)})
+
+    %{packed: packed, sha256: :crypto.hash(:sha256, packed)}
+  end
+
+  defp unpacked_sources(%{packed: packed}) do
+    {stops, routes, agency_names} = :erlang.binary_to_term(packed, [:safe])
+    %{stops: Map.new(stops), routes: Map.new(routes), agency_names: Map.new(agency_names)}
+  end
+
   defp inputs_sha256(%{schedules: schedules, previous: previous} = inputs) do
     requests =
       for fetch <- schedules ++ previous, do: {fetch.id, fetch.service_date, fetch.request_id}
 
-    %{stops: stops, routes: routes, agency_names: agency_names} = inputs.sources
-
-    hashed =
-      {Enum.sort(requests), Enum.sort(inputs.positions), Enum.sort(stops), Enum.sort(routes),
-       Enum.sort(agency_names)}
-
+    hashed = {Enum.sort(requests), Enum.sort(inputs.positions), inputs.sources.sha256}
     :crypto.hash(:sha256, :erlang.term_to_binary(hashed))
   end
 
@@ -190,6 +286,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     fetch_times = Enum.map(schedules ++ previous, & &1.fetched_at)
     walking_links = Transfers.walking_links(timetable.stop_ids, input.positions)
+    sources = unpacked_sources(input.sources)
 
     headsigns =
       Names.headsigns(%{
@@ -202,9 +299,9 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         stop_ids: timetable.stop_ids,
         trips: timetable.trips,
         headsigns: headsigns,
-        stops: input.sources.stops,
-        routes: input.sources.routes,
-        agency_names: input.sources.agency_names
+        stops: sources.stops,
+        routes: sources.routes,
+        agency_names: sources.agency_names
       })
 
     %{files: files, entry: entry} =
@@ -229,7 +326,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           built_on: DateTime.to_date(now)
         })
 
-      {:built, length(timetable.connections)}
+      {:built, timetable.connection_count}
     else
       :failed
     end

@@ -56,9 +56,33 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch do
   def process(destination, options) when is_binary(destination) and is_list(options) do
     options = Keyword.validate!(options, read_options: [], publish_options: [])
 
+    with {:ok, content} <- read_stored(destination, options) do
+      process_content(%{destination: destination, content: content}, options)
+    end
+  end
+
+  @doc """
+  Reads the response stored at `destination`, as `process/2` reads it, so a
+  caller can read many responses at once and process fewer at a time with
+  `process_content/2`.
+  """
+  @spec read_stored(String.t(), Keyword.t()) :: {:ok, binary()} | {:error, BatchFailure.t()}
+  def read_stored(destination, options) when is_binary(destination) and is_list(options) do
+    read(destination, Keyword.get(options, :read_options, []))
+  end
+
+  @doc """
+  Publishes the schedule of `stored.content`, the response `read_stored/2`
+  read from `stored.destination`, as `process/2` does once it has read it.
+  """
+  @spec process_content(%{destination: String.t(), content: binary()}, Keyword.t()) ::
+          {:ok, result()} | {:error, BatchFailure.t()}
+  def process_content(%{destination: destination, content: content}, options)
+      when is_binary(destination) and is_binary(content) and is_list(options) do
+    options = Keyword.validate!(options, read_options: [], publish_options: [])
+
     result =
-      with {:ok, content} <- read(destination, Keyword.fetch!(options, :read_options)),
-           {:ok, parsed} <- parse(destination, content),
+      with {:ok, parsed} <- parse(destination, content),
            record = Records.build(parsed),
            :ok <- publish(record, Keyword.fetch!(options, :publish_options)) do
         trips = parsed.schedule.trips
