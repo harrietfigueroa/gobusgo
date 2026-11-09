@@ -91,6 +91,7 @@ const targetSizes = [
   {property: "--close-button-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--popup-alert-hit-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--filter-token-height", pxMin: TARGET_SIZE_PX_MIN},
+  {property: "--inline-target-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--close-button-hit-size", pxMin: FINGER_TARGET_SIZE_PX_MIN},
   {property: "--map-control-size", pxMin: FINGER_TARGET_SIZE_PX_MIN},
   {property: "--theme-option-height", pxMin: FINGER_TARGET_SIZE_PX_MIN},

@@ -14,6 +14,7 @@
   --control-radius-inner: calc(var(--surface-radius) - var(--surface-border-width));
   --close-button-size: 28px;
   --close-button-hit-size: 44px;
+  --inline-target-size: 24px;
   --close-button-inset: 8px;
   --close-button-mark-size: 14px;
   --close-button-fill: #dc2626;
@@ -360,6 +361,24 @@
   .popup-alert {
     min-height: var(--popup-alert-hit-size);
   }
+}
+
+/* A link or a toggle that stands on a line of its own, such as an alert's
+   disclosure or a setting's checkbox label, is at least 24px tall, and a
+   finger's size on a coarse pointer, with its line centered. */
+@media (pointer: coarse) {
+  :root {
+    --inline-target-size: var(--close-button-hit-size);
+  }
+}
+
+.inline-target {
+  min-height: var(--inline-target-size);
+  padding-block: max(0px, calc((var(--inline-target-size) - 1lh) / 2));
+}
+
+a.inline-target {
+  display: inline-block;
 }
 
 /* A map control's button is a finger's size at every width. */
