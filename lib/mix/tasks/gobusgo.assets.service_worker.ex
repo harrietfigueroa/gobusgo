@@ -22,6 +22,10 @@ defmodule Mix.Tasks.Gobusgo.Assets.ServiceWorker do
 
   alias GobusgoWeb.ServiceWorker
 
+  # The stored paths and the release are read from modules compiled from the
+  # lock file, so a lock file moved to another version is compiled first.
+  @requirements ["compile"]
+
   @esbuild_profile "service_worker"
   @static_dir "priv/static"
   @cache_manifest_path "priv/static/cache_manifest.json"
