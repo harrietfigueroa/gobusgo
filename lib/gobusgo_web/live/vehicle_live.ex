@@ -1,6 +1,7 @@
 defmodule GobusgoWeb.VehicleLive do
   @viewer_registration_retry_ms 100
   @viewer_registration_attempt_count_max 5
+  @map_style_validated Application.compile_env!(:gobusgo, [:map_style, :validated])
 
   @moduledoc """
   The page at `/vehicles`: a map of the vehicles of every agency's current
@@ -698,6 +699,7 @@ defmodule GobusgoWeb.VehicleLive do
       data-sprites-url={@basemap.sources.sprites_url}
       data-attribution={@basemap.sources.attribution}
       data-bounds={JSON.encode!(@basemap.bounds)}
+      data-style-validated={map_style_validated()}
     >
     </div>
 
@@ -790,6 +792,9 @@ defmodule GobusgoWeb.VehicleLive do
   # An archive without an offline extract carries no attribute.
   defp offline_archive_url(nil), do: nil
   defp offline_archive_url(%{url: url}), do: url
+
+  # A boolean attribute: present where the map checks its styles.
+  defp map_style_validated, do: @map_style_validated
 
   # A filter that names nothing draws every route, which no list names.
   defp route_ids_attribute(:every), do: nil

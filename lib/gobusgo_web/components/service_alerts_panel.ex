@@ -99,10 +99,12 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
         id={@alert.dom_id <> "-details"}
         phx-mounted={JS.ignore_attributes("open")}
       >
-        <summary class="cursor-pointer">Details</summary>
+        <summary class="inline-target cursor-pointer">Details</summary>
         <p class="mt-1 whitespace-pre-line">{@alert.description}</p>
       </details>
-      <a :if={@alert.url} href={@alert.url} class="underline" rel="noopener">More from the agency</a>
+      <a :if={@alert.url} href={@alert.url} class="inline-target underline" rel="noopener">
+        More from the agency
+      </a>
     </article>
     """
   end
