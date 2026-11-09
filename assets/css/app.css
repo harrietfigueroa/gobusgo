@@ -51,7 +51,9 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
-  --popup-selected-text-color: #ffffff;
+  --popup-selected-text-color: #0f172a;
+  --popup-selected-focus-color: var(--popup-selected-text-color);
+  --panel-sheet-filter-badge-color: #0f172a;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
   --filter-bar-height-min: 44px;
@@ -60,6 +62,7 @@
   --filter-suggestion-height-min: 44px;
   --filter-suggestion-active-fill: #dcfce7;
   --filter-kind-color: #475569;
+  --filter-kind-active-color: #475569;
   --trip-origin-color: #16a34a;
   --trip-destination-color: #dc2626;
   /* MapLibre's location dot is #1da1f2, which the cone repeats. */
@@ -109,6 +112,7 @@
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
+  --filter-kind-active-color: #e2e8f0;
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
   --rider-heading-color: rgb(56 189 248);
@@ -319,6 +323,11 @@
 
 .popup-selected .route-chip {
   box-shadow: 0 0 0 1px var(--popup-selected-text-color);
+}
+
+/* A focus ring inside the selected popup stands on its fill. */
+.popup-selected :focus-visible {
+  outline-color: var(--popup-selected-focus-color);
 }
 
 /* A popup's alert line is one line of the popup's width, cut with an
@@ -679,6 +688,7 @@
 
 #panel-tab-filter-badge {
   background-color: var(--surface-border-color);
+  color: var(--panel-sheet-filter-badge-color);
 }
 
 #panel-tab-alerts-badge {
@@ -940,6 +950,11 @@
 .filter-suggestion:hover,
 .filter-suggestion[aria-selected="true"] {
   background-color: var(--filter-suggestion-active-fill);
+}
+
+.filter-suggestion:hover .filter-kind,
+.filter-suggestion[aria-selected="true"] .filter-kind {
+  color: var(--filter-kind-active-color);
 }
 
 /* The Trip tab: the two ends beside the swap button, then the journeys,
