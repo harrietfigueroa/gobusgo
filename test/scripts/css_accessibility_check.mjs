@@ -107,7 +107,6 @@ const knownFailures = new Map([
   ["contrast light --popup-selected-text-color on --surface-border-color", "GOB-301"],
   ["contrast dark --close-button-focus-color on --surface-border-color", "GOB-301"],
   ["contrast dark --filter-kind-color on --filter-suggestion-active-fill", "GOB-301"],
-  ["contrast light --panel-sheet-grip-color on --surface-fill", "GOB-311"],
   ["reduced motion .rider-heading-cone-shape", "GOB-314"],
   ["forced colors fill .popup-selected .maplibregl-popup-content", "GOB-313"],
   ["forced colors fill .popup-selected .maplibregl-popup-tip", "GOB-313"],
