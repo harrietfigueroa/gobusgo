@@ -74,6 +74,7 @@ export const FailureReason = Object.freeze({
   unknownServiceDate: "unknownServiceDate",
   tooManyChunks: "tooManyChunks",
   fetchFailed: "fetchFailed",
+  notSaved: "notSaved",
   timedOut: "timedOut",
   sizeMismatch: "sizeMismatch",
   refused: "refused",

@@ -25,6 +25,7 @@ export const StateKind = Object.freeze({
   locationDenied: "locationDenied",
   locationUnavailable: "locationUnavailable",
   sameStop: "sameStop",
+  notSaved: "notSaved",
 })
 
 /** The kinds of a feature the map draws of a journey. */
@@ -54,6 +55,7 @@ const stateTexts = Object.freeze({
   [StateKind.locationDenied]: "Location permission was denied, so the trip cannot start from your location.",
   [StateKind.locationUnavailable]: "Your location could not be found.",
   [StateKind.sameStop]: "From and To are the same stop.",
+  [StateKind.notSaved]: "The schedules for this trip are not saved for offline use.",
   [JourneysKind.none]: "No journey found between these two today or tomorrow.",
   [JourneysKind.unknownStop]: "This stop is not in the schedules.",
   [JourneysKind.noStartStop]: "No stop with service is within a walk of your location.",
@@ -113,6 +115,15 @@ export function stateText(kind) {
 /** Whether a failure is worth trying again: every failure but a format the page cannot read. */
 export function isRetryable(failure) {
   return failure.reason !== FailureReason.unsupportedVersion
+}
+
+/** The state the Trip tab shows for a failed query: that its schedules are not saved, or that it failed. */
+export function failureState(failure) {
+  if (failure.reason === FailureReason.notSaved) {
+    return StateKind.notSaved
+  }
+
+  return JourneysKind.failed
 }
 
 /** `ms`, milliseconds since the Unix epoch, as a clock time in `timeZone`, such as "8:42 am". */

@@ -2,7 +2,8 @@ defmodule GobusgoWeb.AppInfoPanel do
   @moduledoc """
   The info panel of a map page, in two groups. First the rider's settings,
   under a Settings heading: how to install the application where the
-  browser offers it, the theme setting, how schedules are saved for
+  browser offers it, the theme setting, what works offline and what needs
+  a connection, how schedules are saved for
   offline use, with its setting and status line, and the Show my direction
   setting of the cone on the rider's location dot. Then, under an About
   heading, what the application is, a disclaimer, what donations fund where
@@ -24,6 +25,7 @@ defmodule GobusgoWeb.AppInfoPanel do
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.RetentionPolicy
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
   alias GobusgoWeb.VehicleMarkers
 
@@ -54,6 +56,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         <h2 id="app-info-settings-title" class="text-base font-semibold">Settings</h2>
         <.install_app />
         <.theme_setting />
+        <.offline />
         <section
           id="app-info-offline-schedules"
           class="flex flex-col gap-2"
@@ -105,6 +108,28 @@ defmodule GobusgoWeb.AppInfoPanel do
         <.licenses />
       </section>
     </div>
+    """
+  end
+
+  # The offline signal opens the Settings tab here and moves focus to the
+  # section, which takes focus from a script alone.
+  defp offline(assigns) do
+    assigns =
+      assign(assigns, offline: AppInfo.offline(), section_id: ConnectionSignal.section_id())
+
+    ~H"""
+    <section id={@section_id} class="flex flex-col gap-2" tabindex="-1">
+      <h3 class="font-semibold">Offline</h3>
+      <p>Without a connection, the page shows what it already has.</p>
+      <h4 class="font-medium">What works offline</h4>
+      <ul id="app-info-offline-works" class="list-disc pl-5">
+        <li :for={text <- @offline.works}>{text}</li>
+      </ul>
+      <h4 class="font-medium">What needs a connection</h4>
+      <ul id="app-info-offline-needs-connection" class="list-disc pl-5">
+        <li :for={text <- @offline.needs_connection}>{text}</li>
+      </ul>
+    </section>
     """
   end
 

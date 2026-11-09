@@ -11,20 +11,35 @@ defmodule Gobusgo.Routing.Snapshot do
   The connections are split into chunks by the hour of their departure, so
   a reader fetches from the hour of its query onward and stops once a chunk
   departs after the best arrival it has found (decided in GOB-237). The
-  stop, trip, transfer, and position tables are files of their own.
+  stop, trip, transfer, and position tables are files of their own, and so
+  is the names file of `Gobusgo.Routing.Names` (decided in GOB-251).
 
   A file's name is its kind and the SHA-256 of its content, and it is stored
   at `#{@prefix}/dt=<build date>/<name>`, so a file's address never holds
   other content and is cached as immutable. A build on another day writes
-  its files again under that day.
+  its files again under that day. The names file is stored as one gzip
+  stream, at a destination ending in `#{Gobusgo.Compression.suffix()}`, and its
+  name, `byteSize`, and `sha256` are those of the stream, the bytes a
+  reader fetches; a file's content is what it is given to the writer.
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Compression
+  alias Gobusgo.Routing.Names
   alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Routing.Timetable
   alias Gobusgo.Routing.Transfers
 
-  @type file :: %{destination: String.t(), content: binary()}
+  @typedoc """
+  A file to write: its destination, the content the writer is given, and the
+  SHA-256 and byte size of what it stores.
+  """
+  @type file :: %{
+          destination: String.t(),
+          content: binary(),
+          sha256: String.t(),
+          byte_size: non_neg_integer()
+        }
 
   @doc "The prefix of every snapshot file's destination, without a trailing `/`."
   @spec prefix() :: String.t()
@@ -36,8 +51,9 @@ defmodule Gobusgo.Routing.Snapshot do
 
   @doc """
   Returns the files of the snapshot of `input.timetable` with
-  `input.walking_links` and `input.positions`, the position of each stop by
-  identifier, built at `input.built_at` from fetches made from
+  `input.walking_links`, `input.positions`, the position of each stop by
+  identifier, and `input.names`, the names `Gobusgo.Routing.Names.build/1`
+  returns for it, built at `input.built_at` from fetches made from
   `input.fetched_at_oldest` to `input.fetched_at_newest`, and its manifest
   entry. A stop `input.positions` leaves out has an unknown position.
   """
@@ -45,6 +61,7 @@ defmodule Gobusgo.Routing.Snapshot do
           timetable: Timetable.t(),
           walking_links: [SnapshotFormat.transfer()],
           positions: %{String.t() => Transfers.position()},
+          names: map(),
           built_at: DateTime.t(),
           fetched_at_oldest: DateTime.t(),
           fetched_at_newest: DateTime.t()
@@ -60,6 +77,8 @@ defmodule Gobusgo.Routing.Snapshot do
 
     positions =
       file(directory, :positions, position_records(timetable.stop_ids, input.positions))
+
+    names = names_file(directory, input.names)
 
     chunks =
       for {first_index, last_index} <- chunk_ranges(timetable) do
@@ -98,7 +117,8 @@ defmodule Gobusgo.Routing.Snapshot do
         "stops" => file_entry(stops),
         "trips" => file_entry(trips),
         "transfers" => file_entry(transfers),
-        "positions" => file_entry(positions)
+        "positions" => file_entry(positions),
+        "names" => file_entry(names)
       },
       "connectionChunks" =>
         for chunk <- chunks do
@@ -112,7 +132,10 @@ defmodule Gobusgo.Routing.Snapshot do
         end
     }
 
-    %{files: [stops, trips, transfers, positions | Enum.map(chunks, & &1.file)], entry: entry}
+    %{
+      files: [stops, trips, transfers, positions, names | Enum.map(chunks, & &1.file)],
+      entry: entry
+    }
   end
 
   defp position_records(stop_ids, positions) do
@@ -173,10 +196,33 @@ defmodule Gobusgo.Routing.Snapshot do
 
   defp content_file(directory, kind, content) do
     sha256 = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
-    %{destination: "#{directory}/#{kind}-#{sha256}.bin", content: content, sha256: sha256}
+
+    %{
+      destination: "#{directory}/#{kind}-#{sha256}.bin",
+      content: content,
+      sha256: sha256,
+      byte_size: byte_size(content)
+    }
   end
 
-  defp file_entry(%{destination: destination, content: content, sha256: sha256}) do
-    %{"path" => "/" <> destination, "byteSize" => byte_size(content), "sha256" => sha256}
+  # The writer compresses the content of a destination ending in the
+  # compression suffix with `Gobusgo.Compression.compress/1`, which gives
+  # the same stream for the same content, so the stream hashed here is the
+  # one stored.
+  defp names_file(directory, names) do
+    content = Names.encode(names)
+    stream = Compression.compress(content)
+    sha256 = :crypto.hash(:sha256, stream) |> Base.encode16(case: :lower)
+
+    %{
+      destination: "#{directory}/names-#{sha256}.json#{Compression.suffix()}",
+      content: content,
+      sha256: sha256,
+      byte_size: byte_size(stream)
+    }
+  end
+
+  defp file_entry(%{destination: destination, sha256: sha256, byte_size: byte_size}) do
+    %{"path" => "/" <> destination, "byteSize" => byte_size, "sha256" => sha256}
   end
 end
