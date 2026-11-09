@@ -22,6 +22,12 @@ defmodule Gobusgo.Basemap.ExtractPlan do
   The source is the Protomaps daily build of the snapshot, a date written
   `YYYYMMDD`, at `#{@source_base_url}/<snapshot>.pmtiles`. A build holds the
   zooms #{@zoom_min} to #{@zoom_max}, and an archive keeps all of them.
+
+  A plan given an offline zoom bound also holds, for each archive, an
+  offline extract of it that keeps the zooms #{@zoom_min} to that bound and
+  the whole of its area, the copy a browser saves for offline use. It is
+  named `basemap-<snapshot>-<number>-z<bound>.pmtiles` and cut from the
+  extracted archive, so it asks the build for nothing more.
   """
 
   alias Gobusgo.Assert
@@ -30,10 +36,12 @@ defmodule Gobusgo.Basemap.ExtractPlan do
   @snapshot_pattern ~r/\A[0-9]{8}\z/
   @archive_number_width 2
 
+  @type offline :: %{name: String.t(), zoom_max: non_neg_integer()}
   @type archive :: %{
           name: String.t(),
           agency_ids: [String.t(), ...],
-          bounds: AgencyCoverage.bounds()
+          bounds: AgencyCoverage.bounds(),
+          offline: offline() | nil
         }
   @type t :: %{
           snapshot: String.t(),
@@ -54,15 +62,41 @@ defmodule Gobusgo.Basemap.ExtractPlan do
   def valid_snapshot?(_snapshot), do: false
 
   @doc """
-  Returns the plan for `agencies` and the build of `snapshot`. The caller
-  guarantees `valid_snapshot?/1` for the snapshot.
+  Returns whether `zoom` can bound an offline extract: an integer from
+  #{@zoom_min} up to and not including the archives' highest zoom,
+  #{@zoom_max}.
   """
-  @spec build(%{agencies: [AgencyCoverage.agency()], snapshot: String.t()}) :: t()
-  def build(%{agencies: agencies, snapshot: snapshot}) when is_list(agencies) do
+  @spec valid_offline_zoom_max?(term()) :: boolean()
+  def valid_offline_zoom_max?(zoom) when is_integer(zoom),
+    do: zoom >= @zoom_min and zoom < @zoom_max
+
+  def valid_offline_zoom_max?(_zoom), do: false
+
+  @doc """
+  Returns the plan for `agencies` and the build of `snapshot`, with an
+  offline extract of each archive up to `offline_zoom_max`, or none for
+  `nil`. The caller guarantees `valid_snapshot?/1` for the snapshot and
+  `valid_offline_zoom_max?/1` for a bound.
+  """
+  @spec build(%{
+          agencies: [AgencyCoverage.agency()],
+          snapshot: String.t(),
+          offline_zoom_max: non_neg_integer() | nil
+        }) :: t()
+  def build(%{agencies: agencies, snapshot: snapshot, offline_zoom_max: offline_zoom_max})
+      when is_list(agencies) do
     Assert.condition(
       valid_snapshot?(snapshot),
       "snapshot must be a date written YYYYMMDD, got: #{inspect(snapshot)}"
     )
+
+    if offline_zoom_max != nil do
+      Assert.condition(
+        valid_offline_zoom_max?(offline_zoom_max),
+        "offline zoom bound must be an integer from #{@zoom_min} below #{@zoom_max}, " <>
+          "got: #{inspect(offline_zoom_max)}"
+      )
+    end
 
     %{regions: regions, agencies: located, skipped: skipped} =
       AgencyCoverage.extract_regions(agencies, @buffer_meters)
@@ -76,7 +110,14 @@ defmodule Gobusgo.Basemap.ExtractPlan do
 
     archives =
       for {%{agency_ids: agency_ids, bounds: bounds}, index} <- Enum.with_index(regions) do
-        %{name: archive_name(snapshot, index + 1), agency_ids: agency_ids, bounds: bounds}
+        number = index + 1
+
+        %{
+          name: archive_name(snapshot, number),
+          agency_ids: agency_ids,
+          bounds: bounds,
+          offline: offline(%{snapshot: snapshot, number: number, zoom_max: offline_zoom_max})
+        }
       end
 
     archive_by_agency_id =
@@ -127,8 +168,31 @@ defmodule Gobusgo.Basemap.ExtractPlan do
   end
 
   @doc """
+  Returns the arguments of the `pmtiles` command that cuts the offline
+  extract `offline` out of the extracted archive at `archive_path` into the
+  file at `output_path`. With no box the extract keeps the archive's whole
+  area.
+  """
+  @spec offline_extract_arguments(%{
+          offline: offline(),
+          archive_path: String.t(),
+          output_path: String.t()
+        }) :: [String.t(), ...]
+  def offline_extract_arguments(%{
+        offline: %{zoom_max: zoom_max},
+        archive_path: archive_path,
+        output_path: output_path
+      })
+      when is_binary(archive_path) and is_binary(output_path) do
+    # https://docs.protomaps.com/pmtiles/cli — checked 2026-11-08. The input
+    # is a local or a remote archive.
+    ["extract", archive_path, output_path, "--maxzoom=#{zoom_max}"]
+  end
+
+  @doc """
   Returns the manifest of a finished extraction as a map ready for JSON:
-  the source, the zoom range, every archive of `plan` with its size from
+  the source, the zoom range, every archive of `plan` and its offline
+  extract, where the plan has one, each with its size from
   `archive_bytes`, the archive and the bounds of every agency, and the
   skipped agencies. `response_destination` names the stored agency response
   the agencies come from.
@@ -148,15 +212,15 @@ defmodule Gobusgo.Basemap.ExtractPlan do
       "zoomMax" => plan.zoom_max,
       "bufferMeters" => plan.buffer_meters,
       "archives" =>
-        for %{name: name, agency_ids: agency_ids, bounds: bounds} <- plan.archives do
-          Assert.condition(is_map_key(archive_bytes, name), "archive #{name} has no size")
-
-          %{
-            "name" => name,
-            "bytes" => Map.fetch!(archive_bytes, name),
-            "agencyIds" => agency_ids,
-            "bounds" => manifest_bounds(bounds)
-          }
+        for %{name: name, agency_ids: agency_ids, bounds: bounds, offline: offline} <-
+              plan.archives do
+          manifest_archive(%{
+            name: name,
+            agency_ids: agency_ids,
+            bounds: bounds,
+            offline: offline,
+            archive_bytes: archive_bytes
+          })
         end,
       "agencies" =>
         for %{agency_id: agency_id, archive: archive, bounds: bounds} <- plan.agencies do
@@ -170,8 +234,48 @@ defmodule Gobusgo.Basemap.ExtractPlan do
   end
 
   defp archive_name(snapshot, number) do
-    padded = number |> Integer.to_string() |> String.pad_leading(@archive_number_width, "0")
-    "basemap-#{snapshot}-#{padded}.pmtiles"
+    "basemap-#{snapshot}-#{padded_number(number)}.pmtiles"
+  end
+
+  defp padded_number(number) do
+    number |> Integer.to_string() |> String.pad_leading(@archive_number_width, "0")
+  end
+
+  defp offline(%{zoom_max: nil}), do: nil
+
+  defp offline(%{snapshot: snapshot, number: number, zoom_max: zoom_max}) do
+    %{
+      name: "basemap-#{snapshot}-#{padded_number(number)}-z#{zoom_max}.pmtiles",
+      zoom_max: zoom_max
+    }
+  end
+
+  defp manifest_archive(%{name: name, archive_bytes: archive_bytes} = archive) do
+    entry = %{
+      "name" => name,
+      "bytes" => fetch_bytes(archive_bytes, name),
+      "agencyIds" => archive.agency_ids,
+      "bounds" => manifest_bounds(archive.bounds)
+    }
+
+    case archive.offline do
+      nil ->
+        entry
+
+      %{name: offline_name, zoom_max: zoom_max} ->
+        offline_entry = %{
+          "name" => offline_name,
+          "bytes" => fetch_bytes(archive_bytes, offline_name),
+          "zoomMax" => zoom_max
+        }
+
+        Map.put(entry, "offline", offline_entry)
+    end
+  end
+
+  defp fetch_bytes(archive_bytes, name) do
+    Assert.condition(is_map_key(archive_bytes, name), "archive #{name} has no size")
+    Map.fetch!(archive_bytes, name)
   end
 
   defp manifest_bounds(%{south: south, west: west, north: north, east: east}) do

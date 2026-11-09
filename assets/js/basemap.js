@@ -2,6 +2,9 @@ import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
 import {sheetInsets} from "./panel_sheet"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
+import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
+import {CHANGE_EVENT_NAME as OFFLINE_BASEMAP_CHANGE_EVENT_NAME, drawnArchiveUrl, savedBasemapOf} from "./offline_basemap"
+import {readSavedBasemap} from "./offline_basemap_setting"
 import {flavorName} from "./theme"
 
 const PROTOCOL_NAME = "pmtiles"
@@ -49,10 +52,10 @@ function absoluteUrl(path) {
   return new URL(path, window.location.href).href
 }
 
-// The basemap's style alone, in `theme`: where the tiles, the fonts, and
-// the sprites come from and how the layers are drawn. Nothing here reads
-// vehicle data.
-function basemapStyle({sources: {archiveUrl, fontsUrl, spritesUrl, attribution}, theme}) {
+// The basemap's style alone, in `theme`, from the archive at `archiveUrl`:
+// where the tiles, the fonts, and the sprites come from and how the layers
+// are drawn. Nothing here reads vehicle data.
+function basemapStyle({archiveUrl, sources: {fontsUrl, spritesUrl, attribution}, theme}) {
   const flavor = flavorName(theme)
 
   return {
@@ -68,6 +71,18 @@ function basemapStyle({sources: {archiveUrl, fontsUrl, spritesUrl, attribution},
     },
     layers: layers(SOURCE_NAME, namedFlavor(flavor), {lang: LABEL_LANGUAGE})
   }
+}
+
+// The address of the basemap's offline extract on `element`, or the empty
+// string for a basemap without one.
+function offlineArchiveUrlOf(element) {
+  const url = element.dataset.offlineArchiveUrl
+
+  if (url === undefined) {
+    return ""
+  }
+
+  return url
 }
 
 // Bounds arrive as {south, west, north, east}; the library takes the
@@ -96,7 +111,10 @@ function fitPadding({left, bottom}) {
 // theme, and a change of the theme sets the map's style anew, which drops
 // every source and layer the other hooks added; once the new style has
 // loaded, a bubbling "basemap:restyled" DOM event whose detail holds the
-// map tells them to add theirs again.
+// map tells them to add theirs again. The style is set anew the same way
+// when the page goes offline with the basemap's offline extract saved,
+// which the map then draws from, and when it comes back, to the full
+// archive.
 export const Basemap = {
   mounted() {
     const element = this.el
@@ -105,9 +123,23 @@ export const Basemap = {
     this.fitBounds = bounds
     this.theme = null
     this.restyling = false
+    this.archiveUrl = element.dataset.archiveUrl
+    this.offlineArchiveUrl = offlineArchiveUrlOf(element)
+    this.saved = savedBasemapOf({url: this.offlineArchiveUrl, isStored: false})
+    this.drawnUrl = this.archiveUrl
 
-    this.onThemeChange = (event) => { this.restyle(event.detail.theme) }
+    this.onThemeChange = (event) => { this.restyle({theme: event.detail.theme, archiveUrl: this.drawnUrl}) }
     window.addEventListener(THEME_CHANGE_EVENT_NAME, this.onThemeChange)
+    this.onConnectionChange = () => { this.followArchive() }
+    window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+
+    this.onOfflineBasemapChange = (event) => {
+      this.saved = event.detail.saved
+      this.followArchive()
+    }
+
+    window.addEventListener(OFFLINE_BASEMAP_CHANGE_EVENT_NAME, this.onOfflineBasemapChange)
+    this.readSaved()
 
     this.handleEvent("basemap:fit", (event) => {
       this.fitBounds = cornerBounds(event.bounds)
@@ -134,7 +166,7 @@ export const Basemap = {
 
     this.map = new maplibre.Map({
       container: element,
-      style: basemapStyle({sources: element.dataset, theme: this.theme}),
+      style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
       bounds: this.fitBounds,
       fitBoundsOptions: {padding},
       attributionControl: false
@@ -161,24 +193,66 @@ export const Basemap = {
     }))
   },
 
-  // Sets the style of the map anew in `theme`, unless the map is drawn in
-  // it or there is no map yet, which is drawn in the page's theme when it
-  // is made.
-  restyle(theme) {
-    const isRestyled = this.map !== null && theme !== this.theme
+  // Reads whether the page's offline extract is saved, and draws from it
+  // where the page is offline.
+  async readSaved() {
+    const hasExtract = this.offlineArchiveUrl !== ""
+
+    if (!hasExtract) {
+      return
+    }
+
+    try {
+      this.saved = await readSavedBasemap(this.offlineArchiveUrl)
+    } catch (error) {
+      console.warn("Saved map not read", error)
+      return
+    }
+
+    this.followArchive()
+  },
+
+  // Draws the archive the connection and the saved map call for. A map not
+  // made yet is made from it.
+  followArchive() {
+    const archiveUrl = drawnArchiveUrl({
+      connection: connectionState(),
+      saved: this.saved,
+      archiveUrl: this.archiveUrl,
+      offlineArchiveUrl: this.offlineArchiveUrl
+    })
+
+    if (this.map === null) {
+      this.drawnUrl = archiveUrl
+      return
+    }
+
+    this.restyle({theme: this.theme, archiveUrl})
+  },
+
+  // Sets the style of the map anew in `theme` from the archive at
+  // `archiveUrl`, unless the map is drawn so already or there is no map
+  // yet, which is drawn in the page's theme when it is made.
+  restyle({theme, archiveUrl}) {
+    const hasMap = this.map !== null
+    const isStyleChanged = theme !== this.theme || archiveUrl !== this.drawnUrl
+    const isRestyled = hasMap && isStyleChanged
 
     if (isRestyled) {
       this.theme = theme
+      this.drawnUrl = archiveUrl
       this.restyling = true
       // The style is set whole, not diffed, which fires "style.load" once
       // it has loaded.
-      const style = basemapStyle({sources: this.el.dataset, theme})
+      const style = basemapStyle({archiveUrl, sources: this.el.dataset, theme})
       this.map.setStyle(style, {diff: false})
     }
   },
 
   destroyed() {
     window.removeEventListener(THEME_CHANGE_EVENT_NAME, this.onThemeChange)
+    window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    window.removeEventListener(OFFLINE_BASEMAP_CHANGE_EVENT_NAME, this.onOfflineBasemapChange)
 
     if (this.map !== null) {
       this.map.remove()

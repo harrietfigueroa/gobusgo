@@ -110,6 +110,23 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       refute has_element?(view, "#no-basemap")
     end
 
+    test "names no offline extract for an archive without one" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      refute has_element?(view, @west_map <> "[data-offline-archive-url]")
+    end
+
+    test "hands the map the archive's offline extract", %{tmp_dir: tmp_dir} do
+      offline = %{"name" => "basemap-20261004-01-z13.pmtiles", "bytes" => 34, "zoomMax" => 13}
+      [west, east] = @manifest["archives"]
+      archives = [Map.put(west, "offline", offline), east]
+      write_manifest(tmp_dir, JSON.encode!(%{@manifest | "archives" => archives}))
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert attribute(view, @west_map, "data-offline-archive-url") ==
+               "/basemap/basemap-20261004-01-z13.pmtiles"
+    end
+
     test "fits the whole archive when no agency is chosen" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 

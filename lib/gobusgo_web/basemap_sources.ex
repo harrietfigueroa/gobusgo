@@ -44,8 +44,10 @@ defmodule GobusgoWeb.BasemapSources do
   @typedoc """
   The map a page shows: the archive it is drawn from, its sources, the
   bounds the view fits, the bounds of the whole archive, the agency the
-  fitted bounds belong to or `nil` for the whole archive, and the agencies a
-  view can be chosen for.
+  fitted bounds belong to or `nil` for the whole archive, the agencies a
+  view can be chosen for, and the address and size in bytes of the
+  archive's offline extract, which a browser saves for offline use, or
+  `nil` for an archive without one.
   """
   @type view :: %{
           archive: String.t(),
@@ -53,7 +55,8 @@ defmodule GobusgoWeb.BasemapSources do
           bounds: Manifest.bounds(),
           archive_bounds: Manifest.bounds(),
           agency_id: String.t() | nil,
-          agency_ids: [String.t()]
+          agency_ids: [String.t()],
+          offline_archive: %{url: String.t(), bytes: non_neg_integer()} | nil
         }
 
   @doc """
@@ -76,7 +79,7 @@ defmodule GobusgoWeb.BasemapSources do
         :error -> {first_archive.name, first_archive.bounds, nil}
       end
 
-    {:ok, %{bounds: archive_bounds}} = Manifest.fetch_archive(manifest, archive)
+    {:ok, %{bounds: archive_bounds, offline: offline}} = Manifest.fetch_archive(manifest, archive)
 
     %{
       archive: archive,
@@ -84,9 +87,15 @@ defmodule GobusgoWeb.BasemapSources do
       bounds: bounds,
       archive_bounds: archive_bounds,
       agency_id: selected_id,
-      agency_ids: Enum.map(agencies, & &1.agency_id)
+      agency_ids: Enum.map(agencies, & &1.agency_id),
+      offline_archive: offline_archive(offline)
     }
   end
+
+  defp offline_archive(nil), do: nil
+
+  defp offline_archive(%{name: name, bytes: bytes}),
+    do: %{url: "#{@archive_path}/#{name}", bytes: bytes}
 
   @doc """
   Returns `view` fitted to `bounds`, bounds inside its archive that belong

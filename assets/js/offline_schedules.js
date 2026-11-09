@@ -18,7 +18,6 @@ import {
   INDEX_PATH,
   IndexKind,
   OFFLINE_SCHEDULES_CACHE_NAME,
-  PersistenceKind,
   PlanKind,
   StatusKind,
   bundleStatus,
@@ -27,6 +26,7 @@ import {
   savedIndex,
   stalePaths
 } from "./offline_bundle"
+import {requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
 
 const MANIFEST_PATH = "/api/routing/manifest"
@@ -222,38 +222,6 @@ function statusText({status, bytes}) {
       return "No schedules are saved for offline use yet. They are saved while you are online."
     default:
       return "Offline schedules: " + String(status.kind)
-  }
-}
-
-// Asks the browser to keep the page's storage, so the saved schedules are
-// not evicted, and returns its answer. WebKit grants it by heuristics that
-// favor a page opened as a Home Screen web app.
-// https://webkit.org/?p=14403 — checked 2026-11-08
-async function requestPersistence() {
-  const storage = navigator.storage
-  const isAskable = storage !== undefined && typeof storage.persist === "function"
-
-  if (!isAskable) {
-    return PersistenceKind.unknown
-  }
-
-  try {
-    const persisted = await storage.persisted()
-
-    if (persisted) {
-      return PersistenceKind.granted
-    }
-
-    const granted = await storage.persist()
-
-    if (granted) {
-      return PersistenceKind.granted
-    }
-
-    return PersistenceKind.notGranted
-  } catch (error) {
-    console.warn("Persistent storage not requested", error)
-    return PersistenceKind.unknown
   }
 }
 

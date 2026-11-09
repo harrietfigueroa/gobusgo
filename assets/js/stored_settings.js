@@ -35,6 +35,10 @@
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
+// - `gobusgo:offline-basemap`: the text "on" while the rider keeps saving
+//   the map for offline use turned on. No key is off, the default, and any
+//   other text reads as off. Losing it stops saving the map, and the next
+//   page removes the saved copy.
 // - `gobusgo:shared-vehicles`: the text "on" while the rider keeps the shared
 //   scooter and bike layer on. No key is off, the default, and any other
 //   text reads as off. Losing it turns the layer off.
@@ -47,7 +51,7 @@
 //   asks once more on the next click that starts following.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
 //   above, as decimal text, now "1". A key added whose absence reads as its
-//   default, as the last three are, leaves version 1's stored values as they
+//   default, as the last four are, leaves version 1's stored values as they
 //   are and needs no migration, so it keeps the version.
 //
 // The migration rule: on its first use in a page, the module reads the
@@ -82,6 +86,7 @@ export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: 
 
 const LOCATION_FOLLOW_STORED = "true"
 const OFFLINE_SCHEDULES_OFF = "off"
+const OFFLINE_BASEMAP_ON = "on"
 const SHOW_DIRECTION_OFF = "off"
 const MOTION_PERMISSION_DENIED = "denied"
 const SHARED_VEHICLES_SHOWN = "on"
@@ -248,6 +253,20 @@ export function openStoredSettings({storage, warn}) {
       })
     },
 
+    /** Whether saving the map for offline use is on; off is the default. */
+    readOfflineBasemapEnabled() {
+      return guarded({description: "Offline basemap setting not readable", fallback: false, operation: readOfflineBasemapEnabledFrom})
+    },
+
+    /** Stores whether saving the map for offline use is on; off is stored as no key. */
+    writeOfflineBasemapEnabled(enabled) {
+      guarded({
+        description: "Offline basemap setting not stored",
+        fallback: undefined,
+        operation: (reached) => { writeOfflineBasemapEnabledTo({reached, enabled}) }
+      })
+    },
+
     /** Whether Show my direction is on, the default. */
     readShowDirection() {
       return guarded({description: "Direction setting not readable", fallback: true, operation: readShowDirectionFrom})
@@ -389,6 +408,18 @@ function writeOfflineSchedulesEnabledTo({reached, enabled}) {
     reached.removeItem(StorageKey.offlineSchedules)
   } else {
     reached.setItem(StorageKey.offlineSchedules, OFFLINE_SCHEDULES_OFF)
+  }
+}
+
+function readOfflineBasemapEnabledFrom(reached) {
+  return reached.getItem(StorageKey.offlineBasemap) === OFFLINE_BASEMAP_ON
+}
+
+function writeOfflineBasemapEnabledTo({reached, enabled}) {
+  if (enabled) {
+    reached.setItem(StorageKey.offlineBasemap, OFFLINE_BASEMAP_ON)
+  } else {
+    reached.removeItem(StorageKey.offlineBasemap)
   }
 }
 
