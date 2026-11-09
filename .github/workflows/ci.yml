@@ -110,18 +110,37 @@ jobs:
       - run: mix assets.setup
       - run: mix assets.build
 
-  # The accessibility checks. The visual ones read the stylesheet and the route chip rule and need Node alone.
+  # The accessibility checks: the ExUnit rules of Gobusgo.Test.Accessibility over the rendered pages, html-eslint over the files that test writes, the node scan of the front end's JavaScript, and the visual checks of the stylesheet and the route chip rule.
   accessibility:
     name: accessibility
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version-file: tools/lint/.node-version
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: npm ci --prefix tools/lint
+      - run: npm run --prefix tools/lint check
+      - run: mix test test/gobusgo_web/accessibility
+      - run: node test/scripts/write_offline_screen.mjs
+      - run: npm run --prefix tools/lint lint
+      - run: node test/scripts/a11y_source_check.mjs
       - run: node test/scripts/css_accessibility_check.mjs
       - run: node test/scripts/route_chip_color_check.mjs
 
