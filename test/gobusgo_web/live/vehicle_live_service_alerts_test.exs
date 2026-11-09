@@ -176,6 +176,18 @@ defmodule GobusgoWeb.VehicleLiveServiceAlertsTest do
       assert html =~ ~s(data-alert-id="40_21008")
     end
 
+    test "names the alert by its summary, and describes its Details and its link with it" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      dom_id = ServiceAlerts.dom_id("40_21008")
+      summary_id = dom_id <> "-summary"
+      entry = "#service-alerts-current ##{dom_id}"
+
+      assert has_element?(view, "##{summary_id}", "Link shuttle buses replace 2 Line trains.")
+      assert has_element?(view, "#{entry}[aria-labelledby='#{summary_id}']")
+      assert has_element?(view, "#{entry} summary[aria-describedby='#{summary_id}']")
+      assert has_element?(view, "#{entry} a[aria-describedby='#{summary_id}']")
+    end
+
     test "gives the popups of the alert's route the alert, route-wide" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
