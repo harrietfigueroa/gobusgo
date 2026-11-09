@@ -1,14 +1,14 @@
 import {assertCondition} from "./assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {placePopups} from "./popup_placement"
+import {coveredBoxes, placePopups} from "./popup_placement"
 import {
   announceRiderPopupChange,
   riderPopupBoxes,
   RIDER_POPUP_CHANGE_EVENT_NAME,
   RIDER_POPUP_CLASS_NAME
 } from "./rider_popups"
-import {compactPopupContent, writeChipNote} from "./route_chips"
+import {compactPopupContent, nameCloseButton, writeChipNote} from "./route_chips"
 import {NEEDS_CONNECTION_CLASS_NAME, markArrivalNote, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
 import {shownAt} from "./arrival_countdown"
 import {startArrivalTicker} from "./arrival_ticker"
@@ -23,7 +23,7 @@ import {
 } from "./panel_detail"
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
 import {isPicking, pickStop} from "./trip_ends"
-import {revealOnMap} from "./panel_sheet"
+import {revealOnMap, sheetInsets} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {
   addSource,
@@ -37,12 +37,14 @@ import {
 } from "./route_stop_tiles"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {mapColors} from "./theme"
+import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 
 // The layer a stop's marker is drawn in.
 export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
-const ZOOM_MIN = 14
+export const ZOOM_MIN = 14
+const SHEET_ID = "panel-sheet"
 const MARKER_RADIUS_PIXELS = 7
 const MARKER_STROKE_WIDTH_PIXELS = 2
 const LABEL_LAYER_NAME = "stop-markers-label"
@@ -181,7 +183,8 @@ function popupElements({stop, noteText, onSelect}) {
     countMax: CHIP_COUNT_MAX,
     emptyText: suppliedName(stop),
     noteText,
-    label: `${suppliedName(stop)}: show the stop`,
+    itemName: suppliedName(stop),
+    action: "show the stop",
     onSelect
   })
 
@@ -340,6 +343,27 @@ export const StopMarkers = {
     window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+
+    // A sheet that expands or collapses covers another part of the map, so
+    // the popups are placed again beside it.
+    this.sheetObserver = new ResizeObserver(() => { this.scheduleFollow() })
+    const sheet = document.getElementById(SHEET_ID)
+
+    if (sheet !== null) {
+      this.sheetObserver.observe(sheet)
+    }
+
+    // The list of what is in view opens a stop as a click on its marker does.
+    this.onItemOpen = (event) => {
+      const {kind, feature} = event.detail
+      const isStop = kind === MapItemKind.stop && this.map !== null
+
+      if (isStop) {
+        this.openStop(stopFromFeature(feature))
+      }
+    }
+
+    window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     // Arrivals of a stop with neither a popup nor the view are dropped.
     this.events.handle("stop-arrivals:arrivals", (shown) => {
@@ -523,6 +547,7 @@ export const StopMarkers = {
     })
 
     popup.addTo(this.map)
+    nameCloseButton({content: open.content, itemName: suppliedName(stop)})
 
     const isSelected = this.view !== null && this.view.stop.id === stopId
     popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
@@ -600,13 +625,20 @@ export const StopMarkers = {
       return {id: stopId, point: {x: Math.round(point.x), y: Math.round(point.y)}, size: this.popupSize(stop)}
     })
     const container = this.map.getContainer()
+    const view = {width: container.clientWidth, height: container.clientHeight}
+    const obstacles = riderPopupBoxes(this.map)
+
+    // The map fills the viewport, so the sheet's insets are the map's.
+    for (const covered of coveredBoxes({insets: sheetInsets(), view})) {
+      obstacles.push(covered)
+    }
 
     assertCondition(this.tipLength !== null, "a popup's size is known before the length of a popup's tip")
 
     return placePopups({
       popups,
-      obstacles: riderPopupBoxes(this.map),
-      view: {width: container.clientWidth, height: container.clientHeight},
+      obstacles,
+      view,
       tipLength: this.tipLength,
       gapPixels: POPUP_GAP_PIXELS
     })
@@ -806,32 +838,34 @@ export const StopMarkers = {
   attachClicks() {
     const map = this.map
 
-    // A click on a stop shows it in the details view. A click on a stop
-    // whose popup opened by itself leaves that popup as it is, and any
-    // other opens the rider's popup. While the Trip tab waits for a stop,
-    // the stop clicked is its end instead.
     map.on("click", MARKER_LAYER_NAME, (event) => {
-      const stop = stopFromFeature(event.features[0])
-      const stopId = stop.id
-
-      if (isPicking()) {
-        pickStop({stopId, name: suppliedName(stop)})
-        return
-      }
-      const open = this.openPopups.get(stopId)
-
-      const isRiderOpenable = open === undefined || open.auto === false
-
-      if (isRiderOpenable) {
-        this.dismissedStopIds.delete(stopId)
-        this.openPopup({stop, auto: false, side: null})
-      }
-
-      this.selectStop(stop)
+      this.openStop(stopFromFeature(event.features[0]))
     })
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
+  },
+
+  // Shows `stop` in the details view. A stop whose popup opened by itself
+  // keeps that popup as it is, and any other opens the rider's popup. While
+  // the Trip tab waits for a stop, `stop` is its end instead.
+  openStop(stop) {
+    const stopId = stop.id
+
+    if (isPicking()) {
+      pickStop({stopId, name: suppliedName(stop)})
+      return
+    }
+
+    const open = this.openPopups.get(stopId)
+    const isRiderOpenable = open === undefined || open.auto === false
+
+    if (isRiderOpenable) {
+      this.dismissedStopIds.delete(stopId)
+      this.openPopup({stop, auto: false, side: null})
+    }
+
+    this.selectStop(stop)
   },
 
   // Adds the source and the layers that mark the stop the details view
@@ -878,7 +912,9 @@ export const StopMarkers = {
     window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     window.clearTimeout(this.followTimer)
+    this.sheetObserver.disconnect()
     this.events.release()
   }
 }

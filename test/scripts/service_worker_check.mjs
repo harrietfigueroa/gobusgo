@@ -1,12 +1,20 @@
 // Checks the service worker's pure functions against cases written out by
-// hand: the strategy each kind of request gets, the cache names of a
-// release, and the caches an activating worker deletes. Run it with
+// hand: the strategy each kind of request gets, the vehicle page's stored
+// copy among them, the cache names of a release, and the caches an
+// activating worker deletes. Run it with
 // `node test/scripts/service_worker_check.mjs`; it exits non-zero on the
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
 import {BUNDLE_MANIFEST_PATH} from "../../assets/js/offline_bundle.js"
-import {CacheRole, StrategyKind, cacheNames, requestStrategy, staleCacheNames} from "../../assets/js/service_worker_strategy.js"
+import {
+  CacheRole,
+  StrategyKind,
+  VEHICLE_PAGE_PATH,
+  cacheNames,
+  requestStrategy,
+  staleCacheNames
+} from "../../assets/js/service_worker_strategy.js"
 
 const ORIGIN = "https://gobusgo.example"
 const precachePaths = ["/assets/js/app-0123.js", "/assets/css/app-4567.css", "/assets/vendor/maplibre-gl-6.12.0/maplibre-gl.mjs"]
@@ -50,13 +58,28 @@ const strategyCases = [
     }
   },
   {
-    name: "the vehicle page opened from the home screen",
+    name: "the vehicle page opened from the home screen, whose answer is a bare copy",
     request: {method: "GET", url: ORIGIN + "/vehicles", mode: "navigate"},
-    strategy: {kind: StrategyKind.navigation}
+    strategy: {kind: StrategyKind.vehiclePage, path: VEHICLE_PAGE_PATH, isBare: true}
   },
   {
-    name: "the vehicle page under a filter",
+    name: "the vehicle page under a filter, whose answer holds the filter",
     request: {method: "GET", url: ORIGIN + "/vehicles?agency=1", mode: "navigate"},
+    strategy: {kind: StrategyKind.vehiclePage, path: VEHICLE_PAGE_PATH, isBare: false}
+  },
+  {
+    name: "the vehicle page with an empty query",
+    request: {method: "GET", url: ORIGIN + "/vehicles?", mode: "navigate"},
+    strategy: {kind: StrategyKind.vehiclePage, path: VEHICLE_PAGE_PATH, isBare: true}
+  },
+  {
+    name: "the vehicle page asked for by a script, not opened",
+    request: {method: "GET", url: ORIGIN + "/vehicles", mode: "cors"},
+    strategy: {kind: StrategyKind.untouched}
+  },
+  {
+    name: "a page under the vehicle page's path",
+    request: {method: "GET", url: ORIGIN + "/vehicles/1", mode: "navigate"},
     strategy: {kind: StrategyKind.navigation}
   },
   {

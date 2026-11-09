@@ -1,0 +1,76 @@
+// Reads the vehicles and stops a map draws in the part of it the panel
+// sheet leaves in sight, for the map's description and its list of what is
+// in view.
+
+import {viewBox} from "./map_view_text"
+import {sheetInsets} from "./panel_sheet"
+import {MARKER_LAYER_NAME as STOP_LAYER_NAME, ZOOM_MIN as STOP_ZOOM_MIN} from "./stop_markers"
+import {markerLayerNames as vehicleLayerNames} from "./vehicle_markers"
+
+// The layers of `layerNames` the map's style holds now; a style being set
+// anew holds none of them, and a map with no tile archive no stop layer.
+function presentLayers({map, layerNames}) {
+  const present = []
+
+  for (const layerName of layerNames) {
+    if (map.getLayer(layerName) !== undefined) {
+      present.push(layerName)
+    }
+  }
+
+  return present
+}
+
+// The features of `layerNames` drawn inside `box`, one per value of the
+// property `idName`: a point near a tile's edge comes back from each tile
+// that holds it.
+// https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#queryrenderedfeatures — checked 2026-11-09
+function renderedById({map, box, layerNames, idName}) {
+  const layers = presentLayers({map, layerNames})
+  const byId = new Map()
+
+  if (layers.length === 0) {
+    return byId
+  }
+
+  const features = map.queryRenderedFeatures(box, {layers})
+
+  for (const feature of features) {
+    byId.set(feature.properties[idName], feature)
+  }
+
+  return byId
+}
+
+/**
+ * What `map` draws beside the panel sheet: the middle of that part on the
+ * screen, its vehicles' features by marker identifier, its stops' features
+ * by stop identifier, and whether the zoom draws stops at all. A zoom that
+ * draws no stops reads none.
+ */
+export function readView(map) {
+  const container = map.getContainer()
+  const {box, center} = viewBox({
+    width: container.clientWidth,
+    height: container.clientHeight,
+    insets: sheetInsets()
+  })
+
+  const vehicles = renderedById({map, box, layerNames: vehicleLayerNames, idName: "markerId"})
+  const hasStopLayer = map.getLayer(STOP_LAYER_NAME) !== undefined
+  const isZoomedOut = map.getZoom() < STOP_ZOOM_MIN
+  const isStopsHidden = hasStopLayer && isZoomedOut
+
+  if (isStopsHidden) {
+    return {center, vehicles, stops: new Map(), stopsDrawn: false}
+  }
+
+  const stops = renderedById({map, box, layerNames: [STOP_LAYER_NAME], idName: "stopId"})
+  return {center, vehicles, stops, stopsDrawn: true}
+}
+
+/** Where `feature`, a point, stands on the screen of `map`. */
+export function screenPoint({map, feature}) {
+  const point = map.project(feature.geometry.coordinates)
+  return {x: point.x, y: point.y}
+}
