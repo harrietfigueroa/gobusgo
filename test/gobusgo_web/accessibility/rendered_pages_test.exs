@@ -24,17 +24,25 @@ defmodule GobusgoWeb.RenderedPagesTest do
     "agencies" => [%{"agencyId" => "1", "archive" => @archive, "bounds" => @bounds}]
   }
 
+  # A page links the donation address where one is set, so the pages are
+  # rendered with one.
+  @donation_url "https://ko-fi.com/example"
+
   # The rules each page still breaks, each with the issue that fixes it. A
   # page must still break every rule it lists, so the fix removes its entry.
-  @known_failures %{
-    "error-404" => %{main: "GOB-309"},
-    "error-500" => %{main: "GOB-309"}
-  }
+  @known_failures %{}
 
   setup %{tmp_dir: tmp_dir} do
-    configured = Application.fetch_env!(:gobusgo, :basemap)
+    configured_basemap = Application.fetch_env!(:gobusgo, :basemap)
+    configured_donation = Application.get_env(:gobusgo, :donation)
     Application.put_env(:gobusgo, :basemap, dir: tmp_dir)
-    on_exit(fn -> Application.put_env(:gobusgo, :basemap, configured) end)
+    Application.put_env(:gobusgo, :donation, url: @donation_url)
+
+    on_exit(fn ->
+      Application.put_env(:gobusgo, :basemap, configured_basemap)
+      Application.put_env(:gobusgo, :donation, configured_donation)
+    end)
+
     File.mkdir_p!(@output_dir)
     :ok
   end
@@ -59,6 +67,28 @@ defmodule GobusgoWeb.RenderedPagesTest do
   defp known_failure?(known, {rule, _detail}), do: Map.has_key?(known, rule)
 
   defp page(path), do: build_conn() |> get(path) |> html_response(200)
+
+  defp title(html) do
+    html |> LazyHTML.from_document() |> LazyHTML.query("head title") |> LazyHTML.text()
+  end
+
+  # Each page's title names it, so a rider tells its tab, its window, and
+  # its history entry from the others.
+  for {path, expected} <- [
+        {"/", "Gobusgo"},
+        {"/agencies", "Agencies · Gobusgo"},
+        {"/vehicles", "Vehicle map · Gobusgo"}
+      ] do
+    test "#{path} is titled #{expected}" do
+      assert title(page(unquote(path))) == unquote(expected)
+    end
+  end
+
+  test "the vehicle page with a basemap is titled Vehicle map · Gobusgo", %{tmp_dir: tmp_dir} do
+    write_manifest(tmp_dir)
+
+    assert title(page("/vehicles")) == "Vehicle map · Gobusgo"
+  end
 
   test "the home page" do
     check("home", page("/"))

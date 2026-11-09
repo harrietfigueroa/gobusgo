@@ -27,9 +27,7 @@ const FindingKind = Object.freeze({
 
 // The findings still in assets/js/, each with the issue that fixes it, by
 // file and kind. The scan must still find each, so the fix removes it.
-const KNOWN_FAILURES = Object.freeze({
-  "trip_planner.js unmatched-popup": "GOB-297"
-})
+const KNOWN_FAILURES = Object.freeze({})
 
 const TABINDEX_PATTERNS = [
   /\.tabIndex\s*=\s*(\d+)/g,

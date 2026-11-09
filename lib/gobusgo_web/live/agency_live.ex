@@ -29,7 +29,7 @@ defmodule GobusgoWeb.AgencyLive do
       :ok = AgencyView.subscribe(%{view: AgencyView, pubsub: @pubsub})
     end
 
-    {:ok, assign_fetch(socket)}
+    {:ok, socket |> assign(page_title: "Agencies") |> assign_fetch()}
   end
 
   @impl Phoenix.LiveView
@@ -41,7 +41,9 @@ defmodule GobusgoWeb.AgencyLive do
   def render(assigns) do
     ~H"""
     <ConnectionSignal.state_hook />
-    <DonationButton.button class="donation-button-page" />
+    <header>
+      <DonationButton.button class="donation-button-page" />
+    </header>
     <main class="mx-auto max-w-5xl p-8">
       <h1 class="text-2xl font-semibold">Agencies</h1>
 
