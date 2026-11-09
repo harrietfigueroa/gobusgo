@@ -1314,3 +1314,13 @@ a.inline-target {
 .map-items-list [aria-selected="true"] {
   background-color: var(--filter-suggestion-active-fill);
 }
+
+/* Forced colors drop the active option's fill, so it is drawn again in the
+   system's selection colors, which forced colors keep. */
+@media (forced-colors: active) {
+  .map-items-list [aria-selected="true"] {
+    background-color: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}
