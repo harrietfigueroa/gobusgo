@@ -53,7 +53,8 @@ defmodule GobusgoWeb.ReadinessControllerTest do
 
     :ok =
       RouteStopTiles.record(RouteStopTiles, %{
-        destination: RouteStopTiles.destination(built_at),
+        destination:
+          RouteStopTiles.destination(%{built_at: built_at, content_sha256: @content_sha256}),
         content_sha256: @content_sha256,
         built_at: built_at
       })
