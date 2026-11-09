@@ -717,7 +717,7 @@ defmodule GobusgoWeb.VehicleLive do
         class="map-items-list"
       >
       </ul>
-      <p id="map-items-rest"></p>
+      <div id="map-items-rest"></div>
     </div>
 
     <div
@@ -766,7 +766,7 @@ defmodule GobusgoWeb.VehicleLive do
 
     <div id="map-description" phx-hook="MapDescription" class="sr-only">
       <p id="map-description-filter">{@filter_sentence}</p>
-      <p id="map-description-view" phx-update="ignore"></p>
+      <div id="map-description-view" phx-update="ignore"></div>
       <p id="map-description-keys">
         Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it.
       </p>
