@@ -21,7 +21,9 @@ defmodule GobusgoWeb.ErrorHTML do
         <title>{@title}</title>
       </head>
       <body>
-        <h1>{@title}</h1>
+        <main>
+          <h1>{@title}</h1>
+        </main>
       </body>
     </html>
     """
