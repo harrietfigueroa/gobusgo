@@ -9,6 +9,8 @@ import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
 import {FollowLocation} from "./follow_location"
 import {InstallApp} from "./install_app"
+import {MapDescription} from "./map_description"
+import {MapItemList} from "./map_item_list"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineBasemap} from "./offline_basemap_setting"
@@ -53,6 +55,8 @@ const hooks = {
   FollowLocation,
   InstallApp,
   LocalTime,
+  MapDescription,
+  MapItemList,
   OfflineBasemap,
   OfflineSchedules,
   PanelSheet,
