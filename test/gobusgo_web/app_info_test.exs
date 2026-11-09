@@ -311,11 +311,12 @@ defmodule GobusgoWeb.AppInfoTest do
       assert Enum.any?(works, &(&1 =~ "Save the map for offline use"))
     end
 
-    test "says the map keeps what it has drawn and its vehicles stop moving" do
+    test "says the vehicles and the arrivals come from the saved schedules" do
       %{works: works} = AppInfo.offline()
 
-      assert Enum.any?(works, &(&1 =~ "keeps the route lines, stops, and vehicles it has drawn"))
-      assert Enum.any?(works, &(&1 =~ "do not move"))
+      assert Enum.any?(works, &(&1 =~ "where the saved schedules place them"))
+      assert Enum.any?(works, &(&1 =~ "delays, cancellations, and detours unknown"))
+      assert Enum.any?(works, &(&1 =~ "arrivals are its scheduled times"))
     end
 
     test "says the browser keeps the favorites, the filter, and the settings" do

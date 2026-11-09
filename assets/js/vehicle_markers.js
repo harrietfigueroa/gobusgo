@@ -14,6 +14,7 @@ import {
 } from "./panel_detail"
 import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
+import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -35,6 +36,10 @@ const MARKER_RADIUS_PIXELS = 6
 const MARKER_STROKE_WIDTH_PIXELS = 1.5
 const STATUS_OPACITY_FALLBACK = 1
 const POSITION_NOTE = "Marker position: the source's estimate"
+const SCHEDULED_POSITION_NOTE = "Marker position: the saved schedule's, with delays, cancellations, and detours unknown"
+const SCHEDULED_TRIP_NAME = "Scheduled trip"
+// The key the scheduled markers are held under in place of every agency's.
+const SCHEDULED_KEY = "scheduled"
 const NOT_SUPPLIED = "Not supplied"
 const FACTS_CLASS_NAME = "panel-detail-facts"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
@@ -196,6 +201,27 @@ function appendParagraphs(content, lines) {
   }
 }
 
+// A marker the saved schedule places stands for a trip and no vehicle.
+function isScheduledTrip(properties) {
+  return typeof properties.vehicleId !== "string"
+}
+
+function vehicleName(properties) {
+  if (isScheduledTrip(properties)) {
+    return SCHEDULED_TRIP_NAME
+  }
+
+  return `Vehicle ${properties.vehicleId}`
+}
+
+function positionNote(properties) {
+  if (isScheduledTrip(properties)) {
+    return SCHEDULED_POSITION_NOTE
+  }
+
+  return POSITION_NOTE
+}
+
 // The view's title: the route and where it goes, or the vehicle for one
 // with neither.
 function vehicleViewTitle(properties) {
@@ -210,7 +236,7 @@ function vehicleViewTitle(properties) {
   }
 
   if (names.length === 0) {
-    return `Vehicle ${properties.vehicleId}`
+    return vehicleName(properties)
   } else {
     return names.join(" ")
   }
@@ -221,7 +247,7 @@ function vehicleViewTitle(properties) {
 // alerts of the vehicle's route stand under its route and headsign.
 function vehicleViewContent(properties, statusLabels) {
   const tripLines = [
-    `Vehicle ${properties.vehicleId}`,
+    vehicleName(properties),
     `Route: ${suppliedText(properties.route)}`,
     `Headsign: ${suppliedText(properties.headsign)}`
   ]
@@ -231,7 +257,7 @@ function vehicleViewContent(properties, statusLabels) {
     `Location reported: ${properties.locationAge}`,
     `Real-time data: ${properties.realTime}`,
     `Heading: ${headingText(properties.heading)}`,
-    POSITION_NOTE
+    positionNote(properties)
   ]
   const routeIds = []
 
@@ -277,9 +303,9 @@ function compactVehicleContent({properties, onSelect}) {
   const {content} = compactPopupContent({
     chips,
     countMax: 1,
-    emptyText: `Vehicle ${properties.vehicleId}`,
+    emptyText: vehicleName(properties),
     noteText,
-    label: `Vehicle ${properties.vehicleId}: show the vehicle`,
+    label: `${vehicleName(properties)}: show the vehicle`,
     onSelect
   })
 
@@ -348,10 +374,32 @@ export const VehicleMarkers = {
 
     this.events = pageEvents(this)
 
+    // Whether the markers held are the saved schedule's, which an offline
+    // page sends itself in place of every agency's.
+    this.isScheduled = false
+
     this.events.handle("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
       this.markersByAgency.set(agencyId, markers)
       this.draw()
       this.updateView(markers)
+    })
+
+    this.events.handle(SCHEDULED_MARKERS_EVENT_NAME, ({markers}) => {
+      this.isScheduled = true
+      this.markersByAgency = new Map([[SCHEDULED_KEY, markers]])
+      this.draw()
+      this.updateView(markers)
+    })
+
+    // A page live again draws the server's markers in place of the
+    // schedule's, and asks for every agency's since it holds none.
+    this.events.whenLive(() => {
+      if (this.isScheduled) {
+        this.isScheduled = false
+        this.markersByAgency = new Map()
+        this.draw()
+        this.events.push({name: "vehicle-markers:ready", payload: {}})
+      }
     })
 
     this.events.push({name: "vehicle-markers:ready", payload: {}})

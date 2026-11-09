@@ -4,6 +4,7 @@
 import {unreachable} from "./assert.js"
 
 const ARRIVALS_HEADING = "Arrivals"
+const SCHEDULED_ARRIVALS_HEADING = "Scheduled arrivals"
 const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
 const ARRIVALS_NONE = "No arrivals soon"
 const ARRIVALS_REFUSED = "No arrivals for this stop"
@@ -57,10 +58,20 @@ function arrivalText({route, headsign, minutes, predicted}) {
   return `${name}: ${time}${note}`
 }
 
-// The heading of a stop's arrivals, with the age of the fetch they come
-// from once it is a minute old.
-function arrivalsHeadingText(ageMinutes) {
-  if (ageMinutes >= 1) {
+/**
+ * Whether `shown` is a stop's arrivals from the saved schedules, which an
+ * offline page writes for itself, and not the server's.
+ */
+export function isScheduledShown(shown) {
+  return shown.scheduled === true
+}
+
+// The heading of a stop's arrivals: that they are the schedule's, or the age
+// of the fetch they come from once it is a minute old.
+function arrivalsHeadingText({ageMinutes, isScheduled}) {
+  if (isScheduled) {
+    return SCHEDULED_ARRIVALS_HEADING
+  } else if (ageMinutes >= 1) {
     return `${ARRIVALS_HEADING} (as of ${ageMinutes} min ago)`
   } else {
     return ARRIVALS_HEADING
@@ -68,7 +79,10 @@ function arrivalsHeadingText(ageMinutes) {
 }
 
 // The lines a popup shows for what the server says of its stop's arrivals.
-function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
+function arrivalsLines(shown) {
+  const {status, age_minutes: ageMinutes, arrivals} = shown
+  const heading = arrivalsHeadingText({ageMinutes, isScheduled: isScheduledShown(shown)})
+
   switch (status) {
     case "waiting":
       return [ARRIVALS_WAITING]
@@ -78,9 +92,9 @@ function arrivalsLines({status, age_minutes: ageMinutes, arrivals}) {
       return [ARRIVALS_BUSY]
     case "arrivals":
       if (arrivals.length === 0) {
-        return [arrivalsHeadingText(ageMinutes), ARRIVALS_NONE]
+        return [heading, ARRIVALS_NONE]
       } else {
-        return [arrivalsHeadingText(ageMinutes), ...Array.from(arrivals, arrivalText)]
+        return [heading, ...Array.from(arrivals, arrivalText)]
       }
     default:
       return unreachable(status, "arrivals status")
@@ -126,18 +140,32 @@ export function nextArrivalTimeText({status, arrivals}) {
 
 // Writes a stop's arrivals into `element` as text nodes: the names come
 // from outside the application and are never parsed as HTML. The
-// stylesheet shows the arrivals while the page is connected and the note
-// that they need a connection while it is offline.
+// stylesheet shows the server's arrivals while the page is connected and
+// the note that they need a connection while it is offline; the saved
+// schedules' arrivals are shown whatever the connection, with no note.
 export function writeArrivals(element, shown) {
   element.replaceChildren()
+  const isScheduled = isScheduledShown(shown)
+  let className = NEEDS_CONNECTION_CLASS_NAME
+
+  if (isScheduled) {
+    className = ""
+  }
 
   for (const line of arrivalsLines(shown)) {
-    const paragraph = classedParagraph({text: line, className: NEEDS_CONNECTION_CLASS_NAME})
+    const paragraph = classedParagraph({text: line, className})
     element.append(paragraph)
   }
 
-  const note = classedParagraph({text: ARRIVALS_NEED_CONNECTION, className: OFFLINE_NOTE_CLASS_NAME})
-  element.append(note)
+  if (!isScheduled) {
+    const note = classedParagraph({text: ARRIVALS_NEED_CONNECTION, className: OFFLINE_NOTE_CLASS_NAME})
+    element.append(note)
+  }
+}
+
+/** Hides `note`, a popup's next arrival, while the page is offline, unless `shown` is the saved schedules'. */
+export function markArrivalNote({note, shown}) {
+  note.classList.toggle(NEEDS_CONNECTION_CLASS_NAME, !isScheduledShown(shown))
 }
 
 function classedParagraph({text, className}) {

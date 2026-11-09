@@ -19,7 +19,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 /** The first line of the signal. */
 export const SignalTitle = Object.freeze({
-  positionsNotUpdating: "Offline · positions not updating",
+  scheduledPositions: "Offline · scheduled positions",
   noSavedSchedules: "Offline · no saved schedules",
   savedSchedulesEnded: "Offline · saved schedules ended"
 })
@@ -85,7 +85,7 @@ export function signalLines({savedIndex, nowMs}) {
   }
 
   const builtMs = newestBuildMs(currentDates)
-  return [SignalTitle.positionsNotUpdating, `Schedules updated ${ageText(nowMs - builtMs)}`]
+  return [SignalTitle.scheduledPositions, `Schedules updated ${ageText(nowMs - builtMs)}`]
 }
 
 /** What the live region says when the connection moves from `previous` to `next`: going offline and coming back, and nothing else. */

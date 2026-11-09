@@ -3,7 +3,9 @@ defmodule Gobusgo.StartMemory do
   @container_cpu_count 2
   # A start of the synthetic fixture peaked at 415 to 450 MiB in five runs
   # with the segment cache off, and at 916 to 1,019 MiB in three with the
-  # VM's default cache (GOB-283).
+  # VM's default cache (GOB-283). With the default cache and the snapshot
+  # build reading one schedule at a time, it peaked at 513 to 535 MiB in
+  # six (GOB-279).
   @anon_mib_max 600
   @bytes_per_mib 1024 * 1024
 

@@ -104,7 +104,7 @@ const answerCases = [
   [PageEventName.filterRestore, LocalAnswerKind.filterRestore, "the stored filter is kept, read-only"],
   [PageEventName.arrivalsOpen, LocalAnswerKind.cancelClose, "a stop opened again is no longer closed for the server"],
   [PageEventName.arrivalsClose, LocalAnswerKind.deferClose, "a closed stop is closed for the server once live"],
-  [PageEventName.markersReady, LocalAnswerKind.unanswered, "no vehicle markers come while offline"],
+  [PageEventName.markersReady, LocalAnswerKind.scheduledMarkers, "the vehicle markers come from the schedule while offline"],
   [PageEventName.sharedVehiclesShow, LocalAnswerKind.unanswered, "scooters are not shown while offline"],
   [PageEventName.sharedVehiclesHide, LocalAnswerKind.unanswered, "scooters are not hidden while offline"]
 ]

@@ -9,7 +9,7 @@
 // position is refused, and a stop or route with no name keeps its
 // identifier.
 
-import {DecodeKind, decodePositions, decodeStops, decodeTrips} from "./routing_snapshot"
+import {DecodeKind, decodeConnections, decodePositions, decodeStops, decodeTrips} from "./routing_snapshot"
 import {decodeNames, expandNames} from "./routing_names"
 import {IndexKind, OFFLINE_SCHEDULES_CACHE_NAME} from "./offline_bundle"
 import {TableKind, snapshotOrder} from "./offline_answers"
@@ -17,8 +17,15 @@ import {readSavedIndex} from "./offline_schedules"
 
 const MISSING = Object.freeze({kind: TableKind.missing})
 
+// Two saved dates' worth of the chunks a page reads at one time.
+const CHUNK_HELD_COUNT_MAX = 8
+
 // The read of the bundle saved at `savedAtMs`, while it is the one saved.
 let held = null
+
+// The decoded connection chunks by path, the most recently read last. A
+// chunk's path names its content, so a held chunk never goes stale.
+const heldChunks = new Map()
 
 async function readBuffer({cache, path}) {
   const response = await cache.match(path)
@@ -105,7 +112,16 @@ async function readSnapshot({cache, entry}) {
     names = await readNames({cache, files, stopCount: stops.table.length, tripCount: trips.table.length})
   }
 
-  const snapshot = {serviceDate: entry.serviceDate, stopIndexes: indexesOf(stops.table), positions, names}
+  const snapshot = {
+    serviceDate: entry.serviceDate,
+    serviceDayStartMs: entry.serviceDayStartMs,
+    connectionChunks: entry.connectionChunks,
+    stopIndexes: indexesOf(stops.table),
+    trips,
+    positions,
+    names
+  }
+
   return {kind: TableKind.found, table: snapshot}
 }
 
@@ -133,8 +149,9 @@ async function readBundle(index) {
 
 /**
  * The saved snapshots, the service date running when they were read first,
- * each `{serviceDate, stopIndexes, positions, names}` with each table found
- * or missing; none where the browser holds no saved bundle.
+ * each `{serviceDate, serviceDayStartMs, connectionChunks, stopIndexes,
+ * trips, positions, names}` with each table found or missing; none where
+ * the browser holds no saved bundle.
  */
 export async function savedSnapshots() {
   const read = await readSavedIndex()
@@ -155,6 +172,44 @@ export async function savedSnapshots() {
   } catch (error) {
     // A failed read is not kept, so the next answer reads the bundle again.
     held = null
+    throw error
+  }
+}
+
+async function readChunk(path) {
+  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
+  return await readTable({cache, path, decode: decodeConnections})
+}
+
+/**
+ * The decoded connections of the saved chunk at `path`, or missing where the
+ * bundle lacks it or its reader refuses it. At most CHUNK_HELD_COUNT_MAX
+ * chunks are held, the least recently read let go first.
+ */
+export async function savedConnections(path) {
+  let read = heldChunks.get(path)
+
+  if (read === undefined) {
+    read = readChunk(path)
+  }
+
+  // Taken out and set again, the chunk becomes the most recently read.
+  heldChunks.delete(path)
+  heldChunks.set(path, read)
+
+  for (const heldPath of heldChunks.keys()) {
+    if (heldChunks.size <= CHUNK_HELD_COUNT_MAX) {
+      break
+    }
+
+    heldChunks.delete(heldPath)
+  }
+
+  try {
+    return await read
+  } catch (error) {
+    // A failed read is not kept, so the next tick reads the chunk again.
+    heldChunks.delete(path)
     throw error
   }
 }

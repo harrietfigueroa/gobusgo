@@ -149,4 +149,30 @@ defmodule Gobusgo.Routing.TimetableTest do
   test "names the start of the snapshot's service day" do
     assert build([{"t1", [100, 200]}], []).service_day_start_ms == @start_ms
   end
+
+  test "orders connections by departure across hours, whatever order the trips come in" do
+    timetable =
+      build([{"t3", [7_300, 7_400]}, {"t1", [3_500, 7_300]}, {"t2", [3_700, 3_800]}], [])
+
+    assert Enum.map(timetable.connections, &{&1.departure_s, &1.trip}) ==
+             [{3_500, 0}, {3_700, 1}, {7_300, 2}]
+  end
+
+  test "builds the same timetable from streams of schedules as from lists" do
+    today = [schedule(%{start_ms: @start_ms, trips: [{"t1", [100, 200, 300]}]})]
+
+    previous = [
+      schedule(%{start_ms: @previous_start_ms, trips: [{"t0", [86_350, 86_500, 86_600]}]})
+    ]
+
+    listed = %{service_date: ~D[2026-11-08], schedules: today, previous_schedules: previous}
+
+    streamed = %{
+      listed
+      | schedules: Stream.concat([today]),
+        previous_schedules: Stream.concat([previous])
+    }
+
+    assert Timetable.build(streamed) == Timetable.build(listed)
+  end
 end
