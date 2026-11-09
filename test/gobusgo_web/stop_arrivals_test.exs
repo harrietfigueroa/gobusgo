@@ -69,13 +69,19 @@ defmodule GobusgoWeb.StopArrivalsTest do
   end
 
   describe "arrivals/1" do
-    test "names the stop and holds the arrival's route, headsign, minutes, and kind" do
+    test "names the stop and holds the arrival's route, headsign, minutes, time, and kind" do
       assert shown([arrival(%{})]) == %{
                stop_id: "1_1471",
                status: :arrivals,
                age_minutes: 0,
                arrivals: [
-                 %{route: "36", headsign: "Othello Station", minutes: 12, predicted: true}
+                 %{
+                   route: "36",
+                   headsign: "Othello Station",
+                   minutes: 12,
+                   time_ms: in_minutes(12),
+                   predicted: true
+                 }
                ]
              }
     end
@@ -120,6 +126,19 @@ defmodule GobusgoWeb.StopArrivalsTest do
       assert line(%{"predictedArrivalTimeMs" => @now_ms}).minutes == 0
     end
 
+    test "is sent as the exact time in Unix milliseconds beside the whole minutes" do
+      fields = %{"predictedArrivalTimeMs" => in_minutes(3) - 1}
+
+      assert %{minutes: 2, time_ms: time_ms} = line(fields)
+      assert time_ms == in_minutes(3) - 1
+    end
+
+    test "is sent as the scheduled time where the fetch holds no prediction" do
+      fields = %{"predicted" => false, "predictedArrivalTimeMs" => nil}
+
+      assert line(fields).time_ms == in_minutes(10)
+    end
+
     test "is the departure where riders cannot arrive on the trip" do
       fields = %{
         "arrivalEnabled" => false,
@@ -153,6 +172,12 @@ defmodule GobusgoWeb.StopArrivalsTest do
       vehicles = %{"1_4342" => vehicle(%{"scheduleDeviationSeconds" => 0})}
 
       assert line(%{}, vehicles).minutes == 10
+    end
+
+    test "sends the moved time" do
+      vehicles = %{"1_4342" => vehicle(%{"scheduleDeviationSeconds" => 240})}
+
+      assert line(%{}, vehicles).time_ms == in_minutes(14)
     end
 
     test "keeps the time for a vehicle as late as it was at the fetch" do

@@ -2,7 +2,7 @@ import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
-import {compactPopupContent} from "./route_chips"
+import {compactPopupContent, nameCloseButton} from "./route_chips"
 import {alertLines} from "./service_alerts"
 import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
 import {mapColors} from "./theme"
@@ -16,6 +16,7 @@ import {
 import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
+import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -317,16 +318,16 @@ function vehicleViewContent(properties, statusLabels) {
   return content
 }
 
-// The name of a vehicle's popup: the vehicle, and the status of a vehicle
+// The item a vehicle's popup names: the vehicle, and the status of a vehicle
 // whose marker carries a badge, so the status the badge shows is also text.
-function vehiclePopupLabel({properties, badgedLabels}) {
+function vehiclePopupItemName({properties, badgedLabels}) {
   const statusLabel = badgedLabels.get(properties.status)
 
   if (statusLabel === undefined) {
-    return `${vehicleName(properties)}: show the vehicle`
+    return vehicleViewTitle(properties)
   }
 
-  return `${vehicleName(properties)}, ${statusLabel}: show the vehicle`
+  return `${vehicleViewTitle(properties)}, ${statusLabel}`
 }
 
 // A vehicle's popup is its route's number in its marker's color, with its
@@ -349,7 +350,8 @@ function compactVehicleContent({properties, badgedLabels, onSelect}) {
     countMax: 1,
     emptyText: vehicleName(properties),
     noteText,
-    label: vehiclePopupLabel({properties, badgedLabels}),
+    itemName: vehiclePopupItemName({properties, badgedLabels}),
+    action: "show the vehicle",
     onSelect
   })
 
@@ -375,6 +377,7 @@ export const VehicleMarkers = {
     this.badgedLabels = new Map(badgedEntries)
     this.markersByAgency = new Map()
     this.map = null
+    this.maplibre = null
     this.drawn = new Map()
     this.gliding = new Map()
     this.frame = null
@@ -397,6 +400,18 @@ export const VehicleMarkers = {
     }
 
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+
+    // The list of what is in view opens a vehicle as a click on its marker does.
+    this.onItemOpen = (event) => {
+      const {kind, feature} = event.detail
+      const isVehicle = kind === MapItemKind.vehicle && this.map !== null
+
+      if (isVehicle) {
+        this.openVehicle(feature)
+      }
+    }
+
+    window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
@@ -453,6 +468,7 @@ export const VehicleMarkers = {
   },
 
   attach(map, maplibre) {
+    this.maplibre = maplibre
     // A pointed marker's image is made the first time a marker of its color
     // is drawn, since the colors are the routes' and not known in advance.
     // MapLibre awaits this resolver before it hands a tile its images, and
@@ -484,28 +500,7 @@ export const VehicleMarkers = {
       // in the details view.
       map.on("click", layerName, (event) => {
         const [feature] = event.features
-        const {properties} = feature
-        const lngLat = feature.geometry.coordinates
-        const onSelect = () => { this.selectVehicle({properties, lngLat}) }
-
-        const popup = new maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
-          .setLngLat(lngLat)
-          .setDOMContent(compactVehicleContent({properties, badgedLabels: this.badgedLabels, onSelect}))
-
-        const riderPopup = {popup, markerId: properties.markerId}
-
-        popup.on("close", () => {
-          if (this.riderPopup === riderPopup) {
-            this.riderPopup = null
-          }
-
-          announceRiderPopupChange()
-        })
-
-        popup.addTo(map)
-        this.riderPopup = riderPopup
-        this.selectVehicle({properties, lngLat})
-        announceRiderPopupChange()
+        this.openVehicle(feature)
       })
 
       map.on("mouseenter", layerName, () => { canvas.style.cursor = "pointer" })
@@ -513,6 +508,36 @@ export const VehicleMarkers = {
     }
 
     this.map = map
+  },
+
+  // Opens the compact popup of the vehicle of `feature`, a feature of a
+  // marker layer, and shows the vehicle in the details view.
+  openVehicle(feature) {
+    const map = this.map
+    const {properties} = feature
+    const lngLat = feature.geometry.coordinates
+    const onSelect = () => { this.selectVehicle({properties, lngLat}) }
+
+    const content = compactVehicleContent({properties, badgedLabels: this.badgedLabels, onSelect})
+    const popup = new this.maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
+      .setLngLat(lngLat)
+      .setDOMContent(content)
+
+    const riderPopup = {popup, markerId: properties.markerId}
+
+    popup.on("close", () => {
+      if (this.riderPopup === riderPopup) {
+        this.riderPopup = null
+      }
+
+      announceRiderPopupChange()
+    })
+
+    popup.addTo(map)
+    nameCloseButton({content, itemName: vehicleViewTitle(properties)})
+    this.riderPopup = riderPopup
+    this.selectVehicle({properties, lngLat})
+    announceRiderPopupChange()
   },
 
   // Adds the source with every marker and the layers in the page's theme.
@@ -738,6 +763,7 @@ export const VehicleMarkers = {
     this.stopGliding()
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
+    window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     this.events.release()
   }
