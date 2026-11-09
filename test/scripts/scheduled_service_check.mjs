@@ -328,7 +328,7 @@ function minutesUntil({nowMs, clockText, dayStartMs = DAY_START_MS}) {
 }
 
 function line({route, headsign, nowMs, clockText}) {
-  return {route, headsign, minutes: minutesUntil({nowMs, clockText}), predicted: false}
+  return {route, headsign, minutes: minutesUntil({nowMs, clockText}), time_ms: todayAt(clockText), predicted: false}
 }
 
 function arrivalsAt({snapshots, stopId, nowMs}) {
@@ -397,7 +397,8 @@ deepStrictEqual(
 const AFTER_MIDNIGHT_MS = tomorrowAt("00:05")
 const lateArrivals = arrivalsAt({snapshots: [tomorrow, today], stopId: "S3", nowMs: AFTER_MIDNIGHT_MS}).arrivals
 const lateMinutes = minutesUntil({nowMs: AFTER_MIDNIGHT_MS, clockText: "00:20", dayStartMs: NEXT_DAY_START_MS})
-deepStrictEqual(lateArrivals, [{route: "1", headsign: "Late Downtown", minutes: lateMinutes, predicted: false}], "a previous date's trip arriving after midnight is shown once")
+const lateTimeMs = tomorrowAt("00:20")
+deepStrictEqual(lateArrivals, [{route: "1", headsign: "Late Downtown", minutes: lateMinutes, time_ms: lateTimeMs, predicted: false}], "a previous date's trip arriving after midnight is shown once")
 
 deepStrictEqual(ARRIVAL_HORIZON_SECONDS < seconds("08:40") - seconds("08:00"), true, "the fixture's later trip is past the horizon at 08:00")
 

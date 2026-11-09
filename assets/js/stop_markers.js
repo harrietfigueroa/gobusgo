@@ -10,6 +10,8 @@ import {
 } from "./rider_popups"
 import {compactPopupContent, writeChipNote} from "./route_chips"
 import {NEEDS_CONNECTION_CLASS_NAME, markArrivalNote, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {shownAt} from "./arrival_countdown"
+import {startArrivalTicker} from "./arrival_ticker"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
 import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
@@ -262,6 +264,7 @@ export const StopMarkers = {
     // The most stops on screen whose popups open by themselves, which the
     // page's element carries.
     this.autoOpenCountMax = Number(this.el.dataset.autoOpenCountMax)
+    this.arrivalCountMax = Number(this.el.dataset.arrivalCountMax)
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
@@ -342,22 +345,63 @@ export const StopMarkers = {
     this.events.handle("stop-arrivals:arrivals", (shown) => {
       const open = this.openPopups.get(shown.stop_id)
       const isViewStop = this.view !== null && this.view.stop.id === shown.stop_id
+      const nowMs = Date.now()
 
       if (open !== undefined) {
-        writeChipNote(open.note, nextArrivalTimeText(shown))
-        markArrivalNote({note: open.note, shown})
-        // The popup has another size with its next arrival.
-        this.scheduleFollow()
+        open.shown = shown
+        this.writePopupNote({open, nowMs})
       }
 
       if (isViewStop) {
-        writeArrivals(this.view.arrivalsElement, shown)
+        this.view.shown = shown
+        this.writeViewArrivals(nowMs)
       }
     })
+
+    this.stopTicker = startArrivalTicker((nowMs) => { this.tickArrivals(nowMs) })
 
     // The page that is live again knows nothing of the stops this hook has
     // open, and is told them again.
     this.events.whenLive(() => { this.sendOpenStops() })
+  },
+
+  // Writes a popup's next arrival as of `nowMs`, from the answer it last got.
+  // A popup has another size with another next arrival, so the popups are
+  // placed again when its text changes.
+  writePopupNote({open, nowMs}) {
+    const next = shownAt({shown: open.shown, nowMs, countMax: 1})
+    const text = nextArrivalTimeText(next)
+    const isChanged = open.note.textContent !== text
+    writeChipNote(open.note, text)
+    markArrivalNote({note: open.note, shown: next})
+
+    if (isChanged) {
+      this.scheduleFollow()
+    }
+  },
+
+  // Writes the view's arrivals as of `nowMs`, from the answer it last got.
+  writeViewArrivals(nowMs) {
+    const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
+    writeArrivals(this.view.arrivalsElement, shown)
+  },
+
+  // Writes every popup's next arrival and the view's arrivals again as of
+  // `nowMs`, each that has had an answer.
+  tickArrivals(nowMs) {
+    for (const open of this.openPopups.values()) {
+      const hasAnswer = open.shown !== null
+
+      if (hasAnswer) {
+        this.writePopupNote({open, nowMs})
+      }
+    }
+
+    const isViewAnswered = this.view !== null && this.view.shown !== null
+
+    if (isViewAnswered) {
+      this.writeViewArrivals(nowMs)
+    }
   },
 
   sendOpenStops() {
@@ -388,7 +432,7 @@ export const StopMarkers = {
 
     const {content, favoriteButton, arrivalsElement} = stopViewElements(stop)
     const earlier = this.view
-    this.view = {stop, content, favoriteButton, arrivalsElement}
+    this.view = {stop, content, favoriteButton, arrivalsElement, shown: null}
 
     if (earlier !== null) {
       releaseStop({pushEvent: this.push, stopId: earlier.stop.id, holder: VIEW_HOLDER})
@@ -438,7 +482,7 @@ export const StopMarkers = {
   // opens has a null `side`.
   openPopup({stop, auto, side}) {
     const {content, note} = popupElements({stop, noteText: "", onSelect: () => { this.selectStop(stop) }})
-    const open = {popup: null, content, note, auto, side, closedByRider: true}
+    const open = {popup: null, content, note, auto, side, closedByRider: true, shown: null}
 
     this.openPopups.set(stop.id, open)
     open.popup = this.showPopup({stop, open})
@@ -827,6 +871,7 @@ export const StopMarkers = {
   },
 
   destroyed() {
+    this.stopTicker()
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
