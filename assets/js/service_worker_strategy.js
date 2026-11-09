@@ -21,14 +21,19 @@ const SAVED_FILE_PATH_PREFIXES = Object.freeze(["/tiles/", "/routing/"])
 const OFFLINE_BASEMAP_PATH_PATTERN = /^\/basemap\/basemap-[0-9]{8}-[0-9]{2}-z[0-9]{1,2}\.pmtiles$/
 const SOCKET_PATH = "/live"
 const MANIFEST_PATH = "/api/routing/manifest"
+
+/** The vehicle page, the one page the worker keeps a copy of: the bare page, with no query, so the copy holds no filter. */
+export const VEHICLE_PAGE_PATH = "/vehicles"
+
 const OWNED_CACHE_PREFIXES = Object.freeze([RELEASE_CACHE_PREFIX, BASEMAP_ASSETS_CACHE_PREFIX])
 
 /**
  * The kinds of answer: from the release's cache, falling back to the
  * network; from the basemap assets' cache, stored on first use; from the
  * offline schedules' cache or the saved map's, falling back to the network; from the network,
- * falling back to the stored copies; a page from the network, falling back
- * to the offline screen; or no answer, which leaves the request to the
+ * falling back to the stored copies; the vehicle page from the network,
+ * falling back to its stored bare copy; a page from the network, falling
+ * back to the offline screen; or no answer, which leaves the request to the
  * browser.
  */
 export const StrategyKind = Object.freeze({
@@ -36,6 +41,7 @@ export const StrategyKind = Object.freeze({
   basemapAsset: "basemapAsset",
   savedFile: "savedFile",
   networkFirst: "networkFirst",
+  vehiclePage: "vehiclePage",
   navigation: "navigation",
   untouched: "untouched"
 })
@@ -85,7 +91,9 @@ function isSavedFilePath(pathname) {
  * order, and the saved-file kind the `cache` its file is saved in. The
  * routing snapshot and tile files and the basemap's offline extract are
  * answered from their saved copy first online too, since each file's
- * address holds one content.
+ * address holds one content. The vehicle page's kind carries `isBare`,
+ * whether its address has no query, so that only an answer holding no
+ * filter replaces the copy.
  */
 export function requestStrategy({method, url, mode, origin, precachePaths}) {
   const target = new URL(url)
@@ -124,10 +132,22 @@ export function requestStrategy({method, url, mode, origin, precachePaths}) {
   }
 
   if (mode === "navigate") {
-    return {kind: StrategyKind.navigation}
+    return navigationStrategy(target)
   }
 
   return {kind: StrategyKind.untouched}
+}
+
+// The vehicle page is answered from its copy, and every other page from
+// the offline screen.
+function navigationStrategy(target) {
+  const path = target.pathname
+
+  if (path === VEHICLE_PAGE_PATH) {
+    return {kind: StrategyKind.vehiclePage, path, isBare: target.search === ""}
+  }
+
+  return {kind: StrategyKind.navigation}
 }
 
 function isOwned(name) {

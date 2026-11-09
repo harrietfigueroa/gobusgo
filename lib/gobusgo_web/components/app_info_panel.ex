@@ -70,7 +70,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         >
           <h3 class="font-semibold">Offline schedules</h3>
           <p>{AppInfo.offline_schedules()}</p>
-          <label class="flex items-center gap-2">
+          <label class="inline-target flex items-center gap-2">
             <input id="offline-schedules-enabled" type="checkbox" checked />
             Save schedules for offline use
           </label>
@@ -85,7 +85,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         >
           <h3 class="font-semibold">Your direction</h3>
           <p>{AppInfo.show_direction()}</p>
-          <label class="flex items-center gap-2">
+          <label class="inline-target flex items-center gap-2">
             <input id="show-direction-enabled" type="checkbox" checked /> Show my direction
           </label>
         </section>
@@ -152,7 +152,7 @@ defmodule GobusgoWeb.AppInfoPanel do
     >
       <h3 class="font-semibold">Offline map</h3>
       <p>{AppInfo.offline_basemap(@offline_archive)}</p>
-      <label class="flex items-center gap-2">
+      <label class="inline-target flex items-center gap-2">
         <input id="offline-basemap-enabled" type="checkbox" /> Save the map for offline use
       </label>
       <p id="offline-basemap-status" data-offline-status aria-live="polite"></p>
@@ -335,7 +335,8 @@ defmodule GobusgoWeb.AppInfoPanel do
     assigns =
       assign(assigns,
         fields: AppInfo.recorded(),
-        retention: AppInfo.recorded_retention(RetentionPolicy.usage_day_count())
+        retention: AppInfo.recorded_retention(RetentionPolicy.usage_day_count()),
+        session_cookie: AppInfo.session_cookie(GobusgoWeb.Endpoint.session_cookie_age_seconds())
       )
 
     ~H"""
@@ -350,6 +351,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       </ul>
       <p>{AppInfo.recorded_never()}</p>
       <p id="app-info-recorded-retention">{@retention}</p>
+      <p id="app-info-session-cookie">{@session_cookie}</p>
     </section>
     """
   end

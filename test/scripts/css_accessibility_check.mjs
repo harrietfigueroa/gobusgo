@@ -67,14 +67,14 @@ const pairs = [
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--panel-detail-action-fill"},
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--panel-sheet-chip-fill"},
-  {kind: PairKind.text, foreground: "--filter-kind-color", background: "--filter-suggestion-active-fill"},
+  {kind: PairKind.text, foreground: "--filter-kind-active-color", background: "--filter-suggestion-active-fill"},
   {kind: PairKind.text, foreground: "--popup-alert-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-selected-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-selected-color", background: "--panel-detail-action-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-selected-color", background: "--panel-detail-action-pressed-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-badge-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-alert-badge-fill"},
-  {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--surface-border-color"},
+  {kind: PairKind.text, foreground: "--panel-sheet-filter-badge-color", background: "--surface-border-color"},
   {kind: PairKind.text, foreground: "--popup-selected-text-color", background: "--surface-border-color"},
   {kind: PairKind.text, foreground: "--route-chip-count-color", background: "--route-chip-count-fill"},
   {kind: PairKind.nonText, foreground: "--surface-border-color", background: "--surface-fill"},
@@ -83,7 +83,7 @@ const pairs = [
   {kind: PairKind.nonText, foreground: "--close-button-fill", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--panel-detail-action-fill"},
-  {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--surface-border-color"}
+  {kind: PairKind.nonText, foreground: "--popup-selected-focus-color", background: "--surface-border-color"}
 ]
 
 // The target-size custom properties, each with the size it must reach.
@@ -91,6 +91,7 @@ const targetSizes = [
   {property: "--close-button-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--popup-alert-hit-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--filter-token-height", pxMin: TARGET_SIZE_PX_MIN},
+  {property: "--inline-target-size", pxMin: TARGET_SIZE_PX_MIN},
   {property: "--close-button-hit-size", pxMin: FINGER_TARGET_SIZE_PX_MIN},
   {property: "--map-control-size", pxMin: FINGER_TARGET_SIZE_PX_MIN},
   {property: "--theme-option-height", pxMin: FINGER_TARGET_SIZE_PX_MIN},
@@ -103,10 +104,6 @@ const markNames = ["border", "border-color", "border-bottom", "border-bottom-col
 const shownBorderNames = ["border-bottom-color", "border-color"]
 
 const knownFailures = new Map([
-  ["contrast light --panel-sheet-badge-color on --surface-border-color", "GOB-301"],
-  ["contrast light --popup-selected-text-color on --surface-border-color", "GOB-301"],
-  ["contrast dark --close-button-focus-color on --surface-border-color", "GOB-301"],
-  ["contrast dark --filter-kind-color on --filter-suggestion-active-fill", "GOB-301"],
   ["contrast light --panel-sheet-grip-color on --surface-fill", "GOB-311"],
   ["reduced motion .rider-heading-cone-shape", "GOB-314"]
 ])
