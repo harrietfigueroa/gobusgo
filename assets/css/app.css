@@ -65,6 +65,7 @@
   /* MapLibre's location dot is #1da1f2, which the cone repeats. */
   --rider-heading-color: rgb(29 161 242);
   --rider-heading-size: 72px;
+  --rider-dot-border-color: #334155;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -112,6 +113,7 @@
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
   --rider-heading-color: rgb(56 189 248);
+  --rider-dot-border-color: #ffffff;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -1001,6 +1003,13 @@
 
 .trip-dot-to {
   background-color: var(--trip-destination-color);
+}
+
+/* MapLibre rings the rider's dot in white, which the light map's land
+   matches; the ring takes the theme's color, dark on the light map, as a
+   marker's stroke does. */
+.maplibregl-user-location-dot::after {
+  border-color: var(--rider-dot-border-color);
 }
 
 /* The cone on the rider's dot: a wedge centered on the top, fading out from
