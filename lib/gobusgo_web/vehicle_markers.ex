@@ -73,12 +73,16 @@ defmodule GobusgoWeb.VehicleMarkers do
 
   @type status :: :reported | :stale | :scheduled | :unknown
 
+  @typedoc "The glyph of the badge a map draws beside a marker of a status a recent report lacks."
+  @type badge :: :clock | :question | :timetable
+
   @type status_definition :: %{
           status: status(),
           label: String.t(),
           description: String.t(),
           color: String.t() | nil,
-          opacity: float()
+          opacity: float(),
+          badge: badge() | nil
         }
 
   @typedoc """
@@ -125,31 +129,35 @@ defmodule GobusgoWeb.VehicleMarkers do
       description:
         "Location reported at most #{div(@report_age_ms_max, @ms_per_minute)} minutes before the fetch. Drawn in the color of its route.",
       color: nil,
-      opacity: 1.0
+      opacity: 1.0,
+      badge: nil
     },
     %{
       status: :stale,
       label: "Stale",
       description:
-        "Last location report is more than #{div(@report_age_ms_max, @ms_per_minute)} minutes older than the fetch. Drawn faded in the color of its route, with no lateness or next stop.",
+        "Last location report is more than #{div(@report_age_ms_max, @ms_per_minute)} minutes older than the fetch. Drawn faded in the color of its route, with a clock badge, and with no lateness or next stop.",
       color: nil,
-      opacity: @faded_opacity
+      opacity: @faded_opacity,
+      badge: :clock
     },
     %{
       status: :scheduled,
       label: "Schedule only",
       description:
-        "No real-time data: the position comes from the schedule. Drawn gray, with no heading.",
+        "No real-time data: the position comes from the schedule. Drawn gray, with a timetable badge and no heading.",
       color: @scheduled_color,
-      opacity: 1.0
+      opacity: 1.0,
+      badge: :timetable
     },
     %{
       status: :unknown,
       label: "Report time not supplied",
       description:
-        "The source gave no time for the last location report. Drawn faded in the color of its route, with no lateness or next stop.",
+        "The source gave no time for the last location report. Drawn faded in the color of its route, with a question mark badge, and with no lateness or next stop.",
       color: nil,
-      opacity: @faded_opacity
+      opacity: @faded_opacity,
+      badge: :question
     }
   ]
 
@@ -159,6 +167,12 @@ defmodule GobusgoWeb.VehicleMarkers do
   """
   @spec statuses() :: [status_definition()]
   def statuses, do: @statuses
+
+  @doc "Returns the name a legend and a description give `badge`."
+  @spec badge_name(badge()) :: String.t()
+  def badge_name(:clock), do: "clock badge"
+  def badge_name(:question), do: "question mark badge"
+  def badge_name(:timetable), do: "timetable badge"
 
   @doc """
   Returns the markers of `fetch`, one agency's current fetch, in the fetch's

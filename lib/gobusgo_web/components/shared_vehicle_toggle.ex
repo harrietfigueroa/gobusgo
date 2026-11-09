@@ -57,11 +57,24 @@ defmodule GobusgoWeb.SharedVehicleToggle do
       >
         <li :for={form <- @form_colors} class="flex items-center gap-1">
           <span
-            class="inline-block h-3 w-3 rounded-full"
+            class="shared-vehicle-swatch"
+            data-form-factor={form.form_factor}
             style={"background-color: #{form.color}"}
             aria-hidden="true"
-          ></span>
+          >
+            {form.letter}
+          </span>
           {form.label}
+        </li>
+        <li id="shared-vehicles-low-range" class="flex items-center gap-1">
+          <span
+            class="shared-vehicle-swatch shared-vehicle-swatch-low"
+            style={"--swatch-color: #{hd(@form_colors).color}"}
+            aria-hidden="true"
+          >
+            {hd(@form_colors).letter}
+          </span>
+          Low range: the upper half is white
         </li>
       </ul>
       <p

@@ -24,10 +24,11 @@ defmodule GobusgoWeb.VehicleLive.SharedVehicles do
   The layer is drawn from zoom #{@zoom_min}, where a phone's view spans a
   few of the tiles of `Gobusgo.Gbfs.VehicleTileSet` and the map of a
   neighborhood still reads, and a vehicle with less than
-  #{@range_low_meters} m of range is drawn faded: the least range GOB-259
-  settled on for a scooter leg, 1.5 times its 2 km ride, below which a
-  vehicle takes a rider no useful distance. Each form factor has one color,
-  which reads on the light map and on the dark one.
+  #{@range_low_meters} m of range is drawn with the upper half of its disc
+  white: the least range GOB-259 settled on for a scooter leg, 1.5 times
+  its 2 km ride, below which a vehicle takes a rider no useful distance.
+  Each form factor has one color, which reads on the light map and on the
+  dark one, and one letter, which reads without the color.
 
   The calling process holds the registration.
   """
@@ -40,11 +41,11 @@ defmodule GobusgoWeb.VehicleLive.SharedVehicles do
   alias Gobusgo.Scheduler
 
   @form_colors [
-    %{form_factor: :standing_scooter, label: "Scooter", color: "#0f766e"},
-    %{form_factor: :seated_scooter, label: "Seated scooter", color: "#7e22ce"},
-    %{form_factor: :e_bike, label: "E-bike", color: "#c2410c"},
-    %{form_factor: :bike, label: "Bike", color: "#1d4ed8"},
-    %{form_factor: :other, label: "Other", color: "#64748b"}
+    %{form_factor: :standing_scooter, label: "Scooter", color: "#0f766e", letter: "S"},
+    %{form_factor: :seated_scooter, label: "Seated scooter", color: "#7e22ce", letter: "M"},
+    %{form_factor: :e_bike, label: "E-bike", color: "#c2410c", letter: "E"},
+    %{form_factor: :bike, label: "Bike", color: "#1d4ed8", letter: "B"},
+    %{form_factor: :other, label: "Other", color: "#64748b", letter: "O"}
   ]
 
   @type status :: :loading | :shown | :none
@@ -60,7 +61,7 @@ defmodule GobusgoWeb.VehicleLive.SharedVehicles do
   @spec zoom_min() :: pos_integer()
   def zoom_min, do: @zoom_min
 
-  @doc "The range below which the browser draws a vehicle faded, in meters."
+  @doc "The range below which the browser draws a vehicle's disc half white, in meters."
   @spec range_low_meters() :: pos_integer()
   def range_low_meters, do: @range_low_meters
 
@@ -74,7 +75,10 @@ defmodule GobusgoWeb.VehicleLive.SharedVehicles do
     do: VehicleStatusCycle.run_deadline_ms() + Scheduler.evaluation_period_ms()
 
   @doc "Each form factor's label and color, in display order."
-  @spec form_colors() :: [%{form_factor: atom(), label: String.t(), color: String.t()}, ...]
+  @spec form_colors() :: [
+          %{form_factor: atom(), label: String.t(), color: String.t(), letter: String.t()},
+          ...
+        ]
   def form_colors, do: @form_colors
 
   @doc """
@@ -151,7 +155,7 @@ defmodule GobusgoWeb.VehicleLive.SharedVehicles do
   def status_text(:shown) do
     range_low_km = div(@range_low_meters, @meters_per_kilometer)
 
-    "Shown when the map is zoomed in to a neighborhood. Faded ones have under " <>
-      "#{range_low_km} km of range."
+    "Shown when the map is zoomed in to a neighborhood. Ones whose upper half is white " <>
+      "have under #{range_low_km} km of range."
   end
 end

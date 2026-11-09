@@ -65,6 +65,10 @@
   /* MapLibre's location dot is #1da1f2, which the cone repeats. */
   --rider-heading-color: rgb(29 161 242);
   --rider-heading-size: 72px;
+  --badge-ink: #0f172a;
+  --badge-paper: #ffffff;
+  --shared-vehicle-letter-color: #ffffff;
+  --shared-vehicle-low-letter-color: #0f172a;
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
@@ -112,6 +116,8 @@
   --trip-origin-color: #22c55e;
   --trip-destination-color: #f87171;
   --rider-heading-color: rgb(56 189 248);
+  --badge-ink: #e2e8f0;
+  --badge-paper: #0f172a;
   --color-white: #0f172a;
   --color-slate-200: #334155;
   --color-slate-300: #475569;
@@ -1001,6 +1007,53 @@
 
 .trip-dot-to {
   background-color: var(--trip-destination-color);
+}
+
+/* The legend's status badge: a disc in the theme's ink with its glyph in
+   the theme's paper. Forced colors would draw both in one system color, so
+   the badge keeps its own, as the map's canvas does. */
+.status-badge {
+  forced-color-adjust: none;
+}
+
+.status-badge-ink {
+  fill: var(--badge-ink);
+}
+
+.status-badge-paper {
+  fill: var(--badge-paper);
+}
+
+.status-badge-stroke {
+  fill: none;
+  stroke: var(--badge-paper);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* The legend's shared vehicle swatch: a disc in the kind's color with the
+   kind's letter, and for low range the upper half white, as the map draws
+   them. Forced colors would drop the fill that carries the kind and the
+   range, so the swatch keeps its own colors. */
+.shared-vehicle-swatch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: var(--shared-vehicle-letter-color);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  forced-color-adjust: none;
+}
+
+.shared-vehicle-swatch-low {
+  background: linear-gradient(#ffffff 50%, var(--swatch-color) 50%);
+  box-shadow: inset 0 0 0 1px var(--swatch-color);
+  color: var(--shared-vehicle-low-letter-color);
 }
 
 /* The cone on the rider's dot: a wedge centered on the top, fading out from
