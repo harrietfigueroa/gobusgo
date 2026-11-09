@@ -110,6 +110,38 @@ jobs:
       - run: mix assets.setup
       - run: mix assets.build
 
+  # Renders the browser pages and checks them: the ExUnit rules of Gobusgo.Test.Accessibility, then html-eslint over the files the test writes, then the node scan of the front end's JavaScript.
+  accessibility:
+    name: accessibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: npm ci --prefix tools/lint
+      - run: npm run --prefix tools/lint check
+      - run: mix test test/gobusgo_web/accessibility
+      - run: node test/scripts/write_offline_screen.mjs
+      - run: npm run --prefix tools/lint lint
+      - run: node test/scripts/a11y_source_check.mjs
+
   image:
     name: image
     runs-on: ubuntu-24.04-arm
