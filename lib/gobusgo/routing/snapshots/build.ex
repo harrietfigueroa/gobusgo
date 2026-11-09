@@ -1,4 +1,6 @@
 defmodule Gobusgo.Routing.Snapshots.Build do
+  @date_heap_words_max 120_000_000
+
   @moduledoc """
   One run of the routing snapshot build: for every service date the
   schedule view holds, builds the snapshot from that date's schedules and
@@ -20,6 +22,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   connection count of the dates built, and the time taken. A run that
   builds nothing and fails nothing logs `debug`.
 
+  Each date is built in a process of its own whose heap is capped at
+  `:date_heap_words_max` words. A date whose build outgrows the cap is
+  killed, logged as `Routing snapshot build killed` at `error`, and counted
+  as failed; the dates after it are still built.
+
   ## Options
 
     * `:server` (required): the `Gobusgo.Routing.Snapshots` process.
@@ -29,10 +36,13 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     * `:clock`: returns the current UTC time. Defaults to
       `DateTime.utc_now/0`.
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
+    * `:date_heap_words_max`: the heap cap of a date's build, in words.
+      Defaults to #{@date_heap_words_max}.
   """
 
   require Logger
 
+  alias Gobusgo.Assert
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.Routing.Snapshot
@@ -57,7 +67,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         schedule_view: RouteScheduleView,
         stop_view: StopView,
         clock: &DateTime.utc_now/0,
-        write_options: []
+        write_options: [],
+        date_heap_words_max: @date_heap_words_max
       ])
 
     started_ms = System.monotonic_time(:millisecond)
@@ -71,25 +82,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     outcomes =
       for date <- dates do
-        schedules = RouteScheduleView.schedules_on(schedule_view, date)
-        previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
-        inputs_sha256 = inputs_sha256(schedules, previous, positions)
-
-        case Map.get(built, date) do
-          %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
-            :unchanged
-
-          _other ->
-            build_date(%{
-              date: date,
-              schedules: schedules,
-              previous: previous,
-              positions: positions,
-              inputs_sha256: inputs_sha256,
-              now: now,
-              options: options
-            })
-        end
+        date_outcome(%{
+          date: date,
+          built: Map.get(built, date),
+          positions: positions,
+          today: today,
+          now: now,
+          options: options
+        })
       end
 
     :ok = Snapshots.retain(server, dates)
@@ -104,6 +104,89 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     log(counts, System.monotonic_time(:millisecond) - started_ms)
 
     if counts.failed_count == 0, do: {:ok, counts}, else: {:error, counts}
+  end
+
+  # A date is built in a process of its own, so its schedules and timetable
+  # are freed before the next date's are read, under a heap cap, so a build
+  # that outgrows it is killed alone and the date counts as failed, and with
+  # a full sweep at every collection, so garbage of the build's earlier steps
+  # is not kept in an old generation. The process is linked, so it dies with
+  # a run that is killed; the run traps exits while it waits, so the kill of
+  # the process reaches it as a message, and any other exit is raised again.
+  defp date_outcome(%{options: options} = input) do
+    heap_words_max = Keyword.fetch!(options, :date_heap_words_max)
+    Assert.condition(is_integer(heap_words_max), "date_heap_words_max must be an integer")
+
+    Assert.condition(
+      heap_words_max > 0,
+      "date_heap_words_max must be positive, got: #{heap_words_max}"
+    )
+
+    parent = self()
+    tag = make_ref()
+    trapping = Process.flag(:trap_exit, true)
+
+    {pid, monitor} =
+      :erlang.spawn_opt(fn -> send(parent, {tag, date_outcome_callback(input)}) end, [
+        :link,
+        :monitor,
+        fullsweep_after: 0,
+        max_heap_size: %{size: heap_words_max, kill: true, error_logger: true}
+      ])
+
+    result =
+      receive do
+        {^tag, outcome} -> {:ok, outcome}
+        {:DOWN, ^monitor, :process, ^pid, reason} -> {:exit, reason}
+      end
+
+    Process.demonitor(monitor, [:flush])
+
+    receive do
+      {:EXIT, ^pid, _reason} -> :ok
+    end
+
+    Process.flag(:trap_exit, trapping)
+
+    case result do
+      {:ok, outcome} ->
+        outcome
+
+      {:exit, :killed} ->
+        Logger.error("Routing snapshot build killed",
+          service_date: Date.to_iso8601(input.date),
+          heap_words_max: heap_words_max
+        )
+
+        :failed
+
+      {:exit, reason} ->
+        exit(reason)
+    end
+  end
+
+  defp date_outcome_callback(%{date: date, options: options} = input) do
+    schedule_view = Keyword.fetch!(options, :schedule_view)
+    today = input.today
+    schedules = RouteScheduleView.schedules_on(schedule_view, date)
+    previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
+    inputs_sha256 = inputs_sha256(schedules, previous, input.positions)
+
+    case input.built do
+      %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
+        :unchanged
+
+      _other ->
+        build_date(%{
+          date: date,
+          schedules: schedules,
+          previous: previous,
+          positions: input.positions,
+          inputs_sha256: inputs_sha256,
+          now: input.now,
+          options: options
+        })
+    end
   end
 
   defp positions(stop_view) do

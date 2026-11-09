@@ -156,6 +156,23 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
     assert Snapshots.manifest(context.server)["snapshots"] == []
   end
 
+  test "counts each date whose build outgrows its heap cap as failed and goes on", context do
+    hold(context, ~D[2026-11-07])
+    hold(context, ~D[2026-11-08])
+
+    assert {:error, %{failed_count: 2, built_count: 0}} =
+             run(context, date_heap_words_max: 1_000)
+
+    assert Snapshots.manifest(context.server)["snapshots"] == []
+    assert written() == []
+  end
+
+  test "builds under the heap cap a date fits in", context do
+    hold(context, ~D[2026-11-07])
+
+    assert {:ok, %{built_count: 1}} = run(context, date_heap_words_max: 10_000_000)
+  end
+
   test "drops the entry of a date the view no longer holds", context do
     for day <- 6..8, do: hold(context, Date.new!(2026, 11, day))
     {:ok, _first} = run(context)
