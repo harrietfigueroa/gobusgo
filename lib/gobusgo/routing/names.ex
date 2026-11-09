@@ -78,14 +78,14 @@ defmodule Gobusgo.Routing.Names do
   @doc """
   Returns the headsign of every trip of `schedules`, those of the snapshot's
   service date, and `previous_schedules`, those of the date before, keyed as
-  `Gobusgo.Routing.Timetable` keys its trips.
+  `Gobusgo.Routing.Timetable` keys its trips. Each is enumerated once, so
+  either can be a stream that decodes each schedule when it is reached.
   """
   @spec headsigns(%{
-          schedules: [CompactSchedule.t()],
-          previous_schedules: [CompactSchedule.t()]
+          schedules: Enumerable.t(CompactSchedule.t()),
+          previous_schedules: Enumerable.t(CompactSchedule.t())
         }) :: headsigns()
-  def headsigns(%{schedules: schedules, previous_schedules: previous_schedules})
-      when is_list(schedules) and is_list(previous_schedules) do
+  def headsigns(%{schedules: schedules, previous_schedules: previous_schedules}) do
     for {offset, offset_schedules} <- [{0, schedules}, {1, previous_schedules}],
         schedule <- offset_schedules,
         trip <- schedule.trips,

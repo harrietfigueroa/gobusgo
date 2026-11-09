@@ -1,5 +1,5 @@
 defmodule Gobusgo.Routing.Snapshots.Build do
-  @date_heap_words_max 60_000_000
+  @date_heap_words_max 20_000_000
 
   @moduledoc """
   One run of the routing snapshot build: for every service date the
@@ -186,8 +186,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   defp date_outcome_callback(%{date: date, options: options} = input) do
     schedule_view = Keyword.fetch!(options, :schedule_view)
     today = input.today
-    schedules = RouteScheduleView.schedules_on(schedule_view, date)
-    previous = RouteScheduleView.schedules_on(schedule_view, Date.add(date, -1))
+    schedules = packed_schedules(schedule_view, date)
+    previous = packed_schedules(schedule_view, Date.add(date, -1))
 
     inputs_sha256 =
       inputs_sha256(%{
@@ -213,6 +213,31 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           options: options
         })
     end
+  end
+
+  # The fetches of `date` as the view holds them when they are read, each
+  # schedule packed into a binary, which is stored off the process heap.
+  # They are read one route at a time, so the heap holds one schedule at a
+  # time, and the build reads every pass from these fetches, so a fetch the
+  # view takes in during the build changes nothing it builds.
+  defp packed_schedules(schedule_view, date) do
+    for route_id <- RouteScheduleView.route_ids_on(schedule_view, date),
+        fetch = RouteScheduleView.schedule(schedule_view, route_id, date),
+        fetch != nil do
+      %{
+        id: fetch.id,
+        service_date: fetch.service_date,
+        request_id: fetch.request_id,
+        fetched_at: fetch.fetched_at,
+        packed_schedule: :erlang.term_to_binary(fetch.schedule)
+      }
+    end
+  end
+
+  # The schedules of `fetches` as a stream that unpacks each when it is
+  # reached, so a pass over them holds one unpacked schedule at a time.
+  defp unpacked_schedules(fetches) do
+    Stream.map(fetches, &:erlang.binary_to_term(&1.packed_schedule, [:safe]))
   end
 
   defp positions(held_stops) do
@@ -277,11 +302,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   end
 
   defp build_date(%{date: date, schedules: schedules, previous: previous, now: now} = input) do
+    today_schedules = unpacked_schedules(schedules)
+    previous_schedules = unpacked_schedules(previous)
+
     timetable =
       Timetable.build(%{
         service_date: date,
-        schedules: Enum.map(schedules, & &1.schedule),
-        previous_schedules: Enum.map(previous, & &1.schedule)
+        schedules: today_schedules,
+        previous_schedules: previous_schedules
       })
 
     fetch_times = Enum.map(schedules ++ previous, & &1.fetched_at)
@@ -290,8 +318,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     headsigns =
       Names.headsigns(%{
-        schedules: Enum.map(schedules, & &1.schedule),
-        previous_schedules: Enum.map(previous, & &1.schedule)
+        schedules: today_schedules,
+        previous_schedules: previous_schedules
       })
 
     names =

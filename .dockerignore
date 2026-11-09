@@ -11,6 +11,5 @@
 # The image downloads the vendored packages itself, from the lock file.
 assets/vendor
 !lib
-!rel/vm.args.eex
 !priv/static/manifest.webmanifest
 !priv/static/icons
