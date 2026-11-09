@@ -36,13 +36,15 @@ defmodule GobusgoWeb.StopArrivals do
   One arrival a page shows. `route` is the route's short name, or its long
   name when it has no short name. `headsign` is the trip's, without a
   leading short name of the route. `minutes` is the whole minutes until the
-  arrival, and `predicted` says whether the time is a prediction or the
-  schedule.
+  arrival at the time the line was made, `time_ms` the arrival's time in
+  Unix milliseconds, from which a page counts the minutes down itself, and
+  `predicted` says whether the time is a prediction or the schedule.
   """
   @type line :: %{
           route: String.t() | nil,
           headsign: String.t() | nil,
           minutes: non_neg_integer(),
+          time_ms: integer(),
           predicted: boolean()
         }
 
@@ -192,6 +194,7 @@ defmodule GobusgoWeb.StopArrivals do
       route: timed.route,
       headsign: timed.headsign,
       minutes: div(time_ms - now_ms, @ms_per_minute),
+      time_ms: time_ms,
       predicted: timed.predicted
     }
   end
