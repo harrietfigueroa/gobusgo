@@ -60,11 +60,15 @@ const liveCases = [
   }
 ]
 
+function rowIsLive(row) {
+  return row.isLive
+}
+
 function rowsLive(shown) {
   const rows = arrivalRows(shown)
 
   if (rows.kind === "rows") {
-    return Array.from(rows.rows, (row) => row.isLive)
+    return Array.from(rows.rows, rowIsLive)
   }
 
   return []

@@ -108,7 +108,7 @@ function favoriteButtonOf({stop, note}) {
   return button
 }
 
-// A pill of `pill`, a shown pill of `stop_text.js`: its mark hidden from
+// The element of `pill`, its mark and its text: the mark hidden from
 // assistive technology, and a hidden `spokenPrefix` that says what it is.
 function pillElement({pill, spokenPrefix}) {
   const element = document.createElement("span")
