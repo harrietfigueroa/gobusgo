@@ -58,7 +58,7 @@ GBFS requires an operator to rotate a vehicle's identifier, `bike_id` or `vehicl
 
 ## Using the client from the rest of the codebase
 
-Call `fetch/3` from a scheduler source's run, never from a page or a request path, so the one flow of the root `AGENTS.md` holds. Store `body`, the file as received, through the writer when a raw response is to be kept, within the 10 minutes the terms allow. Read `version` beside the records, and fetch `vehicle_types` with `versions: [version]` of the vehicle fetch it is joined to. Handle `:not_published` as a feed that is gone and a failure as a fetch to try at the next run; neither is an exception.
+Call `fetch/3` from a scheduler source's run, never from a page or a request path, so the one flow of `lib/gobusgo/AGENTS.md` ("Data flow") holds. Store `body`, the file as received, through the writer when a raw response is to be kept, within the 10 minutes the terms allow. Read `version` beside the records, and fetch `vehicle_types` with `versions: [version]` of the vehicle fetch it is joined to. Handle `:not_published` as a feed that is gone and a failure as a fetch to try at the next run; neither is an exception.
 
 ## Shared vehicles
 
@@ -88,7 +88,7 @@ Zoom 14 is the tile zoom because the vehicles in view set the bytes a page downl
 
 `Gobusgo.Gbfs.VehicleTiles.Build` writes the tiles and the whole-city file, then the index, and only then makes the index current in `Gobusgo.Gbfs.VehicleTiles`, so a current index never names a missing file; a write that fails keeps the index before and logs `Shared vehicle tiles not written` at `error`. `Gobusgo.Gbfs.VehicleStatusRetention` deletes the published files with the stored file of their fetch, by the fetch time their directory names, within the same ten minutes, and `Gobusgo.RetentionPolicy` keeps them a day as a backstop. The endpoint serves them under `/shared-vehicles` as the gzip streams they are, cacheable for 60 seconds, and a page hands the browser only an index whose fetch is at most three minutes old, so no cache holds a file past the ten minutes either.
 
-The page's side is in the root `AGENTS.md`: the layer's toggle holds `Gobusgo.Gbfs.DemandKey.shared_vehicles/0`, and the browser reads an index, then the tiles in view.
+The page's side is in `lib/gobusgo_web/live/AGENTS.md` ("Shared vehicles layer"): the layer's toggle holds `Gobusgo.Gbfs.DemandKey.shared_vehicles/0`, and the browser reads an index, then the tiles in view.
 
 ## Credit and the About section
 
