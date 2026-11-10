@@ -88,6 +88,28 @@ defmodule Gobusgo.OneBusAway.RouteScheduleView do
   end
 
   @doc """
+  Returns the request identifier of the current fetch of `route_id` on
+  `service_date` in `view`, reading no other field, or `nil` for a route
+  and date the view does not hold and while the view is not running.
+  """
+  @spec request_id(atom(), String.t(), Date.t()) :: String.t() | nil
+  def request_id(view, route_id, %Date{} = service_date)
+      when is_atom(view) and is_binary(route_id) do
+    key = {route_id, service_date}
+
+    case :ets.whereis(view) do
+      :undefined ->
+        nil
+
+      table ->
+        case :ets.select(table, [{{key, %{request_id: :"$1"}}, [], [:"$1"]}]) do
+          [request_id] -> request_id
+          [] -> nil
+        end
+    end
+  end
+
+  @doc """
   Returns the current fetch of every route `view` holds a schedule of on
   `service_date`, in route order. Returns `[]` while the view is not
   running.

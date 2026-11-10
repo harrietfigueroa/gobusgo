@@ -48,4 +48,31 @@ defmodule Gobusgo.PolylineTest do
       assert Polyline.decode("_p~iF ps|U") == {:error, :invalid_character}
     end
   end
+
+  describe "encode_integers/1 and decode_integers/1" do
+    # The documentation's first point, 38.5 and -120.2, is the integers
+    # 3,850,000 and -12,020,000 at five decimal places.
+    test "write integers as the documentation writes a point's numbers" do
+      assert Polyline.encode_integers([3_850_000, -12_020_000]) == "_p~iF~ps|U"
+    end
+
+    test "read back the integers they wrote" do
+      integers = [0, 1, -1, 31, 32, -32, 86_400, 2_147_483_647, -2_147_483_648]
+
+      assert integers |> Polyline.encode_integers() |> Polyline.decode_integers() ==
+               {:ok, integers}
+    end
+
+    test "read no integer from an empty string" do
+      assert Polyline.decode_integers("") == {:ok, []}
+    end
+
+    test "return :truncated for a string that ends inside a number" do
+      assert Polyline.decode_integers("_p~i") == {:error, :truncated}
+    end
+
+    test "return :invalid_character for a character outside the format" do
+      assert Polyline.decode_integers("_p~iF ") == {:error, :invalid_character}
+    end
+  end
 end
