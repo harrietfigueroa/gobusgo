@@ -5,7 +5,6 @@ defmodule Gobusgo.OneBusAway.TripPath do
   @trip_count_max 100
   @polyline_count_max 2_000
   @stop_time_count_max 500
-  @earth_radius_m 6_371_008.8
   @coordinate_precision 100_000
 
   @moduledoc """
@@ -34,7 +33,8 @@ defmodule Gobusgo.OneBusAway.TripPath do
 
   The points are rounded to the five decimal places of the encoded polyline
   format, and a distance is the sum of haversine distances between
-  consecutive rounded points on a sphere of radius #{@earth_radius_m} m,
+  consecutive rounded points on a sphere of radius
+  #{Gobusgo.Math.Geodesy.earth_radius_meters()} m,
   rounded to whole meters, so a reader that decodes the points and measures
   them the same way finds each stop where its distance says.
 
@@ -43,6 +43,7 @@ defmodule Gobusgo.OneBusAway.TripPath do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.Polyline
 
   @typedoc "A position, latitude then longitude, in degrees."
@@ -219,10 +220,10 @@ defmodule Gobusgo.OneBusAway.TripPath do
         _no_point -> 0.0
       end
 
-    meters_per_degree = @earth_radius_m * :math.pi() / 180
+    meters_per_degree = Geodesy.meters_per_degree()
 
     %{
-      x_scale: meters_per_degree * :math.cos(radians(reference_latitude)),
+      x_scale: meters_per_degree * :math.cos(Geodesy.radians(reference_latitude)),
       y_scale: meters_per_degree
     }
   end
@@ -576,25 +577,18 @@ defmodule Gobusgo.OneBusAway.TripPath do
   defp cumulative_m([first | _rest] = points) do
     {cumulative, _last} =
       Enum.map_reduce(points, {first, 0.0}, fn point, {point_before, distance_before} ->
-        distance = distance_before + haversine_m(point_before, point)
+        distance = distance_before + rounded_distance_m(point_before, point)
         {distance, {point, distance}}
       end)
 
     List.to_tuple(cumulative)
   end
 
-  defp haversine_m({latitude_a_e5, longitude_a_e5}, {latitude_b_e5, longitude_b_e5}) do
-    latitude_a = radians(latitude_a_e5 / @coordinate_precision)
-    latitude_b = radians(latitude_b_e5 / @coordinate_precision)
-    half_latitude = (latitude_b - latitude_a) / 2
-    half_longitude = radians((longitude_b_e5 - longitude_a_e5) / @coordinate_precision) / 2
-
-    haversine =
-      :math.sin(half_latitude) ** 2 +
-        :math.cos(latitude_a) * :math.cos(latitude_b) * :math.sin(half_longitude) ** 2
-
-    2 * @earth_radius_m * :math.asin(min(1.0, :math.sqrt(haversine)))
+  defp rounded_distance_m(point_a, point_b) do
+    Geodesy.distance_meters(rounded_position(point_a), rounded_position(point_b))
   end
 
-  defp radians(degrees), do: degrees * :math.pi() / 180
+  defp rounded_position({latitude_e5, longitude_e5}) do
+    %{lat: latitude_e5 / @coordinate_precision, lon: longitude_e5 / @coordinate_precision}
+  end
 end
