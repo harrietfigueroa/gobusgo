@@ -74,7 +74,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  predicted: true,
                  schedule_deviation_seconds: 666,
                  next_stop_id: "3_2442",
-                 next_stop_time_offset_seconds: 378
+                 next_stop_time_offset_seconds: 378,
+                 service_date_ms: 1_790_924_400_000
                },
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52043:12345",
@@ -92,7 +93,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  predicted: true,
                  schedule_deviation_seconds: 0,
                  next_stop_id: "29_2543",
-                 next_stop_time_offset_seconds: 923
+                 next_stop_time_offset_seconds: 923,
+                 service_date_ms: 1_790_924_400_000
                },
                %{
                  id: "40_9636",
@@ -110,7 +112,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  predicted: nil,
                  schedule_deviation_seconds: nil,
                  next_stop_id: nil,
-                 next_stop_time_offset_seconds: nil
+                 next_stop_time_offset_seconds: nil,
+                 service_date_ms: nil
                },
                %{
                  id: "40_H:121:0:Weekday:1:26SEP:52006:12345",
@@ -128,7 +131,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                  predicted: nil,
                  schedule_deviation_seconds: nil,
                  next_stop_id: nil,
-                 next_stop_time_offset_seconds: nil
+                 next_stop_time_offset_seconds: nil,
+                 service_date_ms: nil
                }
              ]
     end
@@ -381,7 +385,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
     for {name, path, value} <- [
           {"an empty vehicle identifier", ["vehicleId"], ""},
           {"a negative update time", ["lastUpdateTime"], -1},
-          {"a negative location update time", ["lastLocationUpdateTime"], -1}
+          {"a negative location update time", ["lastLocationUpdateTime"], -1},
+          {"a negative service date", ["tripStatus", "serviceDate"], -1}
         ] do
       test "returns invalid_vehicle for #{name}" do
         data = data("vehicles_for_agency")
@@ -402,7 +407,8 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
     for {name, field, value} <- [
           {"a schedule deviation with a fraction", "scheduleDeviation", 12.5},
           {"a next stop that is not a string", "nextStop", 2442},
-          {"a next stop time offset that is not a number", "nextStopTimeOffset", "soon"}
+          {"a next stop time offset that is not a number", "nextStopTimeOffset", "soon"},
+          {"a service date with a fraction", "serviceDate", 1_790_924_400_000.5}
         ] do
       test "returns a schema mismatch for #{name}" do
         data = data("vehicles_for_agency")
@@ -433,6 +439,17 @@ defmodule Gobusgo.OneBusAway.VehiclesTest do
                {:error,
                 {:schema_mismatch,
                  %{path: ["list", 0, "tripStatus", "position"], expected: :required}}}
+    end
+
+    test "returns a schema mismatch for a trip status without a service date" do
+      data = data("vehicles_for_agency")
+      path = ["tripStatus", "serviceDate"]
+      list = List.update_at(data["list"], 0, &(pop_in(&1, path) |> elem(1)))
+
+      assert Vehicles.parse(Map.put(data, "list", list)) ==
+               {:error,
+                {:schema_mismatch,
+                 %{path: ["list", 0, "tripStatus", "serviceDate"], expected: :required}}}
     end
 
     test "returns a schema mismatch for data that is not a map" do

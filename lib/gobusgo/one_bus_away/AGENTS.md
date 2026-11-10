@@ -153,7 +153,7 @@ A new source needs no change here: its requests reach the gate through the clien
 
 `GET /api/where/vehicles-for-agency/<agency id>.json?key=<key>`. The agency identifier is the only documented parameter besides `key`, and the requester percent-encodes it into the path. The method is unpaginated and documents `data.limitExceeded` as "results were truncated", so the requester asserts it is `false`.
 
-`Gobusgo.OneBusAway.Vehicles.fetch_response/2` takes the agency in its `:agency_id` option and returns the vehicles together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. `Gobusgo.OneBusAway.Vehicles.parse/1` is the pure function from `data` to the vehicles, in the form `Gobusgo.OneBusAway.VehicleBatch.Records` publishes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:vehicle_count_exceeded, count}` above 5,000, `{:invalid_vehicle, index}` for an empty identifier or a time before zero, or `{:duplicate_vehicle, id}`. The requester raises on those values.
+`Gobusgo.OneBusAway.Vehicles.fetch_response/2` takes the agency in its `:agency_id` option and returns the vehicles together with the whole decoded envelope, the agency, the HTTP status, the method, the host, and the fetch time, with the same key hygiene and errors as the agency requester. `Gobusgo.OneBusAway.Vehicles.parse/1` is the pure function from `data` to the vehicles, in the form `Gobusgo.OneBusAway.VehicleBatch.Records` publishes. It returns a contract violation as a value: `{:schema_mismatch, mismatch}`, `{:vehicle_count_exceeded, count}` above 5,000, `{:invalid_vehicle, index}` for an empty identifier or for a time or service date before zero, or `{:duplicate_vehicle, id}`. The requester raises on those values.
 
 Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096 vehicles, the largest fetch King County Metro's 1,885, `limitExceeded` `false` throughout):
 
@@ -163,9 +163,9 @@ Shape of the live response, observed on 2026-10-02 across all 12 agencies (3,096
 | `location` | On the vehicle | Exactly when `lastLocationUpdateTime` is not `0`, with or without a trip |
 | `tripStatus` | On the vehicle | Only when the vehicle serves a trip; the key is absent otherwise, never `null` |
 | `activeTripId`, `position`, `orientation`, `lastKnownOrientation`, `predicted`, `lastUpdateTime`, `lastLocationUpdateTime`, `serviceDate`, `scheduleDeviation`, stop and distance fields | In `tripStatus` | Always within a trip status |
-| `lastKnownLocation` | In `tripStatus` | Exactly when the vehicle carries `location`, with the same value |
+| `lastKnownLocation` | In `tripStatus` | Exactly when the vehicle carries `location`; the same value in 173,874 of 174,774 stored trip statuses of 2026-10-05 to 2026-11-09, and a newer report in the other 900, with a later `lastLocationUpdateTime` in the trip status than on the vehicle |
 
-The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, `predicted`, `scheduleDeviation`, `nextStop`, and `nextStopTimeOffset` come from `tripStatus` and are `null` without one; the two times come from the vehicle, and the trip status repeats them with the same values. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `outOfRange`, and its `references` beyond the trips, the routes, and the situations, are kept in the envelope and not read; the situations are read as the section on situations below says.
+The mapping to the published vehicle follows from that table: `lastKnownLocation` comes from the vehicle's `location`, so a vehicle without a trip keeps its last report; `position`, `orientation`, `lastKnownOrientation`, `activeTripId`, `predicted`, `scheduleDeviation`, `nextStop`, `nextStopTimeOffset`, and `serviceDate` come from `tripStatus` and are `null` without one; the two times come from the vehicle, so the last report's location and time come from one report. `predicted` was `true` for every trip status, including trips whose vehicle had reported no location, and `lastKnownOrientation` was `0` for every vehicle without a reported location. A vehicle with only schedule data carries a block-derived identifier such as `40_H:121:0:Weekday:1:26SEP:52043:12345`; identifiers are opaque and never parsed. The response's `outOfRange`, and its `references` beyond the trips, the routes, and the situations, are kept in the envelope and not read; the situations are read as the section on situations below says.
 
 Orientation values, observed on 2026-10-05 in the newest stored response of each of the 12 agencies (1,635 vehicles, 817 with a trip status). The documentation gives `orientation` as degrees with 0 east, 90 north, 180 west, and 270 south (trip status element, checked 2026-10-04).
 
@@ -486,6 +486,8 @@ A tombstone is the vehicle's key with an empty value and no headers, built by `V
 
 The trip status element documents `position` as the real-time position when one is available and the scheduled position otherwise, `lastKnownLocation` as the last reported position, and `lastUpdateTime` and `lastLocationUpdateTime` as milliseconds since the Unix epoch with zero for "none received". Where each sits in the live response is in the table above.
 
+The trip status element documents `serviceDate` as "time, in ms since the unix epoch, of midnight for start of the service date for the trip" (<https://developer.onebusaway.org/api/where/elements/trip-status> — checked 2026-11-09). Every one of 228,621 trip statuses in the 3,480 stored responses of 2026-10-05 to 2026-11-09 held it as an integer, each a midnight in America/Los_Angeles; the requester's schema requires it in a trip status, and reads one before zero as an invalid vehicle.
+
 `Gobusgo.OneBusAway.VehicleBatch.Records.build/1` takes the vehicles one request for one agency returned and builds the records; `decode/1` reads one back and returns a rule it breaks as a value. Both are pure.
 
 | Record | Topic | Key | `type` |
@@ -519,8 +521,9 @@ The trip status element documents `position` as the real-time position when one 
 | `scheduleDeviationSeconds` | How far the vehicle is from its trip's schedule, in whole seconds; positive is late, negative early |
 | `nextStopId` | The stop the vehicle reaches next on its trip |
 | `nextStopTimeOffsetSeconds` | The time from the vehicle's position to that stop among the trip's stop times, in whole seconds, as of the fetch |
+| `serviceDateMs` | The start of the service date of the vehicle's trip, milliseconds since the Unix epoch: the local midnight the trip's scheduled times count from |
 
-The state topic also holds vehicle records that lack the keys of the last three fields, or of those and the four route fields; `Records.decode/1` returns each missing key as `null`, so a view holds every field for every vehicle.
+The state topic also holds vehicle records that lack the key of `serviceDateMs`, or of the last four fields, or of those and the four route fields; `Records.decode/1` returns each missing key as `null`, so a view holds every field for every vehicle.
 
 The source's update times are kept apart from `fetchedAt`, which is when Gobusgo made the request.
 

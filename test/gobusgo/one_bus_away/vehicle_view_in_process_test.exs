@@ -45,7 +45,8 @@ defmodule Gobusgo.OneBusAway.VehicleViewInProcessTest do
             predicted: nil,
             schedule_deviation_seconds: nil,
             next_stop_id: nil,
-            next_stop_time_offset_seconds: nil
+            next_stop_time_offset_seconds: nil,
+            service_date_ms: nil
           }
         ]
       })

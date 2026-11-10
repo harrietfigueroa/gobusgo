@@ -52,6 +52,15 @@ defmodule GobusgoWeb.VehicleMarkers do
   orientation is never read, because it goes with the last reported
   location and no marker stands there.
 
+  A marker's report is the last location the vehicle reported and its time,
+  which a page predicts the vehicle's position from between fetches. It is
+  given whatever the status, and is `nil` for a vehicle with no location
+  supplied, no report time supplied, or the source's `0` for "never". A
+  marker's trip is the trip the vehicle serves, and its service date the
+  start of that trip's service date in milliseconds since the Unix epoch,
+  the local midnight the trip's scheduled times count from; both are `nil`
+  for a vehicle that serves no trip.
+
   A marker's route is the name `route_name/1` gives its vehicle, and its
   headsign is the destination the vehicle's trip shows to riders. Either is
   `nil` when the vehicle has none.
@@ -86,6 +95,12 @@ defmodule GobusgoWeb.VehicleMarkers do
         }
 
   @typedoc """
+  The last location a vehicle reported, and its time in milliseconds since
+  the Unix epoch.
+  """
+  @type report :: %{lat: number(), lon: number(), time_ms: pos_integer()}
+
+  @typedoc """
   One vehicle on the map. `color` is the CSS color it is drawn in. `heading`
   is in degrees clockwise from north, at
   least 0 and below #{@degrees_per_turn}, or `nil` for a vehicle with no
@@ -95,6 +110,8 @@ defmodule GobusgoWeb.VehicleMarkers do
   for the vehicle's lateness and for the stop it reaches next.
   `route_id` is the route of the vehicle's trip, which the page's other
   data about the route is keyed by.
+  `report`, `trip_id`, and `service_date_ms` are what a page predicts the
+  vehicle's position from.
   """
   @type marker :: %{
           id: String.t(),
@@ -110,11 +127,16 @@ defmodule GobusgoWeb.VehicleMarkers do
           next_stop: String.t() | nil,
           status: status(),
           location_age: String.t(),
-          real_time: String.t()
+          real_time: String.t(),
+          report: report() | nil,
+          trip_id: String.t() | nil,
+          service_date_ms: non_neg_integer() | nil
         }
 
+  @typedoc "`fetched_at_ms` is the fetch time in milliseconds since the Unix epoch."
   @type t :: %{
           agency_id: String.t(),
+          fetched_at_ms: integer(),
           markers: [marker()],
           position_missing_count: non_neg_integer()
         }
@@ -213,7 +235,12 @@ defmodule GobusgoWeb.VehicleMarkers do
     position_missing_count = length(placed) - length(markers)
     Assert.condition(position_missing_count >= 0, "markers must come from the fetch's vehicles")
 
-    %{agency_id: agency_id, markers: markers, position_missing_count: position_missing_count}
+    %{
+      agency_id: agency_id,
+      fetched_at_ms: fetched_at_ms,
+      markers: markers,
+      position_missing_count: position_missing_count
+    }
   end
 
   @doc """
@@ -265,8 +292,22 @@ defmodule GobusgoWeb.VehicleMarkers do
       next_stop: marker_next_stop(%{vehicle: vehicle, stop_names: stop_names, status: status}),
       status: status,
       location_age: location_age(report),
-      real_time: yes_no(vehicle["predicted"])
+      real_time: yes_no(vehicle["predicted"]),
+      report: last_report(vehicle["lastKnownLocation"], vehicle["lastLocationUpdateTimeMs"]),
+      trip_id: vehicle["activeTripId"],
+      service_date_ms: vehicle["serviceDateMs"]
     }
+  end
+
+  # The source's `0` for "never" is no report, whatever location it holds.
+  defp last_report(nil, _report_time_ms), do: nil
+  defp last_report(_location, nil), do: nil
+  defp last_report(_location, 0), do: nil
+
+  defp last_report(%{"lat" => lat, "lon" => lon}, report_time_ms)
+       when is_integer(report_time_ms) do
+    Assert.condition(report_time_ms > 0, "report time must be positive, got: #{report_time_ms}")
+    %{lat: lat, lon: lon, time_ms: report_time_ms}
   end
 
   defp color(%{status: :scheduled}), do: @scheduled_color

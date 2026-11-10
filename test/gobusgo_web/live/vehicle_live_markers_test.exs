@@ -110,7 +110,8 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
         predicted: true,
         schedule_deviation_seconds: nil,
         next_stop_id: nil,
-        next_stop_time_offset_seconds: nil
+        next_stop_time_offset_seconds: nil,
+        service_date_ms: nil
       },
       fields
     )
@@ -250,6 +251,36 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
           %{vehicle_id: "1_b", route: nil, headsign: nil}
         ]
       })
+    end
+
+    test "is answered with the fetch time and each marker's last report, trip, and service date" do
+      report_time_ms = DateTime.to_unix(@fetched_at, :millisecond) - 64_000
+
+      reported =
+        vehicle("1_a", %{
+          active_trip_id: "1_15436438",
+          service_date_ms: 1_790_924_400_000,
+          last_known_location: %{lat: 47.65, lon: -122.33},
+          last_location_update_time_ms: report_time_ms
+        })
+
+      apply_fetch([reported], %{agency_id: "1", sequence: 0})
+      view = open_page()
+
+      ready(view)
+
+      assert_push_event(view, @event, %{
+        fetched_at_ms: fetched_at_ms,
+        markers: [
+          %{
+            report: %{lat: 47.65, lon: -122.33, time_ms: ^report_time_ms},
+            trip_id: "1_15436438",
+            service_date_ms: 1_790_924_400_000
+          }
+        ]
+      })
+
+      assert fetched_at_ms == DateTime.to_unix(@fetched_at, :millisecond)
     end
 
     test "is answered with nothing before any fetch is complete" do

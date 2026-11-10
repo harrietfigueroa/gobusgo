@@ -67,6 +67,9 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
     * `nextStopTimeOffsetSeconds`: the time from the vehicle's position to
       that stop among the trip's stop times, in whole seconds, as of the
       fetch.
+    * `serviceDateMs`: the start of the service date of the vehicle's trip,
+      in milliseconds since the Unix epoch, as the source gives it: the
+      local midnight that the trip's scheduled times count from.
 
   ## Manifest record
 
@@ -114,7 +117,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
           predicted: boolean() | nil,
           schedule_deviation_seconds: integer() | nil,
           next_stop_id: String.t() | nil,
-          next_stop_time_offset_seconds: integer() | nil
+          next_stop_time_offset_seconds: integer() | nil,
+          service_date_ms: non_neg_integer() | nil
         }
 
   @type fetch :: %{
@@ -157,9 +161,14 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
 
   @coordinate_fields ["lat", "lon"]
   @coordinates_fields ["position", "lastKnownLocation"]
-  @time_fields ["lastUpdateTimeMs", "lastLocationUpdateTimeMs"]
+  @time_fields ["lastUpdateTimeMs", "lastLocationUpdateTimeMs", "serviceDateMs"]
   @route_fields ["routeId", "routeShortName", "routeLongName", "tripHeadsign"]
-  @trip_time_fields ["scheduleDeviationSeconds", "nextStopId", "nextStopTimeOffsetSeconds"]
+  @trip_time_fields [
+    "scheduleDeviationSeconds",
+    "nextStopId",
+    "nextStopTimeOffsetSeconds",
+    "serviceDateMs"
+  ]
   @optional_fields @route_fields ++ @trip_time_fields
 
   @coordinates_schema {:nullable, {:map, %{"lat" => :number, "lon" => :number}}}
@@ -182,7 +191,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
                      "predicted" => {:nullable, :boolean},
                      "scheduleDeviationSeconds" => {:optional, {:nullable, :integer}},
                      "nextStopId" => {:optional, {:nullable, :string}},
-                     "nextStopTimeOffsetSeconds" => {:optional, {:nullable, :integer}}
+                     "nextStopTimeOffsetSeconds" => {:optional, {:nullable, :integer}},
+                     "serviceDateMs" => {:optional, {:nullable, :integer}}
                    }}
 
   @vehicle_fields @vehicle_schema |> elem(1) |> Map.keys()
@@ -331,7 +341,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
   end
 
   # The rules the schema cannot express: the identifiers are non-empty, a
-  # supplied time is zero or later, and a supplied next stop is non-empty.
+  # supplied time or service date is zero or later, and a supplied next stop
+  # is non-empty.
   defp valid_vehicle?(%{"id" => id, "agencyId" => agency_id} = vehicle) do
     if id != "" and agency_id != "" and vehicle["nextStopId"] != "" do
       Enum.all?(@time_fields, &time?(vehicle[&1]))
@@ -375,7 +386,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.Records do
       "predicted" => vehicle.predicted,
       "scheduleDeviationSeconds" => vehicle.schedule_deviation_seconds,
       "nextStopId" => vehicle.next_stop_id,
-      "nextStopTimeOffsetSeconds" => vehicle.next_stop_time_offset_seconds
+      "nextStopTimeOffsetSeconds" => vehicle.next_stop_time_offset_seconds,
+      "serviceDateMs" => vehicle.service_date_ms
     }
 
     Assert.schema(vehicle_data, @vehicle_schema)

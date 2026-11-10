@@ -172,7 +172,8 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
       predicted: true,
       schedule_deviation_seconds: deviation_seconds,
       next_stop_id: nil,
-      next_stop_time_offset_seconds: nil
+      next_stop_time_offset_seconds: nil,
+      service_date_ms: nil
     }
 
     %{vehicles: records, manifest: manifest} =

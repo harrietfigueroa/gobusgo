@@ -2,6 +2,9 @@ defmodule Gobusgo.Test.VehiclePageMemory do
   @fetch_interval_seconds 5
   @report_age_ms 20_000
   @first_fetched_at ~U[2026-10-05 00:40:44Z]
+  # The start of the service date of the trips running at the first fetch,
+  # 2026-10-04 in America/Los_Angeles.
+  @service_date_ms 1_791_097_200_000
 
   # The vehicles each agency returned in the fetch cycle stored at
   # 2026-10-05T00:40:44Z, a Sunday evening in the service area.
@@ -377,7 +380,8 @@ defmodule Gobusgo.Test.VehiclePageMemory do
       predicted: true,
       schedule_deviation_seconds: rem(index, @deviation_seconds_span),
       next_stop_id: "#{agency_id}_0_#{rem(index, @route_stop_count)}",
-      next_stop_time_offset_seconds: rem(index, @offset_seconds_span)
+      next_stop_time_offset_seconds: rem(index, @offset_seconds_span),
+      service_date_ms: @service_date_ms
     }
   end
 end
