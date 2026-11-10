@@ -80,8 +80,8 @@ export class SpriteCache {
     return made
   }
 
-  dot({color, opacity, strokeColor}) {
-    const key = ["dot", color, opacity, strokeColor].join(KEY_SEPARATOR)
+  dot({color, opacity, strokeColor, strokeOpacity}) {
+    const key = ["dot", color, opacity, strokeColor, strokeOpacity].join(KEY_SEPARATOR)
 
     return this.cached({
       key,
@@ -89,8 +89,7 @@ export class SpriteCache {
         const size = ROUND_SIZE_PIXELS
         const image = spriteCanvas({width: size, height: size, ratio: this.ratio})
         const center = size / HALVING_DIVISOR
-        image.getContext("2d").globalAlpha = opacity
-        drawRoundMarker(image, {x: center, y: center, color, strokeColor})
+        drawRoundMarker(image, {x: center, y: center, color, fillOpacity: opacity, strokeColor, strokeOpacity})
         return {image, width: size, height: size}
       }
     })
