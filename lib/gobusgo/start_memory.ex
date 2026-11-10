@@ -5,8 +5,10 @@ defmodule Gobusgo.StartMemory do
   # with the segment cache off, and at 916 to 1,019 MiB in three with the
   # VM's default cache (GOB-283). With the default cache and the snapshot
   # build reading one schedule at a time, it peaked at 513 to 535 MiB in
-  # six (GOB-279).
-  @anon_mib_max 600
+  # six (GOB-279). Local runs of one start vary by about 150 MiB, so the
+  # limit stands about 165 MiB above those peaks and more than 200 MiB
+  # under the default cache's (GOB-341).
+  @anon_mib_max 700
   @bytes_per_mib 1024 * 1024
 
   @moduledoc """
