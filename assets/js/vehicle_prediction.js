@@ -10,9 +10,9 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {glidePosition, glides} from "./marker_glide.js"
-import {METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, tangentPlane} from "./math/geodesy.js"
+import {LAT, LON, METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, tangentPlane} from "./math/geodesy.js"
 import {clamp, lerp} from "./math/interpolation.js"
-import {nearestAlong, segmentIndexAt} from "./math/polyline.js"
+import {COORDINATES_PER_POINT, POINT_X, POINT_Y, nearestAlong, segmentIndexAt} from "./math/polyline.js"
 
 /** The most points a path holds. */
 export const PATH_POINT_COUNT_MAX = 20000
@@ -110,11 +110,12 @@ export function preparePath({tripId, serviceDateMs, points, stops}) {
   // Projection works in meters on a plane tangent at the first point, whose
   // scale is asserted over the path's latitudes; distances along the path
   // are great-circle distances, the measure its stops are given in.
-  const [, latOrigin] = points[0]
+  const latOrigin = points[0][LAT]
   const plane = tangentPlane({referenceLatitudeDegrees: latOrigin})
   const {metersPerDegreeLon} = plane
   const xs = new Float64Array(points.length)
   const ys = new Float64Array(points.length)
+  const coordinates = new Float64Array(points.length * COORDINATES_PER_POINT)
   const cumulativeMeters = new Float64Array(points.length)
   let latitudeDegreesMin = latOrigin
   let latitudeDegreesMax = latOrigin
@@ -122,10 +123,14 @@ export function preparePath({tripId, serviceDateMs, points, stops}) {
   for (let index = 0; index < points.length; index++) {
     const point = points[index]
     assertPosition(point, `path point ${index}`)
-    xs[index] = point[0] * metersPerDegreeLon
-    ys[index] = point[1] * METERS_PER_DEGREE
-    latitudeDegreesMin = Math.min(latitudeDegreesMin, point[1])
-    latitudeDegreesMax = Math.max(latitudeDegreesMax, point[1])
+    const lon = point[LON]
+    const lat = point[LAT]
+    xs[index] = lon * metersPerDegreeLon
+    ys[index] = lat * METERS_PER_DEGREE
+    coordinates[index * COORDINATES_PER_POINT + POINT_X] = lon
+    coordinates[index * COORDINATES_PER_POINT + POINT_Y] = lat
+    latitudeDegreesMin = Math.min(latitudeDegreesMin, lat)
+    latitudeDegreesMax = Math.max(latitudeDegreesMax, lat)
     if (index > 0) {
       cumulativeMeters[index] = cumulativeMeters[index - 1] + distanceMeters(points[index - 1], point)
     }
@@ -135,14 +140,14 @@ export function preparePath({tripId, serviceDateMs, points, stops}) {
   assertPlaneCovers({plane, latitudeDegreesMin, latitudeDegreesMax})
   assertStops({stops, lengthMeters})
 
-  return Object.freeze({tripId, serviceDateMs, points, stops, xs, ys, cumulativeMeters, lengthMeters, metersPerDegreeLon})
+  return Object.freeze({tripId, serviceDateMs, points, stops, xs, ys, coordinates, cumulativeMeters, lengthMeters, metersPerDegreeLon})
 }
 
 // The nearest point of the path at or after `distanceMetersMin`, as its
 // distance along the path and its distance from `position`.
 function project({path, position, distanceMetersMin}) {
-  const x = position[0] * path.metersPerDegreeLon
-  const y = position[1] * METERS_PER_DEGREE
+  const x = position[LON] * path.metersPerDegreeLon
+  const y = position[LAT] * METERS_PER_DEGREE
   const alongMin = distanceMetersMin - PROJECTION_SLACK_METERS
   const nearest = nearestAlong({xs: path.xs, ys: path.ys, cumulative: path.cumulativeMeters, x, y, alongMin})
   return {offsetMeters: nearest.offset, distanceMeters: nearest.along}
@@ -216,9 +221,11 @@ function positionAt({path, meters}) {
   if (segmentMeters > 0) {
     fraction = (along - path.cumulativeMeters[low]) / segmentMeters
   }
-  const [sourceLon, sourceLat] = path.points[low]
-  const [targetLon, targetLat] = path.points[high]
-  return [lerp({from: sourceLon, to: targetLon, fraction}), lerp({from: sourceLat, to: targetLat, fraction})]
+  const source = low * COORDINATES_PER_POINT
+  const target = high * COORDINATES_PER_POINT
+  const lon = lerp({from: path.coordinates[source + POINT_X], to: path.coordinates[target + POINT_X], fraction})
+  const lat = lerp({from: path.coordinates[source + POINT_Y], to: path.coordinates[target + POINT_Y], fraction})
+  return [lon, lat]
 }
 
 function atReport({kind, report}) {

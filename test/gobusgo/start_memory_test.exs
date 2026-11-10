@@ -66,6 +66,28 @@ defmodule Gobusgo.StartMemoryTest do
       assert verdict == {:failed, {:peak_exceeded, 901}}
     end
 
+    test "passes a built start whose peak is 700 MiB under the default limit" do
+      verdict =
+        StartMemory.verdict(%{
+          ending: :built,
+          peak_bytes: 700 * @mib,
+          anon_mib_max: StartMemory.anon_mib_max()
+        })
+
+      assert verdict == :passed
+    end
+
+    test "fails a built start whose peak is a byte past 700 MiB under the default limit" do
+      verdict =
+        StartMemory.verdict(%{
+          ending: :built,
+          peak_bytes: 700 * @mib + 1,
+          anon_mib_max: StartMemory.anon_mib_max()
+        })
+
+      assert verdict == {:failed, {:peak_exceeded, 701}}
+    end
+
     for ending <- [:out_of_memory, :deadline, {:exited, 1}, {:step_failed, :snapshots_failed}] do
       test "fails a start that ended with #{inspect(ending)}, whatever its peak" do
         assert StartMemory.verdict(%{ending: unquote(ending), peak_bytes: 0, anon_mib_max: 900}) ==

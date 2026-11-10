@@ -6,6 +6,15 @@
 import {assertOrdered} from "./checks.js"
 import {lerp} from "./interpolation.js"
 
+/** The index of a point's x coordinate in a line's interleaved coordinates. */
+export const POINT_X = 0
+
+/** The index of a point's y coordinate in a line's interleaved coordinates. */
+export const POINT_Y = 1
+
+/** The numbers a point takes in a line's interleaved coordinates. */
+export const COORDINATES_PER_POINT = 2
+
 // Halving a list of 2^53 points, more than any array holds, takes 53 steps.
 const HALVING_STEP_COUNT_MAX = 53
 const HALF = 2
@@ -85,25 +94,30 @@ export function segmentIndexAt({cumulative, along}) {
 
 // The [x, y] point `along` the line, inside the segment that starts at
 // `index`.
-function pointInSegment({points, cumulative, index, along}) {
+function pointInSegment({coordinates, cumulative, index, along}) {
   const segmentLength = cumulative[index + 1] - cumulative[index]
   let fraction = 0
   if (segmentLength > 0) {
     fraction = (along - cumulative[index]) / segmentLength
   }
-  const [sourceX, sourceY] = points[index]
-  const [targetX, targetY] = points[index + 1]
-  return [lerp({from: sourceX, to: targetX, fraction}), lerp({from: sourceY, to: targetY, fraction})]
+  const source = index * COORDINATES_PER_POINT
+  const target = source + COORDINATES_PER_POINT
+  const x = lerp({from: coordinates[source + POINT_X], to: coordinates[target + POINT_X], fraction})
+  const y = lerp({from: coordinates[source + POINT_Y], to: coordinates[target + POINT_Y], fraction})
+  return [x, y]
 }
 
 /**
- * The points of the line `points`, [x, y] pairs with the cumulative
- * distances `cumulative`, from `from` to `to` along it: the point at
+ * The points of the line `coordinates`, with the cumulative distances
+ * `cumulative`, from `from` to `to` along it, as [x, y] pairs: the point at
  * `from`, every point of the line strictly between the two, and the point
  * at `to`. Each distance is brought inside the line's ends first.
+ * `coordinates` interleaves the points' coordinates, `COORDINATES_PER_POINT`
+ * per point, x at `POINT_X` and y at `POINT_Y`.
  */
-export function pointsBetween({points, cumulative, from, to}) {
-  const pointCount = points.length
+export function pointsBetween({coordinates, cumulative, from, to}) {
+  const pointCount = Math.floor(coordinates.length / COORDINATES_PER_POINT)
+  assertOrdered({low: coordinates.length, high: pointCount * COORDINATES_PER_POINT, label: "polyline: the coordinates of whole points"})
   assertOrdered({low: HALF, high: pointCount, label: "polyline: the points of a line"})
   assertOrdered({low: pointCount, high: cumulative.length, label: "polyline: the distances of a line"})
   assertOrdered({low: from, high: to, label: "polyline: the distances between which points are taken"})
@@ -112,16 +126,17 @@ export function pointsBetween({points, cumulative, from, to}) {
   const end = Math.min(length, Math.max(0, to))
   const startIndex = segmentIndexAt({cumulative, along: start})
   const endIndex = segmentIndexAt({cumulative, along: end})
-  const between = [pointInSegment({points, cumulative, index: startIndex, along: start})]
+  const between = [pointInSegment({coordinates, cumulative, index: startIndex, along: start})]
 
   for (let index = startIndex + 1; index <= endIndex; index++) {
     const isAfterStart = cumulative[index] > start
     const isInside = isAfterStart && cumulative[index] < end
     if (isInside) {
-      between.push(points[index])
+      const offset = index * COORDINATES_PER_POINT
+      between.push([coordinates[offset + POINT_X], coordinates[offset + POINT_Y]])
     }
   }
 
-  between.push(pointInSegment({points, cumulative, index: endIndex, along: end}))
+  between.push(pointInSegment({coordinates, cumulative, index: endIndex, along: end}))
   return between
 }
