@@ -167,6 +167,28 @@
   border-radius: var(--surface-radius);
 }
 
+/* A pinch that starts on an element over the map leaves the page at its
+   scale: the panel sheet, the boxes in the surface style, the map's
+   controls, and its popups allow one-finger panning alone, so their
+   scrolling panels still scroll. A touch takes the touch-action of the
+   elements from its target up to its nearest scroll container and no
+   further (https://w3c.github.io/pointerevents/#determining-supported-touch-behavior
+   — checked 2026-11-10), so the rule names every descendant as well as
+   the element. `:where` keeps it at no specificity, so a drag handle's
+   `none` holds. */
+:where(
+  .panel-sheet,
+  .panel-sheet *,
+  .surface,
+  .surface *,
+  .maplibregl-ctrl,
+  .maplibregl-ctrl *,
+  .maplibregl-popup,
+  .maplibregl-popup *
+) {
+  touch-action: pan-x pan-y;
+}
+
 /* MapLibre draws a tip as a triangle of borders, which cannot carry an
    outline. Here a tip is a square with the popup's fill and two bordered
    sides, drawn over the popup's edge, so the popup's border runs around the
@@ -287,59 +309,10 @@
   }
 }
 
-/* A popup with a close button starts its content level with the button,
-   and its title leaves the button's width free. */
-.maplibregl-popup-content:has(> .maplibregl-popup-close-button) {
-  padding-top: var(--close-button-inset);
-}
-
-.popup-title {
-  display: flex;
-  align-items: center;
-  min-height: var(--close-button-size);
-  padding-right: calc(var(--close-button-size) + var(--close-button-inset));
-  font-weight: 600;
-}
-
-/* A stop's or a vehicle's callout is one button that shows its item in the
-   panel sheet's details view: a bold title, then a muted line or a row per
-   arrival, the route's chip, its headsign, and its time. */
-.map-callout-button {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  min-width: 160px;
-  border: 0;
-  background: none;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-}
-
-.map-callout-button:focus-visible {
-  outline: 2px solid var(--close-button-focus-color);
-  outline-offset: 2px;
-}
-
-.map-callout-title {
-  font-weight: 700;
-}
-
-.map-callout-detail {
-  color: var(--muted-text-color);
-}
-
-.map-callout-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 /* An arrival is a row of its route's chip, its headsign, and its time. A
    live time is bold with the live dot beside it; a scheduled one is plain,
    so the two differ by weight and mark as well as by color. In the stop
-   view and the Favorites tab each row is a card; in a callout it is a line. */
+   view and the Favorites tab each row is a card. */
 .arrival-rows {
   display: flex;
   flex-direction: column;

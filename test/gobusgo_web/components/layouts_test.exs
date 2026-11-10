@@ -85,17 +85,25 @@ defmodule GobusgoWeb.LayoutsTest do
            ]
   end
 
-  test "names a theme color for a light and for a dark color scheme" do
-    media = head(~s(meta[name="theme-color"])) |> LazyHTML.attribute("media")
+  test "names one theme color, for every color scheme" do
+    theme_colors = head(~s(meta[name="theme-color"]))
 
-    assert Enum.sort(media) == ["(prefers-color-scheme: dark)", "(prefers-color-scheme: light)"]
+    assert Enum.count(theme_colors) == 1
+    assert LazyHTML.attribute(theme_colors, "media") == []
   end
 
-  test "names the manifest's theme color for a light color scheme" do
-    manifest = "priv/static/manifest.webmanifest" |> File.read!() |> JSON.decode!()
-    light = head(~s{meta[name="theme-color"][media="(prefers-color-scheme: light)"]})
+  test "names the light theme's color before the script runs" do
+    %{"light" => light} = "assets/js/theme_colors.json" |> File.read!() |> JSON.decode!()
 
-    assert LazyHTML.attribute(light, "content") == [manifest["theme_color"]]
+    assert head(~s(meta[name="theme-color"])) |> LazyHTML.attribute("content") == [light]
+  end
+
+  test "sets the theme color of the resolved theme in the script, from the colors of the theme module" do
+    theme_colors = "assets/js/theme_colors.json" |> File.read!() |> JSON.decode!()
+    [script] = head("script:not([src])") |> Enum.map(&LazyHTML.text/1)
+
+    assert script =~ "var themeColors = #{JSON.encode!(theme_colors)};"
+    assert script =~ ~s{setAttribute("content", themeColors[theme])}
   end
 
   test "has a reload offer for a new release, hidden until the browser shows it" do

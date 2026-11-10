@@ -1,4 +1,5 @@
-// Checks the list of the vehicles and stops in view of the vehicle map as
+// Checks the list of the vehicles, stops, and shared vehicles in view of
+// the vehicle map as
 // pure functions of values written out by hand: which items it holds, in
 // what order, the text of each option, and how the keys move the active
 // option. Run it with `node test/scripts/map_items_check.mjs`; it exits
@@ -18,21 +19,25 @@ const pine = {id: "1_431", name: "Pine St & 3rd Ave", direction: "W", routes: "E
 const unnamed = {id: "1_999", name: undefined, direction: undefined, routes: "", x: 500, y: 500}
 // As far from the middle as `rapid`, on the other side.
 const tied = {id: "1_432", name: "3rd Ave & Pike St", direction: "S", routes: "C Line", x: 90, y: 100}
+// As far from the middle as `rapid` and `tied`.
+const lime = {id: "scooter@-122.3,47.6", formLabel: "Scooter", operatorName: "Lime", x: 100, y: 90}
+const unnamedOperator = {id: "bicycle@-122.4,47.7", formLabel: "Bike", operatorName: "", x: 100, y: 700}
 
 const VEHICLE_TEXT = "Vehicle, E Line to Aurora Village"
 const PINE_TEXT = "Stop, Pine St & 3rd Ave, W, routes E Line, 36"
 const TIED_TEXT = "Stop, 3rd Ave & Pike St, S, routes C Line"
 const ROUTE_ONLY_TEXT = "Vehicle, 36"
+const LIME_TEXT = "Scooter, Lime"
 
 function item({kind, id, text}) {
   return {kind, id, text}
 }
 
 const listCases = [
-  {name: "nothing in view", view: {vehicles: [], stops: []}, expected: {items: [], restCount: 0}},
+  {name: "nothing in view", view: {vehicles: [], stops: [], sharedVehicles: []}, expected: {items: [], restCount: 0}},
   {
     name: "nearest the middle first",
-    view: {vehicles: [rapid, routeOnly], stops: [pine]},
+    view: {vehicles: [rapid, routeOnly], stops: [pine], sharedVehicles: []},
     expected: {
       items: [
         item({kind: MapItemKind.stop, id: pine.id, text: PINE_TEXT}),
@@ -44,7 +49,7 @@ const listCases = [
   },
   {
     name: "a vehicle before a stop as near",
-    view: {vehicles: [rapid], stops: [tied]},
+    view: {vehicles: [rapid], stops: [tied], sharedVehicles: []},
     expected: {
       items: [
         item({kind: MapItemKind.vehicle, id: rapid.id, text: VEHICLE_TEXT}),
@@ -55,14 +60,26 @@ const listCases = [
   },
   {
     name: "the nearest items up to the count, and the count of the rest",
-    view: {vehicles: [nameless, rapid, routeOnly, scheduled], stops: [pine, unnamed]},
+    view: {vehicles: [nameless, rapid, routeOnly, scheduled], stops: [pine, unnamed], sharedVehicles: [unnamedOperator]},
     expected: {
       items: [
         item({kind: MapItemKind.stop, id: pine.id, text: PINE_TEXT}),
         item({kind: MapItemKind.vehicle, id: rapid.id, text: VEHICLE_TEXT}),
         item({kind: MapItemKind.vehicle, id: routeOnly.id, text: ROUTE_ONLY_TEXT})
       ],
-      restCount: 3
+      restCount: 4
+    }
+  },
+  {
+    name: "a vehicle, then a stop, then a shared vehicle as near",
+    view: {vehicles: [rapid], stops: [tied], sharedVehicles: [lime]},
+    expected: {
+      items: [
+        item({kind: MapItemKind.vehicle, id: rapid.id, text: VEHICLE_TEXT}),
+        item({kind: MapItemKind.stop, id: tied.id, text: TIED_TEXT}),
+        item({kind: MapItemKind.sharedVehicle, id: lime.id, text: LIME_TEXT})
+      ],
+      restCount: 0
     }
   }
 ]
@@ -72,9 +89,10 @@ for (const {name, view, expected} of listCases) {
 }
 
 const textCases = [
-  {name: "a vehicle with no route or headsign", view: {vehicles: [nameless], stops: []}, expected: "Vehicle 1_7002"},
-  {name: "a scheduled trip with a route", view: {vehicles: [scheduled], stops: []}, expected: "Vehicle, E Line"},
-  {name: "a stop with no name", view: {vehicles: [], stops: [unnamed]}, expected: "Stop 1_999"}
+  {name: "a vehicle with no route or headsign", view: {vehicles: [nameless], stops: [], sharedVehicles: []}, expected: "Vehicle 1_7002"},
+  {name: "a scheduled trip with a route", view: {vehicles: [scheduled], stops: [], sharedVehicles: []}, expected: "Vehicle, E Line"},
+  {name: "a stop with no name", view: {vehicles: [], stops: [unnamed], sharedVehicles: []}, expected: "Stop 1_999"},
+  {name: "a shared vehicle with no operator", view: {vehicles: [], stops: [], sharedVehicles: [unnamedOperator]}, expected: "Bike"}
 ]
 
 for (const {name, view, expected} of textCases) {
@@ -82,7 +100,7 @@ for (const {name, view, expected} of textCases) {
   deepStrictEqual(items[0].text, expected, name)
 }
 
-const zeroCount = {vehicles: [], stops: [], center, countMax: 0}
+const zeroCount = {vehicles: [], stops: [], sharedVehicles: [], center, countMax: 0}
 
 function zeroCountList() {
   return itemsInView(zeroCount)

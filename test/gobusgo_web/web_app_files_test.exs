@@ -51,6 +51,12 @@ defmodule GobusgoWeb.WebAppFilesTest do
                manifest()
     end
 
+    test "launches on the dark theme's page color" do
+      %{"dark" => dark} = "assets/js/theme_colors.json" |> File.read!() |> JSON.decode!()
+
+      assert manifest()["background_color"] == dark
+    end
+
     for size <- ["192x192", "512x512"] do
       test "names an icon of #{size}" do
         icons = manifest()["icons"]

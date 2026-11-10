@@ -1,7 +1,11 @@
 // The page's color theme as pure functions: the rider's setting, the theme
 // it resolves to on a system that prefers dark or light, the basemap flavor
-// and sprites a theme draws, and the colors of the layers the hooks add to
-// the map. Nothing here reads storage, a media query, or the document.
+// and sprites a theme draws, the color the browser draws its own bars in,
+// and the colors of the layers the hooks add to the map. Nothing here reads
+// storage, a media query, or the document. The bars' colors come from the
+// imported JSON file, which code outside the bundle can read as well.
+
+import themeColors from "./theme_colors.json" with {type: "json"}
 
 /** The rider's choices: a theme of its own, or the one the system prefers. */
 export const ThemeSetting = Object.freeze({light: "light", dark: "dark", system: "system"})
@@ -89,6 +93,19 @@ export function flavorName(theme) {
     return "dark"
   } else {
     return "light"
+  }
+}
+
+/**
+ * The color of the `theme-color` meta element for a page drawn in `theme`:
+ * the theme's page background, which the browser draws its status bar and
+ * overscroll in.
+ */
+export function themeColor(theme) {
+  if (theme === Theme.dark) {
+    return themeColors.dark
+  } else {
+    return themeColors.light
   }
 }
 

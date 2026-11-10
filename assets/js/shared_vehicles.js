@@ -3,12 +3,18 @@ import {currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
 import {pageEvents} from "./page_events"
-import {openCallout} from "./map_callout"
+import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
+import {CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME, DetailKind, showDetail, showsDetail} from "./panel_detail"
+import {revealOnMap} from "./panel_sheet"
+import {selectionHaloPaint, selectionRingPaint} from "./selection_mark"
+import {sharedVehicleKey, sharedVehicleViewText} from "./shared_vehicle_view_text"
 import {DecodeKind, decodeBlock, fileUrl, readIndex} from "./shared_vehicle_format"
 import {ViewKind, namesToFetch, tilesInView} from "./shared_vehicle_tiles"
 import {MARK_SIZE_PIXELS, drawSharedVehicle, sharedVehicleImageName} from "./status_badges"
 import {storedSettings} from "./stored_settings"
 import {MARKER_LAYER_NAME as STOP_LAYER_NAME} from "./stop_markers"
+import {markerLayerNames as vehicleLayerNames} from "./vehicle_markers"
+import {HitKind, overlayHitAt} from "./vehicle_overlay"
 import {mapColors} from "./theme"
 
 // The shared scooter and bike layer of the vehicle page. The server names
@@ -28,12 +34,18 @@ const FETCH_TIMEOUT_MS = 15_000
 const TILE_CACHE_COUNT_MAX = 256
 const IMAGE_PIXEL_RATIO = 2
 const FALLBACK_FORM_FACTOR = "other"
-const METERS_PER_KILOMETER = 1000
-const MS_PER_MINUTE = 60_000
 const COMPRESSION_FORMAT = "gzip"
-const POPUP_TITLE_CLASS_NAME = "popup-title"
-// The kind of item a shared vehicle's callout is of, which no details view shows.
-const SHARED_VEHICLE_ITEM_KIND = "shared-vehicle"
+// The layer a shared vehicle's marker is drawn in.
+export const SHARED_VEHICLE_LAYER_NAME = LAYER_NAME
+// The shared vehicle the details view shows is marked from a source of its
+// own, at the point it was chosen at.
+const SELECTED_SOURCE_NAME = "shared-vehicle-selected"
+const SELECTED_HALO_LAYER_NAME = "shared-vehicle-selected-halo"
+const SELECTED_RING_LAYER_NAME = "shared-vehicle-selected-ring"
+const HALVING_DIVISOR = 2
+const MARK_RADIUS_PIXELS = MARK_SIZE_PIXELS / HALVING_DIVISOR
+const CAPTION_CLASS_NAME = "panel-detail-caption"
+const ROWS_CLASS_NAME = "panel-detail-rows"
 
 /** The kinds of a file read from the static path. */
 const ReadKind = Object.freeze({read: "read", failed: "failed"})
@@ -117,37 +129,70 @@ function formLabelEntry({form_factor: formFactor, label}) {
   return [formFactor, label]
 }
 
-function rangeText(rangeMeters) {
-  if (typeof rangeMeters === "number") {
-    const kilometers = rangeMeters / METERS_PER_KILOMETER
-    return `Range left: ${kilometers.toFixed(1)} km`
-  } else {
-    return "Range left: not published"
+// The label of `formFactor`, or the label of the kind the layer draws an
+// unknown one as.
+function formLabelOf({formLabels, formFactor}) {
+  const label = formLabels.get(formFactor)
+
+  if (label === undefined) {
+    return formLabels.get(FALLBACK_FORM_FACTOR)
   }
+
+  return label
 }
 
-function seenText({operatorName, fetchedAtMs}) {
-  const minutes = Math.floor((Date.now() - fetchedAtMs) / MS_PER_MINUTE)
+// A shared vehicle's view is built as text nodes: the operator's name comes
+// from outside the application and is never parsed as HTML. Its rows stand
+// under the title, and the note on where the data comes from under them.
+function sharedVehicleViewContent(text) {
+  const rows = document.createElement("dl")
+  rows.className = ROWS_CLASS_NAME
 
-  if (minutes < 1) {
-    return `${operatorName}, seen under a minute ago`
-  } else {
-    return `${operatorName}, seen ${minutes} min ago`
+  for (const {key, value} of text.rows) {
+    const row = document.createElement("div")
+    const term = document.createElement("dt")
+    term.textContent = key
+    const definition = document.createElement("dd")
+    definition.textContent = value
+    row.append(term, definition)
+    rows.append(row)
   }
-}
 
-// A vehicle's popup is built as text nodes from the feature's properties.
-function popupContent({properties, formLabels}) {
+  const note = document.createElement("p")
+  note.className = CAPTION_CLASS_NAME
+  note.textContent = text.note
   const content = document.createElement("div")
-  const title = document.createElement("p")
-  title.className = POPUP_TITLE_CLASS_NAME
-  title.textContent = formLabels.get(properties.formFactor)
-  const range = document.createElement("p")
-  range.textContent = rangeText(properties.rangeMeters)
-  const seen = document.createElement("p")
-  seen.textContent = seenText(properties)
-  content.append(title, range, seen)
+  content.append(rows, note)
   return content
+}
+
+// Whether a stop or a vehicle stands at `point` on the screen of `map`,
+// on the canvas over the map or in the layers drawn over the shared
+// vehicles.
+function isTransitItemAt({map, point}) {
+  if (overlayHitAt({map, point}).kind === HitKind.found) {
+    return true
+  }
+
+  const layerNames = [STOP_LAYER_NAME, ...vehicleLayerNames]
+  const layers = layerNames.filter((layerName) => map.getLayer(layerName) !== undefined)
+
+  if (layers.length === 0) {
+    return false
+  }
+
+  return map.queryRenderedFeatures(point, {layers}).length > 0
+}
+
+// The collection the selected shared vehicle's source draws: its point, or nothing.
+function selectedCollection(coordinates) {
+  const features = []
+
+  if (coordinates !== null) {
+    features.push({type: "Feature", geometry: {type: "Point", coordinates}, properties: {}})
+  }
+
+  return {type: "FeatureCollection", features}
 }
 
 function isHeldNone() {
@@ -160,11 +205,13 @@ function boundsOf(map) {
   return {west: bounds.getWest(), south: bounds.getSouth(), east: bounds.getEast(), north: bounds.getNorth()}
 }
 
-function vehicleFeature({vehicle, operatorName, fetchedAtMs}) {
+function vehicleFeature({vehicle, formLabel, operatorName, fetchedAtMs}) {
+  const vehicleKey = sharedVehicleKey(vehicle)
+
   return {
     type: "Feature",
     geometry: {type: "Point", coordinates: [vehicle.lon, vehicle.lat]},
-    properties: {formFactor: vehicle.formFactor, rangeMeters: vehicle.rangeMeters, operatorName, fetchedAtMs}
+    properties: {vehicleKey, formFactor: vehicle.formFactor, formLabel, rangeMeters: vehicle.rangeMeters, operatorName, fetchedAtMs}
   }
 }
 
@@ -180,7 +227,9 @@ export const SharedVehicles = {
     const labelEntries = Array.from(this.formColors, formLabelEntry)
     this.formLabels = new Map(labelEntries)
     this.map = null
-    this.maplibre = null
+    // The key of the shared vehicle the details view shows and the point it
+    // was chosen at, or null while the view shows none.
+    this.selected = null
     this.indexesText = dataset.indexes
     // The index of each shown system, once read, by its address.
     this.indexes = new Map()
@@ -190,9 +239,9 @@ export const SharedVehicles = {
     this.generation = 0
 
     this.onBasemapReady = (event) => {
-      const {map, maplibre} = event.detail
+      const {map} = event.detail
       this.map = null
-      map.once("load", () => { this.attach(map, maplibre) })
+      map.once("load", () => { this.attach(map) })
     }
 
     this.onRestyled = (event) => {
@@ -203,9 +252,31 @@ export const SharedVehicles = {
 
     this.onConnectionChange = () => { this.followConnection() }
 
+    // The view moving to another item, or closing, unmarks the shared vehicle.
+    this.onDetailChange = () => {
+      const isViewLeft = this.selected !== null && showsDetail({kind: DetailKind.sharedVehicle, id: this.selected.key}) === false
+
+      if (isViewLeft) {
+        this.selected = null
+        this.markSelected()
+      }
+    }
+
+    // The list of what is in view opens a shared vehicle as a tap on it does.
+    this.onItemOpen = (event) => {
+      const {kind, feature} = event.detail
+      const isSharedVehicle = kind === MapItemKind.sharedVehicle && this.map !== null
+
+      if (isSharedVehicle) {
+        this.selectVehicle(feature)
+      }
+    }
+
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
   },
 
   followConnection() {
@@ -225,13 +296,17 @@ export const SharedVehicles = {
     }
   },
 
-  attach(map, maplibre) {
+  attach(map) {
     this.map = map
-    this.maplibre = maplibre
     this.addLayer(map)
 
     // A map keeps the listeners of a layer while the layer is added again.
-    map.on("click", LAYER_NAME, (event) => { this.openPopup(event) })
+    // A stop or a vehicle drawn over the shared vehicle takes the tap.
+    map.on("click", LAYER_NAME, (event) => {
+      if (!isTransitItemAt({map, point: event.point})) {
+        this.selectVehicle(event.features[0])
+      }
+    })
     const canvas = map.getCanvas()
     map.on("mouseenter", LAYER_NAME, () => { canvas.style.cursor = "pointer" })
     map.on("mouseleave", LAYER_NAME, () => { canvas.style.cursor = "" })
@@ -283,6 +358,48 @@ export const SharedVehicles = {
         "icon-ignore-placement": true
       }
     }, beforeId)
+
+    this.addSelectedMark(map)
+  },
+
+  // Adds the source and the layers that mark the shared vehicle the details
+  // view shows, a halo and a ring around its marker, under the stops.
+  addSelectedMark(map) {
+    let coordinates = null
+
+    if (this.selected !== null) {
+      coordinates = this.selected.coordinates
+    }
+
+    map.addSource(SELECTED_SOURCE_NAME, {type: "geojson", data: selectedCollection(coordinates)})
+    map.addLayer({id: SELECTED_HALO_LAYER_NAME, type: "circle", source: SELECTED_SOURCE_NAME, paint: selectionHaloPaint(MARK_RADIUS_PIXELS)}, LAYER_NAME)
+    let beforeId
+
+    if (map.getLayer(STOP_LAYER_NAME) !== undefined) {
+      beforeId = STOP_LAYER_NAME
+    }
+
+    map.addLayer({id: SELECTED_RING_LAYER_NAME, type: "circle", source: SELECTED_SOURCE_NAME, paint: selectionRingPaint(MARK_RADIUS_PIXELS)}, beforeId)
+  },
+
+  // Marks the shared vehicle the view shows, and unmarks every other.
+  // A map whose style is being set anew has no source, and adds the mark
+  // with the shared vehicle the view shows then.
+  markSelected() {
+    if (this.map === null) {
+      return
+    }
+
+    const source = this.map.getSource(SELECTED_SOURCE_NAME)
+    let coordinates = null
+
+    if (this.selected !== null) {
+      coordinates = this.selected.coordinates
+    }
+
+    if (source !== undefined) {
+      source.setData(selectedCollection(coordinates))
+    }
   },
 
   // Reads what the view needs of the shown indexes, then draws it. A
@@ -420,7 +537,8 @@ export const SharedVehicles = {
         // A tile whose read failed is left out until the next refresh.
         if (vehicles !== undefined) {
           for (const vehicle of vehicles) {
-            features.push(vehicleFeature({vehicle, operatorName: entry.operator_name, fetchedAtMs}))
+            const formLabel = formLabelOf({formLabels: this.formLabels, formFactor: vehicle.formFactor})
+            features.push(vehicleFeature({vehicle, formLabel, operatorName: entry.operator_name, fetchedAtMs}))
           }
         }
       }
@@ -458,27 +576,32 @@ export const SharedVehicles = {
     }
   },
 
-  // Opens the callout of the shared vehicle of the tapped feature, in place
-  // of any callout. The details view shows no shared vehicle, so its
-  // callout has a close button of its own.
-  openPopup(event) {
-    const [feature] = event.features
-    const content = popupContent({properties: feature.properties, formLabels: this.formLabels})
-
-    openCallout({
-      map: this.map,
-      maplibre: this.maplibre,
-      lngLat: feature.geometry.coordinates,
-      content,
-      item: {kind: SHARED_VEHICLE_ITEM_KIND, id: feature.id},
-      closeButton: true
+  // Selects the shared vehicle of `feature`, a feature of the layer: shows
+  // it in the details view, marks it, and moves the map so it stands beside
+  // the sheet. The age of its fetch is written as of the selection.
+  selectVehicle(feature) {
+    const {properties} = feature
+    const coordinates = feature.geometry.coordinates
+    const text = sharedVehicleViewText({
+      formLabel: properties.formLabel,
+      rangeMeters: properties.rangeMeters,
+      operatorName: properties.operatorName,
+      fetchedAtMs: properties.fetchedAtMs,
+      nowMs: Date.now()
     })
+
+    this.selected = {key: properties.vehicleKey, coordinates}
+    showDetail({kind: DetailKind.sharedVehicle, id: properties.vehicleKey, title: text.title, content: sharedVehicleViewContent(text)})
+    this.markSelected()
+    revealOnMap({map: this.map, lngLat: coordinates})
   },
 
   destroyed() {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onConnectionChange)
+    window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
   }
 }
 

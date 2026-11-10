@@ -1,9 +1,10 @@
 // Checks the theme's pure functions against cases written out by hand: the
 // setting a stored value names, the theme each setting resolves to on a
 // light and on a dark system, the basemap flavor of each theme, the route
-// line casing of each theme, and the line that says what Match system
-// resolves to. Run it with `node test/scripts/theme_check.mjs`; it exits
-// non-zero on the first case that differs.
+// line casing of each theme, the color the browser draws its own bars in
+// for each theme, and the line that says what Match system resolves to.
+// Run it with `node test/scripts/theme_check.mjs`; it exits non-zero on the
+// first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
 import {
@@ -14,6 +15,7 @@ import {
   resolveTheme,
   settingStatusText,
   Theme,
+  themeColor,
   ThemeSetting
 } from "../../assets/js/theme.js"
 
@@ -90,6 +92,17 @@ const badgeCases = [
 for (const {theme, badgeInk, badgePaper} of badgeCases) {
   const colors = mapColors(theme)
   deepStrictEqual({badgeInk: colors.badgeInk, badgePaper: colors.badgePaper}, {badgeInk, badgePaper}, `the badge colors of the ${theme} theme`)
+}
+
+// The browser's bars take the page's background: white in the light theme
+// and the dark theme's slate in the dark one.
+const themeColorCases = [
+  {theme: Theme.light, color: "#ffffff"},
+  {theme: Theme.dark, color: "#0f172a"}
+]
+
+for (const {theme, color} of themeColorCases) {
+  deepStrictEqual(themeColor(theme), color, `the theme color of the ${theme} theme`)
 }
 
 for (const {setting, theme, text} of statusCases) {

@@ -1,11 +1,16 @@
 // The screen the service worker answers a page it cannot fetch with. It is
 // drawn in the rider's theme: the stored setting where the page has stored
-// one, and the system's preference otherwise. The key and the texts its
-// script accepts are the stored settings module's.
+// one, and the system's preference otherwise, with the browser's bars in
+// that theme's color. The key and the texts its script accepts are the
+// stored settings module's, and the colors the theme module's.
 
 import {STORED_THEMES, StorageKey} from "./stored_settings.js"
+import {Theme, themeColor} from "./theme.js"
 
 const storedThemesList = JSON.stringify(STORED_THEMES)
+const lightColor = themeColor(Theme.light)
+const darkColor = themeColor(Theme.dark)
+const themeColors = JSON.stringify({[Theme.light]: lightColor, [Theme.dark]: darkColor})
 
 /** The HTML document of the offline screen. */
 export const OFFLINE_SCREEN = `<!DOCTYPE html>
@@ -14,6 +19,7 @@ export const OFFLINE_SCREEN = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gobusgo is offline</title>
+<meta name="theme-color" content="${lightColor}">
 <script>
 try {
   const setting = localStorage.getItem(${JSON.stringify(StorageKey.theme)});
@@ -21,13 +27,21 @@ try {
     document.documentElement.dataset.theme = setting;
   }
 } catch (error) {}
+const storedTheme = document.documentElement.dataset.theme;
+let theme = "${Theme.light}";
+if (storedTheme !== undefined) {
+  theme = storedTheme;
+} else if (matchMedia("(prefers-color-scheme: dark)").matches) {
+  theme = "${Theme.dark}";
+}
+document.querySelector('meta[name="theme-color"]').setAttribute("content", ${themeColors}[theme]);
 </script>
 <style>
-:root { color-scheme: light; --fill: #ffffff; --text: #0f172a; --accent: #16a34a; --surface: #f0f9ff; }
+:root { color-scheme: light; --fill: ${lightColor}; --text: #0f172a; --accent: #16a34a; --surface: #f0f9ff; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; --fill: #0f172a; --text: #e2e8f0; --accent: #22c55e; --surface: #0f1a24; }
+  :root:not([data-theme="light"]) { color-scheme: dark; --fill: ${darkColor}; --text: #e2e8f0; --accent: #22c55e; --surface: #0f1a24; }
 }
-:root[data-theme="dark"] { color-scheme: dark; --fill: #0f172a; --text: #e2e8f0; --accent: #22c55e; --surface: #0f1a24; }
+:root[data-theme="dark"] { color-scheme: dark; --fill: ${darkColor}; --text: #e2e8f0; --accent: #22c55e; --surface: #0f1a24; }
 body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--fill); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
 main { max-width: 28rem; margin: 16px; padding: 24px; background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; }
 h1 { margin: 0 0 12px; font-size: 1.25rem; }

@@ -29,7 +29,7 @@ const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 export const LIVE_DOT_CLASS_NAME = "live-dot"
 
 /** The class of an element the stylesheet hides while the page is offline. */
-export const NEEDS_CONNECTION_CLASS_NAME = "needs-connection"
+const NEEDS_CONNECTION_CLASS_NAME = "needs-connection"
 
 /** The class of an element the stylesheet shows only while the page is offline. */
 export const OFFLINE_NOTE_CLASS_NAME = "offline-note"
@@ -181,7 +181,7 @@ function chipOf({route, color}) {
  * `tagName`: its route's chip, its headsign, and how soon, a live time in
  * bold with the live dot beside it.
  */
-export function arrivalRowElement({row, tagName}) {
+function arrivalRowElement({row, tagName}) {
   const {route, color, headsign, time, isLive} = row
   const element = document.createElement(tagName)
   element.className = ROW_CLASS_NAME
@@ -276,11 +276,6 @@ export function writeArrivals({element, shown, withKey}) {
     appendMessage({element: note, message: ARRIVALS_NEED_CONNECTION})
     element.append(note)
   }
-}
-
-/** Hides `note`, a callout's arrivals, while the page is offline, unless `shown` is the saved schedules'. */
-export function markArrivalNote({note, shown}) {
-  note.classList.toggle(NEEDS_CONNECTION_CLASS_NAME, !isScheduledShown(shown))
 }
 
 function classedParagraph({text, className}) {

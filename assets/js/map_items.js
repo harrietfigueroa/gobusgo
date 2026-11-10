@@ -1,4 +1,5 @@
-// The list of the vehicles and stops in view of the vehicle map, which a
+// The list of the vehicles, stops, and shared vehicles in view of the
+// vehicle map, which a
 // keyboard reaches them by: which items it holds, in what order, the text
 // of each option, and how the keys move the active option. Everything here
 // is pure and reads no map or document, so each decision is checked against
@@ -6,7 +7,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 
-export const MapItemKind = Object.freeze({vehicle: "vehicle", stop: "stop"})
+export const MapItemKind = Object.freeze({vehicle: "vehicle", stop: "stop", sharedVehicle: "sharedVehicle"})
 
 export const ListKey = Object.freeze({down: "down", up: "up", home: "home", end: "end"})
 
@@ -17,8 +18,9 @@ export const ListKey = Object.freeze({down: "down", up: "up", home: "home", end:
  */
 export const OPEN_EVENT_NAME = "gobusgo:map-item-open"
 
-// A vehicle comes before a stop as near the middle.
-const kindRank = Object.freeze({[MapItemKind.vehicle]: 0, [MapItemKind.stop]: 1})
+// A vehicle comes before a stop, and a stop before a shared vehicle, as
+// near the middle.
+const kindRank = Object.freeze({[MapItemKind.vehicle]: 0, [MapItemKind.stop]: 1, [MapItemKind.sharedVehicle]: 2})
 
 function isSupplied(value) {
   return typeof value === "string" && value !== ""
@@ -66,6 +68,14 @@ function stopText({id, name, direction, routes}) {
   return parts.join(", ")
 }
 
+function sharedVehicleText({formLabel, operatorName}) {
+  if (isSupplied(operatorName)) {
+    return `${formLabel}, ${operatorName}`
+  }
+
+  return formLabel
+}
+
 function placedItem({kind, id, text, x, y, center}) {
   const offsetX = x - center.x
   const offsetY = y - center.y
@@ -98,12 +108,13 @@ function compareItems(left, right) {
 
 /**
  * The options of the list: of `vehicles`, each its marker's identifier,
- * route, headsign, and vehicle identifier, and `stops`, each its identifier,
- * name, direction, and routes, all at a point on the screen; the
- * `countMax` nearest `center` first, each with its kind, identifier, and
- * text, and the count of the items left out.
+ * route, headsign, and vehicle identifier, `stops`, each its identifier,
+ * name, direction, and routes, and `sharedVehicles`, each its key, kind's
+ * label, and operator, all at a point on the screen; the `countMax`
+ * nearest `center` first, each with its kind, identifier, and text, and
+ * the count of the items left out.
  */
-export function itemsInView({vehicles, stops, center, countMax}) {
+export function itemsInView({vehicles, stops, sharedVehicles, center, countMax}) {
   assertCondition(Number.isSafeInteger(countMax), `countMax must be an integer, got: ${countMax}`)
   assertCondition(countMax > 0, `countMax must be positive, got: ${countMax}`)
 
@@ -117,6 +128,11 @@ export function itemsInView({vehicles, stops, center, countMax}) {
   for (const stop of stops) {
     const text = stopText(stop)
     placed.push(placedItem({kind: MapItemKind.stop, id: stop.id, text, x: stop.x, y: stop.y, center}))
+  }
+
+  for (const shared of sharedVehicles) {
+    const text = sharedVehicleText(shared)
+    placed.push(placedItem({kind: MapItemKind.sharedVehicle, id: shared.id, text, x: shared.x, y: shared.y, center}))
   }
 
   placed.sort(compareItems)

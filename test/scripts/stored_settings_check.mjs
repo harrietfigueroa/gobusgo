@@ -4,13 +4,14 @@
 // and their order, moved to each index and read again by a page loaded
 // anew; and storage that throws. It also runs the theme script of the service
 // worker's offline screen against the same double, so the screen reads the
-// key and accepts the values the module does. Run it with
+// key and accepts the values the module does, and sets the theme color of
+// the theme each setting resolves to on a light and on a dark system. Run it with
 // `node test/scripts/stored_settings_check.mjs`; it exits non-zero on the
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
-import {ThemeSetting} from "../../assets/js/theme.js"
+import {resolveTheme, Theme, themeColor, ThemeSetting} from "../../assets/js/theme.js"
 import {
   FavoriteChangeKind,
   FilterKind,
@@ -553,15 +554,65 @@ for (const throwingCase of throwingCases) {
   deepStrictEqual(warnings.length, THROWING_WARNING_COUNT, `${throwingCase.name}: warnings`)
 }
 
-// The theme script of the offline screen, run against a storage double and
-// a document double.
+// The theme script of the offline screen, run against a storage double, a
+// document double whose one theme-color meta element records its content,
+// and a system that prefers light or dark.
 const scriptMatch = OFFLINE_SCREEN.match(/<script>([\s\S]*?)<\/script>/)
-const offlineThemeScript = new Function("localStorage", "document", scriptMatch[1])
+const offlineThemeScript = new Function("localStorage", "document", "matchMedia", scriptMatch[1])
+const THEME_COLOR_SELECTOR = "meta[name=\"theme-color\"]"
+
+class ThemeColorMeta {
+  constructor() {
+    this.attributes = {}
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value
+  }
+}
+
+function offlineScreenRun({storage, systemDark}) {
+  const meta = new ThemeColorMeta()
+
+  function querySelector(selector) {
+    deepStrictEqual(selector, THEME_COLOR_SELECTOR, "offline screen: the element the script looks up")
+    return meta
+  }
+
+  function matchMedia(query) {
+    deepStrictEqual(query, "(prefers-color-scheme: dark)", "offline screen: the media query")
+    return {matches: systemDark}
+  }
+
+  const document = {documentElement: {dataset: {}}, querySelector}
+  offlineThemeScript(storage, document, matchMedia)
+  return {theme: document.documentElement.dataset.theme, themeColor: meta.attributes.content}
+}
 
 function offlineScreenTheme(storage) {
-  const document = {documentElement: {dataset: {}}}
-  offlineThemeScript(storage, document)
-  return document.documentElement.dataset.theme
+  const run = offlineScreenRun({storage, systemDark: false})
+  return run.theme
+}
+
+deepStrictEqual(
+  OFFLINE_SCREEN.match(/<meta name="theme-color"[^>]*>/g),
+  [`<meta name="theme-color" content="${themeColor(Theme.light)}">`],
+  "offline screen: one theme-color meta element, light until the script runs"
+)
+
+for (const themeCase of themeCases) {
+  for (const systemDark of [false, true]) {
+    const storage = new MemoryStorage(themeCase.entries)
+    const run = offlineScreenRun({storage, systemDark})
+    const theme = resolveTheme({setting: themeCase.setting, systemDark})
+    deepStrictEqual(run.themeColor, themeColor(theme), `offline screen theme color: ${themeCase.name}, system dark: ${systemDark}`)
+  }
+}
+
+for (const systemDark of [false, true]) {
+  const run = offlineScreenRun({storage: new ThrowingStorage(), systemDark})
+  const theme = resolveTheme({setting: ThemeSetting.system, systemDark})
+  deepStrictEqual(run.themeColor, themeColor(theme), `offline screen theme color: storage that throws, system dark: ${systemDark}`)
 }
 
 deepStrictEqual(STORED_THEMES, [ThemeSetting.light, ThemeSetting.dark], "stored themes")
