@@ -968,6 +968,29 @@ a.inline-target {
   font-size: 0.875rem;
 }
 
+/* A vehicle view's key-value rows: the key on the left and its value
+   aligned right. */
+.panel-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+}
+
+.panel-detail-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-detail-rows dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
 .panel-detail-caption[hidden] {
   display: none;
 }
@@ -1195,8 +1218,10 @@ a.inline-target {
 
 /* The legend's status badge: a disc in the theme's ink with its glyph in
    the theme's paper. Forced colors would draw both in one system color, so
-   the badge keeps its own, as the map's canvas does. */
-.status-badge {
+   the badge keeps its own, as the map's canvas does, and so does the bus
+   glyph, whose fill and outline tell its status. */
+.status-badge,
+.status-glyph {
   forced-color-adjust: none;
 }
 

@@ -13,20 +13,20 @@ const vehicle = {
   route: "E Line",
   headsign: "Aurora Village",
   schedule: "2 min late",
-  nextStop: "3rd Ave & Pike St, 1 min away",
-  fallbackName: "Vehicle 1_7012"
+  nextStop: "3rd Ave & Pike St · 1 min",
+  fallbackName: "Bus 7012"
 }
 
 const vehicleCases = [
   {
     case: "a vehicle with every text",
     given: vehicle,
-    text: {title: "E Line · Aurora Village", detail: "2 min late · next 3rd Ave & Pike St, 1 min away"}
+    text: {title: "E Line · Aurora Village", detail: "2 min late · next 3rd Ave & Pike St · 1 min"}
   },
   {
     case: "a vehicle with no lateness",
     given: {...vehicle, schedule: null},
-    text: {title: "E Line · Aurora Village", detail: "next 3rd Ave & Pike St, 1 min away"}
+    text: {title: "E Line · Aurora Village", detail: "next 3rd Ave & Pike St · 1 min"}
   },
   {
     case: "a vehicle with no next stop",
@@ -41,17 +41,17 @@ const vehicleCases = [
   {
     case: "a vehicle with no headsign",
     given: {...vehicle, headsign: null},
-    text: {title: "E Line", detail: "2 min late · next 3rd Ave & Pike St, 1 min away"}
+    text: {title: "E Line", detail: "2 min late · next 3rd Ave & Pike St · 1 min"}
   },
   {
     case: "a vehicle with no route",
     given: {...vehicle, route: null},
-    text: {title: "Aurora Village", detail: "2 min late · next 3rd Ave & Pike St, 1 min away"}
+    text: {title: "Aurora Village", detail: "2 min late · next 3rd Ave & Pike St · 1 min"}
   },
   {
     case: "a vehicle with neither route nor headsign",
     given: {...vehicle, route: null, headsign: null},
-    text: {title: "Vehicle 1_7012", detail: "2 min late · next 3rd Ave & Pike St, 1 min away"}
+    text: {title: "Bus 7012", detail: "2 min late · next 3rd Ave & Pike St · 1 min"}
   }
 ]
 

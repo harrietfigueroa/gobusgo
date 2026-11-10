@@ -37,7 +37,14 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   # A route-colored status has no one color, so its swatch is a sample of
   # route colors.
-  @route_color_sample "linear-gradient(135deg, #2563eb, #e11d48, #16a34a)"
+  # The legend draws each status's glyph as the map draws a vehicle on a
+  # red route, so a swatch keeps one route's color for every status.
+  @glyph_swatches %{
+    reported: %{fill: "#b91c1c", stroke: "#ffffff", dasharray: "none", ink: "#ffffff"},
+    stale: %{fill: "#eec6c6", stroke: "#334155", dasharray: "none", ink: "#334155"},
+    unknown: %{fill: "#eec6c6", stroke: "#334155", dasharray: "1 2", ink: "#334155"},
+    scheduled: %{fill: "#ffffff", stroke: "#475569", dasharray: "3 2", ink: "#475569"}
+  }
 
   @theme_options [
     %{value: "light", label: "Light"},
@@ -253,22 +260,19 @@ defmodule GobusgoWeb.AppInfoPanel do
         Each marker is one vehicle, drawn in its route's color. How it is drawn says how far to
         trust its position:
       </p>
-      <dl class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
-        <%!-- A group holds its term and definition alone, so the swatch
-        stands in the term, set in the group's left padding. --%>
-        <div :for={status <- @statuses} id={"app-info-status-#{status.status}"} class="relative pl-6">
-          <dt class="font-medium">
-            <span
-              class="absolute top-1 left-0 h-3 w-3 rounded-full"
-              style={swatch_style(status)}
-              aria-hidden="true"
-            ></span>
+      <ul class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
+        <li
+          :for={status <- @statuses}
+          id={"app-info-status-#{status.status}"}
+          class="flex items-center gap-3"
+        >
+          <span class="relative h-6 w-8 shrink-0" aria-hidden="true">
+            <.status_glyph glyph={glyph_swatch(status.status)} />
             <.status_badge :if={status.badge} badge={status.badge} />
-            {status.label}
-          </dt>
-          <dd>{status.description}</dd>
-        </div>
-      </dl>
+          </span>
+          <span class="font-medium">{status.label}</span>
+        </li>
+      </ul>
       <p>
         Zoomed in, a vehicle is a bus with its route's number on its shoulder and a chevron the
         way it is heading; zoomed out, a dot.
@@ -279,15 +283,46 @@ defmodule GobusgoWeb.AppInfoPanel do
     """
   end
 
-  # The badge of a status a recent report lacks, at the swatch's upper
-  # right, as the map draws it beside a marker, on a 14-unit square in the
+  # A status's bus glyph, a disc with a bus on it in the status's fill,
+  # outline, and ink, on a 24-unit square.
+  attr :glyph, :map, required: true
+
+  defp status_glyph(assigns) do
+    ~H"""
+    <svg class="status-glyph absolute top-0 left-0 h-6 w-6" viewBox="0 0 24 24">
+      <circle
+        cx="12"
+        cy="12"
+        r="10.5"
+        fill={@glyph.fill}
+        stroke={@glyph.stroke}
+        stroke-width="2"
+        stroke-dasharray={@glyph.dasharray}
+      />
+      <g
+        fill="none"
+        stroke={@glyph.ink}
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        transform="translate(5.5 5.5) scale(0.54)"
+      >
+        <path d="M7 3h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+        <path d="M5 11h14M8 21v-4M16 21v-4" />
+      </g>
+    </svg>
+    """
+  end
+
+  # The badge of a status a recent report lacks, at the glyph's upper
+  # right, as the map draws it beside a dot, on a 14-unit square in the
   # theme's badge colors.
   attr :badge, :atom, required: true
 
   defp status_badge(assigns) do
     ~H"""
     <svg
-      class="status-badge absolute -top-0.5 left-2 h-3.5 w-3.5"
+      class="status-badge absolute -top-1 left-4 h-3.5 w-3.5"
       viewBox="0 0 14 14"
       data-badge={@badge}
       aria-hidden="true"
@@ -317,19 +352,17 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   @doc """
-  Returns the inline style of the legend's swatch for `definition`, a status
-  definition of `GobusgoWeb.VehicleMarkers`: its own color, or a sample of
-  route colors for a status drawn in its route's color, at its opacity.
+  The fill, outline, dash of the outline, and ink of the bus glyph the
+  legend draws for `status`, a status of `GobusgoWeb.VehicleMarkers`.
   """
-  @spec swatch_style(VehicleMarkers.status_definition()) :: String.t()
-  def swatch_style(%{color: nil, opacity: opacity}) when is_float(opacity) do
-    "background-image: #{@route_color_sample}; opacity: #{opacity}"
-  end
-
-  def swatch_style(%{color: color, opacity: opacity})
-      when is_binary(color) and is_float(opacity) do
-    "background-color: #{color}; opacity: #{opacity}"
-  end
+  @spec glyph_swatch(VehicleMarkers.status()) :: %{
+          fill: String.t(),
+          stroke: String.t(),
+          dasharray: String.t(),
+          ink: String.t()
+        }
+  def glyph_swatch(status) when is_map_key(@glyph_swatches, status),
+    do: Map.fetch!(@glyph_swatches, status)
 
   defp data_use(assigns) do
     {:proportional, %{interval_ms_min: age_ms_min, interval_ms_max: age_ms_max}} =

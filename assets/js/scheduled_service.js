@@ -256,10 +256,10 @@ function timeAwayText(offsetS) {
   const minutes = Math.floor(offsetS / MINUTE_SECONDS)
 
   if (minutes === 0) {
-    return "under 1 min away"
+    return "under 1 min"
   }
 
-  return `${minutes} min away`
+  return `${minutes} min`
 }
 
 // The next stop's text as the server writes it: its name and how soon, or
@@ -274,7 +274,7 @@ function nextStopText({names, stop, offsetS}) {
   const name = names.table.stopNames[stop]
 
   if (typeof name === "string") {
-    return `${name}, ${timeAway}`
+    return `${name} · ${timeAway}`
   }
 
   return timeAway

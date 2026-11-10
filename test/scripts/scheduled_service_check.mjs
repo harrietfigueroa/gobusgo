@@ -203,7 +203,7 @@ deepStrictEqual(
     route: "1",
     headsign: "1 Downtown",
     schedule: null,
-    next_stop: "Second, 5 min away",
+    next_stop: "Second · 5 min",
     status: "scheduled",
     location_age: "No location reported",
     real_time: "No"
@@ -212,12 +212,12 @@ deepStrictEqual(
 )
 
 const placementCases = [
-  [{snapshots: [today], nowMs: todayAt("08:05"), id: B1_ID}, {lat: 47.6075, lon: -122.2925, nextStop: "First, 15 min away"}, "a trip a quarter of the way along its hop is a quarter of the way between the stops"],
-  [{snapshots: [today], nowMs: todayAt("08:11"), id: A1_ID}, {lat: 47.61, lon: -122.3, nextStop: "Third, 9 min away"}, "a trip waiting at a stop stands at the stop and names the stop after it"],
-  [{snapshots: [today], nowMs: todayAt("08:10"), id: A1_ID}, {lat: 47.61, lon: -122.3, nextStop: "Second, under 1 min away"}, "a trip arriving at a stop stands at the stop"],
-  [{snapshots: [today], nowMs: todayAt("24:00"), id: LATE_ID}, {lat: 47.605, lon: -122.3, nextStop: "Second, 10 min away"}, "a trip past midnight is placed by its times past 24:00"],
-  [{snapshots: [tomorrow, today], nowMs: tomorrowAt("00:15"), id: LATE_ID}, {lat: 47.61, lon: -122.295, nextStop: "Third, 5 min away"}, "past midnight the previous date's trip is placed from the date now running"],
-  [{snapshots: [tomorrow], nowMs: tomorrowAt("00:15"), id: LATE_ID}, {lat: 47.61, lon: -122.295, nextStop: "Third, 5 min away"}, "a previous date's trip is placed from the next date's snapshot alone, under its own date"]
+  [{snapshots: [today], nowMs: todayAt("08:05"), id: B1_ID}, {lat: 47.6075, lon: -122.2925, nextStop: "First · 15 min"}, "a trip a quarter of the way along its hop is a quarter of the way between the stops"],
+  [{snapshots: [today], nowMs: todayAt("08:11"), id: A1_ID}, {lat: 47.61, lon: -122.3, nextStop: "Third · 9 min"}, "a trip waiting at a stop stands at the stop and names the stop after it"],
+  [{snapshots: [today], nowMs: todayAt("08:10"), id: A1_ID}, {lat: 47.61, lon: -122.3, nextStop: "Second · under 1 min"}, "a trip arriving at a stop stands at the stop"],
+  [{snapshots: [today], nowMs: todayAt("24:00"), id: LATE_ID}, {lat: 47.605, lon: -122.3, nextStop: "Second · 10 min"}, "a trip past midnight is placed by its times past 24:00"],
+  [{snapshots: [tomorrow, today], nowMs: tomorrowAt("00:15"), id: LATE_ID}, {lat: 47.61, lon: -122.295, nextStop: "Third · 5 min"}, "past midnight the previous date's trip is placed from the date now running"],
+  [{snapshots: [tomorrow], nowMs: tomorrowAt("00:15"), id: LATE_ID}, {lat: 47.61, lon: -122.295, nextStop: "Third · 5 min"}, "a previous date's trip is placed from the next date's snapshot alone, under its own date"]
 ]
 
 for (const [options, expected, message] of placementCases) {
@@ -245,7 +245,7 @@ const bounded = markersAt({snapshots: [today], nowMs: todayAt("08:05"), countMax
 deepStrictEqual([bounded.markers.length, bounded.droppedCount], [1, 1], "past the bound the markers left are counted")
 
 const unnamed = markerAt({snapshots: [todayUnnamed], nowMs: todayAt("08:05"), id: A1_ID})
-deepStrictEqual([unnamed.route, unnamed.headsign, unnamed.next_stop], ["R1", null, "5 min away"], "with no names file a marker shows its route's identifier and the time to the next stop alone")
+deepStrictEqual([unnamed.route, unnamed.headsign, unnamed.next_stop], ["R1", null, "5 min"], "with no names file a marker shows its route's identifier and the time to the next stop alone")
 
 function markersAtNoTime() {
   return markersAt({snapshots: [today], nowMs: Number.NaN})

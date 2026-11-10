@@ -184,7 +184,7 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
       ready(view)
 
       assert_push_event(view, @event, %{
-        markers: [%{schedule: "3 min late", next_stop: "Pine St & 3rd Ave, 2 min away"}]
+        markers: [%{schedule: "3 min late", next_stop: "Pine St & 3rd Ave · 2 min"}]
       })
     end
 
@@ -195,7 +195,7 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
       ready(view)
 
-      assert_push_event(view, @event, %{markers: [%{next_stop: "2 min away"}]})
+      assert_push_event(view, @event, %{markers: [%{next_stop: "2 min"}]})
     end
 
     test "is answered with a marker's position, status, and texts" do
