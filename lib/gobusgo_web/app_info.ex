@@ -381,8 +381,9 @@ defmodule GobusgoWeb.AppInfo do
         "for the trips running now and for the stops that are open. An alert for a " <>
         "route with no vehicle running shows once one of the route's stops is open, so the " <>
         "alerts shown change as vehicles run and stops open.",
-      "The map shows the data as OneBusAway supplies it. A marker stands where OneBusAway " <>
-        "estimates the vehicle is, which is an estimate even for a vehicle that reported recently."
+      "The map shows the data as OneBusAway supplies it. A live vehicle's marker is the " <>
+        "map's own estimate: between reports it moves along its route at the schedule's " <>
+        "pace from the last report."
     ]
   end
 

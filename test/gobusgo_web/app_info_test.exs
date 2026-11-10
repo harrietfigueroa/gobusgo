@@ -197,6 +197,12 @@ defmodule GobusgoWeb.AppInfoTest do
       assert data_use_text(@cadences) =~ "OneBusAway"
     end
 
+    test "says a live vehicle's marker is the map's estimate from its last report" do
+      assert data_use_text(@cadences) =~
+               "A live vehicle's marker is the map's own estimate: between reports it moves " <>
+                 "along its route at the schedule's pace from the last report."
+    end
+
     test "says the alerts are those of the trips running and of the open stops" do
       assert data_use_text(@cadences) =~
                "the agencies' alerts for the trips running now and for the stops that are open"

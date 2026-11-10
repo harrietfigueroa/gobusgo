@@ -14,8 +14,10 @@ import {distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geo
 import {CorrectionKind, DrawnKind, PREDICTION_HORIZON_MS, preparePath} from "../../assets/js/vehicle_prediction.js"
 import {
   MotionPlanKind,
+  MarkerPositionKind,
   drawnVehicle,
   isAnimated,
+  markerPositionKind,
   motionPlan,
   pathTrip,
   placedAtFetch,
@@ -186,5 +188,18 @@ function trackedOnOtherTrip() {
 }
 
 throws(trackedOnOtherTrip, AssertionError, "a path of another trip")
+
+// Where each vehicle's marker stands, as its view says: an estimate along
+// its path, its last report, or where the fetch puts it.
+const positionCases = [
+  {name: "a vehicle predicted along its path is an estimate", input: later, expected: MarkerPositionKind.estimated},
+  {name: "a vehicle with no path stands at its last report", input: noPath, expected: MarkerPositionKind.lastReport},
+  {name: "a stale vehicle stands at its last report", input: stale, expected: MarkerPositionKind.lastReport},
+  {name: "a schedule-only vehicle stands where fetched", input: scheduled, expected: MarkerPositionKind.fetched}
+]
+
+for (const {name, input, expected} of positionCases) {
+  deepStrictEqual(markerPositionKind(input), expected, name)
+}
 
 console.log("vehicle motion check passed")

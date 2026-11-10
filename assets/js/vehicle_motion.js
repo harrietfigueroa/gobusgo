@@ -6,7 +6,7 @@
 // vehicle on a trip moves. Each state is a frozen value the page
 // keeps, and each function returns another.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition, unreachable} from "./assert.js"
 import {
   CorrectionKind,
   DrawnKind,
@@ -22,6 +22,9 @@ export const MotionPlanKind = Object.freeze({predicted: "predicted", atReport: "
 
 /** Whether a vehicle names a trip whose path the page asks for. */
 export const PathTripKind = Object.freeze({trip: "trip", none: "none"})
+
+/** Where a vehicle's marker stands: an estimate along its trip, its last report, or where the fetch puts it. */
+export const MarkerPositionKind = Object.freeze({estimated: "estimated", lastReport: "lastReport", fetched: "fetched"})
 
 // The statuses of `GobusgoWeb.VehicleMarkers` whose report places a marker.
 const REPORTED_STATUS = "reported"
@@ -178,6 +181,27 @@ export function isAnimated(tracked) {
   const isPredicted = tracked.plan.kind === MotionPlanKind.predicted
   const isAlongPath = isPredicted && tracked.anchor.kind === PredictionKind.alongPath
   return isAlongPath
+}
+
+/**
+ * Where the marker of `tracked` stands: an estimate for a vehicle predicted
+ * along its path, its last report for one drawn there, and where the fetch
+ * puts it for any other.
+ */
+export function markerPositionKind(tracked) {
+  switch (tracked.plan.kind) {
+    case MotionPlanKind.predicted:
+      if (isAnimated(tracked)) {
+        return MarkerPositionKind.estimated
+      }
+      return MarkerPositionKind.lastReport
+    case MotionPlanKind.atReport:
+      return MarkerPositionKind.lastReport
+    case MotionPlanKind.asFetched:
+      return MarkerPositionKind.fetched
+    default:
+      return unreachable(tracked.plan.kind, "a plan of no kind")
+  }
 }
 
 /**

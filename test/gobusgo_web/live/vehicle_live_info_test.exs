@@ -429,6 +429,29 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       end
     end
 
+    for {id, label} <- [{"ring", "Last report"}, {"line", "Path since the last report"}] do
+      test "labels the tie's #{id} beside its swatch" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        entry = @panel <> " #app-info-tie-#{unquote(id)}"
+
+        assert view |> element(entry) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text() =~
+                 unquote(label)
+
+        assert has_element?(view, entry <> " svg.report-tie")
+      end
+    end
+
+    test "says a live vehicle's marker is an estimate tied to its last report" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      text = view |> panel_text() |> String.replace(~r/\s+/, " ")
+
+      assert text =~
+               "A live vehicle's marker is an estimate: between reports it moves along its " <>
+                 "route at the schedule's pace. Zoomed in, and for the vehicle you select, a " <>
+                 "ring marks its last report and a dashed line joins the ring to the marker " <>
+                 "along the route."
+    end
+
     test "has one legend entry per status" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 

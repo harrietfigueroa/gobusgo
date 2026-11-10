@@ -82,3 +82,46 @@ export function segmentIndexAt({cumulative, along}) {
   assertOrdered({low: high, high: low + 1, label: "polyline: the end of a segment"})
   return low
 }
+
+// The [x, y] point `along` the line, inside the segment that starts at
+// `index`.
+function pointInSegment({points, cumulative, index, along}) {
+  const segmentLength = cumulative[index + 1] - cumulative[index]
+  let fraction = 0
+  if (segmentLength > 0) {
+    fraction = (along - cumulative[index]) / segmentLength
+  }
+  const [sourceX, sourceY] = points[index]
+  const [targetX, targetY] = points[index + 1]
+  return [lerp({from: sourceX, to: targetX, fraction}), lerp({from: sourceY, to: targetY, fraction})]
+}
+
+/**
+ * The points of the line `points`, [x, y] pairs with the cumulative
+ * distances `cumulative`, from `from` to `to` along it: the point at
+ * `from`, every point of the line strictly between the two, and the point
+ * at `to`. Each distance is brought inside the line's ends first.
+ */
+export function pointsBetween({points, cumulative, from, to}) {
+  const pointCount = points.length
+  assertOrdered({low: HALF, high: pointCount, label: "polyline: the points of a line"})
+  assertOrdered({low: pointCount, high: cumulative.length, label: "polyline: the distances of a line"})
+  assertOrdered({low: from, high: to, label: "polyline: the distances between which points are taken"})
+  const length = cumulative[pointCount - 1]
+  const start = Math.min(length, Math.max(0, from))
+  const end = Math.min(length, Math.max(0, to))
+  const startIndex = segmentIndexAt({cumulative, along: start})
+  const endIndex = segmentIndexAt({cumulative, along: end})
+  const between = [pointInSegment({points, cumulative, index: startIndex, along: start})]
+
+  for (let index = startIndex + 1; index <= endIndex; index++) {
+    const isAfterStart = cumulative[index] > start
+    const isInside = isAfterStart && cumulative[index] < end
+    if (isInside) {
+      between.push(points[index])
+    }
+  }
+
+  between.push(pointInSegment({points, cumulative, index: endIndex, along: end}))
+  return between
+}
