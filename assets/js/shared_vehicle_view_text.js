@@ -8,14 +8,20 @@ const METERS_PER_KILOMETER = 1000
 const MS_PER_MINUTE = 60_000
 const RANGE_FRACTION_DIGITS = 1
 
-function rangeValue(rangeMeters) {
-  if (typeof rangeMeters !== "number") {
-    return "Not published"
-  }
-
+/** A range of `rangeMeters`, a number of at least zero, in kilometers to a tenth: "3.2 km". */
+export function rangeText(rangeMeters) {
+  assertCondition(typeof rangeMeters === "number", `a range is a number, got: ${rangeMeters}`)
   assertCondition(rangeMeters >= 0, `a range is not negative, got: ${rangeMeters}`)
   const kilometers = rangeMeters / METERS_PER_KILOMETER
   return `${kilometers.toFixed(RANGE_FRACTION_DIGITS)} km`
+}
+
+function rangeValue(rangeMeters) {
+  if (typeof rangeMeters === "number") {
+    return rangeText(rangeMeters)
+  }
+
+  return "Not published"
 }
 
 // A fetch the device's clock reads as later than now, as a skewed clock

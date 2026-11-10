@@ -1,9 +1,9 @@
 // Checks the list of the vehicles, stops, and shared vehicles in view of
-// the vehicle map as
-// pure functions of values written out by hand: which items it holds, in
-// what order, the text of each option, and how the keys move the active
-// option. Run it with `node test/scripts/map_items_check.mjs`; it exits
-// non-zero on the first case that differs.
+// the vehicle map as pure functions of values written out by hand: which
+// items it holds, in what order, the text of each option, and how the keys
+// move the active option. Run it with
+// `node test/scripts/map_items_check.mjs`; it exits non-zero on the first
+// case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {itemsInView, itemKey, ListKey, MapItemKind, nextActiveIndex} from "../../assets/js/map_items.js"
@@ -20,14 +20,23 @@ const unnamed = {id: "1_999", name: undefined, direction: undefined, routes: "",
 // As far from the middle as `rapid`, on the other side.
 const tied = {id: "1_432", name: "3rd Ave & Pike St", direction: "S", routes: "C Line", x: 90, y: 100}
 // As far from the middle as `rapid` and `tied`.
-const lime = {id: "scooter@-122.3,47.6", formLabel: "Scooter", operatorName: "Lime", x: 100, y: 90}
-const unnamedOperator = {id: "bicycle@-122.4,47.7", formLabel: "Bike", operatorName: "", x: 100, y: 700}
+const lime = {id: "scooter@-122.3,47.6", formLabel: "Scooter", operatorName: "Lime", rangeMeters: undefined, x: 100, y: 90}
+const unnamedOperator = {id: "bicycle@-122.4,47.7", formLabel: "Bike", operatorName: "", rangeMeters: undefined, x: 100, y: 700}
+// Nearer the middle than every vehicle and stop above, `closeScooter` the nearest.
+const closeScooter = {id: "scooter@-122.31,47.61", formLabel: "Scooter", operatorName: "Lime", rangeMeters: 12_000, x: 101, y: 100}
+const nearScooter = {id: "scooter@-122.32,47.62", formLabel: "Scooter", operatorName: "Lime", rangeMeters: 3240, x: 100, y: 102}
+const nearBike = {id: "bicycle@-122.33,47.63", formLabel: "E-bike", operatorName: "Lime", rangeMeters: 0, x: 103, y: 100}
 
 const VEHICLE_TEXT = "Vehicle, E Line to Aurora Village"
 const PINE_TEXT = "Stop, Pine St & 3rd Ave, W, routes E Line, 36"
 const TIED_TEXT = "Stop, 3rd Ave & Pike St, S, routes C Line"
 const ROUTE_ONLY_TEXT = "Vehicle, 36"
 const LIME_TEXT = "Scooter, Lime"
+const CLOSE_SCOOTER_TEXT = "Scooter, Lime, 12.0 km left"
+const NEAR_SCOOTER_TEXT = "Scooter, Lime, 3.2 km left"
+const NEAR_BIKE_TEXT = "E-bike, Lime, 0.0 km left"
+const NAMELESS_TEXT = "Vehicle 1_7002"
+const SCOOTER_ROOM = 5
 
 function item({kind, id, text}) {
   return {kind, id, text}
@@ -81,6 +90,18 @@ const listCases = [
       ],
       restCount: 0
     }
+  },
+  {
+    name: "more shared vehicles than places keeps the vehicles and stops, however far",
+    view: {vehicles: [nameless], stops: [pine], sharedVehicles: [closeScooter, nearScooter, nearBike]},
+    expected: {
+      items: [
+        item({kind: MapItemKind.stop, id: pine.id, text: PINE_TEXT}),
+        item({kind: MapItemKind.vehicle, id: nameless.id, text: NAMELESS_TEXT}),
+        item({kind: MapItemKind.sharedVehicle, id: closeScooter.id, text: CLOSE_SCOOTER_TEXT})
+      ],
+      restCount: 2
+    }
   }
 ]
 
@@ -88,11 +109,39 @@ for (const {name, view, expected} of listCases) {
   deepStrictEqual(itemsInView({...view, center, countMax: COUNT_MAX}), expected, name)
 }
 
+// The vehicles and stops nearest first, then the shared vehicles nearest
+// first in the places left.
+const groupOrderView = {
+  vehicles: [nameless, rapid],
+  stops: [pine],
+  sharedVehicles: [nearBike, closeScooter, nearScooter]
+}
+const groupOrderExpected = {
+  items: [
+    item({kind: MapItemKind.stop, id: pine.id, text: PINE_TEXT}),
+    item({kind: MapItemKind.vehicle, id: rapid.id, text: VEHICLE_TEXT}),
+    item({kind: MapItemKind.vehicle, id: nameless.id, text: NAMELESS_TEXT}),
+    item({kind: MapItemKind.sharedVehicle, id: closeScooter.id, text: CLOSE_SCOOTER_TEXT}),
+    item({kind: MapItemKind.sharedVehicle, id: nearScooter.id, text: NEAR_SCOOTER_TEXT})
+  ],
+  restCount: 1
+}
+
+deepStrictEqual(itemsInView({...groupOrderView, center, countMax: SCOOTER_ROOM}), groupOrderExpected, "the order within each group")
+
 const textCases = [
   {name: "a vehicle with no route or headsign", view: {vehicles: [nameless], stops: [], sharedVehicles: []}, expected: "Vehicle 1_7002"},
   {name: "a scheduled trip with a route", view: {vehicles: [scheduled], stops: [], sharedVehicles: []}, expected: "Vehicle, E Line"},
   {name: "a stop with no name", view: {vehicles: [], stops: [unnamed], sharedVehicles: []}, expected: "Stop 1_999"},
-  {name: "a shared vehicle with no operator", view: {vehicles: [], stops: [], sharedVehicles: [unnamedOperator]}, expected: "Bike"}
+  {name: "a shared vehicle with no operator", view: {vehicles: [], stops: [], sharedVehicles: [unnamedOperator]}, expected: "Bike"},
+  {name: "a shared vehicle with its range", view: {vehicles: [], stops: [], sharedVehicles: [nearScooter]}, expected: NEAR_SCOOTER_TEXT},
+  {name: "a shared vehicle with a range of zero", view: {vehicles: [], stops: [], sharedVehicles: [nearBike]}, expected: NEAR_BIKE_TEXT},
+  {name: "a shared vehicle whose range the feed leaves out", view: {vehicles: [], stops: [], sharedVehicles: [lime]}, expected: LIME_TEXT},
+  {
+    name: "a shared vehicle with its range and no operator",
+    view: {vehicles: [], stops: [], sharedVehicles: [{...nearScooter, operatorName: ""}]},
+    expected: "Scooter, 3.2 km left"
+  }
 ]
 
 for (const {name, view, expected} of textCases) {
@@ -134,5 +183,5 @@ function emptyListMove() {
 
 throws(emptyListMove, "a move in an empty list")
 
-const caseCount = listCases.length + textCases.length + keyCases.length
+const caseCount = listCases.length + 1 + textCases.length + keyCases.length
 console.log(`map items check passed: ${caseCount} cases`)
