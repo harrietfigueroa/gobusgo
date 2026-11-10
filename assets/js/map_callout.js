@@ -7,8 +7,8 @@
 // application and are never parsed as HTML.
 
 import {calloutNameSuffix} from "./callout_text"
-import {chipElements} from "./route_chips"
-import {ArrivalRowsKind, NEEDS_CONNECTION_CLASS_NAME, liveDot} from "./stop_arrivals"
+import {appendSpaced} from "./route_chips"
+import {ArrivalRowsKind, NEEDS_CONNECTION_CLASS_NAME, arrivalRowElement} from "./stop_arrivals"
 
 /** The class of every callout's popup. */
 export const CALLOUT_CLASS_NAME = "map-callout"
@@ -16,9 +16,6 @@ const BUTTON_CLASS_NAME = "map-callout-button"
 const TITLE_CLASS_NAME = "map-callout-title"
 const DETAIL_CLASS_NAME = "map-callout-detail"
 const ROWS_CLASS_NAME = "map-callout-rows"
-const ROW_CLASS_NAME = "map-callout-row"
-const HEADSIGN_CLASS_NAME = "map-callout-headsign"
-const TIME_CLASS_NAME = "map-callout-time"
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 // The widest a callout stands on the map, so a long headsign wraps.
 const CALLOUT_WIDTH_MAX = "240px"
@@ -83,19 +80,6 @@ export function updateCalloutOf({kind, id, content}) {
   }
 }
 
-// Appends `children` to `element` with a space between each two. A flex
-// container lays out no text of white space alone, and the accessible name
-// reads the space, so its words stay apart.
-function appendSpaced({element, children}) {
-  for (const [index, child] of children.entries()) {
-    if (index > 0) {
-      element.append(" ")
-    }
-
-    element.append(child)
-  }
-}
-
 // A callout's button: its visible children, then hidden text that names
 // `detailName` and the `action` a press takes, which hands the item to
 // `onSelect`.
@@ -151,42 +135,6 @@ export function stopCalloutContent({name, onSelect}) {
   return {content, arrivalsElement}
 }
 
-function chipOf({route, color}) {
-  const chips = []
-
-  if (route !== null) {
-    chips.push({name: route, color})
-  }
-
-  return chips
-}
-
-// One arrival's row: its route's chip, its headsign, and how soon, with the
-// live dot beside a live time.
-function rowElement({route, color, headsign, time, isLive}) {
-  const row = document.createElement("span")
-  row.className = ROW_CLASS_NAME
-  const children = chipElements({chips: chipOf({route, color}), countMax: 1, emptyText: ""})
-
-  let headsignText = ""
-
-  if (headsign !== null) {
-    headsignText = headsign
-  }
-
-  children.push(textElement({tagName: "span", className: HEADSIGN_CLASS_NAME, text: headsignText}))
-
-  const timeElement = textElement({tagName: "span", className: TIME_CLASS_NAME, text: time})
-
-  if (isLive) {
-    timeElement.append(liveDot())
-  }
-
-  children.push(timeElement)
-  appendSpaced({element: row, children})
-  return row
-}
-
 /**
  * Writes `rows`, what `arrivalRows` gives for a stop's arrivals, into the
  * arrivals element of a stop's callout: a row per arrival, or the note in
@@ -200,6 +148,11 @@ export function writeCalloutArrivals({element, rows}) {
     return
   }
 
-  const rowElements = Array.from(rows.rows, rowElement)
+  const rowElements = Array.from(rows.rows, calloutRowElement)
   appendSpaced({element, children: rowElements})
+}
+
+// A callout's row is phrasing content, since a button holds no list.
+function calloutRowElement(row) {
+  return arrivalRowElement({row, tagName: "span"})
 }

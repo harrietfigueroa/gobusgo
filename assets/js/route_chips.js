@@ -20,6 +20,19 @@ function chipElement({name, color}) {
   return chip
 }
 
+// Appends `children` to `element` with a space between each two. A flex
+// container lays out no text of white space alone, and the accessible name
+// reads the space, so its words stay apart.
+export function appendSpaced({element, children}) {
+  for (const [index, child] of children.entries()) {
+    if (index > 0) {
+      element.append(" ")
+    }
+
+    element.append(child)
+  }
+}
+
 // The chips of `chips`, the first `countMax` of them and a chip that counts
 // the rest, or `emptyText` alone when there is none.
 export function chipElements({chips, countMax, emptyText}) {
