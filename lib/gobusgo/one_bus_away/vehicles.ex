@@ -67,6 +67,11 @@ defmodule Gobusgo.OneBusAway.Vehicles do
   # response, 2026-10-02). Every trip status holds `scheduleDeviation` and
   # `nextStopTimeOffset` as whole seconds and `nextStop` as a stop identifier
   # (observed in the newest stored response of every agency, 2026-10-06).
+  # `serviceDate` is "time, in ms since the unix epoch, of midnight for start
+  # of the service date for the trip"; every one of 228,621 stored trip
+  # statuses of 2026-10-05 to 2026-11-09 held it as an integer, each a
+  # midnight in America/Los_Angeles.
+  # https://developer.onebusaway.org/api/where/elements/trip-status — checked 2026-11-09
   @vehicle_schema {:map,
                    %{
                      "vehicleId" => :string,
@@ -84,7 +89,8 @@ defmodule Gobusgo.OneBusAway.Vehicles do
                            "predicted" => :boolean,
                            "scheduleDeviation" => :integer,
                            "nextStop" => :string,
-                           "nextStopTimeOffset" => :integer
+                           "nextStopTimeOffset" => :integer,
+                           "serviceDate" => :integer
                          }}}
                    }}
 
@@ -191,15 +197,20 @@ defmodule Gobusgo.OneBusAway.Vehicles do
     end
   end
 
-  # The rules the schema cannot express: the identifier is non-empty and both
-  # times are zero or later, zero being the source's value for "never".
+  # The rules the schema cannot express: the identifier is non-empty, both
+  # times are zero or later, zero being the source's value for "never", and
+  # a service date is zero or later.
   defp valid_vehicle?(%{"vehicleId" => id} = vehicle) do
     if id == "" do
       false
     else
-      vehicle["lastUpdateTime"] >= 0 and vehicle["lastLocationUpdateTime"] >= 0
+      times_valid? = vehicle["lastUpdateTime"] >= 0 and vehicle["lastLocationUpdateTime"] >= 0
+      times_valid? and service_date_valid?(vehicle["tripStatus"])
     end
   end
+
+  defp service_date_valid?(nil), do: true
+  defp service_date_valid?(%{"serviceDate" => service_date_ms}), do: service_date_ms >= 0
 
   defp check_identifiers(list, references) do
     duplicate =
@@ -226,10 +237,12 @@ defmodule Gobusgo.OneBusAway.Vehicles do
   defp name(""), do: nil
   defp name(name) when is_binary(name), do: name
 
-  # `location` is the last location the vehicle reported: the Puget Sound
-  # server sends the value of `tripStatus.lastKnownLocation` in it whenever
-  # both are present, and sends it for vehicles without a trip as well
-  # (observed 2026-10-02).
+  # `location` and `lastLocationUpdateTime` are the last location the vehicle
+  # reported and its time, and the Puget Sound server sends them for vehicles
+  # without a trip as well (observed 2026-10-02). The two come from one
+  # report, so they are read together and never with the trip status's
+  # `lastKnownLocation`, which held a newer report in 900 of 174,774 stored
+  # trip statuses of 2026-10-05 to 2026-11-09 that held both.
   defp vehicle(%{"vehicleId" => id} = vehicle, %{trips: trips, routes: routes}) do
     trip_status = vehicle["tripStatus"]
     active_trip_id = trip_status_field(trip_status, "activeTripId")
@@ -252,7 +265,8 @@ defmodule Gobusgo.OneBusAway.Vehicles do
       predicted: trip_status_field(trip_status, "predicted"),
       schedule_deviation_seconds: trip_status_field(trip_status, "scheduleDeviation"),
       next_stop_id: name(trip_status_field(trip_status, "nextStop")),
-      next_stop_time_offset_seconds: trip_status_field(trip_status, "nextStopTimeOffset")
+      next_stop_time_offset_seconds: trip_status_field(trip_status, "nextStopTimeOffset"),
+      service_date_ms: trip_status_field(trip_status, "serviceDate")
     }
   end
 
@@ -278,7 +292,9 @@ defmodule Gobusgo.OneBusAway.Vehicles do
 
       {:error, {:invalid_vehicle, index}} ->
         raise Assert.AssertionError,
-          message: "vehicle at index #{index} has an empty identifier or a time before zero"
+          message:
+            "vehicle at index #{index} has an empty identifier, a time before zero," <>
+              " or a service date before zero"
 
       {:error, {:duplicate_vehicle, id}} ->
         raise Assert.AssertionError, message: "vehicle identifier #{inspect(id)} repeats"

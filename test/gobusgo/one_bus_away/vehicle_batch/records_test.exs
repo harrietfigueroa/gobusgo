@@ -32,7 +32,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       predicted: true,
       schedule_deviation_seconds: -95,
       next_stop_id: "1_29247",
-      next_stop_time_offset_seconds: 140
+      next_stop_time_offset_seconds: 140,
+      service_date_ms: 1_289_548_800_000
     }
   end
 
@@ -53,7 +54,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
       predicted: nil,
       schedule_deviation_seconds: nil,
       next_stop_id: nil,
-      next_stop_time_offset_seconds: nil
+      next_stop_time_offset_seconds: nil,
+      service_date_ms: nil
     }
   end
 
@@ -112,7 +114,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                    "predicted" => true,
                    "scheduleDeviationSeconds" => -95,
                    "nextStopId" => "1_29247",
-                   "nextStopTimeOffsetSeconds" => 140
+                   "nextStopTimeOffsetSeconds" => 140,
+                   "serviceDateMs" => 1_289_548_800_000
                  },
                  "fetchedAt" => "2026-10-02T03:15:00Z",
                  "requestId" => @request_id
@@ -140,7 +143,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                "predicted" => nil,
                "scheduleDeviationSeconds" => nil,
                "nextStopId" => nil,
-               "nextStopTimeOffsetSeconds" => nil
+               "nextStopTimeOffsetSeconds" => nil,
+               "serviceDateMs" => nil
              }
     end
 
@@ -240,7 +244,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
                      "predicted" => true,
                      "scheduleDeviationSeconds" => -95,
                      "nextStopId" => "1_29247",
-                     "nextStopTimeOffsetSeconds" => 140
+                     "nextStopTimeOffsetSeconds" => 140,
+                     "serviceDateMs" => 1_289_548_800_000
                    }
                  }}}
     end
@@ -272,7 +277,9 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
 
     test "returns null for the trip time fields of a vehicle record that lacks their keys" do
       %{vehicles: [record]} = Records.build(fetch([reported("1_4207")]))
-      trip_time_fields = ~w(scheduleDeviationSeconds nextStopId nextStopTimeOffsetSeconds)
+
+      trip_time_fields =
+        ~w(scheduleDeviationSeconds nextStopId nextStopTimeOffsetSeconds serviceDateMs)
 
       value =
         record.value
@@ -350,6 +357,10 @@ defmodule Gobusgo.OneBusAway.VehicleBatch.RecordsTest do
           {"a next stop that is not a string",
            quote(do: &put_in(&1, ["data", "vehicle", "nextStopId"], 29_247))},
           {"an empty next stop", quote(do: &put_in(&1, ["data", "vehicle", "nextStopId"], ""))},
+          {"a service date that is not an integer",
+           quote(do: &put_in(&1, ["data", "vehicle", "serviceDateMs"], 1.5))},
+          {"a negative service date",
+           quote(do: &put_in(&1, ["data", "vehicle", "serviceDateMs"], -1))},
           {"a next stop time offset that is not an integer",
            quote(do: &put_in(&1, ["data", "vehicle", "nextStopTimeOffsetSeconds"], "soon"))},
           {"a predicted flag that is not a boolean",
