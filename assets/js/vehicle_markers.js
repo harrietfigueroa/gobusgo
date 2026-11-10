@@ -41,15 +41,19 @@ import {
 } from "./vehicle_marker_shapes"
 import {MotionTierKind, STILL_TIER, isPositionInBounds, markerIdsInBounds, motionSettingsOf, motionTier} from "./motion_tier"
 import {
+  HeadingKind,
   MarkerPositionKind,
   PathTripKind,
+  drawnHeading,
   drawnVehicle,
+  headingTurns,
   isAnimated,
   markerPositionKind,
   pathTrip,
   placedAtFetch,
   resumedOnCanvas,
-  trackedVehicle
+  trackedVehicle,
+  turnedHeading
 } from "./vehicle_motion"
 import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
 import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
@@ -420,6 +424,11 @@ export const VehicleMarkers = {
     this.map = null
     this.drawn = new Map()
     this.gliding = new Map()
+    // The chevrons that turn back to their reported headings in the
+    // source, after the canvas pointed them along their paths, and the
+    // heading the canvas last drew each marker it draws at.
+    this.turning = new Map()
+    this.canvasHeadings = new Map()
     this.frame = null
     // The canvas over the map, the markers it draws in place of the
     // source, and where it draws each of them.
@@ -667,6 +676,7 @@ export const VehicleMarkers = {
       if (!this.onCanvas.has(markerId)) {
         removed.push(markerId)
         this.gliding.delete(markerId)
+        this.turning.delete(markerId)
         this.drawn.delete(markerId)
       }
     }
@@ -674,6 +684,7 @@ export const VehicleMarkers = {
     this.onCanvas = entering
     this.canvasPositionAt = positionAt
     this.updateSource({add: returned, remove: removed})
+    this.requestGlideFrame()
     this.overlay.start({rateHz, vehiclesAt: (nowMs) => this.canvasVehicles(nowMs)})
   },
 
@@ -689,11 +700,13 @@ export const VehicleMarkers = {
     this.canvasPositionAt = fetchedPosition
     this.overlay.stop()
     this.updateSource({add: returned, remove: []})
+    this.requestGlideFrame()
   },
 
   // The features of the markers of `markerIds` the fetches still hold, at
   // the positions the canvas draws them at now, which become their drawn
-  // positions in the source.
+  // positions in the source, each with its chevron where the canvas drew it,
+  // turning back to its reported heading.
   returnedFeatures(markerIds) {
     const byId = markersById(this.markersByAgency)
     const nowMs = performance.now()
@@ -705,11 +718,30 @@ export const VehicleMarkers = {
       if (marker !== undefined) {
         const position = this.canvasPositionAt({marker, nowMs})
         this.drawn.set(markerId, position)
-        features.push(markerFeature({marker, position}))
+        const feature = markerFeature({marker, position})
+        this.turnBack({feature, nowMs})
+        features.push(feature)
       }
+
+      this.canvasHeadings.delete(markerId)
     }
 
     return features
+  },
+
+  // Has the chevron of `feature`, a marker leaving the canvas, start where
+  // the canvas drew it and turn to its reported heading, or stand at that
+  // heading at once under reduced motion.
+  turnBack({feature, nowMs}) {
+    const {properties} = feature
+    const source = this.canvasHeadings.get(properties.markerId)
+    const isHeaded = typeof properties.heading === "number" && source !== undefined
+    const isTurn = isHeaded && headingTurns({source, target: properties.heading, reducedMotion: this.reducedMotion.matches})
+
+    if (isTurn) {
+      this.turning.set(properties.markerId, {source, target: properties.heading, startMs: nowMs})
+      properties.heading = source
+    }
   },
 
   // The vehicles the canvas draws at `nowMs`: the markers on the canvas the
@@ -723,11 +755,34 @@ export const VehicleMarkers = {
 
       if (marker !== undefined) {
         const position = this.canvasPositionAt({marker, nowMs})
-        features.push(markerFeature({marker, position}))
+        const feature = markerFeature({marker, position})
+        this.pointAlongPath(feature)
+        features.push(feature)
       }
     }
 
     return features
+  },
+
+  // Points the chevron of `feature`, a marker the canvas draws, along its
+  // path where it is drawn along it; a marker with no reported heading
+  // keeps no chevron.
+  pointAlongPath(feature) {
+    const {properties} = feature
+    const tracked = this.tracked.get(properties.markerId)
+    const isHeaded = typeof properties.heading === "number" && tracked !== undefined
+
+    if (!isHeaded) {
+      return
+    }
+
+    const heading = drawnHeading(tracked)
+
+    if (heading.kind === HeadingKind.alongPath) {
+      properties.heading = heading.degrees
+    }
+
+    this.canvasHeadings.set(properties.markerId, properties.heading)
   },
 
   // A map whose style is being set anew has no source, and the markers
@@ -939,6 +994,8 @@ export const VehicleMarkers = {
 
       this.drawn = drawn
       this.gliding = gliding
+      // The collection holds each marker's reported heading.
+      this.turning = new Map()
       this.map.getSource(SOURCE_NAME).setData(collection)
       this.requestGlideFrame()
     }
@@ -1330,32 +1387,34 @@ export const VehicleMarkers = {
   },
 
   requestGlideFrame() {
-    const isFrameDue = this.gliding.size > 0 && this.frame === null
+    const isMoving = this.gliding.size > 0 || this.turning.size > 0
+    const isFrameDue = isMoving && this.frame === null
 
     if (isFrameDue) {
       this.frame = requestAnimationFrame((frameMs) => { this.glideFrame(frameMs) })
     }
   },
 
-  // One frame moves each gliding marker, and nothing else, in the source.
-  // A glide ends after its duration, so the frames stop once every marker
-  // has arrived.
+  // One frame moves each gliding marker and turns each turning chevron, and
+  // nothing else, in the source. A glide and a turn end after their
+  // durations, so the frames stop once every marker has arrived.
   glideFrame(frameMs) {
     this.frame = null
     const source = this.map.getSource(SOURCE_NAME)
 
     if (source === undefined) {
       this.gliding = new Map()
+      this.turning = new Map()
       return
     }
 
-    const update = []
+    const updates = new Map()
 
     for (const [markerId, glide] of this.gliding) {
       const elapsedMs = frameMs - glide.startMs
       const {position, ended} = glidePosition({...glide, elapsedMs})
 
-      update.push({id: markerId, newGeometry: point(position)})
+      updates.set(markerId, {id: markerId, newGeometry: point(position)})
       this.drawn.set(markerId, position)
 
       if (ended) {
@@ -1363,6 +1422,23 @@ export const VehicleMarkers = {
       }
     }
 
+    for (const [markerId, turn] of this.turning) {
+      const {degrees, ended} = turnedHeading({...turn, elapsedMs: frameMs - turn.startMs})
+      let update = {id: markerId}
+
+      if (updates.has(markerId)) {
+        update = updates.get(markerId)
+      }
+
+      update.addOrUpdateProperties = [{key: "heading", value: degrees}]
+      updates.set(markerId, update)
+
+      if (ended) {
+        this.turning.delete(markerId)
+      }
+    }
+
+    const update = Array.from(updates.values())
     source.updateData({update})
     this.requestGlideFrame()
   },
@@ -1374,6 +1450,7 @@ export const VehicleMarkers = {
     }
 
     this.gliding = new Map()
+    this.turning = new Map()
   },
 
   destroyed() {

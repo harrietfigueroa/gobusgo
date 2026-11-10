@@ -3,7 +3,8 @@
 // where the fetch puts them; where a predicted vehicle is drawn as time
 // passes, when its path arrives, when a new report puts it behind or ahead
 // of its drawn marker, when a fetch places it in the map's source, and when
-// it moves from the source onto the canvas. Each case runs the pure
+// it moves from the source onto the canvas; and which way its chevron
+// points and how it turns back to its reported heading. Each case runs the pure
 // functions over markers, as the server sends them, on a straight street
 // written here. Run it with `node test/scripts/vehicle_motion_check.mjs`; it
 // exits non-zero on the first case that differs.
@@ -13,9 +14,14 @@ import {AssertionError} from "../../assets/js/assert.js"
 import {distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
 import {CorrectionKind, DrawnKind, PREDICTION_HORIZON_MS, preparePath} from "../../assets/js/vehicle_prediction.js"
 import {
+  HEADING_TURN_DURATION_MS,
+  HeadingKind,
   MotionPlanKind,
   MarkerPositionKind,
+  drawnHeading,
   drawnVehicle,
+  headingTurns,
+  turnedHeading,
   isAnimated,
   markerPositionKind,
   motionPlan,
@@ -209,6 +215,52 @@ const positionCases = [
 
 for (const {name, input, expected} of positionCases) {
   deepStrictEqual(markerPositionKind(input), expected, name)
+}
+
+// Which way a vehicle's chevron points: along its path where it is drawn
+// along it, and its reported heading otherwise. The street runs east.
+const REPORTED_HEADING_DEGREES = 30
+const EAST_DEGREES = 90
+const HEADING_TOLERANCE_DEGREES = 0.1
+const HALF_TURN_MS = HEADING_TURN_DURATION_MS / HALF
+const headingCases = [
+  {name: "a vehicle drawn along its path points along it", input: later, expected: {kind: HeadingKind.alongPath, degrees: EAST_DEGREES}},
+  {name: "a vehicle with no path keeps its reported heading", input: noPath, expected: {kind: HeadingKind.reported}},
+  {name: "a stale vehicle keeps its reported heading", input: stale, expected: {kind: HeadingKind.reported}},
+  {name: "a vehicle that has stood 100 s keeps its reported heading", input: standThird, expected: {kind: HeadingKind.reported}}
+]
+
+for (const {name, input, expected} of headingCases) {
+  const heading = drawnHeading(input)
+  deepStrictEqual(heading.kind, expected.kind, name)
+  if (expected.kind === HeadingKind.alongPath) {
+    ok(Math.abs(heading.degrees - expected.degrees) < HEADING_TOLERANCE_DEGREES, `${name}: ${heading.degrees}`)
+  }
+}
+
+// A chevron that leaves the path turns back to its reported heading the
+// shorter way round, over the turn's duration, or at once under reduced motion.
+const turnCases = [
+  {name: "a turn starts at the path's bearing", input: {source: 350, target: REPORTED_HEADING_DEGREES, elapsedMs: 0}, expected: {degrees: 350, ended: false}},
+  {name: "a turn across north goes the shorter way", input: {source: 350, target: REPORTED_HEADING_DEGREES, elapsedMs: HALF_TURN_MS}, expected: {degrees: 10, ended: false}},
+  {name: "a turn the other way goes counterclockwise", input: {source: EAST_DEGREES, target: REPORTED_HEADING_DEGREES, elapsedMs: HALF_TURN_MS}, expected: {degrees: 60, ended: false}},
+  {name: "a turn ends at the reported heading", input: {source: 350, target: REPORTED_HEADING_DEGREES, elapsedMs: HEADING_TURN_DURATION_MS}, expected: {degrees: REPORTED_HEADING_DEGREES, ended: true}}
+]
+
+for (const {name, input, expected} of turnCases) {
+  const turn = turnedHeading(input)
+  ok(Math.abs(turn.degrees - expected.degrees) < HEADING_TOLERANCE_DEGREES, `${name}: ${turn.degrees} is not ${expected.degrees}`)
+  deepStrictEqual(turn.ended, expected.ended, name)
+}
+
+const turnKindCases = [
+  {name: "a chevron off its reported heading turns back", input: {source: 350, target: REPORTED_HEADING_DEGREES, reducedMotion: false}, expected: true},
+  {name: "a chevron snaps back under reduced motion", input: {source: 350, target: REPORTED_HEADING_DEGREES, reducedMotion: true}, expected: false},
+  {name: "a chevron on its reported heading does not turn", input: {source: REPORTED_HEADING_DEGREES, target: REPORTED_HEADING_DEGREES, reducedMotion: false}, expected: false}
+]
+
+for (const {name, input, expected} of turnKindCases) {
+  deepStrictEqual(headingTurns(input), expected, name)
 }
 
 console.log("vehicle motion check passed")

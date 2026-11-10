@@ -7,6 +7,7 @@
 // keeps, and each function returns another.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees} from "./math/angles.js"
 import {LAT, LON} from "./math/geodesy.js"
 import {
   CorrectionKind,
@@ -15,6 +16,7 @@ import {
   anchorReport,
   beginCorrection,
   drawCorrected,
+  pathBearingDegrees,
   predictPosition,
   reportBefore
 } from "./vehicle_prediction.js"
@@ -34,6 +36,72 @@ const STALE_STATUS = "stale"
 
 const SETTLED = Object.freeze({kind: CorrectionKind.settled})
 const NO_TRIP = Object.freeze({kind: PathTripKind.none})
+
+/** Which way a vehicle's chevron points: along its path, or its reported heading. */
+export const HeadingKind = Object.freeze({alongPath: "alongPath", reported: "reported"})
+
+/** How long a chevron takes to turn back to its reported heading. */
+export const HEADING_TURN_DURATION_MS = 1000
+
+const REPORTED_HEADING = Object.freeze({kind: HeadingKind.reported})
+
+/**
+ * Which way the chevron of `tracked` points as it is drawn now: along its
+ * trip's path at the distance it is drawn at, in degrees clockwise from
+ * true north, for a predicted vehicle drawn along its path, and its
+ * reported heading for any other.
+ */
+export function drawnHeading(tracked) {
+  const isPredicted = tracked.plan.kind === MotionPlanKind.predicted
+  const isAlongPath = isPredicted && tracked.drawn.kind === DrawnKind.alongPath
+
+  if (!isAlongPath) {
+    return REPORTED_HEADING
+  }
+
+  const degrees = pathBearingDegrees({path: tracked.path, meters: tracked.drawn.distanceMeters})
+  return Object.freeze({kind: HeadingKind.alongPath, degrees})
+}
+
+// The signed turn from `source` to `target`, in degrees from -180 up to
+// 180, clockwise positive: the shorter way round.
+function signedTurnDegrees({source, target}) {
+  const clockwise = normalizedDegrees(target - source)
+
+  if (clockwise > DEGREES_PER_HALF_TURN) {
+    return clockwise - DEGREES_PER_TURN
+  }
+
+  return clockwise
+}
+
+/**
+ * Whether a chevron drawn at `source` turns to `target`, both in degrees
+ * clockwise from north, rather than standing there at once: never under
+ * reduced motion, and never where the two are one heading.
+ */
+export function headingTurns({source, target, reducedMotion}) {
+  if (reducedMotion) {
+    return false
+  }
+
+  return signedTurnDegrees({source, target}) !== 0
+}
+
+/**
+ * The heading of a chevron turning from `source` to `target` `elapsedMs`
+ * after its turn began, the shorter way round at an even pace over
+ * `HEADING_TURN_DURATION_MS`, and whether the turn has ended.
+ */
+export function turnedHeading({source, target, elapsedMs}) {
+  if (elapsedMs >= HEADING_TURN_DURATION_MS) {
+    return {degrees: target, ended: true}
+  }
+
+  const fraction = Math.max(0, elapsedMs) / HEADING_TURN_DURATION_MS
+  const turn = signedTurnDegrees({source, target})
+  return {degrees: normalizedDegrees(source + turn * fraction), ended: false}
+}
 
 function reportOf(marker) {
   const {report, trip_id: tripId, service_date_ms: serviceDateMs} = marker
