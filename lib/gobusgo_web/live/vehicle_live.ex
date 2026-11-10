@@ -150,6 +150,13 @@ defmodule GobusgoWeb.VehicleLive do
   tells the browser with `trip:filter-ended`; the change is stored and put
   in the address as any change is.
 
+  The page answers `trip-paths:request`, the trips whose paths the browser
+  asks for, with `accepted`, `busy` while its previous request runs, or
+  `refused`, as `GobusgoWeb.VehicleLive.TripPaths` reads it. It fetches the
+  paths with `Gobusgo.OneBusAway.TripPaths` in a task of its own, so the
+  views a build reads never reach the page's heap, and pushes them with
+  `trip-paths:paths`.
+
   In the Alerts tab the page shows the service alerts
   of the routes the filter keeps with `GobusgoWeb.ServiceAlertsPanel`, from
   `GobusgoWeb.ServiceAlerts` over the fetches of the two situation views,
@@ -197,6 +204,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.VehicleLive.Routes
   alias GobusgoWeb.VehicleLive.SharedVehicles
   alias GobusgoWeb.VehicleLive.Trip
+  alias GobusgoWeb.VehicleLive.TripPaths
   alias GobusgoWeb.VehicleMarkers
 
   @pubsub Gobusgo.PubSub
@@ -208,6 +216,7 @@ defmodule GobusgoWeb.VehicleLive do
   @vehicle_markers_event "vehicle-markers:agency"
   @stop_arrivals_event "stop-arrivals:arrivals"
   @trip_filter_ended_event "trip:filter-ended"
+  @trip_paths_event "trip-paths:paths"
   @routing_manifest_url "/api/routing/manifest"
   @shared_vehicles_hidden %{
     shown: false,
@@ -236,6 +245,7 @@ defmodule GobusgoWeb.VehicleLive do
         kept_route_ids: :every,
         open_stops: %{},
         viewer_monitor: nil,
+        trip_paths_pending: false,
         service_alerts: %{current: [], upcoming: [], routes: %{}},
         shared_vehicles: @shared_vehicles_hidden
       )
@@ -449,6 +459,26 @@ defmodule GobusgoWeb.VehicleLive do
     end
   end
 
+  def handle_event("trip-paths:request", params, socket) do
+    %{trip_paths_pending: pending} = socket.assigns
+
+    case {TripPaths.request(params), pending} do
+      {:refused, _pending} ->
+        {:reply, %{refused: true}, socket}
+
+      {_requests, true} ->
+        {:reply, %{busy: true}, socket}
+
+      {requests, false} ->
+        socket =
+          socket
+          |> assign(trip_paths_pending: true)
+          |> start_async(:trip_paths, fn -> Gobusgo.OneBusAway.TripPaths.fetch(requests) end)
+
+        {:reply, %{accepted: true}, socket}
+    end
+  end
+
   def handle_event("trip:filter", %{"route_ids" => route_ids}, socket) do
     case Trip.filter(route_ids) do
       :refused ->
@@ -505,6 +535,20 @@ defmodule GobusgoWeb.VehicleLive do
   def handle_event("stop-arrivals:" <> action, _params, socket)
       when action in ["open", "close"] do
     {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_async(:trip_paths, {:ok, {:ok, served}}, socket) do
+    {:noreply, push_trip_paths(socket, TripPaths.event(served))}
+  end
+
+  def handle_async(:trip_paths, {:ok, {:error, reason}}, socket) do
+    {:noreply, push_trip_paths(socket, TripPaths.failed_event(reason))}
+  end
+
+  def handle_async(:trip_paths, {:exit, reason}, socket) do
+    Logger.error("Trip paths request failed", reason: inspect(reason))
+    {:noreply, push_trip_paths(socket, TripPaths.failed_event(:failed))}
   end
 
   @impl Phoenix.LiveView
@@ -1053,6 +1097,10 @@ defmodule GobusgoWeb.VehicleLive do
 
   # Shows `trip`, or the rider's own filter for `nil`, and sends what it
   # changes; neither the address nor the stored filter changes.
+  defp push_trip_paths(socket, event) do
+    socket |> assign(trip_paths_pending: false) |> push_event(@trip_paths_event, event)
+  end
+
   defp show_trip(socket, trip) do
     shown_filter = socket.assigns.filter
 
