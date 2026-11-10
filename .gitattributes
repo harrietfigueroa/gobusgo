@@ -1,0 +1,10 @@
+# Git's built-in diff patterns put the enclosing function, heading, or selector in each hunk header.
+*.ex diff=elixir
+*.exs diff=elixir
+*.md diff=markdown
+*.css diff=css
+
+# GitHub folds this lock file in pull request diffs. mix.lock and assets/vendor.lock.json stay unfolded, since a reviewer reads them to see a dependency change.
+tools/lint/package-lock.json linguist-generated
+
+test/fixtures/**/*.bin binary
