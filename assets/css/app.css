@@ -167,6 +167,28 @@
   border-radius: var(--surface-radius);
 }
 
+/* A pinch that starts on an element over the map leaves the page at its
+   scale: the panel sheet, the boxes in the surface style, the map's
+   controls, and its popups allow one-finger panning alone, so their
+   scrolling panels still scroll. A touch takes the touch-action of the
+   elements from its target up to its nearest scroll container and no
+   further (https://w3c.github.io/pointerevents/#determining-supported-touch-behavior
+   — checked 2026-11-10), so the rule names every descendant as well as
+   the element. `:where` keeps it at no specificity, so a drag handle's
+   `none` holds. */
+:where(
+  .panel-sheet,
+  .panel-sheet *,
+  .surface,
+  .surface *,
+  .maplibregl-ctrl,
+  .maplibregl-ctrl *,
+  .maplibregl-popup,
+  .maplibregl-popup *
+) {
+  touch-action: pan-x pan-y;
+}
+
 /* MapLibre draws a tip as a triangle of borders, which cannot carry an
    outline. Here a tip is a square with the popup's fill and two bordered
    sides, drawn over the popup's edge, so the popup's border runs around the
