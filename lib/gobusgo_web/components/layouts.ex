@@ -4,8 +4,8 @@ defmodule GobusgoWeb.Layouts do
   the head with the CSRF token, the page's title, the commit the application was built from
   where the build names one, the time the page was rendered, which tells
   the browser a copy from a cache, the web app manifest, the icon a home screen
-  draws, the theme color of each color scheme, the script that draws the
-  page in the rider's theme, and the built assets, and the page as the body
+  draws, the theme color, the script that draws the page and sets that
+  color in the rider's theme, and the built assets, and the page as the body
   with the offer to reload into a new release.
   """
 
@@ -25,14 +25,19 @@ defmodule GobusgoWeb.Layouts do
 
   @theme_setting_key theme_setting_key
   @stored_themes stored_themes
-  # The page backgrounds of the light and the dark theme in assets/css/app.css.
-  @theme_color_light "#ffffff"
-  @theme_color_dark "#0f172a"
 
-  # Runs before the stylesheet applies, so the first paint is in the theme
-  # the rider's setting resolves to: a stored theme as stored, and with any
-  # other stored value, no stored value, or storage that throws, the
-  # system's preference.
+  # The content of the theme-color meta element per theme, each theme's page
+  # background, read from the theme colors file when this module is compiled.
+  @theme_colors_path Path.expand("../../../assets/js/theme_colors.json", __DIR__)
+  @external_resource @theme_colors_path
+
+  @theme_colors @theme_colors_path |> File.read!() |> JSON.decode!()
+  @theme_color_light Map.fetch!(@theme_colors, "light")
+
+  # Runs before the stylesheet applies, so the first paint and the browser's
+  # bars are in the theme the rider's setting resolves to: a stored theme as
+  # stored, and with any other stored value, no stored value, or storage that
+  # throws, the system's preference.
   @theme_script """
   (function () {
     var setting = null;
@@ -50,6 +55,8 @@ defmodule GobusgoWeb.Layouts do
       theme = "dark";
     }
     document.documentElement.dataset.theme = theme;
+    var themeColors = #{JSON.encode!(@theme_colors)};
+    document.querySelector('meta[name="theme-color"]').setAttribute("content", themeColors[theme]);
   })();
   """
 
@@ -66,7 +73,6 @@ defmodule GobusgoWeb.Layouts do
           DateTime.utc_now() |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601(),
         theme_script: @theme_script,
         theme_color_light: @theme_color_light,
-        theme_color_dark: @theme_color_dark,
         title_suffix: title_suffix(assigns[:page_title])
       )
 
@@ -83,12 +89,7 @@ defmodule GobusgoWeb.Layouts do
         <meta :if={@revision} name="revision" content={@revision} />
         <meta name="gobusgo:rendered-at" content={@rendered_at} />
         <.live_title default="Gobusgo" suffix={@title_suffix}>{assigns[:page_title]}</.live_title>
-        <meta
-          name="theme-color"
-          media="(prefers-color-scheme: light)"
-          content={@theme_color_light}
-        />
-        <meta name="theme-color" media="(prefers-color-scheme: dark)" content={@theme_color_dark} />
+        <meta name="theme-color" content={@theme_color_light} />
         <script>
           <%= Phoenix.HTML.raw(@theme_script) %>
         </script>
