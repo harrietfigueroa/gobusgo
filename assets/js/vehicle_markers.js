@@ -18,7 +18,7 @@ import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
-import {drawPointedMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS} from "./vehicle_marker_shapes"
+import {drawPointedMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS, POINTED_IMAGE_SIZE_PIXELS} from "./vehicle_marker_shapes"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -32,7 +32,6 @@ const ROUTE_TEXT_SIZE_PIXELS = 11
 const routeTextOffsetEms = [0, 1]
 const ROUTE_HALO_WIDTH_PIXELS = 1.5
 const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
-const POINTED_IMAGE_SIZE_PIXELS = 28
 const POINTED_IMAGE_PIXEL_RATIO = 2
 const BADGE_LAYER_NAME = "vehicle-markers-badge"
 const BADGE_IMAGE_PIXEL_RATIO = 2

@@ -13,6 +13,7 @@ import {
   drawnVehicles,
   HIT_RADIUS_PIXELS,
   HitKind,
+  MarkerKind,
   nearestVehicle,
   placedLabels,
   screenAngleRadians,
@@ -31,6 +32,13 @@ const OFF_CANVAS_PIXELS = 60
 const BOX_NEAR = 90
 const BOX_FAR = 150
 const INSIDE_OUT_EDGE = 10
+const ROUND_REACH_PIXELS = 7.5
+// A pointed image of 28 px turned an eighth of a turn reaches 14 √2 px, and
+// its icon's padding 2 px more.
+const TURNED_REACH_PIXELS = 21.7
+const EIGHTHS_PER_TURN_HALVED = 4
+// Between the round vehicles above and the pointed one below.
+const MIDDLE = 400
 
 function idOf(vehicle) {
   return vehicle.id
@@ -41,7 +49,7 @@ function ids(vehicles) {
 }
 
 function vehicleAt({id, x, y}) {
-  return {id, x, y}
+  return {id, x, y, marker: {kind: MarkerKind.round}}
 }
 
 const drawnCases = [
@@ -57,6 +65,9 @@ for (const {case: caseName, vehicle, drawn} of drawnCases) {
 }
 
 const crowd = [vehicleAt({id: "a", x: 100, y: 100}), vehicleAt({id: "b", x: 108, y: 100}), vehicleAt({id: "c", x: 200, y: 200})]
+// A pointed vehicle turned an eighth of a turn, below the round ones.
+const turned = {id: "d", x: 200, y: 600, marker: {kind: MarkerKind.pointed, angleRadians: Math.PI / EIGHTHS_PER_TURN_HALVED}}
+const boxed = [...crowd, turned]
 
 const hitCases = [
   {case: "a click on a marker opens it", point: {x: 200, y: 200}, hit: "c"},
@@ -80,11 +91,15 @@ for (const {case: caseName, point, hit} of hitCases) {
 const boxCases = [
   {case: "a box holds the vehicles inside it", box: [[BOX_NEAR, BOX_NEAR], [BOX_FAR, BOX_FAR]], inside: ["a", "b"]},
   {case: "a box's edge holds a vehicle on it", box: [[200, 200], [300, 300]], inside: ["c"]},
-  {case: "a box beside the panel holds none left of it", box: [[BOX_FAR, 0], [WIDTH, HEIGHT]], inside: ["c"]}
+  {case: "a box holds a round vehicle whose outline reaches into it", box: [[200 + ROUND_REACH_PIXELS, 0], [WIDTH, MIDDLE]], inside: ["c"]},
+  {case: "a box holds no round vehicle beyond its outline", box: [[200 + ROUND_REACH_PIXELS + 1, 0], [WIDTH, MIDDLE]], inside: []},
+  {case: "a box holds a pointed vehicle turned an eighth whose image reaches into it", box: [[200 + TURNED_REACH_PIXELS, MIDDLE], [WIDTH, HEIGHT]], inside: ["d"]},
+  {case: "a box holds no pointed vehicle beyond its turned image", box: [[200 + TURNED_REACH_PIXELS + 1, MIDDLE], [WIDTH, HEIGHT]], inside: []},
+  {case: "a box beside the panel holds none left of it", box: [[BOX_FAR, 0], [WIDTH, HEIGHT]], inside: ["c", "d"]}
 ]
 
 for (const {case: caseName, box, inside} of boxCases) {
-  const result = vehiclesInBox({drawn: crowd, box})
+  const result = vehiclesInBox({drawn: boxed, box})
   deepStrictEqual(ids(result), inside, caseName)
 }
 

@@ -19,6 +19,7 @@ import {
   HitKind,
   LABEL_OFFSET_PIXELS,
   LABEL_TEXT_SIZE_PIXELS,
+  MarkerKind,
   nearestVehicle,
   placedLabels,
   screenAngleRadians,
@@ -198,7 +199,8 @@ class VehicleOverlay {
 
     for (const feature of features) {
       const point = this.map.project(feature.geometry.coordinates)
-      vehicles.push({id: feature.properties.markerId, x: point.x, y: point.y, feature})
+      const marker = this.markerOf(feature.properties)
+      vehicles.push({id: feature.properties.markerId, x: point.x, y: point.y, marker, feature})
     }
 
     const drawn = drawnVehicles({vehicles, width, height})
@@ -216,6 +218,20 @@ class VehicleOverlay {
     this.drawnKey = cameraKey(this.map)
   }
 
+  // The marker of a vehicle: round for one with no heading, and otherwise
+  // pointed, turned on the screen so its heading stays a compass direction.
+  markerOf(properties) {
+    if (!hasHeading(properties)) {
+      const round = {kind: MarkerKind.round}
+      return round
+    }
+
+    const bearingDegrees = this.map.getBearing()
+    const angleRadians = screenAngleRadians({headingDegrees: properties.heading, bearingDegrees})
+    const pointed = {kind: MarkerKind.pointed, angleRadians}
+    return pointed
+  }
+
   opacityOf(properties) {
     const opacity = this.opacities.get(properties.status)
 
@@ -231,15 +247,14 @@ class VehicleOverlay {
   // and a pointed marker's bitmap is turned to its heading.
   drawMarkers({drawn, colors, ratio}) {
     const context = this.canvas.getContext("2d")
-    const bearingDegrees = this.map.getBearing()
     const round = []
     const pointed = []
 
     for (const vehicle of drawn) {
-      if (hasHeading(vehicle.feature.properties)) {
-        pointed.push(vehicle)
-      } else {
+      if (vehicle.marker.kind === MarkerKind.round) {
         round.push(vehicle)
+      } else {
+        pointed.push(vehicle)
       }
     }
 
@@ -251,10 +266,9 @@ class VehicleOverlay {
       context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
     }
 
-    for (const {x, y, feature: {properties}} of pointed) {
+    for (const {x, y, marker: {angleRadians}, feature: {properties}} of pointed) {
       const opacity = this.opacityOf(properties)
       const sprite = this.sprites.marker({shape: SpriteShape.pointed, color: properties.color, opacity, strokeColor: colors.vehicleStroke})
-      const angleRadians = screenAngleRadians({headingDegrees: properties.heading, bearingDegrees})
       const centerX = snapToPixel({value: x, ratio})
       const centerY = snapToPixel({value: y, ratio})
       context.translate(centerX, centerY)

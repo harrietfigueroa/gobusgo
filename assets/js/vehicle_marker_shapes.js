@@ -13,6 +13,9 @@ export const MARKER_STROKE_WIDTH_PIXELS = 1.5
 /** How far a pointed marker's tip stands from its center, in CSS pixels. */
 export const POINTED_TIP_DISTANCE_PIXELS = 12
 
+/** The side of the square the map's image of a pointed marker fills, in CSS pixels. */
+export const POINTED_IMAGE_SIZE_PIXELS = 28
+
 const HALVING_DIVISOR = 2
 const FULL_TURN = Math.PI * HALVING_DIVISOR
 const UP = -Math.PI / HALVING_DIVISOR

@@ -5,8 +5,13 @@
 // drawn. Every length is in CSS pixels, and nothing here reads the document
 // or the map, which lets it be run apart from both.
 
-import {assertCondition} from "./assert.js"
-import {MARKER_RADIUS_PIXELS, POINTED_TIP_DISTANCE_PIXELS} from "./vehicle_marker_shapes.js"
+import {assertCondition, unreachable} from "./assert.js"
+import {
+  MARKER_RADIUS_PIXELS,
+  MARKER_STROKE_WIDTH_PIXELS,
+  POINTED_IMAGE_SIZE_PIXELS,
+  POINTED_TIP_DISTANCE_PIXELS
+} from "./vehicle_marker_shapes.js"
 import {MARK_SIZE_PIXELS} from "./status_badges.js"
 
 /** How far from a drawn marker's center a click still opens it. */
@@ -24,6 +29,9 @@ export const LABEL_OFFSET_PIXELS = LABEL_TEXT_SIZE_PIXELS
 /** The kinds of the vehicle a click is on: one, or none within reach. */
 export const HitKind = Object.freeze({found: "found", missing: "missing"})
 
+/** The kinds of a vehicle's marker: round, or pointed and turned to an angle on the screen. */
+export const MarkerKind = Object.freeze({round: "round", pointed: "pointed"})
+
 // A marker's center may stand this far outside the canvas while some of its
 // marker, its badge, or its label is still inside it.
 const DRAWN_MARGIN_PIXELS = 48
@@ -35,6 +43,12 @@ const LABEL_HEIGHT_PIXELS = 14
 // The room a label keeps clear around itself, MapLibre's `text-padding`.
 const LABEL_PADDING_PIXELS = 2
 const HALVING_DIVISOR = 2
+const ROUND_REACH_PIXELS = MARKER_RADIUS_PIXELS + MARKER_STROKE_WIDTH_PIXELS
+const POINTED_IMAGE_HALF_PIXELS = POINTED_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
+// The room MapLibre keeps around an icon, its `icon-padding`, which the
+// pointed layer leaves at its default.
+// https://maplibre.org/maplibre-style-spec/layers/#icon-padding — checked 2026-11-09
+const ICON_PADDING_PIXELS = 2
 const DEGREES_PER_HALF_TURN = 180
 
 function isPoint({x, y}) {
@@ -103,9 +117,29 @@ export function nearestVehicle({drawn, point}) {
   return found
 }
 
+// How far from its center a vehicle counts as inside a box, as the map's
+// layers count it: a round marker by its circle and outline, and a pointed
+// one by the box around its image turned to its angle, with the icon's
+// padding.
+function reachPixels(marker) {
+  switch (marker.kind) {
+    case MarkerKind.round:
+      return ROUND_REACH_PIXELS
+    case MarkerKind.pointed: {
+      const cosine = Math.abs(Math.cos(marker.angleRadians))
+      const sine = Math.abs(Math.sin(marker.angleRadians))
+      return POINTED_IMAGE_HALF_PIXELS * (cosine + sine) + ICON_PADDING_PIXELS
+    }
+    default:
+      return unreachable(marker.kind, "a marker is round or pointed")
+  }
+}
+
 /**
- * The vehicles of `drawn` whose points stand inside `box`, a box on the
- * screen as `[[left, top], [right, bottom]]`, edges included.
+ * The vehicles of `drawn` that the map's layers would count inside `box`,
+ * a box on the screen as `[[left, top], [right, bottom]]`: those whose
+ * marker reaches into it. A vehicle has its point `x`, `y` and its
+ * `marker`, of a `MarkerKind`.
  */
 export function vehiclesInBox({drawn, box}) {
   const [[left, top], [right, bottom]] = box
@@ -114,8 +148,9 @@ export function vehiclesInBox({drawn, box}) {
   const inside = []
 
   for (const vehicle of drawn) {
-    const isInsideX = vehicle.x >= left && vehicle.x <= right
-    const isInsideY = vehicle.y >= top && vehicle.y <= bottom
+    const reach = reachPixels(vehicle.marker)
+    const isInsideX = vehicle.x >= left - reach && vehicle.x <= right + reach
+    const isInsideY = vehicle.y >= top - reach && vehicle.y <= bottom + reach
     const isInside = isInsideX && isInsideY
 
     if (isInside) {
