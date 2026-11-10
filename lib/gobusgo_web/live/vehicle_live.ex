@@ -805,6 +805,7 @@ defmodule GobusgoWeb.VehicleLive do
       id="vehicle-markers"
       phx-hook="VehicleMarkers"
       data-statuses={JSON.encode!(VehicleMarkers.statuses())}
+      data-motion={JSON.encode!(vehicle_motion())}
       hidden
     >
     </div>
@@ -1098,6 +1099,12 @@ defmodule GobusgoWeb.VehicleLive do
 
   # Shows `trip`, or the rider's own filter for `nil`, and sends what it
   # changes; neither the address nor the stored filter changes.
+  # The application refuses to start with settings that are not valid.
+  defp vehicle_motion do
+    {:ok, settings} = Gobusgo.Config.vehicle_motion()
+    settings
+  end
+
   defp push_trip_paths(socket, event) do
     socket |> assign(trip_paths_pending: false) |> push_event(@trip_paths_event, event)
   end

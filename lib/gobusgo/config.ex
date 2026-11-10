@@ -35,6 +35,27 @@ defmodule Gobusgo.Config do
   @type shared_vehicles_error :: {:invalid, :shared_vehicles_interval_ms}
 
   @type http :: %{ip: :inet.ip_address(), port: :inet.port_number()}
+
+  @typedoc """
+  When the vehicle page moves its markers continuously: from `zoom_min` to
+  below `zoom_max`, with `hysteresis` of zoom past both edges once running,
+  while at most `vehicle_count_max` vehicles are in view, at the rate of
+  the last step of `rates` whose zoom the map's zoom has reached.
+  """
+  @type vehicle_motion :: %{
+          zoom_min: float(),
+          zoom_max: float(),
+          hysteresis: float(),
+          vehicle_count_max: pos_integer(),
+          rates: [%{zoom: float(), rate_hz: pos_integer()}]
+        }
+  @type vehicle_motion_error ::
+          {:invalid,
+           :vehicle_motion_zoom_min
+           | :vehicle_motion_zoom_max
+           | :vehicle_motion_hysteresis
+           | :vehicle_motion_vehicle_count_max
+           | :vehicle_motion_rates}
   @type http_error :: {:invalid, :host | :port}
 
   @typedoc """
@@ -61,6 +82,22 @@ defmodule Gobusgo.Config do
   @shared_vehicles_interval_ms_default 60_000
   @shared_vehicles_interval_ms_min 60_000
   @shared_vehicles_interval_ms_max 3_600_000
+  # Markers move continuously from zoom 14 to below 16, at 4 Hz from zoom 14
+  # and 8 Hz from zoom 15, about a pixel per step at a bus's p90 speed
+  # (GOB-238), while at most 100 vehicles are in view.
+  @vehicle_motion_zoom_min_default 14.0
+  @vehicle_motion_zoom_max_default 16.0
+  @vehicle_motion_hysteresis_default 0.25
+  @vehicle_motion_vehicle_count_max_default 100
+  @vehicle_motion_rates_default [%{zoom: 14.0, rate_hz: 4}, %{zoom: 15.0, rate_hz: 8}]
+  @vehicle_motion_vehicle_count_max_max 100
+  # MapLibre's zoom runs from 0 to 24.
+  # https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/MapOptions/ — checked 2026-11-10
+  @vehicle_motion_zoom_bound_min 0.0
+  @vehicle_motion_zoom_bound_max 24.0
+  @vehicle_motion_rate_hz_min 1
+  @vehicle_motion_rate_hz_max 60
+  @vehicle_motion_rate_count_max 8
   @http_host_default "127.0.0.1"
   @http_port_default 4000
   @http_port_min 1
@@ -185,6 +222,168 @@ defmodule Gobusgo.Config do
   @spec shared_vehicles() :: {:ok, shared_vehicles()} | {:error, shared_vehicles_error()}
   def shared_vehicles do
     :gobusgo |> Application.get_env(:shared_vehicles, []) |> fetch_shared_vehicles()
+  end
+
+  @doc """
+  Returns the vehicle motion settings from `env`, each as text:
+  `:zoom_min` and `:zoom_max`, the band of zoom, from
+  #{@vehicle_motion_zoom_bound_min} to #{@vehicle_motion_zoom_bound_max},
+  the markers move continuously in, the minimum below the maximum;
+  `:hysteresis`, how far past each edge a running motion keeps going, at
+  least 0 and less than half the band; `:vehicle_count_max`, the most
+  vehicles in view that move, an integer from 1 to
+  #{@vehicle_motion_vehicle_count_max_max}; and `:rates`, steps of
+  `zoom:hertz` separated by commas, at most #{@vehicle_motion_rate_count_max},
+  each zoom inside the band and above the zoom of the step before it, and
+  each rate an integer from #{@vehicle_motion_rate_hz_min} to
+  #{@vehicle_motion_rate_hz_max}. A nil or blank value takes its default:
+  zoom #{@vehicle_motion_zoom_min_default} to
+  #{@vehicle_motion_zoom_max_default}, a hysteresis of
+  #{@vehicle_motion_hysteresis_default}, #{@vehicle_motion_vehicle_count_max_default}
+  vehicles, and 4 Hz from zoom 14 and 8 Hz from zoom 15. Returns the first
+  value that is not valid.
+  """
+  @spec fetch_vehicle_motion(Keyword.t()) ::
+          {:ok, vehicle_motion()} | {:error, vehicle_motion_error()}
+  def fetch_vehicle_motion(env) when is_list(env) do
+    with {:ok, zoom_min} <- vehicle_motion_zoom_min(env),
+         {:ok, zoom_max} <- vehicle_motion_zoom_max(env, zoom_min),
+         {:ok, hysteresis} <- vehicle_motion_hysteresis(env, zoom_max - zoom_min),
+         {:ok, vehicle_count_max} <- vehicle_motion_vehicle_count_max(env),
+         {:ok, rates} <- vehicle_motion_rates(env, %{zoom_min: zoom_min, zoom_max: zoom_max}) do
+      {:ok,
+       %{
+         zoom_min: zoom_min,
+         zoom_max: zoom_max,
+         hysteresis: hysteresis,
+         vehicle_count_max: vehicle_count_max,
+         rates: rates
+       }}
+    end
+  end
+
+  @doc "Reads the vehicle motion settings configured for the running application."
+  @spec vehicle_motion() :: {:ok, vehicle_motion()} | {:error, vehicle_motion_error()}
+  def vehicle_motion do
+    :gobusgo |> Application.get_env(:vehicle_motion, []) |> fetch_vehicle_motion()
+  end
+
+  @doc "The most vehicles in view a configuration may let move."
+  @spec vehicle_motion_vehicle_count_max_max() :: pos_integer()
+  def vehicle_motion_vehicle_count_max_max, do: @vehicle_motion_vehicle_count_max_max
+
+  @doc "The fastest rate a configuration may set."
+  @spec vehicle_motion_rate_hz_max() :: pos_integer()
+  def vehicle_motion_rate_hz_max, do: @vehicle_motion_rate_hz_max
+
+  defp vehicle_motion_zoom_min(env) do
+    case parse_number(text(env, :zoom_min), @vehicle_motion_zoom_min_default) do
+      {:ok, zoom}
+      when zoom >= @vehicle_motion_zoom_bound_min and zoom < @vehicle_motion_zoom_bound_max ->
+        {:ok, zoom}
+
+      _other ->
+        {:error, {:invalid, :vehicle_motion_zoom_min}}
+    end
+  end
+
+  defp vehicle_motion_zoom_max(env, zoom_min) do
+    case parse_number(text(env, :zoom_max), @vehicle_motion_zoom_max_default) do
+      {:ok, zoom} when zoom > zoom_min and zoom <= @vehicle_motion_zoom_bound_max -> {:ok, zoom}
+      _other -> {:error, {:invalid, :vehicle_motion_zoom_max}}
+    end
+  end
+
+  defp vehicle_motion_hysteresis(env, band) do
+    case parse_number(text(env, :hysteresis), @vehicle_motion_hysteresis_default) do
+      {:ok, hysteresis} when hysteresis >= 0 and hysteresis * 2 < band -> {:ok, hysteresis}
+      _other -> {:error, {:invalid, :vehicle_motion_hysteresis}}
+    end
+  end
+
+  defp vehicle_motion_vehicle_count_max(env) do
+    case text(env, :vehicle_count_max) do
+      nil ->
+        {:ok, @vehicle_motion_vehicle_count_max_default}
+
+      value ->
+        case Integer.parse(String.trim(value)) do
+          {count, ""} when count >= 1 and count <= @vehicle_motion_vehicle_count_max_max ->
+            {:ok, count}
+
+          _other ->
+            {:error, {:invalid, :vehicle_motion_vehicle_count_max}}
+        end
+    end
+  end
+
+  defp vehicle_motion_rates(env, band) do
+    parsed =
+      case text(env, :rates) do
+        nil -> {:ok, @vehicle_motion_rates_default}
+        value -> parse_rate_steps(value)
+      end
+
+    case parsed do
+      {:ok, rates} ->
+        case rate_steps_valid?(rates, band) do
+          true -> {:ok, rates}
+          false -> {:error, {:invalid, :vehicle_motion_rates}}
+        end
+
+      {:error, _reason} ->
+        {:error, {:invalid, :vehicle_motion_rates}}
+    end
+  end
+
+  defp parse_rate_steps(value) do
+    parts = String.split(value, ",")
+
+    case length(parts) <= @vehicle_motion_rate_count_max do
+      true -> parts |> Enum.map(&parse_rate_step/1) |> collect_rate_steps()
+      false -> {:error, :rate_count}
+    end
+  end
+
+  defp parse_rate_step(part) do
+    with [zoom_text, rate_text] <- part |> String.trim() |> String.split(":"),
+         {:ok, zoom} <- parse_number(zoom_text, nil),
+         {rate_hz, ""} <- Integer.parse(String.trim(rate_text)) do
+      {:ok, %{zoom: zoom, rate_hz: rate_hz}}
+    else
+      _other -> {:error, :rate_step}
+    end
+  end
+
+  defp collect_rate_steps(parsed) do
+    case Enum.all?(parsed, &match?({:ok, _step}, &1)) do
+      true -> {:ok, Enum.map(parsed, fn {:ok, step} -> step end)}
+      false -> {:error, :rate_step}
+    end
+  end
+
+  defp rate_steps_valid?(rates, %{zoom_min: zoom_min, zoom_max: zoom_max}) do
+    zooms = Enum.map(rates, & &1.zoom)
+    inside = Enum.all?(zooms, &(&1 >= zoom_min and &1 < zoom_max))
+    pairs = Enum.chunk_every(zooms, 2, 1, :discard)
+    ascending = Enum.all?(pairs, fn [low, high] -> low < high end)
+    counted = rates != [] and length(rates) <= @vehicle_motion_rate_count_max
+    rated = Enum.all?(rates, &rate_hz_valid?(&1.rate_hz))
+    counted and inside and ascending and rated
+  end
+
+  defp rate_hz_valid?(rate_hz),
+    do: rate_hz >= @vehicle_motion_rate_hz_min and rate_hz <= @vehicle_motion_rate_hz_max
+
+  # A number written as an integer or a decimal, as a float; nil takes the
+  # default.
+  defp parse_number(nil, default), do: {:ok, default}
+
+  defp parse_number(value, _default) do
+    case Float.parse(String.trim(value)) do
+      {number, ""} -> {:ok, number}
+      _other -> {:error, :number}
+    end
   end
 
   @doc """

@@ -86,6 +86,7 @@ defmodule Gobusgo.Application do
          {:ok, %{scheduled: scheduled}} <- Config.ingestion(),
          {:ok, %{recorded: recorded}} <- Config.usage(),
          {:ok, shared_vehicles} <- Config.shared_vehicles(),
+         {:ok, _vehicle_motion} <- Config.vehicle_motion(),
          {:ok, storage} <- Config.storage(),
          {:ok, _basemap} <- Config.basemap(),
          {:ok, _tiles} <- Config.tiles(),

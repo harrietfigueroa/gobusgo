@@ -173,6 +173,99 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_vehicle_motion/1" do
+    @default_motion %{
+      zoom_min: 14.0,
+      zoom_max: 16.0,
+      hysteresis: 0.25,
+      vehicle_count_max: 100,
+      rates: [%{zoom: 14.0, rate_hz: 4}, %{zoom: 15.0, rate_hz: 8}]
+    }
+
+    test "takes the defaults when nothing is configured" do
+      assert Config.fetch_vehicle_motion([]) == {:ok, @default_motion}
+    end
+
+    test "takes the defaults for blank values" do
+      env = [zoom_min: " ", zoom_max: "", hysteresis: nil, vehicle_count_max: "", rates: ""]
+      assert Config.fetch_vehicle_motion(env) == {:ok, @default_motion}
+    end
+
+    test "returns a configured band of 13 to 17" do
+      env = [
+        zoom_min: "13",
+        zoom_max: "17.5",
+        hysteresis: "0.5",
+        vehicle_count_max: "60",
+        rates: "13:2, 14.5:6,16:12"
+      ]
+
+      assert Config.fetch_vehicle_motion(env) ==
+               {:ok,
+                %{
+                  zoom_min: 13.0,
+                  zoom_max: 17.5,
+                  hysteresis: 0.5,
+                  vehicle_count_max: 60,
+                  rates: [
+                    %{zoom: 13.0, rate_hz: 2},
+                    %{zoom: 14.5, rate_hz: 6},
+                    %{zoom: 16.0, rate_hz: 12}
+                  ]
+                }}
+    end
+
+    test "keeps the default rates inside a narrowed band that holds them" do
+      assert {:ok, %{zoom_min: 14.0, zoom_max: 15.5}} =
+               Config.fetch_vehicle_motion(zoom_max: "15.5")
+    end
+
+    invalid = [
+      {"a minimum zoom that is not a number", [zoom_min: "fourteen"], :vehicle_motion_zoom_min},
+      {"a negative minimum zoom", [zoom_min: "-1", rates: "0:4"], :vehicle_motion_zoom_min},
+      {"a maximum zoom past 24", [zoom_max: "25"], :vehicle_motion_zoom_max},
+      {"a maximum zoom at the minimum", [zoom_max: "14"], :vehicle_motion_zoom_max},
+      {"a maximum zoom below the minimum", [zoom_max: "13"], :vehicle_motion_zoom_max},
+      {"a negative hysteresis", [hysteresis: "-0.1"], :vehicle_motion_hysteresis},
+      {"a hysteresis of half the band", [hysteresis: "1"], :vehicle_motion_hysteresis},
+      {"a hysteresis that is not a number", [hysteresis: "a bit"], :vehicle_motion_hysteresis},
+      {"a cap of zero vehicles", [vehicle_count_max: "0"], :vehicle_motion_vehicle_count_max},
+      {"a cap above the canvas's 100", [vehicle_count_max: "101"],
+       :vehicle_motion_vehicle_count_max},
+      {"a fractional cap", [vehicle_count_max: "50.5"], :vehicle_motion_vehicle_count_max},
+      {"a rate of zero", [rates: "14:0"], :vehicle_motion_rates},
+      {"a rate above 60 Hz", [rates: "14:61"], :vehicle_motion_rates},
+      {"a fractional rate", [rates: "14:4.5"], :vehicle_motion_rates},
+      {"a rate's zoom below the band", [rates: "13:4"], :vehicle_motion_rates},
+      {"a rate's zoom at the maximum", [rates: "14:4,16:8"], :vehicle_motion_rates},
+      {"rates out of order", [rates: "15:8,14:4"], :vehicle_motion_rates},
+      {"two rates at one zoom", [rates: "14:4,14:8"], :vehicle_motion_rates},
+      {"a rate with no zoom", [rates: "4"], :vehicle_motion_rates},
+      {"more than eight rates",
+       [zoom_max: "24", rates: "14:1,15:2,16:3,17:4,18:5,19:6,20:7,21:8,22:9"],
+       :vehicle_motion_rates},
+      {"default rates outside a moved band", [zoom_min: "10", zoom_max: "12"],
+       :vehicle_motion_rates}
+    ]
+
+    for {name, env, key} <- invalid do
+      test "reports #{name} as invalid" do
+        assert Config.fetch_vehicle_motion(unquote(env)) == {:error, {:invalid, unquote(key)}}
+      end
+    end
+
+    # The canvas over the map asserts it draws at most this many vehicles at
+    # most this often, so the settings the page is handed stay inside them.
+    test "caps the vehicles and the rate at the canvas's bounds" do
+      source = File.read!("assets/js/vehicle_overlay_layout.js")
+      [_match, count] = Regex.run(~r/export const VEHICLE_COUNT_MAX = (\d+)/, source)
+      [_match, rate] = Regex.run(~r/export const RATE_HZ_MAX = (\d+)/, source)
+
+      assert Config.vehicle_motion_vehicle_count_max_max() == String.to_integer(count)
+      assert Config.vehicle_motion_rate_hz_max() == String.to_integer(rate)
+    end
+  end
+
   describe "fetch_usage/1" do
     for recorded <- [true, false] do
       test "returns recorded as #{recorded} when it is configured so" do

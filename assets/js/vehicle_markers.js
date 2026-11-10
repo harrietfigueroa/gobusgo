@@ -1,4 +1,5 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
+import {assertCondition} from "./assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
@@ -19,6 +20,11 @@ import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
 import {drawPointedMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS, POINTED_IMAGE_SIZE_PIXELS} from "./vehicle_marker_shapes"
+import {MotionTierKind, STILL_TIER, isPositionInBounds, markerIdsInBounds, motionSettingsOf, motionTier} from "./motion_tier"
+import {PathTripKind, drawnVehicle, isAnimated, pathTrip, placedAtFetch, resumedOnCanvas, trackedVehicle} from "./vehicle_motion"
+import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
+import {tripPathKey, withTripPaths} from "./trip_path"
+import {preparePath} from "./vehicle_prediction"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -60,13 +66,18 @@ function point(coordinates) {
 }
 
 // Every agency's markers but those of `onCanvas`, which the canvas over the
-// map draws, as one GeoJSON collection, a point per marker with the texts
-// its label and its popup show, and the glides that bring markers already
-// drawn to their new positions. A marker in `drawn`, the positions drawn
-// now, that glides is placed where it is drawn and glides from there; any
-// other stands at its new position. `drawn` comes back as the positions the
-// collection draws, so a vehicle that leaves the fetch leaves it too.
-function placeMarkers({markersByAgency, onCanvas, drawn, startMs, reducedMotion}) {
+// map draws, as one GeoJSON collection, a point per marker at `targetOf`
+// its marker, with the texts its label and its popup show, and the glides
+// that bring markers already drawn to their new positions. A marker in
+// `drawn`, the positions drawn now, that glides is placed where it is drawn
+// and glides from there; any other stands at its new position. A glide
+// with both ends outside `bounds`, the map's, is seen by nobody and snaps,
+// since each frame of a glide updates the whole source. A marker of
+// `glidingNow` whose target is unchanged keeps its glide, so a glide ends
+// one duration after its target last changed however often the fetches
+// come. `drawn` comes back as the positions the collection draws, so a
+// vehicle that leaves the fetch leaves it too.
+function placeMarkers({markersByAgency, onCanvas, drawn, glidingNow, startMs, reducedMotion, targetOf, bounds}) {
   const features = []
   const placed = new Map()
   const gliding = new Map()
@@ -77,13 +88,22 @@ function placeMarkers({markersByAgency, onCanvas, drawn, startMs, reducedMotion}
         continue
       }
 
-      const target = [marker.lon, marker.lat]
+      const target = targetOf(marker)
       let position = target
+      const current = glidingNow.get(marker.id)
+      const isGlidingNow = current !== undefined && !reducedMotion
+      const isCarried = isGlidingNow && isSamePosition(current.target, target)
 
-      if (drawn.has(marker.id)) {
+      if (isCarried) {
+        position = drawn.get(marker.id)
+        gliding.set(marker.id, current)
+      } else if (drawn.has(marker.id)) {
         const source = drawn.get(marker.id)
 
-        if (glides({source, target, reducedMotion})) {
+        const isSeen = isPositionInBounds({position: source, bounds}) || isPositionInBounds({position: target, bounds})
+        const isGlide = isSeen && glides({source, target, reducedMotion})
+
+        if (isGlide) {
           position = source
           gliding.set(marker.id, {source, target, startMs})
         }
@@ -97,8 +117,36 @@ function placeMarkers({markersByAgency, onCanvas, drawn, startMs, reducedMotion}
   return {collection: {type: "FeatureCollection", features}, drawn: placed, gliding}
 }
 
+function isSamePosition(source, target) {
+  const isSameLon = source[0] === target[0]
+  const isSameLat = source[1] === target[1]
+  const isSame = isSameLon && isSameLat
+  return isSame
+}
+
 function markerFeature({marker, position}) {
   return {type: "Feature", geometry: point(position), properties: markerProperties(marker)}
+}
+
+// Whether the page holds a trip's prepared path.
+const PathLookupKind = Object.freeze({found: "found", missing: "missing"})
+const PATH_MISSING = Object.freeze({kind: PathLookupKind.missing})
+
+// A path lookup as the prediction takes it: the prepared path, or none.
+function preparedPathOf(lookup) {
+  let path = null
+
+  if (lookup.kind === PathLookupKind.found) {
+    path = lookup.path
+  }
+
+  return path
+}
+
+// The bounds of what `map` shows, as plain degrees.
+function boundsOf(map) {
+  const bounds = map.getBounds()
+  return {west: bounds.getWest(), south: bounds.getSouth(), east: bounds.getEast(), north: bounds.getNorth()}
 }
 
 // The markers of `markersByAgency` by their identifiers.
@@ -403,6 +451,25 @@ export const VehicleMarkers = {
     // The rider's popup of a vehicle, with its marker, or null while none
     // is open.
     this.riderPopup = null
+    // When the markers move between fetches, the tier decided last, and
+    // each vehicle's state between fetches, by marker. Each agency's clock
+    // is its fetch time and the page's monotonic time the fetch arrived at,
+    // so a skewed device clock moves no marker.
+    this.motionSettings = motionSettingsOf(JSON.parse(this.el.dataset.motion))
+    this.tier = STILL_TIER
+    this.tracked = new Map()
+    this.agencyOfMarker = new Map()
+    this.clocks = new Map()
+    // The trip paths the page holds, each prepared once, and its requests.
+    this.pathCache = new Map()
+    this.preparedPaths = new WeakMap()
+    this.pathRequests = emptyPathRequests()
+    this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
+
+    this.onVisibilityChange = () => { this.visibilityChanged() }
+    this.onReducedMotionChange = () => { this.decideMotion() }
+    document.addEventListener("visibilitychange", this.onVisibilityChange)
+    this.reducedMotion.addEventListener("change", this.onReducedMotionChange)
 
     // The view moving to a stop, or closing, unmarks the vehicle's popup.
     this.onDetailChange = () => {
@@ -433,6 +500,8 @@ export const VehicleMarkers = {
       this.map = null
       this.overlay = null
       this.onCanvas = new Set()
+      this.canvasPositionAt = fetchedPosition
+      this.tier = STILL_TIER
       this.stopGliding()
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => { this.attach(map, maplibre) })
@@ -457,17 +526,29 @@ export const VehicleMarkers = {
     // page sends itself in place of every agency's.
     this.isScheduled = false
 
-    this.events.handle("vehicle-markers:agency", ({agency_id: agencyId, markers}) => {
+    this.events.handle("vehicle-markers:agency", ({agency_id: agencyId, fetched_at_ms: fetchedAtMs, markers}) => {
+      assertCondition(Number.isSafeInteger(fetchedAtMs), `an agency's fetch time ${fetchedAtMs} is a whole number of milliseconds`)
+      this.clocks.set(agencyId, {fetchedAtMs, receivedAtMs: performance.now()})
       this.markersByAgency.set(agencyId, markers)
-      this.draw()
+      this.trackFetch({agencyId, markers})
+      this.decideMotion()
+      this.draw({isSnapped: false})
       this.updateView(markers)
     })
 
+    this.events.handle("trip-paths:paths", (event) => { this.pathsArrived(event) })
+
+    // The saved schedule's markers stand where the schedule puts them, on a
+    // clock of their own that no prediction reads.
     this.events.handle(SCHEDULED_MARKERS_EVENT_NAME, ({markers}) => {
       this.isScheduled = true
       this.markersByAgency = new Map([[SCHEDULED_KEY, markers]])
+      this.resetTracking()
+      this.clocks.set(SCHEDULED_KEY, {fetchedAtMs: Date.now(), receivedAtMs: performance.now()})
+      this.trackFetch({agencyId: SCHEDULED_KEY, markers})
       this.drawInSource()
-      this.draw()
+      this.tier = STILL_TIER
+      this.draw({isSnapped: false})
       this.updateView(markers)
     })
 
@@ -477,8 +558,10 @@ export const VehicleMarkers = {
       if (this.isScheduled) {
         this.isScheduled = false
         this.markersByAgency = new Map()
+        this.resetTracking()
         this.drawInSource()
-        this.draw()
+        this.tier = STILL_TIER
+        this.draw({isSnapped: false})
         this.events.push({name: "vehicle-markers:ready", payload: {}})
       }
     })
@@ -533,6 +616,9 @@ export const VehicleMarkers = {
 
     this.attachOverlay(map)
     this.map = map
+    // The tier is decided once a camera move ends, never during one.
+    map.on("moveend", () => { this.decideMotion() })
+    this.decideMotion()
   },
 
   // Adds the canvas over `map`. The canvas takes no pointer events, so the
@@ -573,7 +659,7 @@ export const VehicleMarkers = {
   // position it was drawn at. A page that asks for reduced motion keeps
   // every marker in the source.
   drawOnCanvas({markerIds, rateHz, positionAt}) {
-    const isReducedMotion = window.matchMedia(REDUCED_MOTION_QUERY).matches
+    const isReducedMotion = this.reducedMotion.matches
     const isDrawable = this.overlay !== null && !isReducedMotion
 
     if (!isDrawable) {
@@ -710,8 +796,11 @@ export const VehicleMarkers = {
       markersByAgency: this.markersByAgency,
       onCanvas: this.onCanvas,
       drawn: new Map(),
+      glidingNow: new Map(),
       startMs: performance.now(),
-      reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
+      reducedMotion: this.reducedMotion.matches,
+      targetOf: (marker) => this.targetOf(marker),
+      bounds: boundsOf(map)
     })
 
     this.drawn = drawn
@@ -798,18 +887,29 @@ export const VehicleMarkers = {
     })
   },
 
-  draw() {
+  // Places every marker the source draws at its target, gliding there from
+  // where it stands, or at once for `isSnapped`. A hidden page places
+  // nothing until it is shown.
+  draw({isSnapped}) {
+    if (document.visibilityState !== "visible") {
+      return
+    }
+
     // A map whose style is being set anew has no source until the style has
     // loaded, and the markers held here are drawn when the source is added.
     const hasSource = this.map !== null && this.map.getSource(SOURCE_NAME) !== undefined
 
     if (hasSource) {
+      const isGlideRefused = this.reducedMotion.matches || isSnapped
       const {collection, drawn, gliding} = placeMarkers({
         markersByAgency: this.markersByAgency,
         onCanvas: this.onCanvas,
         drawn: this.drawn,
+        glidingNow: this.gliding,
         startMs: performance.now(),
-        reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
+        reducedMotion: isGlideRefused,
+        targetOf: (marker) => this.targetOf(marker),
+        bounds: boundsOf(this.map)
       })
 
       this.drawn = drawn
@@ -822,6 +922,268 @@ export const VehicleMarkers = {
     if (this.overlay !== null) {
       this.overlay.drawIfRunning()
     }
+  },
+
+  // The time on the source's clock that `nowMs`, the page's monotonic time,
+  // stands for: the agency's fetch time plus the time since it arrived.
+  sourceNowMs({agencyId, nowMs}) {
+    const clock = this.clocks.get(agencyId)
+    assertCondition(clock !== undefined, `agency ${agencyId} has a clock`)
+    return clock.fetchedAtMs + (nowMs - clock.receivedAtMs)
+  },
+
+  // The prepared path of the trip `marker` serves, or missing where the
+  // page holds none.
+  pathOf(marker) {
+    const hasTrip = typeof marker.trip_id === "string"
+    const hasDate = Number.isSafeInteger(marker.service_date_ms)
+    const isOnTrip = hasTrip && hasDate
+
+    if (!isOnTrip) {
+      return PATH_MISSING
+    }
+
+    const key = tripPathKey({tripId: marker.trip_id, serviceDateMs: marker.service_date_ms})
+    const decoded = this.pathCache.get(key)
+
+    if (decoded === undefined) {
+      return PATH_MISSING
+    }
+
+    if (!this.preparedPaths.has(decoded)) {
+      this.preparedPaths.set(decoded, preparePath(decoded))
+    }
+
+    return {kind: PathLookupKind.found, path: this.preparedPaths.get(decoded)}
+  },
+
+  // Follows each vehicle of `markers`, one agency's fetch: a vehicle the
+  // canvas draws meets its new prediction with a correction, and any other
+  // stands at its prediction for the moment the fetch arrived, which the
+  // source glides it to. A vehicle that leaves the fetch is forgotten.
+  trackFetch({agencyId, markers}) {
+    const atMs = this.sourceNowMs({agencyId, nowMs: performance.now()})
+    const fetchedIds = new Set()
+
+    for (const marker of markers) {
+      fetchedIds.add(marker.id)
+      this.agencyOfMarker.set(marker.id, agencyId)
+      let previous = null
+
+      if (this.tracked.has(marker.id)) {
+        previous = this.tracked.get(marker.id)
+      }
+
+      let tracked = trackedVehicle({tracked: previous, marker, path: preparedPathOf(this.pathOf(marker)), atMs})
+
+      if (!this.onCanvas.has(marker.id)) {
+        tracked = placedAtFetch({tracked, atMs})
+      }
+
+      this.tracked.set(marker.id, tracked)
+    }
+
+    for (const [markerId, markerAgencyId] of this.agencyOfMarker) {
+      const isLeft = markerAgencyId === agencyId && !fetchedIds.has(markerId)
+
+      if (isLeft) {
+        this.agencyOfMarker.delete(markerId)
+        this.tracked.delete(markerId)
+      }
+    }
+  },
+
+  resetTracking() {
+    this.tracked = new Map()
+    this.agencyOfMarker = new Map()
+    this.clocks = new Map()
+  },
+
+  // Where the source draws `marker`: where its state between fetches puts
+  // it, or where the fetch does before it has one.
+  targetOf(marker) {
+    const tracked = this.tracked.get(marker.id)
+
+    if (tracked === undefined) {
+      return [marker.lon, marker.lat]
+    }
+
+    return tracked.drawn.position
+  },
+
+  // Where the canvas draws `marker` at `nowMs`, the page's monotonic time.
+  canvasPosition({marker, nowMs}) {
+    const tracked = this.tracked.get(marker.id)
+
+    if (tracked === undefined) {
+      return [marker.lon, marker.lat]
+    }
+
+    const agencyId = this.agencyOfMarker.get(marker.id)
+    const atMs = this.sourceNowMs({agencyId, nowMs})
+    const drawn = drawnVehicle({tracked, atMs})
+    this.tracked.set(marker.id, drawn)
+    return drawn.drawn.position
+  },
+
+  // Every marker's position as drawn now, on the canvas or in the source.
+  drawnPositions() {
+    const positions = new Map(this.drawn)
+
+    for (const markerId of this.onCanvas) {
+      const tracked = this.tracked.get(markerId)
+
+      if (tracked !== undefined) {
+        positions.set(markerId, tracked.drawn.position)
+      }
+    }
+
+    return positions
+  },
+
+  // Decides whether the markers in view move between fetches, and at what
+  // rate, from the zoom, the count of markers inside the map's bounds, the
+  // reduced-motion preference, and whether the page is shown; then moves
+  // the animated vehicles in view onto the canvas, or every vehicle back
+  // to the source, and asks for the paths the vehicles in view lack.
+  decideMotion() {
+    if (this.map === null) {
+      return
+    }
+
+    const inView = markerIdsInBounds({
+      positions: this.drawnPositions(),
+      bounds: boundsOf(this.map)
+    })
+
+    this.tier = motionTier({
+      settings: this.motionSettings,
+      zoom: this.map.getZoom(),
+      vehicleCountInView: inView.length,
+      isReducedMotion: this.reducedMotion.matches,
+      isVisible: document.visibilityState === "visible",
+      previous: this.tier
+    })
+
+    if (this.tier.kind === MotionTierKind.still) {
+      this.drawInSource()
+      return
+    }
+
+    const animated = []
+    const nowMs = performance.now()
+    const positions = this.drawnPositions()
+
+    for (const markerId of inView) {
+      const tracked = this.tracked.get(markerId)
+      const isMoving = tracked !== undefined && isAnimated(tracked)
+
+      if (isMoving) {
+        animated.push(markerId)
+      }
+
+      const isEntering = isMoving && !this.onCanvas.has(markerId)
+
+      if (isEntering) {
+        const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
+        const sourcePosition = positions.get(markerId)
+        this.tracked.set(markerId, resumedOnCanvas({tracked, sourcePosition, atMs}))
+      }
+    }
+
+    this.drawOnCanvas({
+      markerIds: animated,
+      rateHz: this.tier.rateHz,
+      positionAt: (canvasMarker) => this.canvasPosition(canvasMarker)
+    })
+    this.requestPaths(inView)
+  },
+
+  // Asks the server for the paths of the trips the vehicles of `markerIds`
+  // serve that the page lacks, as the requests' state allows.
+  requestPaths(markerIds) {
+    const trips = []
+
+    for (const markerId of markerIds) {
+      const tracked = this.tracked.get(markerId)
+
+      if (tracked !== undefined) {
+        const named = pathTrip(tracked)
+
+        if (named.kind === PathTripKind.trip) {
+          trips.push(named.trip)
+        }
+      }
+    }
+
+    const next = nextPathRequest({requests: this.pathRequests, cache: this.pathCache, trips, nowMs: performance.now()})
+
+    if (next.kind === PathRequestKind.none) {
+      return
+    }
+
+    this.pathRequests = next.requests
+    this.events.push({
+      name: "trip-paths:request",
+      payload: {trips: next.trips},
+      onReply: (reply) => {
+        this.pathRequests = pathRequestReplied({requests: this.pathRequests, reply, nowMs: performance.now()})
+      }
+    })
+  },
+
+  // Keeps the paths of a `trip-paths:paths` event, anchors again each
+  // vehicle of their trips, and decides the tier again so they move.
+  pathsArrived(event) {
+    const received = pathsReceived({requests: this.pathRequests, event, nowMs: performance.now()})
+    this.pathRequests = received.requests
+
+    if (received.paths.length === 0) {
+      return
+    }
+
+    this.pathCache = withTripPaths(this.pathCache, received.paths)
+    const byId = markersById(this.markersByAgency)
+    const nowMs = performance.now()
+
+    for (const [markerId, tracked] of this.tracked) {
+      const marker = byId.get(markerId)
+
+      if (marker === undefined) {
+        continue
+      }
+
+      const lookup = this.pathOf(marker)
+      const isFound = lookup.kind === PathLookupKind.found
+      const isNewPath = isFound && tracked.path !== lookup.path
+
+      if (isNewPath) {
+        const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
+        this.tracked.set(markerId, trackedVehicle({tracked, marker, path: lookup.path, atMs}))
+      }
+    }
+
+    this.decideMotion()
+  },
+
+  // A page hidden moves every marker back to the source and updates
+  // nothing; shown again, it places every marker at its prediction for now
+  // at once, then decides the tier.
+  visibilityChanged() {
+    if (document.visibilityState !== "visible") {
+      this.decideMotion()
+      return
+    }
+
+    const nowMs = performance.now()
+
+    for (const [markerId, tracked] of this.tracked) {
+      const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
+      this.tracked.set(markerId, placedAtFetch({tracked, atMs}))
+    }
+
+    this.draw({isSnapped: true})
+    this.decideMotion()
   },
 
   // Shows the vehicle of `properties` in the details view, marks its popup,
@@ -929,6 +1291,8 @@ export const VehicleMarkers = {
 
   destroyed() {
     this.stopGliding()
+    document.removeEventListener("visibilitychange", this.onVisibilityChange)
+    this.reducedMotion.removeEventListener("change", this.onReducedMotionChange)
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)

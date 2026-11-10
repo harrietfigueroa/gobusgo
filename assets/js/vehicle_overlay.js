@@ -22,13 +22,13 @@ import {
   MarkerKind,
   nearestVehicle,
   placedLabels,
+  RATE_HZ_MAX,
   screenAngleRadians,
   vehiclesInBox
 } from "./vehicle_overlay_layout"
 
 const CANVAS_CLASS_NAME = "vehicle-overlay"
 const LABEL_FONT = `500 ${LABEL_TEXT_SIZE_PIXELS}px system-ui, sans-serif`
-const RATE_HZ_MAX = 60
 const MS_PER_SECOND = 1000
 const OPACITY_FALLBACK = 1
 const HALVING_DIVISOR = 2

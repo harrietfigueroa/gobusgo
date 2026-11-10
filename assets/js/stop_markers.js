@@ -36,6 +36,7 @@ import {
   STOP_LAYER_NAME
 } from "./route_stop_tiles"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
+import {HitKind, overlayHitAt} from "./vehicle_overlay"
 import {mapColors} from "./theme"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 
@@ -146,6 +147,24 @@ function renderedStops(map) {
 // under, or undefined while the vehicles have none.
 function firstVehicleLayerName(map) {
   return vehicleMarkerLayerNames.find((layerName) => map.getLayer(layerName) !== undefined)
+}
+
+// Whether a vehicle stands at `point`, on the canvas over the map or in its
+// layers. The vehicle stands above the stop, and its click opens it.
+function isVehicleAt({map, point}) {
+  const hit = overlayHitAt({map, point})
+
+  if (hit.kind === HitKind.found) {
+    return true
+  }
+
+  const layers = vehicleMarkerLayerNames.filter((layerName) => map.getLayer(layerName) !== undefined)
+
+  if (layers.length === 0) {
+    return false
+  }
+
+  return map.queryRenderedFeatures(point, {layers}).length > 0
 }
 
 // The filter of the label layer: a stop with a label, of the kept routes.
@@ -839,7 +858,9 @@ export const StopMarkers = {
     const map = this.map
 
     map.on("click", MARKER_LAYER_NAME, (event) => {
-      this.openStop(stopFromFeature(event.features[0]))
+      if (!isVehicleAt({map, point: event.point})) {
+        this.openStop(stopFromFeature(event.features[0]))
+      }
     })
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })

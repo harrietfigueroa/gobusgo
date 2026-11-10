@@ -78,3 +78,12 @@ config :gobusgo, :shared_vehicle_tiles, dir: Path.join(base_dir, "shared-vehicle
 # The tile archives the local writer stores under `tiles/` are served from
 # there.
 config :gobusgo, :tiles, dir: Path.join(base_dir, "tiles")
+
+# When the vehicle page moves its markers continuously; an unset or blank
+# variable takes the default `Gobusgo.Config` names.
+config :gobusgo, :vehicle_motion,
+  zoom_min: System.get_env("GOBUSGO_VEHICLE_MOTION_ZOOM_MIN"),
+  zoom_max: System.get_env("GOBUSGO_VEHICLE_MOTION_ZOOM_MAX"),
+  hysteresis: System.get_env("GOBUSGO_VEHICLE_MOTION_HYSTERESIS"),
+  vehicle_count_max: System.get_env("GOBUSGO_VEHICLE_MOTION_VEHICLE_COUNT_MAX"),
+  rates: System.get_env("GOBUSGO_VEHICLE_MOTION_RATES")
