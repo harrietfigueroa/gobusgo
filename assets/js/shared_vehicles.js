@@ -3,7 +3,7 @@ import {currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
 import {pageEvents} from "./page_events"
-import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
+import {openCallout} from "./map_callout"
 import {DecodeKind, decodeBlock, fileUrl, readIndex} from "./shared_vehicle_format"
 import {ViewKind, namesToFetch, tilesInView} from "./shared_vehicle_tiles"
 import {MARK_SIZE_PIXELS, drawSharedVehicle, sharedVehicleImageName} from "./status_badges"
@@ -32,6 +32,8 @@ const METERS_PER_KILOMETER = 1000
 const MS_PER_MINUTE = 60_000
 const COMPRESSION_FORMAT = "gzip"
 const POPUP_TITLE_CLASS_NAME = "popup-title"
+// The kind of item a shared vehicle's callout is of, which no details view shows.
+const SHARED_VEHICLE_ITEM_KIND = "shared-vehicle"
 
 /** The kinds of a file read from the static path. */
 const ReadKind = Object.freeze({read: "read", failed: "failed"})
@@ -456,17 +458,21 @@ export const SharedVehicles = {
     }
   },
 
+  // Opens the callout of the shared vehicle of the tapped feature, in place
+  // of any callout. The details view shows no shared vehicle, so its
+  // callout has a close button of its own.
   openPopup(event) {
     const [feature] = event.features
     const content = popupContent({properties: feature.properties, formLabels: this.formLabels})
 
-    const popup = new this.maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
-      .setLngLat(feature.geometry.coordinates)
-      .setDOMContent(content)
-
-    popup.on("close", announceRiderPopupChange)
-    popup.addTo(this.map)
-    announceRiderPopupChange()
+    openCallout({
+      map: this.map,
+      maplibre: this.maplibre,
+      lngLat: feature.geometry.coordinates,
+      content,
+      item: {kind: SHARED_VEHICLE_ITEM_KIND, id: feature.id},
+      closeButton: true
+    })
   },
 
   destroyed() {

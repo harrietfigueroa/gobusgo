@@ -130,7 +130,7 @@ defmodule GobusgoWeb.VehicleLive do
   panel for the rider's favorite stops, at most
   `GobusgoWeb.VehicleLive.OpenStops.favorite_count_max/0`, and leaves its
   content to the `FavoriteStop` hook: the browser keeps the favorites and
-  opens their stops with `stop-arrivals:open`, as for a stop's popup, so the
+  opens their stops with `stop-arrivals:open`, as for the selected stop, so the
   page serves the favorites' arrivals with no state of its own for them. The
   hook asks for a chosen favorite's position with `stop:position`, which the
   page answers from the stop view with the stop's `lat` and `lon`, or with
@@ -795,7 +795,6 @@ defmodule GobusgoWeb.VehicleLive do
     <div
       id="stop-markers"
       phx-hook="StopMarkers"
-      data-auto-open-count-max={OpenStops.auto_open_count_max()}
       data-arrival-count-max={StopArrivals.arrival_count_max()}
       hidden
     >

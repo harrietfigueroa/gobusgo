@@ -116,19 +116,6 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
                [Integer.to_string(OpenStops.favorite_count_max())]
     end
 
-    test "hands the stops' hook the most popups that open by themselves" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      [count] =
-        view
-        |> element("#stop-markers")
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.attribute("data-auto-open-count-max")
-
-      assert count == Integer.to_string(OpenStops.auto_open_count_max())
-    end
-
     test "hands the stops' hook the most arrivals a stop shows" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
@@ -177,9 +164,8 @@ defmodule GobusgoWeb.VehicleLiveFavoriteStopTest do
   end
 
   describe "OpenStops.open_count_max/0" do
-    test "is room for every favorite and every popup that opens by itself" do
-      assert OpenStops.open_count_max() ==
-               OpenStops.favorite_count_max() + OpenStops.auto_open_count_max()
+    test "is room for every favorite and the selected stop" do
+      assert OpenStops.open_count_max() == OpenStops.favorite_count_max() + 1
     end
 
     test "keeps six favorites" do

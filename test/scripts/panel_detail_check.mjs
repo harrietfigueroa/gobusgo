@@ -1,30 +1,13 @@
 // Checks what the details view of the panel sheet decides as pure functions
-// of values written out by hand: how many popups open by themselves while
-// the view holds a stop, the next-arrival text a compact stop popup shows,
-// which arrival lines carry the live mark, and how far the map moves to
-// bring the view's item out from under the sheet. Run it with
+// of values written out by hand: the next-arrival text the Favorites badge
+// shows, which arrival lines carry the live mark, and how far the map moves
+// to bring the view's item out from under the sheet. Run it with
 // `node test/scripts/panel_detail_check.mjs`; it exits
 // non-zero on the first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {autoOpenCountMax} from "../../assets/js/open_stop_budget.js"
 import {revealOffset} from "../../assets/js/reveal_offset.js"
 import {arrivalLines, isNextArrivalLive, nextArrivalText, nextArrivalTimeText} from "../../assets/js/stop_arrivals.js"
-
-const COUNT_MAX = 5
-
-const budgetCases = [
-  {name: "no stop in the view", detailStopId: null, visibleStopIds: ["1_1"], favoriteStopIds: [], expected: COUNT_MAX},
-  {name: "the view's stop on screen", detailStopId: "1_1", visibleStopIds: ["1_1", "1_2"], favoriteStopIds: [], expected: COUNT_MAX},
-  {name: "the view's stop a favorite off screen", detailStopId: "1_9", visibleStopIds: ["1_1"], favoriteStopIds: ["1_9"], expected: COUNT_MAX},
-  {name: "the view's stop off screen and no favorite", detailStopId: "1_9", visibleStopIds: ["1_1"], favoriteStopIds: ["1_8"], expected: COUNT_MAX - 1},
-  {name: "the view's stop with no stop on screen", detailStopId: "1_9", visibleStopIds: [], favoriteStopIds: [], expected: COUNT_MAX - 1}
-]
-
-for (const {name, detailStopId, visibleStopIds, favoriteStopIds, expected} of budgetCases) {
-  const actual = autoOpenCountMax({countMax: COUNT_MAX, detailStopId, visibleStopIds, favoriteStopIds})
-  deepStrictEqual(actual, expected, name)
-}
 
 const arrival = {route: "E", headsign: "Aurora Village", minutes: 2, predicted: true}
 
@@ -109,5 +92,5 @@ for (const {name, view, point, expected} of revealCases) {
   deepStrictEqual(revealOffset({...view, point, marginPixels: MARGIN_PIXELS}), expected, name)
 }
 
-const caseCount = budgetCases.length + arrivalCases.length + liveCases.length + revealCases.length
+const caseCount = arrivalCases.length + liveCases.length + revealCases.length
 console.log(`${caseCount} cases passed`)

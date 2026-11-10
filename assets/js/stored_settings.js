@@ -1,7 +1,7 @@
 // The rider's settings and favorites this browser keeps, and the one module
 // that reads and writes them. Every key lives in local storage as text, and
 // every read is synchronous, so the stored filter is offered before the map
-// asks for markers and the favorites are read on each popup placement.
+// asks for markers and the favorites are read whenever a hook needs them.
 // The key names, the schema version, and the stored themes come from the
 // imported contract data, a JSON file that code outside the bundle can read
 // as well. Nothing here reads the document; storage is the one dependency,
