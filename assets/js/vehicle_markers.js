@@ -4,6 +4,7 @@ import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {closeCalloutOf, openCallout, updateCalloutOf, vehicleCalloutContent} from "./map_callout"
 import {vehicleCalloutText} from "./callout_text"
+import {shortStatusLabel, vehicleViewText} from "./vehicle_view_text"
 import {alertLines} from "./service_alerts"
 import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
 import {mapColors} from "./theme"
@@ -67,13 +68,10 @@ const HALVING_DIVISOR = 2
 const BADGE_INSET_PIXELS = 2
 const BADGE_OFFSET_PIXELS = [MARKER_RADIUS_PIXELS - BADGE_INSET_PIXELS, BADGE_INSET_PIXELS - MARKER_RADIUS_PIXELS]
 const STATUS_OPACITY_FALLBACK = 1
-const POSITION_NOTE = "Marker position: the source's estimate"
-const SCHEDULED_POSITION_NOTE = "Marker position: the saved schedule's, with delays, cancellations, and detours unknown"
-const SCHEDULED_TRIP_NAME = "Scheduled trip"
 // The key the scheduled markers are held under in place of every agency's.
 const SCHEDULED_KEY = "scheduled"
-const NOT_SUPPLIED = "Not supplied"
-const FACTS_CLASS_NAME = "panel-detail-facts"
+const CAPTION_CLASS_NAME = "panel-detail-caption"
+const ROWS_CLASS_NAME = "panel-detail-rows"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
@@ -297,104 +295,38 @@ function statusOf(definition) {
   return definition.status
 }
 
-function headingText(heading) {
-  if (typeof heading === "number") {
-    return `${heading}° clockwise from north`
-  } else {
-    return NOT_SUPPLIED
-  }
-}
-
-function suppliedText(value) {
-  if (typeof value === "string") {
-    return value
-  } else {
-    return NOT_SUPPLIED
-  }
-}
-
-// The lines for a vehicle's lateness and its next stop, each only for a
-// marker that has the text.
-function tripTimeLines(properties) {
-  const lines = []
-
-  if (typeof properties.schedule === "string") {
-    lines.push(`Schedule: ${properties.schedule}`)
-  }
-
-  if (typeof properties.nextStop === "string") {
-    lines.push(`Next stop: ${properties.nextStop}`)
-  }
-
-  return lines
-}
-
-function appendParagraphs(content, lines) {
-  for (const line of lines) {
-    const paragraph = document.createElement("p")
-    paragraph.textContent = line
-    content.appendChild(paragraph)
-  }
-}
-
 // A marker the saved schedule places stands for a trip and no vehicle.
 function isScheduledTrip(properties) {
   return typeof properties.vehicleId !== "string"
 }
 
-function vehicleName(properties) {
-  if (isScheduledTrip(properties)) {
-    return SCHEDULED_TRIP_NAME
-  }
-
-  return `Vehicle ${properties.vehicleId}`
+// The texts of the view of the vehicle of `properties`, whose status's
+// label `statusLabels` holds.
+function viewTextOf({properties, statusLabels}) {
+  return vehicleViewText({
+    route: properties.route,
+    headsign: properties.headsign,
+    vehicleId: properties.vehicleId,
+    statusLabel: statusLabels.get(properties.status),
+    locationAge: properties.locationAge,
+    schedule: properties.schedule,
+    nextStop: properties.nextStop,
+    isScheduledTrip: isScheduledTrip(properties)
+  })
 }
 
-function positionNote(properties) {
-  if (isScheduledTrip(properties)) {
-    return SCHEDULED_POSITION_NOTE
-  }
-
-  return POSITION_NOTE
-}
-
-// The view's title: the route and where it goes, or the vehicle for one
-// with neither.
-function vehicleViewTitle(properties) {
-  const names = []
-
-  if (typeof properties.route === "string") {
-    names.push(properties.route)
-  }
-
-  if (typeof properties.headsign === "string") {
-    names.push(`to ${properties.headsign}`)
-  }
-
-  if (names.length === 0) {
-    return vehicleName(properties)
-  } else {
-    return names.join(" ")
-  }
+function textParagraph({className, text}) {
+  const paragraph = document.createElement("p")
+  paragraph.className = className
+  paragraph.textContent = text
+  return paragraph
 }
 
 // A vehicle's view is built as text nodes: the vehicle identifier comes
-// from outside the application and is never parsed as HTML. The current
-// alerts of the vehicle's route stand under its route and headsign.
-function vehicleViewContent(properties, statusLabels) {
-  const tripLines = [
-    vehicleName(properties),
-    `Route: ${suppliedText(properties.route)}`,
-    `Headsign: ${suppliedText(properties.headsign)}`
-  ]
-  const detailLines = [
-    ...tripTimeLines(properties),
-    statusLabels.get(properties.status),
-    `Location reported: ${properties.locationAge}`,
-    `Real-time data: ${properties.realTime}`,
-    `Heading: ${headingText(properties.heading)}`,
-    positionNote(properties)
-  ]
+// from outside the application and is never parsed as HTML. A muted line
+// of where it goes stands under the title, the current alerts of its route
+// under that, then its rows and the note on its position.
+function vehicleViewContent(text, properties) {
   const routeIds = []
 
   if (typeof properties.routeId === "string") {
@@ -402,9 +334,11 @@ function vehicleViewContent(properties, statusLabels) {
   }
 
   const content = document.createElement("div")
-  const trip = document.createElement("div")
-  trip.className = FACTS_CLASS_NAME
-  appendParagraphs(trip, tripLines)
+  const parts = []
+
+  if (text.meta !== "") {
+    parts.push(textParagraph({className: CAPTION_CLASS_NAME, text: text.meta}))
+  }
 
   const alerts = document.createElement("div")
   alerts.className = ALERTS_CLASS_NAME
@@ -413,11 +347,25 @@ function vehicleViewContent(properties, statusLabels) {
     alerts.append(alertLine)
   }
 
-  const details = document.createElement("div")
-  details.className = FACTS_CLASS_NAME
-  appendParagraphs(details, detailLines)
+  const rows = document.createElement("dl")
+  rows.className = ROWS_CLASS_NAME
 
-  content.append(trip, alerts, details)
+  for (const {key, value} of text.rows) {
+    const row = document.createElement("div")
+    const term = document.createElement("dt")
+    term.textContent = key
+    const definition = document.createElement("dd")
+    definition.textContent = value
+    row.append(term, definition)
+    rows.append(row)
+  }
+
+  parts.push(alerts, rows, textParagraph({className: CAPTION_CLASS_NAME, text: text.note}))
+
+  for (const part of parts) {
+    content.append(part)
+  }
+
   return content
 }
 
@@ -430,18 +378,18 @@ function badgedStatusName({properties, badgedLabels}) {
     return ""
   }
 
-  return statusLabel
+  return shortStatusLabel(statusLabel)
 }
 
 // A vehicle's callout: its route and headsign, and under them its lateness
 // and its next stop. A tap on it hands the vehicle to `onSelect`.
-function vehicleCallout({properties, badgedLabels, onSelect}) {
+function vehicleCallout({properties, badgedLabels, statusLabels, onSelect}) {
   const {title, detail} = vehicleCalloutText({
     route: properties.route,
     headsign: properties.headsign,
     schedule: properties.schedule,
     nextStop: properties.nextStop,
-    fallbackName: vehicleName(properties)
+    fallbackName: viewTextOf({properties, statusLabels}).title
   })
 
   return vehicleCalloutContent({title, detail, detailName: badgedStatusName({properties, badgedLabels}), onSelect})
@@ -813,7 +761,7 @@ export const VehicleMarkers = {
   // shows in the details view again.
   calloutOf({properties, lngLat}) {
     const onSelect = () => { this.selectVehicle({properties, lngLat}) }
-    return vehicleCallout({properties, badgedLabels: this.badgedLabels, onSelect})
+    return vehicleCallout({properties, badgedLabels: this.badgedLabels, statusLabels: this.statusLabels, onSelect})
   },
 
   // Adds the source with every marker and the layers in the page's theme.
@@ -1234,11 +1182,12 @@ export const VehicleMarkers = {
     this.viewMarkerId = properties.markerId
     this.viewText = JSON.stringify(properties)
     this.viewLngLat = lngLat
+    const text = viewTextOf({properties, statusLabels: this.statusLabels})
     showDetail({
       kind: DetailKind.vehicle,
       id: properties.markerId,
-      title: vehicleViewTitle(properties),
-      content: vehicleViewContent(properties, this.statusLabels)
+      title: text.title,
+      content: vehicleViewContent(text, properties)
     })
 
     if (this.map !== null) {
@@ -1267,12 +1216,13 @@ export const VehicleMarkers = {
 
     if (viewText !== this.viewText) {
       this.viewText = viewText
+      const text = viewTextOf({properties, statusLabels: this.statusLabels})
 
       updateDetail({
         kind: DetailKind.vehicle,
         id: properties.markerId,
-        title: vehicleViewTitle(properties),
-        content: vehicleViewContent(properties, this.statusLabels)
+        title: text.title,
+        content: vehicleViewContent(text, properties)
       })
 
       updateCalloutOf({

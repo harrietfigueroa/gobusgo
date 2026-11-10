@@ -269,11 +269,11 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     @stop_names %{"1_29247" => "Pine St & 3rd Ave"}
 
     for {offset_seconds, text} <- [
-          {140, "Pine St & 3rd Ave, 2 min away"},
-          {60, "Pine St & 3rd Ave, 1 min away"},
-          {59, "Pine St & 3rd Ave, under 1 min away"},
-          {0, "Pine St & 3rd Ave, under 1 min away"},
-          {3_597, "Pine St & 3rd Ave, 59 min away"}
+          {140, "Pine St & 3rd Ave · 2 min"},
+          {60, "Pine St & 3rd Ave · 1 min"},
+          {59, "Pine St & 3rd Ave · under 1 min"},
+          {0, "Pine St & 3rd Ave · under 1 min"},
+          {3_597, "Pine St & 3rd Ave · 59 min"}
         ] do
       test "reads #{inspect(text)} for a stop #{offset_seconds} seconds away" do
         fields = %{
@@ -288,7 +288,7 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     test "is the time alone for a stop that has no name" do
       fields = %{"nextStopId" => "1_404", "nextStopTimeOffsetSeconds" => 140}
 
-      assert marker(fields, @stop_names).next_stop == "2 min away"
+      assert marker(fields, @stop_names).next_stop == "2 min"
     end
 
     test "is the name alone for a stop with no offset supplied" do
@@ -314,7 +314,7 @@ defmodule GobusgoWeb.VehicleMarkersTest do
         "lastLocationUpdateTimeMs" => 0
       }
 
-      assert marker(fields, @stop_names).next_stop == "Pine St & 3rd Ave, 2 min away"
+      assert marker(fields, @stop_names).next_stop == "Pine St & 3rd Ave · 2 min"
     end
 
     for {name, report_time_ms} <- [
@@ -517,18 +517,23 @@ defmodule GobusgoWeb.VehicleMarkersTest do
   end
 
   describe "statuses/0" do
-    test "defines every status once, each with a label, a description, and an opacity" do
+    test "defines every status once, each with a label and an opacity" do
       statuses = VehicleMarkers.statuses()
 
       assert Enum.map(statuses, & &1.status) == [:reported, :stale, :scheduled, :unknown]
 
       for definition <- statuses do
-        assert %{label: label, description: description, opacity: opacity} = definition
+        assert %{label: label, opacity: opacity} = definition
         assert label != ""
-        assert description != ""
         assert opacity > 0
         assert opacity <= 1
       end
+    end
+
+    test "labels the statuses as a legend's rows" do
+      labels = Enum.map(VehicleMarkers.statuses(), & &1.label)
+
+      assert labels == ["Live", "Stale · over 2 min", "Schedule only", "No report time"]
     end
 
     test "gives the schedule-only status a color of its own and the others their route's" do
@@ -548,18 +553,6 @@ defmodule GobusgoWeb.VehicleMarkersTest do
       badges = Map.new(VehicleMarkers.statuses(), &{&1.status, &1.badge})
 
       assert badges == %{reported: nil, stale: :clock, unknown: :question, scheduled: :timetable}
-    end
-
-    test "names its badge in the description of each status that has one" do
-      for %{badge: badge, description: description} <- VehicleMarkers.statuses(), badge != nil do
-        assert description =~ VehicleMarkers.badge_name(badge)
-      end
-    end
-
-    test "names the stale threshold in the stale status's description" do
-      stale = Enum.find(VehicleMarkers.statuses(), &(&1.status == :stale))
-
-      assert stale.description =~ "2 minutes"
     end
   end
 end

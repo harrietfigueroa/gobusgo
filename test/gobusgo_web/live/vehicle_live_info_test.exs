@@ -390,16 +390,16 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                AppInfo.disclaimer()
     end
 
-    for %{status: status, label: label, description: description} = definition <-
-          VehicleMarkers.statuses() do
-      test "explains the #{status} status with its swatch" do
+    for %{status: status, label: label} <- VehicleMarkers.statuses() do
+      test "labels the #{status} status beside its glyph" do
         {:ok, view, _html} = live(build_conn(), "/vehicles")
         entry = @panel <> " #app-info-status-#{unquote(status)}"
-        swatch = AppInfoPanel.swatch_style(unquote(Macro.escape(definition)))
+        %{fill: fill} = AppInfoPanel.glyph_swatch(unquote(status))
 
-        assert view |> element(entry) |> render() =~ unquote(label)
-        assert view |> element(entry) |> render() =~ unquote(description)
-        assert view |> element(entry) |> render() =~ swatch
+        assert view |> element(entry) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text() =~
+                 unquote(label)
+
+        assert has_element?(view, entry <> " svg.status-glyph circle[fill='#{fill}']")
       end
     end
 
@@ -418,20 +418,15 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       refute has_element?(view, @panel <> " #app-info-status-reported [data-badge]")
     end
 
-    test "draws the schedule-only swatch in its own color" do
-      scheduled = Enum.find(VehicleMarkers.statuses(), &(&1.status == :scheduled))
-
-      assert AppInfoPanel.swatch_style(scheduled) =~ "background-color: #{scheduled.color}"
-    end
-
-    test "draws a route-colored swatch fainter for a stale status than a recent one" do
-      [reported, stale] =
-        for status <- [:reported, :stale] do
-          Enum.find(VehicleMarkers.statuses(), &(&1.status == status))
-        end
-
-      assert AppInfoPanel.swatch_style(reported) =~ "opacity: 1.0"
-      assert AppInfoPanel.swatch_style(stale) =~ "opacity: #{stale.opacity}"
+    for {status, glyph} <- [
+          {:reported, %{fill: "#b91c1c", stroke: "#ffffff", dasharray: "none", ink: "#ffffff"}},
+          {:stale, %{fill: "#eec6c6", stroke: "#334155", dasharray: "none", ink: "#334155"}},
+          {:unknown, %{fill: "#eec6c6", stroke: "#334155", dasharray: "1 2", ink: "#334155"}},
+          {:scheduled, %{fill: "#ffffff", stroke: "#475569", dasharray: "3 2", ink: "#475569"}}
+        ] do
+      test "draws the #{status} glyph as the map draws it" do
+        assert AppInfoPanel.glyph_swatch(unquote(status)) == unquote(Macro.escape(glyph))
+      end
     end
 
     test "has one legend entry per status" do
