@@ -23,8 +23,16 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
   @typedoc "The request the markers shown of each agency came from, by agency identifier."
   @type request_ids :: %{String.t() => String.t()}
 
-  @typedoc "Every marker of one agency."
-  @type event :: %{agency_id: String.t(), markers: [map()]}
+  @typedoc """
+  Every marker of one agency. `fetched_at_ms` is the time of the fetch the
+  markers come from, in milliseconds since the Unix epoch, and `nil` for an
+  event that clears an agency the page shows no fetch of.
+  """
+  @type event :: %{
+          agency_id: String.t(),
+          fetched_at_ms: integer() | nil,
+          markers: [VehicleMarkers.marker()]
+        }
 
   @doc "The current request of every agency that `filter` keeps."
   @spec kept_request_ids(Filter.t()) :: request_ids()
@@ -121,10 +129,13 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
     event =
       VehicleMarkers.agency_markers(kept, %{stop_names: stop_names, route_colors: route_colors})
 
-    %{agency_id: agency_id, markers: markers} = event
+    %{agency_id: agency_id, fetched_at_ms: fetched_at_ms, markers: markers} = event
 
     %{
-      events: [%{agency_id: agency_id, markers: markers} | updates.events],
+      events: [
+        %{agency_id: agency_id, fetched_at_ms: fetched_at_ms, markers: markers}
+        | updates.events
+      ],
       shown_request_ids: Map.put(updates.shown_request_ids, agency_id, kept.request_id)
     }
   end
@@ -133,7 +144,7 @@ defmodule GobusgoWeb.VehicleLive.AgencyMarkers do
     case is_map_key(shown_request_ids, agency_id) do
       true ->
         %{
-          events: [%{agency_id: agency_id, markers: []} | updates.events],
+          events: [%{agency_id: agency_id, fetched_at_ms: nil, markers: []} | updates.events],
           shown_request_ids: Map.delete(shown_request_ids, agency_id)
         }
 
