@@ -14,7 +14,8 @@ import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"
 import {SpriteCache} from "./vehicle_sprites"
-import {BADGE_FONT, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
+import {BADGE_FONT, GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
+import {selectionColor, selectionHaloOpacity, selectionHaloRadius, selectionRingRadius, selectionRingWidth} from "./selection_mark"
 import {
   LINE_CASING_WIDTH_PIXELS,
   LINE_DASH_PIXELS,
@@ -162,6 +163,9 @@ class VehicleOverlay {
     this.drawn = []
     this.drawnKey = ""
     this.sprites = new SpriteCache()
+    // The marker of the vehicle the details view shows, which the canvas
+    // rings while it draws that vehicle, or null.
+    this.selectedId = null
 
     this.onRender = () => {
       const isShowing = this.vehiclesAt !== null || this.tiesAt !== null
@@ -230,6 +234,13 @@ class VehicleOverlay {
     this.tiesAt = tiesAt
     this.tieIntervalMs = intervalMs
     this.drawTies()
+  }
+
+  // Rings the vehicle of `markerId` while the canvas draws it, as the map's
+  // layers ring it while it stands in the source; null rings none.
+  markSelected(markerId) {
+    this.selectedId = markerId
+    this.drawIfRunning()
   }
 
   // Clears the ties' canvas and draws no tie until they are shown again.
@@ -319,6 +330,7 @@ class VehicleOverlay {
 
     const colors = mapColors(currentTheme())
     this.sprites.prepare(ratio)
+    this.drawSelection(drawn)
     this.drawMarkers({drawn, colors, ratio})
     this.drawBadges({drawn, colors, ratio})
     this.drawRouteBadges({drawn, ratio})
@@ -436,6 +448,36 @@ class VehicleOverlay {
     const left = snapToPixel({value: x - sprite.width / HALVING_DIVISOR, ratio})
     const top = snapToPixel({value: y - sprite.height / HALVING_DIVISOR, ratio})
     context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
+  }
+
+  // The ring of the selected vehicle, under its marker, round a dot or a
+  // glyph as the map's layers draw it.
+  drawSelection(drawn) {
+    const selected = drawn.find((vehicle) => vehicle.id === this.selectedId)
+
+    if (selected === undefined) {
+      return
+    }
+
+    let markerRadius = GLYPH_RADIUS_PIXELS
+
+    if (selected.marker.kind === MarkerKind.round) {
+      markerRadius = MARKER_RADIUS_PIXELS
+    }
+
+    const context = this.canvas.getContext("2d")
+    context.fillStyle = selectionColor()
+    context.strokeStyle = selectionColor()
+    context.globalAlpha = selectionHaloOpacity()
+    context.beginPath()
+    context.arc(selected.x, selected.y, selectionHaloRadius(markerRadius), 0, FULL_TURN)
+    context.fill()
+    context.globalAlpha = 1
+    context.beginPath()
+    context.arc(selected.x, selected.y, selectionRingRadius(markerRadius), 0, FULL_TURN)
+    context.lineWidth = selectionRingWidth()
+    context.setLineDash(NO_DASH)
+    context.stroke()
   }
 
   // Each marker is copied from its bitmap: a dot, or a glyph with its

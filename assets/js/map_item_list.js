@@ -1,5 +1,5 @@
-// The hook of the list of the vehicles and stops in view of the vehicle
-// map, a WAI-ARIA listbox that keeps focus on itself and marks its active
+// The hook of the list of the vehicles, stops, and shared vehicles in view
+// of the vehicle map, a WAI-ARIA listbox that keeps focus on itself and marks its active
 // option with `aria-activedescendant`. On each map the basemap announces,
 // it writes the list each time the map is idle, by the imported rules, and
 // keeps the active option where the item stays in view. Down, Up, Home,
@@ -34,6 +34,12 @@ function stopEntry({map, feature}) {
   const {stopId, name, direction, routes} = feature.properties
   const {x, y} = screenPoint({map, feature})
   return {id: stopId, name, direction, routes, x, y}
+}
+
+function sharedVehicleEntry({map, feature}) {
+  const {vehicleKey, formLabel, operatorName} = feature.properties
+  const {x, y} = screenPoint({map, feature})
+  return {id: vehicleKey, formLabel, operatorName, x, y}
 }
 
 // The line under the list: how many items the list leaves out, and that
@@ -93,10 +99,11 @@ export const MapItemList = {
   // same items with the same texts in the same order.
   write() {
     const map = this.map
-    const {center, vehicles, stops, stopsDrawn} = readView(map)
+    const {center, vehicles, stops, sharedVehicles, stopsDrawn} = readView(map)
     const features = new Map()
     const vehicleEntries = []
     const stopEntries = []
+    const sharedVehicleEntries = []
 
     for (const feature of vehicles.values()) {
       const entry = vehicleEntry({map, feature})
@@ -110,7 +117,19 @@ export const MapItemList = {
       features.set(itemKey({kind: MapItemKind.stop, id: entry.id}), feature)
     }
 
-    const {items, restCount} = itemsInView({vehicles: vehicleEntries, stops: stopEntries, center, countMax: ITEM_COUNT_MAX})
+    for (const feature of sharedVehicles.values()) {
+      const entry = sharedVehicleEntry({map, feature})
+      sharedVehicleEntries.push(entry)
+      features.set(itemKey({kind: MapItemKind.sharedVehicle, id: entry.id}), feature)
+    }
+
+    const {items, restCount} = itemsInView({
+      vehicles: vehicleEntries,
+      stops: stopEntries,
+      sharedVehicles: sharedVehicleEntries,
+      center,
+      countMax: ITEM_COUNT_MAX
+    })
     this.features = features
     this.rest.textContent = restText({restCount, stopsDrawn, itemCount: items.length})
 

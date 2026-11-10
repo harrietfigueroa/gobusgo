@@ -12,8 +12,9 @@ defmodule GobusgoWeb.VehicleLive do
   Above the tabs a line names the filter the map shows. The Filter tab's badge counts the agencies and the
   routes the filter names and the Alerts tab's the current alerts, and the
   Favorites tab's badge is the browser's to write. A page with a basemap
-  also gives the sheet its details view, where the browser shows the stop
-  or the vehicle a rider taps on the map in place of the tabs.
+  also gives the sheet its details view, where the browser shows the stop,
+  the vehicle, or the shared vehicle a rider taps on the map in place of
+  the tabs.
 
   The page's address holds a vehicle filter, which `GobusgoWeb.FilterParams`
   reads and `Gobusgo.OneBusAway.VehicleFilter` judges: the `agency` query
