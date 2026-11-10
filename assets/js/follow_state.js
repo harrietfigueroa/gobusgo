@@ -4,6 +4,7 @@
 // whether the map moves are functions of them alone.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {radians} from "./math/angles.js"
 
 /** A fix moves the map only when the dot stands farther than this from where the map keeps it. */
 export const FOLLOW_DISTANCE_PIXELS_MAX = 24
@@ -19,7 +20,6 @@ export const FOLLOW_EASE_MS = 500
 // latitude.
 const TILE_SIZE_PIXELS = 512
 const EARTH_CIRCUMFERENCE_METERS = 40_075_016.686
-const DEGREES_PER_HALF_TURN = 180
 const DIAMETER_PER_RADIUS = 2
 const HALF = 2
 
@@ -337,7 +337,7 @@ export function isInside({bounds: {south, west, north, east}, latitude, longitud
 
 function metersPerPixel({latitude, zoom}) {
   const worldSizePixels = TILE_SIZE_PIXELS * Math.pow(HALF, zoom)
-  const latitudeRadians = latitude * Math.PI / DEGREES_PER_HALF_TURN
+  const latitudeRadians = radians(latitude)
   return EARTH_CIRCUMFERENCE_METERS * Math.cos(latitudeRadians) / worldSizePixels
 }
 

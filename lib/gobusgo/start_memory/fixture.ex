@@ -5,7 +5,6 @@ defmodule Gobusgo.StartMemory.Fixture do
   @grid_spacing_m 250
   @center_latitude 47.6062
   @center_longitude -122.3321
-  @meters_per_degree_latitude 111_320
   @route_stop_count_min 30
   @route_stop_count_max 90
   # A heading is one of the eight neighbors of a grid cell; a turn draw of
@@ -60,6 +59,7 @@ defmodule Gobusgo.StartMemory.Fixture do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.OneBusAway.RawResponse
   alias Gobusgo.OneBusAway.RawRoutePathResponse
   alias Gobusgo.OneBusAway.RawRouteResponse
@@ -449,8 +449,8 @@ defmodule Gobusgo.StartMemory.Fixture do
   defp point(cell) do
     column = rem(cell, @grid_side_count) - div(@grid_side_count, 2)
     row = div(cell, @grid_side_count) - div(@grid_side_count, 2)
-    latitude = @center_latitude + row * @grid_spacing_m / @meters_per_degree_latitude
-    longitude_scale = @meters_per_degree_latitude * :math.cos(@center_latitude * :math.pi() / 180)
+    latitude = @center_latitude + row * @grid_spacing_m / Geodesy.meters_per_degree()
+    longitude_scale = Geodesy.meters_per_degree() * :math.cos(Geodesy.radians(@center_latitude))
     longitude = @center_longitude + column * @grid_spacing_m / longitude_scale
     [Float.round(longitude, 6), Float.round(latitude, 6)]
   end

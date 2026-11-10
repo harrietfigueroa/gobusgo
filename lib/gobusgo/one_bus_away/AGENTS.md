@@ -121,7 +121,7 @@ Shape of the live coverage, observed in the response stored on 2026-10-03 (12 ag
 | --- | --- | --- |
 | Missing coverage | All four numbers zero | `{:error, :coverage_missing}`; the agency is skipped |
 | Invalid coverage | A negative span, an edge beyond a pole, or an edge beyond the antimeridian | `{:error, {:coverage_invalid, field}}`; the agency is skipped |
-| Buffer | The caller's, at most 100,000 meters | Added on every side; a degree of latitude counts as 111,320 meters, and the east and west sides use the degrees of longitude that cover the buffer at the box's edge farthest from the equator |
+| Buffer | The caller's, at most 100,000 meters | Added on every side; a degree of latitude counts as `Gobusgo.Math.Geodesy.meters_per_degree/0`, π times the mean radius over 180, about 111,195 meters (GOB-324), and the east and west sides use the degrees of longitude that cover the buffer at the box's edge farthest from the equator |
 | Combining | Buffered boxes that overlap or touch | Replaced by the box that holds both, repeated until no two regions share an area |
 | Agency bound | 1,000 | The most agencies one call takes |
 

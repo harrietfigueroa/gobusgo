@@ -15,6 +15,7 @@
 // page read for the time, those `chunksAt` names, in departure order.
 
 import {assertCondition} from "./assert.js"
+import {lerp} from "./math/interpolation.js"
 import {TableKind, savedRouteName} from "./offline_answers.js"
 import {POSITION_UNKNOWN_MICRODEGREES} from "./routing_snapshot.js"
 
@@ -233,10 +234,6 @@ function stopPositionOf({positions, stop}) {
   return {kind: TableKind.found, latMicrodegrees, lonMicrodegrees}
 }
 
-function between({from, to, share}) {
-  return from + (to - from) * share
-}
-
 // The point a share of the way from one stop to the other, in degrees, or
 // missing where either stop has no known position.
 function pointOf({positions, placement}) {
@@ -249,8 +246,8 @@ function pointOf({positions, placement}) {
     return {kind: TableKind.missing}
   }
 
-  const latMicrodegrees = between({from: from.latMicrodegrees, to: to.latMicrodegrees, share: placement.share})
-  const lonMicrodegrees = between({from: from.lonMicrodegrees, to: to.lonMicrodegrees, share: placement.share})
+  const latMicrodegrees = lerp({from: from.latMicrodegrees, to: to.latMicrodegrees, fraction: placement.share})
+  const lonMicrodegrees = lerp({from: from.lonMicrodegrees, to: to.lonMicrodegrees, fraction: placement.share})
   return {kind: TableKind.found, lat: latMicrodegrees / MICRODEGREES_PER_DEGREE, lon: lonMicrodegrees / MICRODEGREES_PER_DEGREE}
 }
 

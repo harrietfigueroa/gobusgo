@@ -40,11 +40,10 @@ defmodule Gobusgo.OneBusAway.AgencyCoverage do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Math.Geodesy
 
   @latitude_degrees_max 90.0
   @longitude_degrees_max 180.0
-  @meters_per_latitude_degree 111_320
-  @radians_per_degree :math.pi() / 180
 
   @type coverage :: %{lat: number(), lon: number(), lat_span: number(), lon_span: number()}
   @type bounds :: %{south: float(), west: float(), north: float(), east: float()}
@@ -145,7 +144,7 @@ defmodule Gobusgo.OneBusAway.AgencyCoverage do
   end
 
   defp buffer(bounds, buffer_meters) do
-    latitude_degrees = buffer_meters / @meters_per_latitude_degree
+    latitude_degrees = buffer_meters / Geodesy.meters_per_degree()
     south = max(bounds.south - latitude_degrees, -@latitude_degrees_max)
     north = min(bounds.north + latitude_degrees, @latitude_degrees_max)
 
@@ -154,7 +153,7 @@ defmodule Gobusgo.OneBusAway.AgencyCoverage do
     # At a pole the cosine is a tiny positive float, never zero, and the
     # quotient is clamped below.
     latitude_abs_max = max(abs(south), abs(north))
-    longitude_degrees = latitude_degrees / :math.cos(latitude_abs_max * @radians_per_degree)
+    longitude_degrees = latitude_degrees / :math.cos(Geodesy.radians(latitude_abs_max))
 
     %{
       south: south,

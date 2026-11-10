@@ -9,36 +9,12 @@
 // the walking links a stop keeps.
 
 import {assertCondition} from "./assert.js"
+import {distanceMeters} from "./math/geodesy.js"
 import {POSITION_UNKNOWN_MICRODEGREES} from "./routing_snapshot.js"
 
-// The mean radius of the Earth, the one Gobusgo.Routing.Transfers measures
-// the walking links with.
-const EARTH_RADIUS_M = 6371008.8
 const MICRODEGREES_PER_DEGREE = 1000000
-const DEGREES_PER_HALF_TURN = 180
 const LAT_DEGREES_MAX = 90
 const LON_DEGREES_MAX = 180
-const HALVES_PER_ANGLE = 2
-
-function radians(degrees) {
-  return (degrees * Math.PI) / DEGREES_PER_HALF_TURN
-}
-
-// The great-circle distance between two positions in degrees, by the
-// haversine formula, which works in half angles.
-function distanceM({from, to}) {
-  const latFrom = radians(from.lat)
-  const latTo = radians(to.lat)
-  const halfLat = (latTo - latFrom) / HALVES_PER_ANGLE
-  const halfLon = radians(to.lon - from.lon) / HALVES_PER_ANGLE
-  const sinHalfLat = Math.sin(halfLat)
-  const sinHalfLon = Math.sin(halfLon)
-  const cosines = Math.cos(latFrom) * Math.cos(latTo)
-  const haversine = sinHalfLat * sinHalfLat + cosines * sinHalfLon * sinHalfLon
-  const root = Math.sqrt(haversine)
-  const halfAngle = Math.asin(Math.min(1, root))
-  return HALVES_PER_ANGLE * halfAngle * EARTH_RADIUS_M
-}
 
 function byDistance(left, right) {
   if (left.distanceM !== right.distanceM) {
@@ -71,6 +47,7 @@ export function startsNear({position, positions, transferRules}) {
   assertPosition(position)
   assertRules(transferRules)
   const {latMicrodegrees, lonMicrodegrees} = positions
+  const riderPosition = [position.lon, position.lat]
   assertCondition(latMicrodegrees.length === lonMicrodegrees.length, "routing walk: the position columns differ in length")
   const near = []
 
@@ -79,8 +56,8 @@ export function startsNear({position, positions, transferRules}) {
       continue
     }
 
-    const stopPosition = {lat: latMicrodegrees[stop] / MICRODEGREES_PER_DEGREE, lon: lonMicrodegrees[stop] / MICRODEGREES_PER_DEGREE}
-    const stopDistanceM = distanceM({from: position, to: stopPosition})
+    const stopPosition = [lonMicrodegrees[stop] / MICRODEGREES_PER_DEGREE, latMicrodegrees[stop] / MICRODEGREES_PER_DEGREE]
+    const stopDistanceM = distanceMeters(riderPosition, stopPosition)
 
     if (stopDistanceM <= transferRules.walkRadiusM) {
       near.push({stop, distanceM: stopDistanceM})

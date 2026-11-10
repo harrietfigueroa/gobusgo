@@ -22,7 +22,7 @@
 
 import {readFileSync} from "node:fs"
 import {assertCondition} from "../../assets/js/assert.js"
-import {contrastRatio} from "../../assets/js/contrast.js"
+import {contrastRatio} from "../../assets/js/math/color_contrast.js"
 
 const TEXT_CONTRAST_MIN = 4.5
 const NON_TEXT_CONTRAST_MIN = 3

@@ -9,7 +9,7 @@
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {AssertionError} from "../../assets/js/assert.js"
-import {distanceMeters} from "../../assets/js/marker_glide.js"
+import {distanceMeters} from "../../assets/js/math/geodesy.js"
 import {
   TRIP_PATH_COUNT_MAX,
   TRIP_PATH_REQUEST_COUNT_MAX,
