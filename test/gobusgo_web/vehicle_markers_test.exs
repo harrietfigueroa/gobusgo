@@ -510,6 +510,12 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     end
   end
 
+  describe "glyph_zoom_min/0" do
+    test "draws a bus glyph from zoom 13" do
+      assert VehicleMarkers.glyph_zoom_min() == 13
+    end
+  end
+
   describe "statuses/0" do
     test "defines every status once, each with a label, a description, and an opacity" do
       statuses = VehicleMarkers.statuses()

@@ -1,27 +1,33 @@
-// The bitmaps the canvas over the map stamps its vehicles with: each marker
-// shape in one color, opacity, and outline, each status badge in one theme's
-// colors, and each route label in one theme's colors, drawn once onto a
-// canvas of its own at the device's pixel ratio and sized to what it holds.
+// The bitmaps the canvas over the map stamps its vehicles with: each dot in
+// one color, opacity, and outline, each bus glyph, chevron, and route badge
+// in one status, color, and theme, and each status badge in one theme's
+// colors, drawn once onto a canvas of its own at the device's pixel ratio
+// and sized to what it holds.
 // A frame then copies each bitmap with `drawImage` where it stood drawing
 // the same paths and text again.
 // https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas — checked 2026-11-09
 
 import {assertCondition} from "./assert.js"
 import {drawStatusBadge, MARK_SIZE_PIXELS} from "./status_badges"
-import {drawPointedMarker, drawRoundMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS, POINTED_TIP_DISTANCE_PIXELS} from "./vehicle_marker_shapes"
-
-/** The shapes a marker's bitmap is drawn in. */
-export const SpriteShape = Object.freeze({round: "round", pointed: "pointed"})
+import {
+  BADGE_HEIGHT_PIXELS,
+  CHEVRON_SIZE_PIXELS,
+  GLYPH_IMAGE_SIZE_PIXELS,
+  MARKER_RADIUS_PIXELS,
+  MARKER_STROKE_WIDTH_PIXELS,
+  badgeWidth,
+  drawBusGlyph,
+  drawChevron,
+  drawRouteBadge,
+  drawRoundMarker
+} from "./vehicle_marker_shapes"
 
 // The most bitmaps held at once: a page draws one per route color and status
-// it shows, and one per route name, so a full cache is emptied and refilled.
+// it shows, and one badge per route name, so a full cache is emptied and
+// refilled.
 const SPRITE_COUNT_MAX = 512
 const HALVING_DIVISOR = 2
 const ROUND_SIZE_PIXELS = Math.ceil((MARKER_RADIUS_PIXELS + MARKER_STROKE_WIDTH_PIXELS) * HALVING_DIVISOR)
-const POINTED_SIZE_PIXELS = Math.ceil((POINTED_TIP_DISTANCE_PIXELS + MARKER_STROKE_WIDTH_PIXELS) * HALVING_DIVISOR)
-const LABEL_HALO_WIDTH_PIXELS = 3
-const LABEL_PADDING_PIXELS = Math.ceil(LABEL_HALO_WIDTH_PIXELS / HALVING_DIVISOR)
-const LABEL_LINE_HEIGHT_RATIO = 1.3
 const KEY_SEPARATOR = "|"
 
 function spriteCanvas({width, height, ratio}) {
@@ -33,19 +39,11 @@ function spriteCanvas({width, height, ratio}) {
   return canvas
 }
 
-function markerSize(shape) {
-  if (shape === SpriteShape.pointed) {
-    return POINTED_SIZE_PIXELS
-  }
-
-  return ROUND_SIZE_PIXELS
-}
-
 /**
  * A bounded cache of bitmaps at one pixel ratio. Each bitmap comes back as
- * `{image, width, height}`, its size in CSS pixels, with a marker's center
- * and a badge's corner at the middle and the top left of its image, and a
- * label's text centered across its width with its top `padding` down.
+ * `{image, width, height}`, its size in CSS pixels, with a dot's, a glyph's,
+ * and a chevron's center at the middle of its image, and a badge's corner
+ * at its top left.
  */
 export class SpriteCache {
   constructor() {
@@ -82,24 +80,63 @@ export class SpriteCache {
     return made
   }
 
-  marker({shape, color, opacity, strokeColor}) {
-    const key = ["marker", shape, color, opacity, strokeColor].join(KEY_SEPARATOR)
+  dot({color, opacity, strokeColor}) {
+    const key = ["dot", color, opacity, strokeColor].join(KEY_SEPARATOR)
 
     return this.cached({
       key,
       make: () => {
-        const size = markerSize(shape)
+        const size = ROUND_SIZE_PIXELS
         const image = spriteCanvas({width: size, height: size, ratio: this.ratio})
         const center = size / HALVING_DIVISOR
         image.getContext("2d").globalAlpha = opacity
-
-        if (shape === SpriteShape.pointed) {
-          drawPointedMarker(image, {x: center, y: center, angleRadians: 0, color, strokeColor})
-        } else {
-          drawRoundMarker(image, {x: center, y: center, color, strokeColor})
-        }
-
+        drawRoundMarker(image, {x: center, y: center, color, strokeColor})
         return {image, width: size, height: size}
+      }
+    })
+  }
+
+  // `style` is a `glyphStyle`, which names every color the glyph is drawn in.
+  glyph({style}) {
+    const key = ["glyph", style.fill, style.outline, style.outlineKind, style.ink].join(KEY_SEPARATOR)
+
+    return this.cached({
+      key,
+      make: () => {
+        const size = GLYPH_IMAGE_SIZE_PIXELS
+        const image = spriteCanvas({width: size, height: size, ratio: this.ratio})
+        const center = size / HALVING_DIVISOR
+        drawBusGlyph(image, {x: center, y: center, style})
+        return {image, width: size, height: size}
+      }
+    })
+  }
+
+  chevron({color, halo}) {
+    const key = ["chevron", color, halo].join(KEY_SEPARATOR)
+
+    return this.cached({
+      key,
+      make: () => {
+        const image = spriteCanvas({width: CHEVRON_SIZE_PIXELS, height: CHEVRON_SIZE_PIXELS, ratio: this.ratio})
+        drawChevron(image, {color, halo})
+        return {image, width: CHEVRON_SIZE_PIXELS, height: CHEVRON_SIZE_PIXELS}
+      }
+    })
+  }
+
+  // `badge` is a `routeBadgeStyle`; `measure` is a context whose font is
+  // `BADGE_FONT`, which gives the text's width.
+  routeBadge({badge, measure}) {
+    const key = ["route-badge", badge.text, badge.mark, badge.fill, badge.ink, badge.border].join(KEY_SEPARATOR)
+
+    return this.cached({
+      key,
+      make: () => {
+        const width = badgeWidth({badge, measure: (text) => measure.measureText(text).width})
+        const image = spriteCanvas({width, height: BADGE_HEIGHT_PIXELS, ratio: this.ratio})
+        drawRouteBadge(image, {badge, width})
+        return {image, width, height: BADGE_HEIGHT_PIXELS}
       }
     })
   }
@@ -117,29 +154,4 @@ export class SpriteCache {
     })
   }
 
-  // `measure` is a context whose font is `font`, which gives the text's width.
-  label({text, font, textSizePixels, color, haloColor, measure}) {
-    const key = ["label", text, font, color, haloColor].join(KEY_SEPARATOR)
-
-    return this.cached({
-      key,
-      make: () => {
-        const metrics = measure.measureText(text)
-        const width = Math.ceil(metrics.width) + LABEL_PADDING_PIXELS * HALVING_DIVISOR
-        const height = Math.ceil(textSizePixels * LABEL_LINE_HEIGHT_RATIO) + LABEL_PADDING_PIXELS * HALVING_DIVISOR
-        const image = spriteCanvas({width, height, ratio: this.ratio})
-        const context = image.getContext("2d")
-        context.font = font
-        context.textAlign = "center"
-        context.textBaseline = "top"
-        context.lineJoin = "round"
-        context.lineWidth = LABEL_HALO_WIDTH_PIXELS
-        context.strokeStyle = haloColor
-        context.fillStyle = color
-        context.strokeText(text, width / HALVING_DIVISOR, LABEL_PADDING_PIXELS)
-        context.fillText(text, width / HALVING_DIVISOR, LABEL_PADDING_PIXELS)
-        return {image, width, height, textWidth: metrics.width, padding: LABEL_PADDING_PIXELS}
-      }
-    })
-  }
 }

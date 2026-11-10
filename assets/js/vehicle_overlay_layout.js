@@ -1,16 +1,20 @@
 // Where the canvas over the map draws the vehicles it is handed, as pure
 // functions of their points on the screen: which vehicles are drawn, which
-// one a click is on, which stand inside a box, where a marker's badge
-// stands, which way a pointed marker turns, and which route labels are
-// drawn. Every length is in CSS pixels, and nothing here reads the document
-// or the map, which lets it be run apart from both.
+// one a click is on, which stand inside a box, where a dot's status badge
+// and a glyph's route badge and chevron stand, which way a chevron turns,
+// and which route badges are drawn. Every length is in CSS pixels, and
+// nothing here reads the document or the map, which lets it be run apart
+// from both.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {
+  BADGE_HEIGHT_PIXELS,
+  BADGE_SHOULDER_PIXELS,
+  CHEVRON_DISTANCE_PIXELS,
+  GLYPH_IMAGE_SIZE_PIXELS,
+  GLYPH_RADIUS_PIXELS,
   MARKER_RADIUS_PIXELS,
-  MARKER_STROKE_WIDTH_PIXELS,
-  POINTED_IMAGE_SIZE_PIXELS,
-  POINTED_TIP_DISTANCE_PIXELS
+  MARKER_STROKE_WIDTH_PIXELS
 } from "./vehicle_marker_shapes.js"
 import {MARK_SIZE_PIXELS} from "./status_badges.js"
 
@@ -23,33 +27,24 @@ export const VEHICLE_COUNT_MAX = 100
 /** The fastest rate the canvas redraws at while the camera is still. */
 export const RATE_HZ_MAX = 60
 
-/** The size of a route label's text. */
-export const LABEL_TEXT_SIZE_PIXELS = 11
-
-/** How far below a marker's center its label's top stands: one line of the label's text. */
-export const LABEL_OFFSET_PIXELS = LABEL_TEXT_SIZE_PIXELS
-
 /** The kinds of the vehicle a click is on: one, or none within reach. */
 export const HitKind = Object.freeze({found: "found", missing: "missing"})
 
-/** The kinds of a vehicle's marker: round, or pointed and turned to an angle on the screen. */
-export const MarkerKind = Object.freeze({round: "round", pointed: "pointed"})
+/** The kinds of a vehicle's marker: a regional dot, or a bus glyph. */
+export const MarkerKind = Object.freeze({round: "round", glyph: "glyph"})
 
 // A marker's center may stand this far outside the canvas while some of its
-// marker, its badge, or its label is still inside it.
+// marker, its badge, or its chevron is still inside it.
 const DRAWN_MARGIN_PIXELS = 48
 // The badge's lower left corner stands this far inside the marker's edge,
 // right of and above its center, so the badge sits on its upper right edge.
 const BADGE_INSET_PIXELS = 2
 const BADGE_OFFSET_PIXELS = MARKER_RADIUS_PIXELS - BADGE_INSET_PIXELS
-const LABEL_HEIGHT_PIXELS = 14
-// The room a label keeps clear around itself, MapLibre's `text-padding`.
-const LABEL_PADDING_PIXELS = 2
 const HALVING_DIVISOR = 2
 const ROUND_REACH_PIXELS = MARKER_RADIUS_PIXELS + MARKER_STROKE_WIDTH_PIXELS
-const POINTED_IMAGE_HALF_PIXELS = POINTED_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
+const GLYPH_IMAGE_HALF_PIXELS = GLYPH_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
 // The room MapLibre keeps around an icon, its `icon-padding`, which the
-// pointed layer leaves at its default.
+// glyph's layers leave at its default.
 // https://maplibre.org/maplibre-style-spec/layers/#icon-padding — checked 2026-11-09
 const ICON_PADDING_PIXELS = 2
 const DEGREES_PER_HALF_TURN = 180
@@ -121,20 +116,16 @@ export function nearestVehicle({drawn, point}) {
 }
 
 // How far from its center a vehicle counts as inside a box, as the map's
-// layers count it: a round marker by its circle and outline, and a pointed
-// one by the box around its image turned to its angle, with the icon's
-// padding.
+// layers count it: a dot by its circle and outline, and a glyph by its
+// image with the icon's padding.
 function reachPixels(marker) {
   switch (marker.kind) {
     case MarkerKind.round:
       return ROUND_REACH_PIXELS
-    case MarkerKind.pointed: {
-      const cosine = Math.abs(Math.cos(marker.angleRadians))
-      const sine = Math.abs(Math.sin(marker.angleRadians))
-      return POINTED_IMAGE_HALF_PIXELS * (cosine + sine) + ICON_PADDING_PIXELS
-    }
+    case MarkerKind.glyph:
+      return GLYPH_IMAGE_HALF_PIXELS + ICON_PADDING_PIXELS
     default:
-      return unreachable(marker.kind, "a marker is round or pointed")
+      return unreachable(marker.kind, "a marker is a dot or a glyph")
   }
 }
 
@@ -165,7 +156,7 @@ export function vehiclesInBox({drawn, box}) {
 }
 
 /**
- * The angle, clockwise from the top of the screen, that a pointed marker of
+ * The angle, clockwise from the top of the screen, that a chevron of
  * `headingDegrees`, clockwise from north, turns to on a map whose bearing is
  * `bearingDegrees`: the heading stays a compass direction on a turned map.
  */
@@ -175,35 +166,41 @@ export function screenAngleRadians({headingDegrees, bearingDegrees}) {
   return ((headingDegrees - bearingDegrees) * Math.PI) / DEGREES_PER_HALF_TURN
 }
 
-/** The top left corner of the badge of a marker centered on `x`, `y`: its lower left corner on the marker's upper right edge. */
+/** The top left corner of the status badge of a dot centered on `x`, `y`: its lower left corner on the dot's upper right edge. */
 export function badgeCorner({x, y}) {
   return {x: x + BADGE_OFFSET_PIXELS, y: y - BADGE_OFFSET_PIXELS - MARK_SIZE_PIXELS}
 }
 
-// The box a marker can reach: a pointed marker's tip turns to any side.
-function markerBox({x, y}) {
+/** The top left corner of the route badge of a glyph centered on `x`, `y`: its lower left corner on the glyph's shoulder. */
+export function routeBadgeCorner({x, y}) {
+  return {x: x + BADGE_SHOULDER_PIXELS, y: y - BADGE_SHOULDER_PIXELS - BADGE_HEIGHT_PIXELS}
+}
+
+/** The center of the chevron of a glyph centered on `x`, `y`, turned `angleRadians` clockwise from the top of the screen. */
+export function chevronCenter({x, y, angleRadians}) {
   return {
-    left: x - POINTED_TIP_DISTANCE_PIXELS,
-    top: y - POINTED_TIP_DISTANCE_PIXELS,
-    right: x + POINTED_TIP_DISTANCE_PIXELS,
-    bottom: y + POINTED_TIP_DISTANCE_PIXELS
+    x: x + CHEVRON_DISTANCE_PIXELS * Math.sin(angleRadians),
+    y: y - CHEVRON_DISTANCE_PIXELS * Math.cos(angleRadians)
   }
 }
 
-function badgeBox(vehicle) {
-  const corner = badgeCorner(vehicle)
-  return {left: corner.x, top: corner.y, right: corner.x + MARK_SIZE_PIXELS, bottom: corner.y + MARK_SIZE_PIXELS}
+function glyphBox({x, y}) {
+  return {
+    left: x - GLYPH_RADIUS_PIXELS,
+    top: y - GLYPH_RADIUS_PIXELS,
+    right: x + GLYPH_RADIUS_PIXELS,
+    bottom: y + GLYPH_RADIUS_PIXELS
+  }
 }
 
-function labelBox({x, y, labelWidth}) {
-  const halfWidth = labelWidth / HALVING_DIVISOR
-  const top = y + LABEL_OFFSET_PIXELS
+function routeBadgeBox({x, y, badgeWidth}) {
+  const corner = routeBadgeCorner({x, y})
 
   return {
-    left: x - halfWidth - LABEL_PADDING_PIXELS,
-    top: top - LABEL_PADDING_PIXELS,
-    right: x + halfWidth + LABEL_PADDING_PIXELS,
-    bottom: top + LABEL_HEIGHT_PIXELS + LABEL_PADDING_PIXELS
+    left: corner.x - ICON_PADDING_PIXELS,
+    top: corner.y - ICON_PADDING_PIXELS,
+    right: corner.x + badgeWidth + ICON_PADDING_PIXELS,
+    bottom: corner.y + BADGE_HEIGHT_PIXELS + ICON_PADDING_PIXELS
   }
 }
 
@@ -215,7 +212,7 @@ function overlaps(first, second) {
 }
 
 // Whether `box` overlaps a box of `obstacles` that belongs to another
-// vehicle than `id`: a label stands under its own marker by design.
+// vehicle than `id`: a badge stands on its own glyph by design.
 function overlapsOther({box, id, obstacles}) {
   for (const obstacle of obstacles) {
     const isOther = obstacle.id !== id
@@ -229,37 +226,32 @@ function overlapsOther({box, id, obstacles}) {
   return false
 }
 
-function hasLabel(vehicle) {
-  return vehicle.labelWidth !== null
+function hasRouteBadge(vehicle) {
+  return vehicle.badgeWidth !== null
 }
 
 /**
- * The identifiers of the vehicles of `vehicles` whose route labels are
- * drawn. Each vehicle has an `id`, its point `x`, `y`, its label's
- * `labelWidth` or null for a vehicle with no label, and `hasBadge`. A label
- * stands centered under its marker, `LABEL_OFFSET_PIXELS` below its center,
- * and is left out where it would cover another vehicle's marker or badge,
- * or a label placed before it, so of two crowded vehicles the one given
- * first keeps its label.
+ * The identifiers of the vehicles of `vehicles` whose route badges are
+ * drawn. Each vehicle has an `id`, its point `x`, `y`, and its badge's
+ * `badgeWidth` or null for a vehicle with no badge. A badge stands on its
+ * glyph's shoulder and is left out where it would cover another vehicle's
+ * glyph or a badge placed before it, so of two crowded vehicles the one
+ * given first keeps its badge; the glyph stays and tells the status.
  */
-export function placedLabels(vehicles) {
+export function placedBadges(vehicles) {
   assertVehicles(vehicles)
   const obstacles = []
 
   for (const vehicle of vehicles) {
-    obstacles.push({id: vehicle.id, box: markerBox(vehicle)})
-
-    if (vehicle.hasBadge) {
-      obstacles.push({id: vehicle.id, box: badgeBox(vehicle)})
-    }
+    obstacles.push({id: vehicle.id, box: glyphBox(vehicle)})
   }
 
   const placed = new Set()
 
   for (const vehicle of vehicles) {
-    if (hasLabel(vehicle)) {
-      assertCondition(vehicle.labelWidth >= 0, `a label's width is not negative, got: ${vehicle.labelWidth}`)
-      const box = labelBox(vehicle)
+    if (hasRouteBadge(vehicle)) {
+      assertCondition(vehicle.badgeWidth >= 0, `a badge's width is not negative, got: ${vehicle.badgeWidth}`)
+      const box = routeBadgeBox(vehicle)
 
       if (!overlapsOther({box, id: vehicle.id, obstacles})) {
         obstacles.push({id: vehicle.id, box})

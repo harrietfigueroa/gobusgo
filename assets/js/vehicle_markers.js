@@ -1,5 +1,5 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
-import {assertCondition} from "./assert"
+import {assertCondition, unreachable} from "./assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {closeCalloutOf, openCallout, updateCalloutOf, vehicleCalloutContent} from "./map_callout"
@@ -19,7 +19,25 @@ import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
-import {drawPointedMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS, POINTED_IMAGE_SIZE_PIXELS} from "./vehicle_marker_shapes"
+import {
+  BADGE_FONT,
+  BADGE_HEIGHT_PIXELS,
+  BADGE_SHOULDER_PIXELS,
+  CHEVRON_DISTANCE_PIXELS,
+  CHEVRON_SIZE_PIXELS,
+  GLYPH_IMAGE_PREFIX,
+  GLYPH_IMAGE_SIZE_PIXELS,
+  GlyphImageKind,
+  MARKER_RADIUS_PIXELS,
+  MARKER_STROKE_WIDTH_PIXELS,
+  badgeWidth,
+  drawBusGlyph,
+  drawChevron,
+  drawRouteBadge,
+  glyphStyle,
+  parseGlyphImageName,
+  routeBadgeStyle
+} from "./vehicle_marker_shapes"
 import {MotionTierKind, STILL_TIER, isPositionInBounds, markerIdsInBounds, motionSettingsOf, motionTier} from "./motion_tier"
 import {PathTripKind, drawnVehicle, isAnimated, pathTrip, placedAtFetch, resumedOnCanvas, trackedVehicle} from "./vehicle_motion"
 import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
@@ -29,20 +47,20 @@ import {registerImageResolver} from "./style_images"
 
 const SOURCE_NAME = "vehicle-markers"
 const IMAGE_RESOLVER_KEY = "vehicle-markers"
-const ROUND_LAYER_NAME = "vehicle-markers-round"
-const POINTED_LAYER_NAME = "vehicle-markers-pointed"
+const DOT_LAYER_NAME = "vehicle-markers-dot"
+const GLYPH_LAYER_NAME = "vehicle-markers-glyph"
 
-// The layers a vehicle's marker is drawn in, round or pointed.
-export const markerLayerNames = [ROUND_LAYER_NAME, POINTED_LAYER_NAME]
-const ROUTE_LAYER_NAME = "vehicle-markers-route"
-const routeFont = ["Noto Sans Medium"]
-const ROUTE_TEXT_SIZE_PIXELS = 11
-const routeTextOffsetEms = [0, 1]
-const ROUTE_HALO_WIDTH_PIXELS = 1.5
-const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
-const POINTED_IMAGE_PIXEL_RATIO = 2
+// The layers a vehicle's marker is drawn in: a dot at regional zoom, and a
+// bus glyph closer in.
+export const markerLayerNames = [DOT_LAYER_NAME, GLYPH_LAYER_NAME]
+const CHEVRON_LAYER_NAME = "vehicle-markers-chevron"
+const ROUTE_BADGE_LAYER_NAME = "vehicle-markers-route-badge"
 const BADGE_LAYER_NAME = "vehicle-markers-badge"
-const BADGE_IMAGE_PIXEL_RATIO = 2
+const IMAGE_PIXEL_RATIO = 2
+// The chevron's center stands toward the heading before it turns, and the
+// route badge's lower left corner on the glyph's shoulder.
+const chevronOffsetPixels = [0, -CHEVRON_DISTANCE_PIXELS]
+const routeBadgeOffsetPixels = [BADGE_SHOULDER_PIXELS, -BADGE_SHOULDER_PIXELS]
 const HALVING_DIVISOR = 2
 // The badge's lower left corner stands this far inside the marker's edge,
 // right of and above its center, so the badge sits on its upper right edge.
@@ -59,6 +77,9 @@ const FACTS_CLASS_NAME = "panel-detail-facts"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
+// A badge carries the route's number, or the mark of a status a recent
+// report lacks for a vehicle with no route.
+const hasRouteBadge = ["any", hasRoute, ["match", ["get", "status"], ["stale", "unknown"], true, false]]
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
 
 function point(coordinates) {
@@ -211,33 +232,57 @@ function statusOpacity(statuses) {
   return ["match", ["get", "status"], ...cases, STATUS_OPACITY_FALLBACK]
 }
 
-// The image of a pointed marker in one color, outlined in `strokeColor`:
-// the round marker's circle, centered in the image, drawn out to a tip that
-// points up, which is north for a heading of zero.
-function pointedImage({color, strokeColor}) {
-  const size = POINTED_IMAGE_SIZE_PIXELS * POINTED_IMAGE_PIXEL_RATIO
+// The image `draw` draws onto a canvas of `width` by `height` CSS pixels,
+// scaled to the image's pixel ratio.
+function drawnImage({width, height, draw}) {
   const canvas = document.createElement("canvas")
-  canvas.width = size
-  canvas.height = size
-
+  canvas.width = Math.ceil(width * IMAGE_PIXEL_RATIO)
+  canvas.height = Math.ceil(height * IMAGE_PIXEL_RATIO)
   const context = canvas.getContext("2d")
-  const center = POINTED_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
-  context.scale(POINTED_IMAGE_PIXEL_RATIO, POINTED_IMAGE_PIXEL_RATIO)
-  drawPointedMarker(canvas, {x: center, y: center, angleRadians: 0, color, strokeColor})
-  return context.getImageData(0, 0, size, size)
+  context.scale(IMAGE_PIXEL_RATIO, IMAGE_PIXEL_RATIO)
+  draw(canvas)
+  return context.getImageData(0, 0, canvas.width, canvas.height)
 }
 
 // The image of the status badge `badge` in the colors of `theme`.
 function badgeImage({badge, theme}) {
-  const size = MARK_SIZE_PIXELS * BADGE_IMAGE_PIXEL_RATIO
-  const canvas = document.createElement("canvas")
-  canvas.width = size
-  canvas.height = size
-  const context = canvas.getContext("2d")
-  context.scale(BADGE_IMAGE_PIXEL_RATIO, BADGE_IMAGE_PIXEL_RATIO)
   const colors = mapColors(theme)
-  drawStatusBadge(canvas, {badge, ink: colors.badgeInk, paper: colors.badgePaper, x: 0, y: 0})
-  return context.getImageData(0, 0, size, size)
+  const draw = (canvas) => { drawStatusBadge(canvas, {badge, ink: colors.badgeInk, paper: colors.badgePaper, x: 0, y: 0}) }
+  return drawnImage({width: MARK_SIZE_PIXELS, height: MARK_SIZE_PIXELS, draw})
+}
+
+// The image of a glyph's part that `named`, a read glyph image name, names:
+// the bus, its chevron, or its route badge.
+function glyphPartImage(named) {
+  const colors = mapColors(named.theme)
+
+  switch (named.part) {
+    case "glyph": {
+      const style = glyphStyle({status: named.status, color: named.color, colors})
+      const center = GLYPH_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
+      const draw = (canvas) => { drawBusGlyph(canvas, {x: center, y: center, style}) }
+      return drawnImage({width: GLYPH_IMAGE_SIZE_PIXELS, height: GLYPH_IMAGE_SIZE_PIXELS, draw})
+    }
+    case "chevron": {
+      const draw = (canvas) => { drawChevron(canvas, {color: named.color, halo: colors.glyphLiveOutline}) }
+      return drawnImage({width: CHEVRON_SIZE_PIXELS, height: CHEVRON_SIZE_PIXELS, draw})
+    }
+    case "badge": {
+      const badge = routeBadgeStyle({status: named.status, route: named.route, color: named.color})
+      const measuring = document.createElement("canvas").getContext("2d")
+      measuring.font = BADGE_FONT
+      const width = badgeWidth({badge, measure: (text) => measuring.measureText(text).width})
+      const draw = (canvas) => { drawRouteBadge(canvas, {badge, width}) }
+      return drawnImage({width, height: BADGE_HEIGHT_PIXELS, draw})
+    }
+    default:
+      return unreachable(named.part, "a glyph's part")
+  }
+}
+
+// The image name of a glyph's `part` for each feature, in `theme`.
+function glyphImageExpression({part, theme}) {
+  return ["concat", GLYPH_IMAGE_PREFIX, "|", part, "|", ["get", "status"], "|", ["get", "color"], "|", theme, "|", ["coalesce", ["get", "route"], ""]]
 }
 
 function badgeCase({status, badge}) {
@@ -442,6 +487,8 @@ export const VehicleMarkers = {
     // is its fetch time and the page's monotonic time the fetch arrived at,
     // so a skewed device clock moves no marker.
     this.motionSettings = motionSettingsOf(JSON.parse(this.el.dataset.motion))
+    // The zoom from which a vehicle is a bus glyph, and below which a dot.
+    this.glyphZoomMin = Number(this.el.dataset.glyphZoomMin)
     this.tier = STILL_TIER
     this.tracked = new Map()
     this.agencyOfMarker = new Map()
@@ -495,7 +542,7 @@ export const VehicleMarkers = {
     }
 
     // A style set anew holds none of the layers, nor the source, nor the
-    // images of the pointed markers, which are made again as they are drawn.
+    // images of the glyphs, which are made again as they are drawn.
     this.onRestyled = (event) => {
       const {map} = event.detail
 
@@ -558,8 +605,9 @@ export const VehicleMarkers = {
 
   attach(map, maplibre) {
     this.maplibre = maplibre
-    // A pointed marker's image is made the first time a marker of its color
-    // is drawn, since the colors are the routes' and not known in advance.
+    // A glyph's images are made the first time a vehicle of their status,
+    // color, and route is drawn, since the colors and the routes are the
+    // agencies' and not known in advance.
     // MapLibre awaits this resolver before it hands a tile its images, and
     // gives it to every style the map is set to; its "styleimagemissing"
     // event comes after the tile has taken its images without the new one
@@ -568,15 +616,13 @@ export const VehicleMarkers = {
     // theme asks for images of its own.
     registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => {
       const named = parseImageName(id)
+      const glyph = parseGlyphImageName(id)
 
-      if (id.startsWith(POINTED_IMAGE_PREFIX)) {
-        const color = id.slice(POINTED_IMAGE_PREFIX.length)
-        const strokeColor = mapColors(currentTheme()).vehicleStroke
-        const image = pointedImage({color, strokeColor})
-        map.addImage(id, image, {pixelRatio: POINTED_IMAGE_PIXEL_RATIO})
+      if (glyph.kind === GlyphImageKind.glyph) {
+        map.addImage(id, glyphPartImage(glyph), {pixelRatio: IMAGE_PIXEL_RATIO})
       } else if (named.kind === ImageNameKind.badge) {
         const image = badgeImage({badge: named.badge, theme: named.theme})
-        map.addImage(id, image, {pixelRatio: BADGE_IMAGE_PIXEL_RATIO})
+        map.addImage(id, image, {pixelRatio: IMAGE_PIXEL_RATIO})
       }
     }})
 
@@ -612,7 +658,7 @@ export const VehicleMarkers = {
   // map's own click and pointer moves find the vehicles it draws.
   attachOverlay(map) {
     const canvas = map.getCanvas()
-    this.overlay = attachVehicleOverlay({map, statuses: this.statuses})
+    this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -791,12 +837,14 @@ export const VehicleMarkers = {
 
     const colors = mapColors(currentTheme())
     const opacity = statusOpacity(this.statuses)
+    const theme = currentTheme()
 
+    // At regional zoom every vehicle is a dot in its route's color.
     map.addLayer({
-      id: ROUND_LAYER_NAME,
+      id: DOT_LAYER_NAME,
       type: "circle",
       source: SOURCE_NAME,
-      filter: ["!", hasHeading],
+      maxzoom: this.glyphZoomMin,
       paint: {
         "circle-radius": MARKER_RADIUS_PIXELS,
         "circle-color": ["get", "color"],
@@ -807,43 +855,53 @@ export const VehicleMarkers = {
       }
     })
 
-    // The image turns with the map, so a heading stays a compass direction
-    // on a map that is turned.
-    map.addLayer({
-      id: POINTED_LAYER_NAME,
-      type: "symbol",
-      source: SOURCE_NAME,
-      filter: hasHeading,
-      layout: {
-        "icon-image": ["concat", POINTED_IMAGE_PREFIX, ["get", "color"]],
-        "icon-rotate": ["get", "heading"],
-        "icon-rotation-alignment": "map",
-        "icon-allow-overlap": true
-      },
-      paint: {"icon-opacity": opacity}
-    })
-
     this.addBadgeLayer(map)
 
-    // A label is left out where it would cover another label, so a crowded
-    // street shows the routes of some of its vehicles.
+    // Closer in every vehicle is a bus glyph, however crowded the street.
     map.addLayer({
-      id: ROUTE_LAYER_NAME,
+      id: GLYPH_LAYER_NAME,
       type: "symbol",
       source: SOURCE_NAME,
-      filter: hasRoute,
+      minzoom: this.glyphZoomMin,
       layout: {
-        "text-field": ["get", "route"],
-        "text-font": routeFont,
-        "text-size": ROUTE_TEXT_SIZE_PIXELS,
-        "text-anchor": "top",
-        "text-offset": routeTextOffsetEms,
-        "text-allow-overlap": false
-      },
-      paint: {
-        "text-color": colors.vehicleLabel,
-        "text-halo-color": colors.vehicleHalo,
-        "text-halo-width": ROUTE_HALO_WIDTH_PIXELS
+        "icon-image": glyphImageExpression({part: "glyph", theme}),
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    })
+
+    // The chevron turns with the map, so a heading stays a compass direction
+    // on a map that is turned. It is left out where it would cover another
+    // chevron or badge, and the glyph stays.
+    map.addLayer({
+      id: CHEVRON_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      minzoom: this.glyphZoomMin,
+      filter: hasHeading,
+      layout: {
+        "icon-image": glyphImageExpression({part: "chevron", theme}),
+        "icon-rotate": ["get", "heading"],
+        "icon-rotation-alignment": "map",
+        "icon-offset": chevronOffsetPixels,
+        "icon-allow-overlap": false
+      }
+    })
+
+    // The route badge stands on the glyph's shoulder, and is left out where
+    // it would cover another badge or chevron; the glyph's fill and outline
+    // still tell its status.
+    map.addLayer({
+      id: ROUTE_BADGE_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      minzoom: this.glyphZoomMin,
+      filter: hasRouteBadge,
+      layout: {
+        "icon-image": glyphImageExpression({part: "badge", theme}),
+        "icon-anchor": "bottom-left",
+        "icon-offset": routeBadgeOffsetPixels,
+        "icon-allow-overlap": false
       }
     })
   },
@@ -860,6 +918,7 @@ export const VehicleMarkers = {
       type: "symbol",
       source: SOURCE_NAME,
       filter: ["in", ["get", "status"], ["literal", badgedStatuses]],
+      maxzoom: this.glyphZoomMin,
       layout: {
         "icon-image": ["match", ["get", "status"], ...badgeCases, ""],
         "icon-anchor": "bottom-left",

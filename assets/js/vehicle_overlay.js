@@ -1,5 +1,5 @@
 // A 2D canvas over a map's own canvas that draws the vehicles it is handed,
-// in the shapes, colors, opacities, badges, and labels of the map's vehicle
+// in the shapes, colors, opacities, badges, and chevrons of the map's vehicle
 // layers. The map never draws a frame for it: it redraws on the map's
 // `render` event when the camera has changed since its last draw, so it
 // stands where the frame MapLibre just drew stands, and from a timer of its
@@ -12,23 +12,23 @@ import {assertCondition} from "./assert.js"
 import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"
-import {SpriteCache, SpriteShape} from "./vehicle_sprites"
+import {SpriteCache} from "./vehicle_sprites"
+import {BADGE_FONT, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
 import {
   badgeCorner,
+  chevronCenter,
   drawnVehicles,
   HitKind,
-  LABEL_OFFSET_PIXELS,
-  LABEL_TEXT_SIZE_PIXELS,
   MarkerKind,
   nearestVehicle,
-  placedLabels,
+  placedBadges,
   RATE_HZ_MAX,
+  routeBadgeCorner,
   screenAngleRadians,
   vehiclesInBox
 } from "./vehicle_overlay_layout"
 
 const CANVAS_CLASS_NAME = "vehicle-overlay"
-const LABEL_FONT = `500 ${LABEL_TEXT_SIZE_PIXELS}px system-ui, sans-serif`
 const MS_PER_SECOND = 1000
 const OPACITY_FALLBACK = 1
 const HALVING_DIVISOR = 2
@@ -53,8 +53,12 @@ function hasHeading(properties) {
   return typeof properties.heading === "number"
 }
 
-function hasRoute(properties) {
-  return typeof properties.route === "string"
+// Whether a glyph's route badge is drawn: one carries its route's number,
+// or the mark of a status a recent report lacks.
+function hasRouteBadge(properties) {
+  const isRouted = typeof properties.route === "string"
+  const isMarked = properties.status === "stale" || properties.status === "unknown"
+  return isRouted || isMarked
 }
 
 // `value`, a length in CSS pixels, at the nearest whole device pixel, so a
@@ -82,8 +86,9 @@ function cameraKey(map) {
 }
 
 class VehicleOverlay {
-  constructor({map, statuses}) {
+  constructor({map, statuses, glyphZoomMin}) {
     this.map = map
+    this.glyphZoomMin = glyphZoomMin
     const opacityEntries = Array.from(statuses, statusOpacityEntry)
     this.opacities = new Map(opacityEntries)
     // The badge of each status that has one.
@@ -212,24 +217,30 @@ class VehicleOverlay {
     this.sprites.prepare(ratio)
     this.drawMarkers({drawn, colors, ratio})
     this.drawBadges({drawn, colors, ratio})
-    this.drawLabels({drawn, colors, ratio})
+    this.drawRouteBadges({drawn, ratio})
 
     this.drawn = drawn
     this.drawnKey = cameraKey(this.map)
   }
 
-  // The marker of a vehicle: round for one with no heading, and otherwise
-  // pointed, turned on the screen so its heading stays a compass direction.
+  // The marker of a vehicle: a dot below the glyph's zoom, and otherwise a
+  // glyph whose chevron turns on the screen so its heading stays a compass
+  // direction, or a glyph with no chevron for a vehicle with no heading.
   markerOf(properties) {
-    if (!hasHeading(properties)) {
+    if (this.map.getZoom() < this.glyphZoomMin) {
       const round = {kind: MarkerKind.round}
       return round
     }
 
+    if (!hasHeading(properties)) {
+      const still = {kind: MarkerKind.glyph, hasChevron: false, angleRadians: 0}
+      return still
+    }
+
     const bearingDegrees = this.map.getBearing()
     const angleRadians = screenAngleRadians({headingDegrees: properties.heading, bearingDegrees})
-    const pointed = {kind: MarkerKind.pointed, angleRadians}
-    return pointed
+    const heading = {kind: MarkerKind.glyph, hasChevron: true, angleRadians}
+    return heading
   }
 
   opacityOf(properties) {
@@ -242,51 +253,51 @@ class VehicleOverlay {
     return opacity
   }
 
-  // Each marker is copied from its bitmap. The round markers stand under the
-  // pointed ones, as the map's round layer stands under its pointed layer,
-  // and a pointed marker's bitmap is turned to its heading.
+  // Copies `sprite` centered on `x`, `y`.
+  stampCentered({sprite, x, y, ratio}) {
+    const context = this.canvas.getContext("2d")
+    const left = snapToPixel({value: x - sprite.width / HALVING_DIVISOR, ratio})
+    const top = snapToPixel({value: y - sprite.height / HALVING_DIVISOR, ratio})
+    context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
+  }
+
+  // Each marker is copied from its bitmap: a dot, or a glyph with its
+  // chevron turned to its heading beside it.
   drawMarkers({drawn, colors, ratio}) {
     const context = this.canvas.getContext("2d")
-    const round = []
-    const pointed = []
 
-    for (const vehicle of drawn) {
-      if (vehicle.marker.kind === MarkerKind.round) {
-        round.push(vehicle)
+    for (const {x, y, marker, feature: {properties}} of drawn) {
+      if (marker.kind === MarkerKind.round) {
+        const opacity = this.opacityOf(properties)
+        const sprite = this.sprites.dot({color: properties.color, opacity, strokeColor: colors.vehicleStroke})
+        this.stampCentered({sprite, x, y, ratio})
       } else {
-        pointed.push(vehicle)
+        const style = glyphStyle({status: properties.status, color: properties.color, colors})
+        this.stampCentered({sprite: this.sprites.glyph({style}), x, y, ratio})
+
+        if (marker.hasChevron) {
+          const center = chevronCenter({x, y, angleRadians: marker.angleRadians})
+          const sprite = this.sprites.chevron({color: properties.color, halo: colors.glyphLiveOutline})
+          context.translate(snapToPixel({value: center.x, ratio}), snapToPixel({value: center.y, ratio}))
+          context.rotate(marker.angleRadians)
+          context.drawImage(sprite.image, -sprite.width / HALVING_DIVISOR, -sprite.height / HALVING_DIVISOR, sprite.width, sprite.height)
+          context.setTransform(ratio, 0, 0, ratio, 0, 0)
+        }
       }
-    }
-
-    for (const {x, y, feature: {properties}} of round) {
-      const opacity = this.opacityOf(properties)
-      const sprite = this.sprites.marker({shape: SpriteShape.round, color: properties.color, opacity, strokeColor: colors.vehicleStroke})
-      const left = snapToPixel({value: x - sprite.width / HALVING_DIVISOR, ratio})
-      const top = snapToPixel({value: y - sprite.height / HALVING_DIVISOR, ratio})
-      context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
-    }
-
-    for (const {x, y, marker: {angleRadians}, feature: {properties}} of pointed) {
-      const opacity = this.opacityOf(properties)
-      const sprite = this.sprites.marker({shape: SpriteShape.pointed, color: properties.color, opacity, strokeColor: colors.vehicleStroke})
-      const centerX = snapToPixel({value: x, ratio})
-      const centerY = snapToPixel({value: y, ratio})
-      context.translate(centerX, centerY)
-      context.rotate(angleRadians)
-      context.drawImage(sprite.image, -sprite.width / HALVING_DIVISOR, -sprite.height / HALVING_DIVISOR, sprite.width, sprite.height)
-      context.setTransform(ratio, 0, 0, ratio, 0, 0)
     }
   }
 
-  // A badge is drawn at full opacity whatever its marker's, and every badge
-  // is drawn, so no status is told by color alone.
+  // A dot's status badge is drawn at full opacity whatever its dot's, and
+  // every one is drawn, so no status is told by color alone.
   drawBadges({drawn, colors, ratio}) {
     const context = this.canvas.getContext("2d")
 
     for (const vehicle of drawn) {
       const badge = this.badges.get(vehicle.feature.properties.status)
+      const isDot = vehicle.marker.kind === MarkerKind.round
+      const isBadgedDot = isDot && badge !== undefined
 
-      if (badge !== undefined) {
+      if (isBadgedDot) {
         const corner = badgeCorner(vehicle)
         const sprite = this.sprites.badge({badge, ink: colors.badgeInk, paper: colors.badgePaper})
         const left = snapToPixel({value: corner.x, ratio})
@@ -296,41 +307,38 @@ class VehicleOverlay {
     }
   }
 
-  // A label is measured once, when its bitmap is made.
-  drawLabels({drawn, colors, ratio}) {
+  // A glyph's route badge is measured once, when its bitmap is made, and is
+  // left out where it would cover another glyph or badge.
+  drawRouteBadges({drawn, ratio}) {
     const context = this.canvas.getContext("2d")
-    context.font = LABEL_FONT
+    context.font = BADGE_FONT
     const candidates = []
-    const labels = new Map()
+    const sprites = new Map()
 
     for (const vehicle of drawn) {
-      const {properties} = vehicle.feature
-      let labelWidth = null
+      if (vehicle.marker.kind === MarkerKind.glyph) {
+        const {properties} = vehicle.feature
+        let badgeWidth = null
 
-      if (hasRoute(properties)) {
-        const sprite = this.sprites.label({
-          text: properties.route,
-          font: LABEL_FONT,
-          textSizePixels: LABEL_TEXT_SIZE_PIXELS,
-          color: colors.vehicleLabel,
-          haloColor: colors.vehicleHalo,
-          measure: context
-        })
-        labels.set(vehicle.id, sprite)
-        labelWidth = sprite.textWidth
+        if (hasRouteBadge(properties)) {
+          const badge = routeBadgeStyle({status: properties.status, route: properties.route, color: properties.color})
+          const sprite = this.sprites.routeBadge({badge, measure: context})
+          sprites.set(vehicle.id, sprite)
+          badgeWidth = sprite.width
+        }
+
+        candidates.push({id: vehicle.id, x: vehicle.x, y: vehicle.y, badgeWidth})
       }
-
-      const hasBadge = this.badges.has(properties.status)
-      candidates.push({id: vehicle.id, x: vehicle.x, y: vehicle.y, labelWidth, hasBadge})
     }
 
-    const placed = placedLabels(candidates)
+    const placed = placedBadges(candidates)
 
-    for (const {id, x, y} of drawn) {
-      if (placed.has(id)) {
-        const sprite = labels.get(id)
-        const left = snapToPixel({value: x - sprite.width / HALVING_DIVISOR, ratio})
-        const top = snapToPixel({value: y + LABEL_OFFSET_PIXELS - sprite.padding, ratio})
+    for (const vehicle of drawn) {
+      if (placed.has(vehicle.id)) {
+        const sprite = sprites.get(vehicle.id)
+        const corner = routeBadgeCorner(vehicle)
+        const left = snapToPixel({value: corner.x, ratio})
+        const top = snapToPixel({value: corner.y, ratio})
         context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
       }
     }
@@ -348,11 +356,12 @@ class VehicleOverlay {
 /**
  * Adds a vehicle canvas over `map`, which draws nothing until it is
  * started, and gives it. `statuses` are the status definitions, each with
- * its `status`, `opacity`, and `badge` or none.
+ * its `status`, `opacity`, and `badge` or none, and `glyphZoomMin` the zoom
+ * from which a vehicle is a bus glyph.
  */
-export function attachVehicleOverlay({map, statuses}) {
+export function attachVehicleOverlay({map, statuses, glyphZoomMin}) {
   assertCondition(!overlays.has(map), "a map has at most one vehicle canvas")
-  const overlay = new VehicleOverlay({map, statuses})
+  const overlay = new VehicleOverlay({map, statuses, glyphZoomMin})
   overlays.set(map, overlay)
   return overlay
 }

@@ -248,7 +248,8 @@ defmodule GobusgoWeb.AppInfoPanel do
         </div>
       </dl>
       <p>
-        A pointed marker shows the way the vehicle is heading, and a round one has no heading.
+        Zoomed in, a vehicle is a bus with its route's number on its shoulder and a chevron the
+        way it is heading; zoomed out, a dot.
         Select a marker for its route, its destination, how far it is from its schedule, and
         its next stop. Stops appear when you zoom in.
       </p>
