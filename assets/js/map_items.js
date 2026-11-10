@@ -1,11 +1,11 @@
 // The list of the vehicles, stops, and shared vehicles in view of the
-// vehicle map, which a
-// keyboard reaches them by: which items it holds, in what order, the text
-// of each option, and how the keys move the active option. Everything here
-// is pure and reads no map or document, so each decision is checked against
-// values written out by hand.
+// vehicle map, which a keyboard reaches them by: which items it holds, in
+// what order, the text of each option, and how the keys move the active
+// option. Everything here is pure and reads no map or document, so each
+// decision is checked against values written out by hand.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {rangeText} from "./shared_vehicle_view_text.js"
 
 export const MapItemKind = Object.freeze({vehicle: "vehicle", stop: "stop", sharedVehicle: "sharedVehicle"})
 
@@ -18,8 +18,11 @@ export const ListKey = Object.freeze({down: "down", up: "up", home: "home", end:
  */
 export const OPEN_EVENT_NAME = "gobusgo:map-item-open"
 
-// A vehicle comes before a stop, and a stop before a shared vehicle, as
-// near the middle.
+// The vehicles and stops come before every shared vehicle, so a dense
+// layer of scooters takes only the places they leave.
+const groupRank = Object.freeze({[MapItemKind.vehicle]: 0, [MapItemKind.stop]: 0, [MapItemKind.sharedVehicle]: 1})
+
+// Within a group, a vehicle comes before a stop as near the middle.
 const kindRank = Object.freeze({[MapItemKind.vehicle]: 0, [MapItemKind.stop]: 1, [MapItemKind.sharedVehicle]: 2})
 
 function isSupplied(value) {
@@ -68,12 +71,19 @@ function stopText({id, name, direction, routes}) {
   return parts.join(", ")
 }
 
-function sharedVehicleText({formLabel, operatorName}) {
+function sharedVehicleText({formLabel, operatorName, rangeMeters}) {
+  const parts = [formLabel]
+
   if (isSupplied(operatorName)) {
-    return `${formLabel}, ${operatorName}`
+    parts.push(operatorName)
   }
 
-  return formLabel
+  if (typeof rangeMeters === "number") {
+    const range = rangeText(rangeMeters)
+    parts.push(`${range} left`)
+  }
+
+  return parts.join(", ")
 }
 
 function placedItem({kind, id, text, x, y, center}) {
@@ -82,9 +92,16 @@ function placedItem({kind, id, text, x, y, center}) {
   return {kind, id, text, distanceSquared: offsetX * offsetX + offsetY * offsetY}
 }
 
-// Nearest first; then a vehicle before a stop, then by text, then by
+// The vehicles and stops first, then the shared vehicles; within each,
+// nearest first, then a vehicle before a stop, then by text, then by
 // identifier, so the order is the same for the same view.
 function compareItems(left, right) {
+  const groupOrder = groupRank[left.kind] - groupRank[right.kind]
+
+  if (groupOrder !== 0) {
+    return groupOrder
+  }
+
   const distanceOrder = left.distanceSquared - right.distanceSquared
 
   if (distanceOrder !== 0) {
@@ -110,9 +127,10 @@ function compareItems(left, right) {
  * The options of the list: of `vehicles`, each its marker's identifier,
  * route, headsign, and vehicle identifier, `stops`, each its identifier,
  * name, direction, and routes, and `sharedVehicles`, each its key, kind's
- * label, and operator, all at a point on the screen; the `countMax`
- * nearest `center` first, each with its kind, identifier, and text, and
- * the count of the items left out.
+ * label, operator, and range in meters, all at a point on the screen: the
+ * vehicles and stops nearest `center` first, then the shared vehicles
+ * nearest it first, `countMax` in all, each with its kind, identifier, and
+ * text, and the count of the items left out.
  */
 export function itemsInView({vehicles, stops, sharedVehicles, center, countMax}) {
   assertCondition(Number.isSafeInteger(countMax), `countMax must be an integer, got: ${countMax}`)

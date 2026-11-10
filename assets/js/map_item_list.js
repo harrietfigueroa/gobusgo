@@ -37,9 +37,9 @@ function stopEntry({map, feature}) {
 }
 
 function sharedVehicleEntry({map, feature}) {
-  const {vehicleKey, formLabel, operatorName} = feature.properties
+  const {vehicleKey, formLabel, operatorName, rangeMeters} = feature.properties
   const {x, y} = screenPoint({map, feature})
-  return {id: vehicleKey, formLabel, operatorName, x, y}
+  return {id: vehicleKey, formLabel, operatorName, rangeMeters, x, y}
 }
 
 // The line under the list: how many items the list leaves out, and that
