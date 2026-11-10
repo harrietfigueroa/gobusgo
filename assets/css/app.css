@@ -142,6 +142,16 @@
   --color-gray-600: #cbd5e1;
 }
 
+/* The canvas of the vehicles in motion lies over the map's own canvas,
+   which it matches in place and size, and lets every pointer event through
+   to it. */
+.vehicle-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
 /* The rules stand after MapLibre's, which give a popup and a group of
    controls a white fill and corners of their own with the same
    specificity. */
