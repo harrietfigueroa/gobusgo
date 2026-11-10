@@ -3,12 +3,11 @@
 // decoder takes the event's values, and the cache's functions take a cache
 // and return another, leaving the one given as it was.
 //
-// The server builds a path from its route's polylines and its stop times
-// (Gobusgo.OneBusAway.TripPath) and sends `points` in the encoded polyline
-// format and `stops` as three numbers per stop in the same format's number
-// encoding: the distance since the stop before in meters, the arrival since
-// the stop before's arrival in seconds, and the departure after the
-// arrival, the first stop's taken from zero.
+// A path arrives with `points` in the encoded polyline format and `stops`
+// as three numbers per stop in the same format's number encoding: the
+// distance since the stop before in meters, the arrival since the stop
+// before's arrival in seconds, and the departure after the arrival, the
+// first stop's taken from zero.
 // https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-11-09
 
 import {assertCondition} from "./assert.js"
@@ -27,7 +26,13 @@ const CHUNK_CONTINUES = 0x20
 // for its sign, a distance, or a time.
 const NUMBER_CHUNK_COUNT_MAX = 7
 const COORDINATE_PRECISION = 100000
+// A point is two numbers, latitude then longitude; a stop is three, its
+// distance step, its arrival step, and its dwell.
+const NUMBERS_PER_POINT = 2
+const LONGITUDE_OFFSET = 1
 const NUMBERS_PER_STOP = 3
+const ARRIVAL_OFFSET = 1
+const DWELL_OFFSET = 2
 
 // The numbers `encoded` holds, each written lowest chunk first with its
 // sign in the lowest bit. A number of more chunks than the bound is refused
@@ -40,8 +45,8 @@ function decodeNumbers(encoded) {
 
   for (let index = 0; index < encoded.length; index += 1) {
     const code = encoded.charCodeAt(index)
-    const inRange = code >= CHARACTER_OFFSET && code <= CHARACTER_MAX
-    assertCondition(inRange, "character " + index + " lies outside the encoded format")
+    assertCondition(code >= CHARACTER_OFFSET, "character " + index + " lies below the encoded format")
+    assertCondition(code <= CHARACTER_MAX, "character " + index + " lies above the encoded format")
     const chunk = code - CHARACTER_OFFSET
     value = value | ((chunk & CHUNK_MASK) << (chunkCount * CHUNK_BITS))
     chunkCount += 1
@@ -70,14 +75,14 @@ function signedNumber(value) {
 
 function decodePoints(encoded) {
   const numbers = decodeNumbers(encoded)
-  assertCondition(numbers.length % 2 === 0, "a point holds a latitude and a longitude")
+  assertCondition(numbers.length % NUMBERS_PER_POINT === 0, "a point holds a latitude and a longitude")
   const points = []
   let latitude = 0
   let longitude = 0
 
-  for (let index = 0; index < numbers.length; index += 2) {
+  for (let index = 0; index < numbers.length; index += NUMBERS_PER_POINT) {
     latitude += numbers[index]
-    longitude += numbers[index + 1]
+    longitude += numbers[index + LONGITUDE_OFFSET]
     points.push(Object.freeze([longitude / COORDINATE_PRECISION, latitude / COORDINATE_PRECISION]))
   }
 
@@ -93,8 +98,8 @@ function decodeStops(encoded) {
 
   for (let index = 0; index < numbers.length; index += NUMBERS_PER_STOP) {
     distanceMeters += numbers[index]
-    arrivalSeconds += numbers[index + 1]
-    const departureSeconds = arrivalSeconds + numbers[index + 2]
+    arrivalSeconds += numbers[index + ARRIVAL_OFFSET]
+    const departureSeconds = arrivalSeconds + numbers[index + DWELL_OFFSET]
     stops.push(Object.freeze({distanceMeters, arrivalSeconds, departureSeconds}))
   }
 
@@ -106,7 +111,8 @@ function decodeStops(encoded) {
  * in milliseconds since the Unix epoch.
  */
 export function tripPathKey({tripId, serviceDateMs}) {
-  assertCondition(typeof tripId === "string" && tripId !== "", "a trip identifier must be text")
+  assertCondition(typeof tripId === "string", "a trip identifier must be text")
+  assertCondition(tripId !== "", "a trip identifier must not be empty")
   assertCondition(Number.isSafeInteger(serviceDateMs), "a service date must be an integer")
   return serviceDateMs + "/" + tripId
 }
@@ -116,8 +122,7 @@ export function tripPathKey({tripId, serviceDateMs}) {
  * first, and each stop's distance along them in meters and its scheduled
  * times in seconds from `serviceDateMs`, in the order the trip serves them.
  * A stop's distance is the sum of haversine distances between the points
- * on a sphere of radius 6,371,008.8 m, as `distanceMeters` of
- * marker_glide.js measures them.
+ * on a sphere of radius 6,371,008.8 m.
  */
 export function decodeTripPath(path) {
   const {trip_id: tripId, route_id: routeId, service_date_ms: serviceDateMs} = path

@@ -20,18 +20,37 @@ import {
 } from "../../assets/js/trip_path.js"
 
 const fixtureUrl = new URL("../fixtures/one_bus_away/trip_path/encoded_loop.json", import.meta.url)
-const {event, expected} = JSON.parse(readFileSync(fixtureUrl, "utf8"))
+const fixtureText = readFileSync(fixtureUrl, "utf8")
+const {event, expected} = JSON.parse(fixtureText)
 const DISTANCE_TOLERANCE_M = 1
+const ROUTE_ID = "1_7994"
+
+function stopDistance(stop) {
+  return stop.distanceMeters
+}
+
+function stopArrival(stop) {
+  return stop.arrivalSeconds
+}
+
+function stopDeparture(stop) {
+  return stop.departureSeconds
+}
 
 const decoded = decodeTripPath(event)
+const lastPoint = decoded.points[decoded.points.length - 1]
+const stopDistances = Array.from(decoded.stops, stopDistance)
+const stopArrivals = Array.from(decoded.stops, stopArrival)
+const stopDepartures = Array.from(decoded.stops, stopDeparture)
+const eventKey = tripPathKey({tripId: event.trip_id, serviceDateMs: event.service_date_ms})
 
 deepStrictEqual(decoded.points.length, expected.pointCount, "the point count")
 deepStrictEqual(decoded.points[0], expected.firstPoint, "the first point")
-deepStrictEqual(decoded.points[decoded.points.length - 1], expected.lastPoint, "the last point")
-deepStrictEqual(decoded.stops.map((stop) => stop.distanceMeters), expected.stopDistancesM, "the stop distances")
-deepStrictEqual(decoded.stops.map((stop) => stop.arrivalSeconds), expected.arrivalS, "the arrivals")
-deepStrictEqual(decoded.stops.map((stop) => stop.departureSeconds), expected.departureS, "the departures")
-deepStrictEqual(decoded.key, tripPathKey({tripId: event.trip_id, serviceDateMs: event.service_date_ms}), "the key")
+deepStrictEqual(lastPoint, expected.lastPoint, "the last point")
+deepStrictEqual(stopDistances, expected.stopDistancesM, "the stop distances")
+deepStrictEqual(stopArrivals, expected.arrivalS, "the arrivals")
+deepStrictEqual(stopDepartures, expected.departureS, "the departures")
+deepStrictEqual(decoded.key, eventKey, "the key")
 
 // The server measures a stop's distance over the same rounded points by the
 // same formula, so the length of the decoded points is the last stop's
@@ -40,8 +59,10 @@ let lengthMeters = 0
 for (let index = 1; index < decoded.points.length; index += 1) {
   lengthMeters += distanceMeters(decoded.points[index - 1], decoded.points[index])
 }
-ok(Math.abs(lengthMeters - expected.lengthM) <= DISTANCE_TOLERANCE_M, "the length along the points: " + lengthMeters)
-ok(Object.isFrozen(decoded) && Object.isFrozen(decoded.stops[0]), "the decoded path is frozen")
+const lengthErrorMeters = Math.abs(lengthMeters - expected.lengthM)
+ok(lengthErrorMeters <= DISTANCE_TOLERANCE_M, "the length along the points: " + lengthMeters)
+ok(Object.isFrozen(decoded), "the decoded path is frozen")
+ok(Object.isFrozen(decoded.stops[0]), "a decoded stop is frozen")
 
 const refusedCases = [
   {name: "a character outside the format", path: {...event, points: event.points + " "}},
@@ -56,34 +77,49 @@ for (const {name, path} of refusedCases) {
   throws(() => decodeTripPath(path), AssertionError, name)
 }
 
-function heldPath(index) {
-  return {key: tripPathKey({tripId: "trip_" + index, serviceDateMs: event.service_date_ms})}
+function heldPath(name) {
+  return {key: tripPathKey({tripId: "trip_" + name, serviceDateMs: event.service_date_ms})}
 }
 
-const filled = withTripPaths(new Map(), Array.from({length: TRIP_PATH_COUNT_MAX + 1}, (_value, index) => heldPath(index)))
+function trip(name) {
+  return {tripId: "trip_" + name, routeId: ROUTE_ID, serviceDateMs: event.service_date_ms}
+}
+
+const overflowing = []
+for (let index = 0; index <= TRIP_PATH_COUNT_MAX; index += 1) {
+  overflowing.push(heldPath(index))
+}
+const filled = withTripPaths(new Map(), overflowing)
+const firstKey = heldPath(0).key
+const lastKey = heldPath(TRIP_PATH_COUNT_MAX).key
 deepStrictEqual(filled.size, TRIP_PATH_COUNT_MAX, "the cache holds no more paths than its bound")
-ok(!filled.has(heldPath(0).key), "the cache evicts the path put earliest")
-ok(filled.has(heldPath(TRIP_PATH_COUNT_MAX).key), "the cache keeps the path put last")
+ok(!filled.has(firstKey), "the cache evicts the path put earliest")
+ok(filled.has(lastKey), "the cache keeps the path put last")
 
 const empty = new Map()
-withTripPaths(empty, [heldPath(1)])
+const firstPath = heldPath("first")
+const secondPath = heldPath("second")
+withTripPaths(empty, [firstPath])
 deepStrictEqual(empty.size, 0, "the cache given is left as it was")
 
-const moved = withTripPaths(withTripPaths(new Map(), [heldPath(1), heldPath(2)]), [heldPath(1)])
-deepStrictEqual(Array.from(moved.keys()), [heldPath(2).key, heldPath(1).key], "a path put again moves to the back")
+const both = withTripPaths(new Map(), [firstPath, secondPath])
+const moved = withTripPaths(both, [firstPath])
+const movedKeys = Array.from(moved.keys())
+deepStrictEqual(movedKeys, [secondPath.key, firstPath.key], "a path put again moves to the back")
 
-function trip(index) {
-  return {tripId: "trip_" + index, routeId: "1_7994", serviceDateMs: event.service_date_ms}
-}
-
-const held = withTripPaths(new Map(), [heldPath(1)])
+const held = withTripPaths(new Map(), [firstPath])
+const requested = tripPathRequest(held, [trip("first"), trip("second"), trip("second")])
 deepStrictEqual(
-  tripPathRequest(held, [trip(1), trip(2), trip(2)]),
-  [{trip_id: "trip_2", route_id: "1_7994", service_date_ms: event.service_date_ms}],
+  requested,
+  [{trip_id: "trip_second", route_id: ROUTE_ID, service_date_ms: event.service_date_ms}],
   "a request names each trip the cache lacks once"
 )
 
-const manyTrips = Array.from({length: TRIP_PATH_REQUEST_COUNT_MAX + 1}, (_value, index) => trip(index))
-deepStrictEqual(tripPathRequest(new Map(), manyTrips).length, TRIP_PATH_REQUEST_COUNT_MAX, "a request names at most its bound")
+const manyTrips = []
+for (let index = 0; index <= TRIP_PATH_REQUEST_COUNT_MAX; index += 1) {
+  manyTrips.push(trip(index))
+}
+const bounded = tripPathRequest(new Map(), manyTrips)
+deepStrictEqual(bounded.length, TRIP_PATH_REQUEST_COUNT_MAX, "a request names at most its bound")
 
 console.log("trip path checks passed")
