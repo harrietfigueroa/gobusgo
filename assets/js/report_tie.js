@@ -21,10 +21,10 @@ const LINE_POINT_COUNT_MIN = 3
 // order, whichever is farther along.
 function stretchOf({path, fromMeters, toMeters}) {
   if (toMeters >= fromMeters) {
-    return pointsBetween({points: path.points, cumulative: path.cumulativeMeters, from: fromMeters, to: toMeters})
+    return pointsBetween({coordinates: path.coordinates, cumulative: path.cumulativeMeters, from: fromMeters, to: toMeters})
   }
 
-  const backward = pointsBetween({points: path.points, cumulative: path.cumulativeMeters, from: toMeters, to: fromMeters})
+  const backward = pointsBetween({coordinates: path.coordinates, cumulative: path.cumulativeMeters, from: toMeters, to: fromMeters})
   return backward.toReversed()
 }
 
