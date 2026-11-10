@@ -334,9 +334,9 @@ const REPORT_TRIP_FIELD = 3
 const REPORT_AGE_FIELD = 4
 const DESIGN_TOLERANCE_METERS = 10
 
-// What this module measured on the committed fixture, the 60 vehicles
-// `vehicle_prediction_fixture.mjs` samples with its seed 317, and on the
-// whole store's cut of every vehicle of the day (13,461 pairs), the cut an
+// What this module measured on the committed fixture, a sample of 60
+// vehicles drawn with the seed the fixture records, and on the whole
+// store's cut of every vehicle of the day (13,461 pairs), the cut an
 // argument names. The whole store's 128 m and 416 m are within 10 m of the
 // 128 m and 420 m the prototype measured on the same fetches.
 const SAMPLE_EXPECTED = Object.freeze({p50Meters: 136, p90Meters: 435, tripEndP90Meters: 65})
