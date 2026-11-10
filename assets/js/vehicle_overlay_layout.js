@@ -20,6 +20,9 @@ export const HIT_RADIUS_PIXELS = 12
 /** The most vehicles the canvas is handed at once. */
 export const VEHICLE_COUNT_MAX = 100
 
+/** The fastest rate the canvas redraws at while the camera is still. */
+export const RATE_HZ_MAX = 60
+
 /** The size of a route label's text. */
 export const LABEL_TEXT_SIZE_PIXELS = 11
 

@@ -143,6 +143,20 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
   defp text(view, selector), do: view |> element(selector) |> render()
 
+  defp motion_settings(view) do
+    [settings] =
+      view
+      |> text("#vehicle-markers")
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#vehicle-markers")
+      |> LazyHTML.attribute("data-motion")
+
+    JSON.decode!(settings)
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:gobusgo, key)
+  defp restore_env(key, value), do: Application.put_env(:gobusgo, key, value)
+
   describe "the map's ready event" do
     test "is answered with the markers of every agency" do
       apply_fetch([vehicle("1_a")], %{agency_id: "1", sequence: 1})
@@ -364,6 +378,30 @@ defmodule GobusgoWeb.VehicleLiveMarkersTest do
 
       assert Enum.map(JSON.decode!(statuses), & &1["status"]) ==
                ~w(reported stale scheduled unknown)
+    end
+
+    test "hands the browser the default vehicle motion settings" do
+      assert motion_settings(open_page()) == %{
+               "zoom_min" => 14.0,
+               "zoom_max" => 16.0,
+               "hysteresis" => 0.25,
+               "vehicle_count_max" => 100,
+               "rates" => [%{"zoom" => 14.0, "rate_hz" => 4}, %{"zoom" => 15.0, "rate_hz" => 8}]
+             }
+    end
+
+    test "hands the browser the configured vehicle motion settings" do
+      previous = Application.get_env(:gobusgo, :vehicle_motion)
+      on_exit(fn -> restore_env(:vehicle_motion, previous) end)
+
+      Application.put_env(:gobusgo, :vehicle_motion,
+        zoom_min: "13",
+        zoom_max: "17",
+        rates: "13:2,15:6"
+      )
+
+      assert %{"zoom_min" => 13.0, "zoom_max" => 17.0, "rates" => [_slow, %{"rate_hz" => 6}]} =
+               motion_settings(open_page())
     end
 
     test "shows nothing" do
