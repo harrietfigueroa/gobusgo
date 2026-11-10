@@ -68,6 +68,7 @@ defmodule Gobusgo.OneBusAway.FetchViewTest do
       assert FetchView.current(NoSuchView) == []
       assert FetchView.current_fetch(NoSuchView, "40") == nil
       assert FetchView.fetch_times(NoSuchView) == %{}
+      assert FetchView.request_id(NoSuchView, "40") == nil
     end
 
     test "return the fetch of each identifier in identifier order", %{view: view} do
@@ -81,6 +82,13 @@ defmodule Gobusgo.OneBusAway.FetchViewTest do
                fetched_at: ~U[2026-10-05 01:00:00Z],
                name: "first"
              }
+    end
+
+    test "return the request identifier of an identifier's current fetch", %{view: view} do
+      :ok = FetchView.apply_records(view, [value()])
+
+      assert FetchView.request_id(view, "40") == @first_request_id
+      assert FetchView.request_id(view, "1") == nil
     end
 
     test "return the fetch time of each identifier", %{view: view} do

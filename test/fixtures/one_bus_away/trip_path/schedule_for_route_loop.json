@@ -1,0 +1,368 @@
+{
+  "code": 200,
+  "currentTime": 1794198510310,
+  "data": {
+    "entry": {
+      "routeId": "1_7994",
+      "scheduleDate": 1794211200000,
+      "serviceIds": [
+        "1_63424.171903"
+      ],
+      "stopTripGroupings": [
+        {
+          "directionId": "1",
+          "stopIds": [
+            "1_42010",
+            "1_1370",
+            "1_1557",
+            "1_200",
+            "1_230",
+            "1_900",
+            "1_11075"
+          ],
+          "tripHeadsigns": [
+            null
+          ],
+          "tripIds": [
+            "1_1137791",
+            "1_1137792"
+          ],
+          "tripsWithStopTimes": [
+            {
+              "stopTimes": [
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 27900,
+                  "departureEnabled": true,
+                  "departureTime": 27900,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_42010",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 28080,
+                  "departureEnabled": true,
+                  "departureTime": 28080,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_1370",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 28440,
+                  "departureEnabled": true,
+                  "departureTime": 28440,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_1557",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 28620,
+                  "departureEnabled": true,
+                  "departureTime": 28620,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_200",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 28800,
+                  "departureEnabled": true,
+                  "departureTime": 28800,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_230",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 29220,
+                  "departureEnabled": true,
+                  "departureTime": 29220,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_900",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 29520,
+                  "departureEnabled": true,
+                  "departureTime": 29520,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_11075",
+                  "tripId": "1_1137791"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 29880,
+                  "departureEnabled": true,
+                  "departureTime": 29880,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_42010",
+                  "tripId": "1_1137791"
+                }
+              ],
+              "tripId": "1_1137791"
+            },
+            {
+              "stopTimes": [
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 30600,
+                  "departureEnabled": true,
+                  "departureTime": 30600,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_42010",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 30780,
+                  "departureEnabled": true,
+                  "departureTime": 30780,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_1370",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 31140,
+                  "departureEnabled": true,
+                  "departureTime": 31140,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_1557",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 31320,
+                  "departureEnabled": true,
+                  "departureTime": 31320,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_200",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 31500,
+                  "departureEnabled": true,
+                  "departureTime": 31500,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_230",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 31920,
+                  "departureEnabled": true,
+                  "departureTime": 31920,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_900",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 32220,
+                  "departureEnabled": true,
+                  "departureTime": 32220,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_11075",
+                  "tripId": "1_1137792"
+                },
+                {
+                  "arrivalEnabled": true,
+                  "arrivalTime": 32580,
+                  "departureEnabled": true,
+                  "departureTime": 32580,
+                  "serviceId": "",
+                  "stopHeadsign": "",
+                  "stopId": "1_42010",
+                  "tripId": "1_1137792"
+                }
+              ],
+              "tripId": "1_1137792"
+            }
+          ]
+        }
+      ]
+    },
+    "references": {
+      "agencies": [
+        {
+          "disclaimer": "",
+          "email": "",
+          "fareUrl": "https://kingcounty.gov/en/dept/metro/fares-and-payment/prices",
+          "id": "1",
+          "lang": "EN",
+          "name": "Metro Transit",
+          "phone": "206-553-3000",
+          "privateService": false,
+          "timezone": "America/Los_Angeles",
+          "url": "https://kingcounty.gov/en/dept/metro"
+        }
+      ],
+      "routes": [
+        {
+          "agencyId": "1",
+          "color": "",
+          "description": "First Hill-Pioneer Square-Downtown Seattle-Belltown",
+          "id": "1_7994",
+          "longName": "",
+          "nullSafeShortName": "Easy Loop",
+          "shortName": "Easy Loop",
+          "textColor": "",
+          "type": 3,
+          "url": "https://www.seattle.gov/transportation/projects-and-programs/programs/transportation-access-programs/easy-loop"
+        }
+      ],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [
+        {
+          "code": "42010",
+          "direction": "SE",
+          "id": "1_42010",
+          "lat": 47.603474,
+          "locationType": 0,
+          "lon": -122.322968,
+          "name": "9th Ave & Alder St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "1370",
+          "direction": "W",
+          "id": "1_1370",
+          "lat": 47.60178,
+          "locationType": 0,
+          "lon": -122.329803,
+          "name": "Yesler Way & 3rd Ave",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "1557",
+          "direction": "NW",
+          "id": "1_1557",
+          "lat": 47.604376,
+          "locationType": 0,
+          "lon": -122.335763,
+          "name": "1st Ave & Marion St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "200",
+          "direction": "NW",
+          "id": "1_200",
+          "lat": 47.609692,
+          "locationType": 0,
+          "lon": -122.340632,
+          "name": "1st Ave & Pine St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "230",
+          "direction": "NW",
+          "id": "1_230",
+          "lat": 47.613752,
+          "locationType": 0,
+          "lon": -122.346884,
+          "name": "1st Ave & Bell St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "900",
+          "direction": "NE",
+          "id": "1_900",
+          "lat": 47.616547,
+          "locationType": 0,
+          "lon": -122.335388,
+          "name": "Virginia St & 9th Ave",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        },
+        {
+          "code": "11075",
+          "direction": "SE",
+          "id": "1_11075",
+          "lat": 47.610374,
+          "locationType": 0,
+          "lon": -122.32621,
+          "name": "Boren Ave & Seneca St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": []
+        }
+      ],
+      "trips": [
+        {
+          "blockId": "1_36926",
+          "directionId": "1",
+          "id": "1_1137791",
+          "peakOffpeak": 0,
+          "routeId": "1_7994",
+          "routeShortName": "",
+          "serviceId": "1_63424.171903",
+          "shapeId": "1_63424",
+          "timeZone": "",
+          "tripHeadsign": "",
+          "tripShortName": ""
+        },
+        {
+          "blockId": "1_36926",
+          "directionId": "1",
+          "id": "1_1137792",
+          "peakOffpeak": 0,
+          "routeId": "1_7994",
+          "routeShortName": "",
+          "serviceId": "1_63424.171903",
+          "shapeId": "1_63424",
+          "timeZone": "",
+          "tripHeadsign": "",
+          "tripShortName": ""
+        }
+      ]
+    }
+  },
+  "text": "OK",
+  "version": 2
+}

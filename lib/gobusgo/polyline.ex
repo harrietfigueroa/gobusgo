@@ -44,6 +44,33 @@ defmodule Gobusgo.Polyline do
     IO.iodata_to_binary(encoded)
   end
 
+  @doc """
+  Returns the encoded text of `integers`, each written in the format's
+  number encoding as it is, with no difference taken from the one before.
+  """
+  @spec encode_integers([integer()]) :: String.t()
+  def encode_integers(integers) when is_list(integers) do
+    integers
+    |> Enum.map(fn integer ->
+      Assert.condition(is_integer(integer), "an encoded number must be an integer")
+      encode_number(integer)
+    end)
+    |> IO.iodata_to_binary()
+  end
+
+  @doc "Returns the integers `encoded` holds, as `encode_integers/1` writes them."
+  @spec decode_integers(String.t()) :: {:ok, [integer()]} | {:error, error()}
+  def decode_integers(encoded) when is_binary(encoded), do: decode_integers(encoded, [])
+
+  defp decode_integers("", decoded), do: {:ok, Enum.reverse(decoded)}
+
+  defp decode_integers(encoded, decoded) do
+    case decode_number(encoded, 0, 0) do
+      {:ok, integer, rest} -> decode_integers(rest, [integer | decoded])
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp encode_point([longitude, latitude], {encoded, {latitude_before, longitude_before}}) do
     Assert.condition(is_number(latitude), "latitude must be a number")
     Assert.condition(is_number(longitude), "longitude must be a number")

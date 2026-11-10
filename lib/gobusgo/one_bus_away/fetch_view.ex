@@ -150,6 +150,25 @@ defmodule Gobusgo.OneBusAway.FetchView do
   end
 
   @doc """
+  Returns the request identifier of the current fetch of `id` in `view`,
+  reading no other field, or `nil` for an identifier that has none and
+  while the view is not running.
+  """
+  @spec request_id(atom(), String.t()) :: String.t() | nil
+  def request_id(view, id) when is_atom(view) and is_binary(id) do
+    case :ets.whereis(view) do
+      :undefined ->
+        nil
+
+      table ->
+        case :ets.select(table, [{{id, %{request_id: :"$1"}}, [], [:"$1"]}]) do
+          [request_id] -> request_id
+          [] -> nil
+        end
+    end
+  end
+
+  @doc """
   Returns the fetch time of the current fetch of every identifier of `view`
   that has one, by identifier. It reads no other field, so it costs the same
   however much the fetches hold. Returns `%{}` before a fetch arrives and
