@@ -7,6 +7,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {
+  EMPTY_MESSAGE,
   FAVORITE_EASE_MS,
   dropIndex,
   favoriteCamera,
@@ -107,5 +108,7 @@ for (const cameraCase of cameraCases) {
 
   deepStrictEqual(camera, cameraCase.camera, `camera: ${cameraCase.name}`)
 }
+
+deepStrictEqual(EMPTY_MESSAGE, {headline: "No favorites yet", caption: "Open a stop and tap ☆ to keep it here."}, "the empty list's message")
 
 console.log("favorite list check passed")

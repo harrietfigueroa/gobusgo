@@ -337,30 +337,33 @@ defmodule GobusgoWeb.AppInfoTest do
       assert needs_connection ==
                Enum.map(
                  [:arrivals, :alerts, :suggestions, :shared_vehicles],
-                 &(AppInfo.needs_connection(&1) <> ".")
+                 &(AppInfo.needs_connection(&1).headline <> ".")
                )
     end
   end
 
   describe "needs_connection/1" do
     test "names each part of the page that needs a connection, in the decided terms" do
-      texts = %{
-        arrivals: "Live arrivals need a connection",
-        alerts: "Service alerts need a connection",
-        suggestions: "Suggestions need a connection",
-        shared_vehicles: "Scooters and bikes need a connection"
+      back_online = "They come back when you're online."
+
+      messages = %{
+        arrivals: %{headline: "Live arrivals need a connection", caption: back_online},
+        alerts: %{headline: "Service alerts need a connection", caption: back_online},
+        suggestions: %{headline: "Suggestions need a connection", caption: back_online},
+        shared_vehicles: %{headline: "Scooters and bikes need a connection", caption: back_online}
       }
 
-      for {part, text} <- texts do
-        assert AppInfo.needs_connection(part) == text
+      for {part, message} <- messages do
+        assert AppInfo.needs_connection(part) == message
       end
     end
 
     test "says the same of live arrivals as the arrivals' texts in the browser" do
       source = File.read!("assets/js/stop_arrivals.js")
+      %{headline: headline, caption: caption} = AppInfo.needs_connection(:arrivals)
 
       assert source =~
-               ~s(const ARRIVALS_NEED_CONNECTION = "#{AppInfo.needs_connection(:arrivals)}")
+               ~s[const ARRIVALS_NEED_CONNECTION = Object.freeze({headline: "#{headline}", caption: "#{caption}"})]
     end
   end
 

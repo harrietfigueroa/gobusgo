@@ -21,7 +21,7 @@ import {
   FixPlace,
   FollowEventKind,
   FollowKind,
-  NoticeText,
+  NoticeMessage,
   OFF,
   accuracyDiameterPixels,
   buttonOf,
@@ -65,8 +65,8 @@ const denied = {kind: FollowEventKind.denied}
 const cameraMove = {kind: FollowEventKind.cameraMove}
 const detailOpen = {kind: FollowEventKind.detailOpen}
 
-function notice(text) {
-  return {kind: EffectKind.notice, text}
+function notice(message) {
+  return {kind: EffectKind.notice, message}
 }
 
 const centerFirst = {kind: EffectKind.center, zoom: CenterZoom.first}
@@ -74,23 +74,23 @@ const centerKept = {kind: EffectKind.center, zoom: CenterZoom.kept}
 const follow = {kind: EffectKind.follow}
 
 const transitionCases = [
-  {name: "a click in Off follows and owes a notice", from: OFF, event: click, to: waiting, effects: [notice(NoticeText.following)]},
-  {name: "a click in Following turns the button off", from: following, event: click, to: OFF, effects: [notice(NoticeText.stopped)]},
-  {name: "a click in Following before the first fix turns the button off", from: waiting, event: click, to: OFF, effects: [notice(NoticeText.stopped)]},
+  {name: "a click in Off follows and owes a notice", from: OFF, event: click, to: waiting, effects: [notice(NoticeMessage.following)]},
+  {name: "a click in Following turns the button off", from: following, event: click, to: OFF, effects: [notice(NoticeMessage.stopped)]},
+  {name: "a click in Following before the first fix turns the button off", from: waiting, event: click, to: OFF, effects: [notice(NoticeMessage.stopped)]},
   {
     name: "a click in Located centers again and follows",
     from: located,
     event: click,
     to: state({kind: FollowKind.following, isCentered: true, place: FixPlace.inside, isNoticeOwed: true}),
-    effects: [centerKept, notice(NoticeText.following)]
+    effects: [centerKept, notice(NoticeMessage.following)]
   },
-  {name: "a click in Located outside the archive explains and stays", from: locatedOutside, event: click, to: locatedOutside, effects: [notice(NoticeText.outside)]},
+  {name: "a click in Located outside the archive explains and stays", from: locatedOutside, event: click, to: locatedOutside, effects: [notice(NoticeMessage.outside)]},
   {
     name: "a click in Located with no fix follows and waits",
     from: locatedNoFix,
     event: click,
     to: state({kind: FollowKind.following, isNoticeOwed: true}),
-    effects: [notice(NoticeText.following)]
+    effects: [notice(NoticeMessage.following)]
   },
   {name: "a click on a blocked button does nothing", from: blocked, event: click, to: blocked, effects: []},
   {name: "a load with the flag stored follows with no notice owed", from: OFF, event: restore, to: restored, effects: []},
@@ -107,18 +107,18 @@ const transitionCases = [
     from: waiting,
     event: fixOutside,
     to: locatedOutside,
-    effects: [notice(NoticeText.outside)]
+    effects: [notice(NoticeMessage.outside)]
   },
   {
     name: "the first fix outside the archive on load says only that following stopped",
     from: restored,
     event: fixOutside,
     to: locatedOutside,
-    effects: [notice(NoticeText.stopped)]
+    effects: [notice(NoticeMessage.stopped)]
   },
   {name: "a later fix inside asks for a follow move", from: following, event: fixInside, to: following, effects: [follow]},
   {name: "a fix after a failure draws the dot fresh", from: followingStale, event: fixInside, to: following, effects: [follow]},
-  {name: "a later fix outside stops following", from: following, event: fixOutside, to: locatedOutside, effects: [notice(NoticeText.stopped)]},
+  {name: "a later fix outside stops following", from: following, event: fixOutside, to: locatedOutside, effects: [notice(NoticeMessage.stopped)]},
   {name: "a fix in Located moves only the dot", from: located, event: fixInside, to: located, effects: []},
   {name: "a fix outside in Located stays Located", from: located, event: fixOutside, to: locatedOutside, effects: []},
   {name: "a fix in Off is a stray and changes nothing", from: OFF, event: fixInside, to: OFF, effects: []},
@@ -127,18 +127,18 @@ const transitionCases = [
     from: waiting,
     event: failed,
     to: state({kind: FollowKind.following, isStale: true}),
-    effects: [notice(NoticeText.unavailable)]
+    effects: [notice(NoticeMessage.unavailable)]
   },
   {name: "a failure with no notice owed keeps following silently", from: following, event: failed, to: followingStale, effects: []},
   {name: "a failure in Located keeps Located", from: located, event: failed, to: state({kind: FollowKind.located, place: FixPlace.inside, isStale: true}), effects: []},
   {name: "a failure in Off changes nothing", from: OFF, event: failed, to: OFF, effects: []},
-  {name: "a denial after a click blocks the button and explains", from: waiting, event: denied, to: blocked, effects: [notice(NoticeText.denied)]},
+  {name: "a denial after a click blocks the button and explains", from: waiting, event: denied, to: blocked, effects: [notice(NoticeMessage.denied)]},
   {name: "a denial on load blocks the button silently", from: restored, event: denied, to: blocked, effects: []},
   {name: "a permission read as denied blocks the button in Off", from: OFF, event: denied, to: blocked, effects: []},
-  {name: "a camera move in Following moves to Located", from: following, event: cameraMove, to: located, effects: [notice(NoticeText.stopped)]},
+  {name: "a camera move in Following moves to Located", from: following, event: cameraMove, to: located, effects: [notice(NoticeMessage.stopped)]},
   {name: "a camera move before the first fix keeps following", from: waiting, event: cameraMove, to: waiting, effects: []},
   {name: "a camera move in Located changes nothing", from: located, event: cameraMove, to: located, effects: []},
-  {name: "an opened details view in Following moves to Located", from: following, event: detailOpen, to: located, effects: [notice(NoticeText.stopped)]},
+  {name: "an opened details view in Following moves to Located", from: following, event: detailOpen, to: located, effects: [notice(NoticeMessage.stopped)]},
   {name: "an opened details view in Off changes nothing", from: OFF, event: detailOpen, to: OFF, effects: []}
 ]
 
@@ -302,5 +302,15 @@ for (const path of sourcePaths) {
 function firstMatch(match) {
   return match[0]
 }
+
+// Each notice is a headline that states the state and a caption with the
+// next step, which the live region reads as two sentences.
+deepStrictEqual(NoticeMessage, {
+  following: {headline: "Following your location", caption: "Move the map to stop."},
+  stopped: {headline: "Stopped following your location", caption: "Press the location button to follow again."},
+  denied: {headline: "Location is off", caption: "Allow location in your browser's settings. The map stays where it is."},
+  unavailable: {headline: "Can't find your location", caption: "The map stays where it is."},
+  outside: {headline: "You're outside this map", caption: "The map stays where it is."}
+}, "the notices' messages")
 
 console.log("follow location check passed")

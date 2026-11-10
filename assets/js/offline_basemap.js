@@ -93,30 +93,34 @@ function sizeText(bytes) {
   return megabytes.toFixed(1) + " MB"
 }
 
-function onText({saved, bytes, persistence}) {
+const OFF_MESSAGE = Object.freeze({headline: "Map not saved", caption: "Turn this on to keep streets and places offline."})
+const NOT_SAVED_MESSAGE = Object.freeze({headline: "Map not saved yet", caption: "It's saved while you're online."})
+const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save the map", caption: "This browser can't save it for offline use."})
+
+function onMessage({saved, bytes, persistence}) {
   switch (saved.kind) {
     case BasemapSaveKind.saved:
-      return "Saved for offline use, " + sizeText(bytes) + ". " + persistenceText(persistence)
+      return {headline: "Map saved for offline use", caption: `It takes ${sizeText(bytes)}. ${persistenceText(persistence)}`}
     case BasemapSaveKind.notSaved:
-      return "The map is not saved yet. It is saved while you are online."
+      return NOT_SAVED_MESSAGE
     default:
       return unreachable(saved.kind, "basemap save kind")
   }
 }
 
 /**
- * The setting's status line for `setting`: off; on, with the read of the
- * store, the bytes it holds, and the browser's answer to keeping the
- * page's storage; or unsupported.
+ * The headline and caption of the setting's status line for `setting`:
+ * off; on, with the read of the store, the bytes it holds, and the
+ * browser's answer to keeping the page's storage; or unsupported.
  */
-export function statusText(setting) {
+export function statusMessage(setting) {
   switch (setting.kind) {
     case SettingKind.off:
-      return "The map is not saved for offline use."
+      return OFF_MESSAGE
     case SettingKind.on:
-      return onText(setting)
+      return onMessage(setting)
     case SettingKind.unsupported:
-      return "This browser cannot save the map for offline use."
+      return UNSUPPORTED_MESSAGE
     default:
       return unreachable(setting.kind, "offline basemap setting kind")
   }

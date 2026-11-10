@@ -6,6 +6,8 @@
 // the region empties. The region stays in the page, so a screen reader
 // hears each text written into it.
 
+import {writeMessage} from "./message"
+
 const ELEMENT_ID = "map-live-region"
 const TEXT_MS = 8_000
 const ANNOUNCEMENT_CLASS_NAME = "sr-only"
@@ -45,15 +47,15 @@ export function clearRegion() {
   element.replaceChildren()
 }
 
-/** Shows `text` on the map and has it read, in place of what the region held. */
-export function showNotice(text) {
+/** Shows `message` on the map and has it read, in place of what the region held. */
+export function showNotice(message) {
   const element = region()
 
   if (element === null) {
     return
   }
 
-  element.replaceChildren(text)
+  writeMessage({element, message})
   element.classList.add(SHOWN_CLASS_NAME)
   scheduleClear()
 }

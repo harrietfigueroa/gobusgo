@@ -1,7 +1,8 @@
 // Checks the offline bundle plan and status as pure functions of a manifest
 // and a saved index written out by hand: which service dates and files a
-// bundle holds, what a rider is told about a saved one, and the sentence
-// that says whether the browser keeps it. Run it with
+// bundle holds, what a rider is told about a saved one, the sentence that
+// says whether the browser keeps it, and the status line's headline and
+// caption. Run it with
 // `node test/scripts/offline_bundle_check.mjs`; it exits non-zero on the
 // first case that differs. The bundle's own manifest names only the dates it
 // saves.
@@ -13,12 +14,14 @@ import {
   IndexKind,
   PersistenceKind,
   PlanKind,
+  SettingKind,
   StatusKind,
   bundleStatus,
   persistenceText,
   planBundle,
   savedIndex as indexOf,
-  stalePaths
+  stalePaths,
+  statusMessage
 } from "../../assets/js/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
@@ -119,4 +122,60 @@ deepStrictEqual(stalePaths({index: {paths: ["/a", "/b"]}, storedPaths: ["/a", "/
 deepStrictEqual(persistenceText(PersistenceKind.granted), "Your browser keeps them until you remove them.")
 deepStrictEqual(persistenceText(PersistenceKind.notGranted), "Your browser can remove them when the device runs short of space.")
 deepStrictEqual(persistenceText(PersistenceKind.unknown), "Your browser does not say whether it keeps them.")
+
+// The status line says the setting's state in its headline, and the dates,
+// the size, and whether the browser keeps them in its caption.
+const onSetting = {
+  kind: SettingKind.on,
+  persistence: PersistenceKind.granted,
+  datesText: "Sat, Nov 7 and Sun, Nov 8",
+  updatedText: "Nov 7, 4:12 AM",
+  sizeText: "3.4 MB"
+}
+const statusMessageCases = [
+  {
+    name: "off",
+    setting: {kind: SettingKind.off},
+    expected: {headline: "Schedules not saved", caption: "Turn this on to plan trips offline."}
+  },
+  {
+    name: "a browser that cannot save",
+    setting: {kind: SettingKind.unsupported},
+    expected: {headline: "Can't save schedules", caption: "This browser can't save them for offline use."}
+  },
+  {
+    name: "saved",
+    setting: {...onSetting, status: {kind: StatusKind.saved, dates: morning.dates}},
+    expected: {
+      headline: "Schedules saved for offline use",
+      caption: "For Sat, Nov 7 and Sun, Nov 8, updated Nov 7, 4:12 AM, 3.4 MB. Your browser keeps them until you remove them."
+    }
+  },
+  {
+    name: "one file evicted",
+    setting: {...onSetting, status: {kind: StatusKind.incomplete, dates: morning.dates, missingCount: 1}},
+    expected: {
+      headline: "Schedules partly saved",
+      caption: "Your browser removed 1 file of Sat, Nov 7 and Sun, Nov 8. They're saved again while you're online. Your browser keeps them until you remove them."
+    }
+  },
+  {
+    name: "three files evicted",
+    setting: {...onSetting, persistence: PersistenceKind.notGranted, status: {kind: StatusKind.incomplete, dates: morning.dates, missingCount: 3}},
+    expected: {
+      headline: "Schedules partly saved",
+      caption: "Your browser removed 3 files of Sat, Nov 7 and Sun, Nov 8. They're saved again while you're online. Your browser can remove them when the device runs short of space."
+    }
+  },
+  {
+    name: "on with nothing saved yet",
+    setting: {...onSetting, persistence: PersistenceKind.unknown, status: {kind: StatusKind.notSaved}},
+    expected: {headline: "No schedules saved yet", caption: "They're saved while you're online. Your browser does not say whether it keeps them."}
+  }
+]
+
+for (const {name, setting, expected} of statusMessageCases) {
+  deepStrictEqual(statusMessage(setting), expected, `the status message: ${name}`)
+}
+
 console.log("offline bundle: every case holds")

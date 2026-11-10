@@ -2,6 +2,7 @@
 // "stop-arrivals:arrivals" event.
 
 import {unreachable} from "./assert.js"
+import {messageNodes} from "./message.js"
 
 const ARRIVALS_HEADING = "Arrivals"
 const SCHEDULED_ARRIVALS_HEADING = "Scheduled arrivals"
@@ -12,7 +13,7 @@ const ARRIVALS_BUSY = "Too many stops open; close one to see this stop's arrival
 const ARRIVAL_NOW = "now"
 const ARRIVAL_SCHEDULED_NOTE = " (scheduled)"
 const ARRIVAL_UNNAMED = "Arrival"
-const ARRIVALS_NEED_CONNECTION = "Live arrivals need a connection"
+const ARRIVALS_NEED_CONNECTION = Object.freeze({headline: "Live arrivals need a connection", caption: "They come back when you're online."})
 const LIVE_LABEL = "live time"
 
 /** The class of the dot beside a time that is a live prediction. */
@@ -199,7 +200,9 @@ export function writeArrivals(element, shown) {
   }
 
   if (!isScheduled) {
-    const note = classedParagraph({text: ARRIVALS_NEED_CONNECTION, className: OFFLINE_NOTE_CLASS_NAME})
+    const note = classedParagraph({text: "", className: OFFLINE_NOTE_CLASS_NAME})
+    const noteNodes = messageNodes(ARRIVALS_NEED_CONNECTION)
+    note.append(...noteNodes)
     element.append(note)
   }
 }

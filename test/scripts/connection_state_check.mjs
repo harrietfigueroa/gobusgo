@@ -7,6 +7,7 @@
 // first case that differs.
 
 import {deepStrictEqual, ok} from "node:assert/strict"
+import {readFileSync} from "node:fs"
 import {
   CACHED_COPY_AGE_MS_MAX,
   ConnectionEventKind,
@@ -26,10 +27,10 @@ import {
   AGE_REFRESH_MS,
   AnnouncementKind,
   AnnouncementText,
-  SignalTitle,
+  SIGNAL_HEADLINE,
   ageText,
   announcementOf,
-  signalLines
+  signalMessage
 } from "../../assets/js/offline_signal.js"
 
 const SECOND_MS = 1000
@@ -191,12 +192,12 @@ function date({serviceDate, builtAgoMs, validForMs}) {
   }
 }
 
-// The signal's lines for each saved index.
+// The signal's headline and caption for each saved index.
 const signalCases = [
   {
     name: "no saved index",
     savedIndex: {kind: IndexKind.none},
-    expected: [SignalTitle.noSavedSchedules]
+    expected: {headline: "Offline", caption: "No saved schedules"}
   },
   {
     name: "a saved index whose every date has ended",
@@ -204,7 +205,7 @@ const signalCases = [
       savedAgoMs: TWO_DAYS_MS,
       dates: [date({serviceDate: "2026-11-06", builtAgoMs: TWO_DAYS_MS, validForMs: -DAY_MS})]
     }),
-    expected: [SignalTitle.savedSchedulesEnded, "Saved 2 d ago"]
+    expected: {headline: "Offline", caption: "Saved schedules ended · saved 2 d ago"}
   },
   {
     name: "a saved index with a current date, aged by its newest build",
@@ -215,7 +216,7 @@ const signalCases = [
         date({serviceDate: "2026-11-09", builtAgoMs: FIVE_HOURS_MS, validForMs: DAY_MS})
       ]
     }),
-    expected: [SignalTitle.scheduledPositions, "Schedules updated 3 h ago"]
+    expected: {headline: "Offline", caption: "Showing scheduled positions · updated 3 h ago"}
   },
   {
     name: "a saved index whose ended date is the newest build",
@@ -226,19 +227,18 @@ const signalCases = [
         date({serviceDate: "2026-11-08", builtAgoMs: SIX_HOURS_MS, validForMs: HOUR_MS})
       ]
     }),
-    expected: [SignalTitle.scheduledPositions, "Schedules updated 6 h ago"]
+    expected: {headline: "Offline", caption: "Showing scheduled positions · updated 6 h ago"}
   }
 ]
 
 for (const {name, savedIndex: index, expected} of signalCases) {
-  deepStrictEqual(signalLines({savedIndex: index, nowMs: NOW_MS}), expected, `the signal's lines for ${name}`)
+  deepStrictEqual(signalMessage({savedIndex: index, nowMs: NOW_MS}), expected, `the signal's message for ${name}`)
 }
 
-deepStrictEqual(SignalTitle, {
-  scheduledPositions: "Offline · scheduled positions",
-  noSavedSchedules: "Offline · no saved schedules",
-  savedSchedulesEnded: "Offline · saved schedules ended"
-}, "the signal's titles")
+// The server renders the headline the hook's message names, and the hook
+// writes only the caption.
+const signalMarkup = readFileSync("lib/gobusgo_web/components/connection_signal.ex", "utf8")
+ok(signalMarkup.includes(`class="message-headline">${SIGNAL_HEADLINE}</span>`), "the server renders the signal's headline")
 
 const silent = {kind: AnnouncementKind.none}
 const sayOffline = {kind: AnnouncementKind.say, text: AnnouncementText.offline}

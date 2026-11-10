@@ -29,7 +29,8 @@ import {
   journeysAnnouncement,
   nameRequest,
   queryOf,
-  stateText,
+  pickingMessage,
+  stateMessage,
   stopEnd,
   swappedEnds,
   tripRouteIds,
@@ -39,6 +40,7 @@ import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
 import {isNotSaved} from "./offline_bundle"
+import {messageNodes} from "./message"
 import {pageEvents} from "./page_events"
 import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
 import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
@@ -434,7 +436,10 @@ export const TripPlanner = {
     this.closeMenus()
     startPicking(end)
 
-    const note = element({tag: "p", className: "trip-note", text: `Tap a stop on the map for ${FIELD_LABELS[end]}. Stops show once the map is zoomed in.`})
+    const note = element({tag: "p", className: "trip-note", text: ""})
+    const picking = pickingMessage(FIELD_LABELS[end])
+    const pickingNodes = messageNodes(picking)
+    note.append(...pickingNodes)
     const cancel = button({className: "panel-detail-action", text: "Cancel"})
     cancel.addEventListener("click", () => {
       stopPicking()
@@ -490,7 +495,10 @@ export const TripPlanner = {
   },
 
   showState({kind, retry}) {
-    const note = element({tag: "p", className: "trip-note", text: stateText(kind)})
+    const note = element({tag: "p", className: "trip-note", text: ""})
+    const message = stateMessage(kind)
+    const nodes = messageNodes(message)
+    note.append(...nodes)
     this.status.replaceChildren(note)
 
     if (retry) {
