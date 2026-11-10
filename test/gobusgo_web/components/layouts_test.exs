@@ -112,4 +112,11 @@ defmodule GobusgoWeb.LayoutsTest do
 
     assert Enum.count(offer) == 1
   end
+
+  test "has a message in the reload offer that the browser writes when a takeover is late" do
+    document = LazyHTML.from_document(html_response(get(build_conn(), "/"), 200))
+    message = LazyHTML.query(document, "body #release-update[hidden] [data-release-message]")
+
+    assert Enum.count(message) == 1
+  end
 end

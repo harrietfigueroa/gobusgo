@@ -4,18 +4,32 @@
 // take over, and reloads once it has, so the page and its files always
 // come from one release.
 //
+// Every open page shows the offer, and the worker one page has take over
+// controls them all, so the offer of another page can name a worker that
+// has already taken over: its click reloads at once (`reloadStep`). A
+// takeover that has not come after RELOAD_WAIT_MS lets the rider take the
+// offer again, with a message that says so.
+//
 // The browser checks for a new worker on every page load; a page left open
 // checks again every UPDATE_CHECK_INTERVAL_MS.
 
+import {unreachable} from "./assert.js"
+import {writeMessage} from "./message.js"
+import {RELOAD_WAIT_MS, ReloadStepKind, TAKEOVER_LATE_MESSAGE, reloadStep} from "./release_offer.js"
 import {MessageKind} from "./service_worker_strategy.js"
 
 const SERVICE_WORKER_PATH = "/sw.js"
 const SERVICE_WORKER_SCOPE = "/"
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
-function offerReload(worker) {
+// The page's one offer. Its click acts on the worker the offer named last,
+// so a newer release that installs while the offer is shown replaces the
+// worker it names. Returns the function that shows the offer for a worker.
+function releaseOffer() {
   const offer = document.getElementById("release-update")
   const button = offer.querySelector("[data-release-reload]")
+  const text = offer.querySelector("[data-release-message]")
+  let offered = null
   let reloading = false
 
   function controllerChanged() {
@@ -24,20 +38,44 @@ function offerReload(worker) {
     }
   }
 
+  // The rider asked for the reload, so `reloading` stays set: a takeover
+  // that comes after the wait still reloads the page.
+  function takeoverWaitEnded() {
+    button.disabled = false
+    writeMessage({element: text, message: TAKEOVER_LATE_MESSAGE})
+  }
+
   function reloadClicked() {
-    reloading = true
+    const step = reloadStep({workerState: offered.state})
     button.disabled = true
-    worker.postMessage({kind: MessageKind.activate})
+
+    switch (step) {
+      case ReloadStepKind.activate:
+        reloading = true
+        offered.postMessage({kind: MessageKind.activate})
+        window.setTimeout(takeoverWaitEnded, RELOAD_WAIT_MS)
+        break
+      case ReloadStepKind.reload:
+        window.location.reload()
+        break
+      default:
+        unreachable(step, "reload step")
+    }
+  }
+
+  function show(worker) {
+    offered = worker
+    offer.hidden = false
   }
 
   navigator.serviceWorker.addEventListener("controllerchange", controllerChanged)
-  button.addEventListener("click", reloadClicked, {once: true})
-  offer.hidden = false
+  button.addEventListener("click", reloadClicked)
+  return show
 }
 
 // A worker that installs while another controls the page is a new release;
 // one that installs with none is the first, which takes over by itself.
-function watchInstalling(registration) {
+function watchInstalling({registration, offerReload}) {
   const worker = registration.installing
 
   function stateChanged() {
@@ -61,6 +99,7 @@ async function checkForRelease(registration) {
 }
 
 async function register() {
+  const offerReload = releaseOffer()
   let registration = null
 
   try {
@@ -78,7 +117,11 @@ async function register() {
     offerReload(registration.waiting)
   }
 
-  registration.addEventListener("updatefound", () => watchInstalling(registration))
+  function updateFound() {
+    watchInstalling({registration, offerReload})
+  }
+
+  registration.addEventListener("updatefound", updateFound)
   window.setInterval(() => checkForRelease(registration), UPDATE_CHECK_INTERVAL_MS)
 }
 
