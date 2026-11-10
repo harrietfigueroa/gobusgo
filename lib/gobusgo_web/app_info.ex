@@ -20,6 +20,10 @@ defmodule GobusgoWeb.AppInfo do
   Everything here is pure, so the cadences a text states are the ones it is
   given and a test reads every text.
 
+  The panel shows each setting and each fact as a message, a headline and
+  a short caption, and holds the full sentences of a topic behind a
+  disclosure.
+
   `data_use/1` states a vehicle interval in whole seconds and a route period
   in whole hours, a period of #{@hours_per_day} hours as once a day. It
   states each arrival refresh age in whole minutes where it is a whole count
@@ -41,6 +45,8 @@ defmodule GobusgoWeb.AppInfo do
 
   @type app_license :: %{name: String.t(), copyright: String.t()}
 
+  @type message :: %{headline: String.t(), caption: String.t()}
+
   @typedoc """
   One thing a page ships to the browser, with its license. `lock_names` are
   the entries of the vendored packages' lock file the component stands for,
@@ -48,8 +54,49 @@ defmodule GobusgoWeb.AppInfo do
   """
   @type component :: %{name: String.t(), license: String.t(), lock_names: [String.t()]}
 
-  @about "Gobusgo is a live map of public transit in the Puget Sound region: " <>
-           "where each vehicle is, the routes it runs on, and the stops it serves."
+  @about %{
+    headline: "A live transit map of Puget Sound",
+    caption: "Where each vehicle is, the routes it runs on, and the stops it serves"
+  }
+
+  @summaries %{
+    theme: %{
+      headline: "Theme",
+      caption: "Match system follows your device's light or dark setting"
+    },
+    offline: %{
+      headline: "Offline",
+      caption: "The map, saved schedules, favorites, and trip planning keep working"
+    },
+    offline_schedules: %{
+      headline: "Save schedules offline",
+      caption: "Plan trips and see scheduled times without signal"
+    },
+    show_direction: %{
+      headline: "Show my direction",
+      caption: "Your location dot points the way you face or travel"
+    },
+    disclaimer: %{
+      headline: "An independent project",
+      caption: "Check with your agency before you rely on a position or a time."
+    },
+    donation: %{
+      headline: "Free and independent",
+      caption: "Donations pay for its server and storage, and buy no feature or priority"
+    },
+    location: %{
+      headline: "Your location stays in your browser",
+      caption: "Gobusgo's server never receives it"
+    },
+    favorite_stop: %{
+      headline: "Favorites stay in your browser",
+      caption: "The server learns a stop only to fetch its arrivals"
+    },
+    credits: %{
+      headline: "Data from the region's transit agencies",
+      caption: "Served by OneBusAway · map data © OpenStreetMap contributors"
+    }
+  }
 
   @disclaimer "Gobusgo is an independent project. It is not endorsed by, affiliated with, " <>
                 "or run by any of the transit agencies whose data it shows, Sound Transit, " <>
@@ -139,7 +186,7 @@ defmodule GobusgoWeb.AppInfo do
     "The map keeps its route lines and stops, and shows the vehicles where the saved " <>
       "schedules place them, in gray, with delays, cancellations, and detours unknown. " <>
       "A stop's arrivals are its scheduled times.",
-    "With Save the map for offline use on, the map draws its streets and places from " <>
+    "With Save the map offline on, the map draws its streets and places from " <>
       "the saved map. With it off, the route lines and stops stand on an empty background.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
       "stays as it is until you are back online.",
@@ -156,21 +203,10 @@ defmodule GobusgoWeb.AppInfo do
   @install_offers [
     %{
       kind: "prompt",
-      text:
-        "Install Gobusgo to open it from your home screen or your apps, in a window of its own."
+      caption: "Open it from your home screen or your apps, in a window of its own"
     },
-    %{
-      kind: "appleHomeScreen",
-      text:
-        "To install Gobusgo, tap Share, then Add to Home Screen. It opens from your Home " <>
-          "Screen in a window of its own."
-    },
-    %{
-      kind: "appleDock",
-      text:
-        "To install Gobusgo, choose File › Add to Dock in Safari. It opens from your Dock " <>
-          "in a window of its own."
-    }
+    %{kind: "appleHomeScreen", caption: "Tap Share, then Add to Home Screen"},
+    %{kind: "appleDock", caption: "In Safari, choose File › Add to Dock"}
   ]
 
   @app_license %{name: "MIT License", copyright: "Copyright (c) 2026 Harriet Waters"}
@@ -192,9 +228,117 @@ defmodule GobusgoWeb.AppInfo do
     %{name: "Phoenix and Phoenix LiveView", license: "MIT", lock_names: []}
   ]
 
-  @doc "What the application is, in one sentence."
-  @spec about() :: String.t()
+  @doc "What the application is, as a headline and a caption."
+  @spec about() :: message()
   def about, do: @about
+
+  @doc """
+  The headline and the caption the panel shows of `topic`, a setting or a
+  fact whose full sentences the panel holds behind a disclosure.
+  """
+  @spec summary(
+          :theme
+          | :offline
+          | :offline_schedules
+          | :show_direction
+          | :disclaimer
+          | :donation
+          | :location
+          | :favorite_stop
+          | :credits
+        ) :: message()
+  def summary(topic), do: Map.fetch!(@summaries, topic)
+
+  @doc """
+  The facts of how the application uses OneBusAway data, each a headline
+  and a caption, for the cadences `data_use/1` takes.
+  """
+  @spec data_use_facts(cadences()) :: [message(), ...]
+  def data_use_facts(%{
+        vehicle_interval_ms: vehicle_interval_ms,
+        route_period_minutes: route_period_minutes,
+        arrival_refresh_age_ms_min: age_ms_min,
+        arrival_refresh_age_ms_max: age_ms_max
+      })
+      when is_integer(vehicle_interval_ms) and is_integer(route_period_minutes) and
+             is_integer(age_ms_min) and is_integer(age_ms_max) do
+    Assert.condition(
+      age_ms_min < age_ms_max,
+      "the longest arrival refresh age must be over the shortest, " <>
+        "got: #{age_ms_min} and #{age_ms_max} ms"
+    )
+
+    arrival_ages = "#{every_text(duration(age_ms_min))} to #{up_to_text(duration(age_ms_max))}"
+
+    [
+      %{
+        headline: "Live vehicles #{seconds_text(vehicle_interval_ms)}",
+        caption: "From OneBusAway, while a map is open"
+      },
+      %{
+        headline: "Arrivals every #{arrival_ages}",
+        caption: "For the stops you open and your favorites, faster when fewer are open"
+      },
+      %{
+        headline: "Routes and stops #{hours_text(route_period_minutes)}",
+        caption: "Each route at a minute of its own"
+      },
+      %{
+        headline: "Service alerts with each read",
+        caption: "For the trips running now and the stops that are open"
+      }
+    ]
+  end
+
+  @doc """
+  The headline and the caption of the shared scooter and bike data, for
+  vehicles requested every `interval_ms`, a whole count of seconds.
+  """
+  @spec shared_vehicles_summary(pos_integer()) :: message()
+  def shared_vehicles_summary(interval_ms) when is_integer(interval_ms) do
+    %{
+      headline: "Scooters and bikes #{seconds_text(interval_ms)}",
+      caption: "Only while a page shows them"
+    }
+  end
+
+  @doc """
+  The headline and the caption of what is recorded of a connection, for a
+  retention of `day_count` days.
+  """
+  @spec recorded_summary(pos_integer()) :: message()
+  def recorded_summary(day_count) when is_integer(day_count) do
+    Assert.condition(day_count >= 1, "day_count must be positive, got: #{day_count}")
+
+    kept =
+      case day_count do
+        1 -> "kept a day"
+        day_count -> "kept #{day_count} days"
+      end
+
+    %{
+      headline: "One anonymous record per page visit",
+      caption: "No address, cookie, or identifier of you, #{kept}"
+    }
+  end
+
+  @doc "The headline and the caption of the application's license."
+  @spec license_summary() :: message()
+  def license_summary do
+    %{headline: "Open source under the #{@app_license.name}", caption: @app_license.copyright}
+  end
+
+  @doc """
+  The headline and the caption of the offline map setting, with the size of
+  the saved copy, `bytes`, in whole megabytes.
+  """
+  @spec offline_basemap_summary(%{bytes: non_neg_integer()}) :: message()
+  def offline_basemap_summary(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+    %{
+      headline: "Save the map offline",
+      caption: "Keeps streets and places when you lose signal · #{megabytes(bytes)} MB"
+    }
+  end
 
   @doc "The statement that the application is independent of the agencies and the source."
   @spec disclaimer() :: String.t()
@@ -368,10 +512,8 @@ defmodule GobusgoWeb.AppInfo do
   """
   @spec offline_basemap(%{bytes: non_neg_integer()}) :: String.t()
   def offline_basemap(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
-    megabytes = div(bytes + div(@megabyte_bytes, 2), @megabyte_bytes)
-
     "With this on, your browser saves a copy of the map of the region, about " <>
-      "#{megabytes} MB, so the map draws its streets and places while you are offline, " <>
+      "#{megabytes(bytes)} MB, so the map draws its streets and places while you are offline, " <>
       "with less detail close in. It saves the copy after the page has loaded, and " <>
       "turning this off removes it."
   end
@@ -406,10 +548,10 @@ defmodule GobusgoWeb.AppInfo do
 
   @doc """
   The ways a map page offers to install the application, each with its
-  `kind` and its `text`; the browser shows the one its own install offer
+  `kind` and its `caption`; the browser shows the one its own install offer
   calls for, or none.
   """
-  @spec install_offers() :: [%{kind: String.t(), text: String.t()}, ...]
+  @spec install_offers() :: [%{kind: String.t(), caption: String.t()}, ...]
   def install_offers, do: @install_offers
 
   @doc "The terms the transit data is provided under, as a name and an address."
@@ -423,6 +565,9 @@ defmodule GobusgoWeb.AppInfo do
   @doc "Everything a page ships to the browser that has a license of its own, in display order."
   @spec components() :: [component()]
   def components, do: @components
+
+  # A size in bytes as whole megabytes, rounded to the nearest.
+  defp megabytes(bytes), do: div(bytes + div(@megabyte_bytes, 2), @megabyte_bytes)
 
   defp seconds_text(interval_ms) do
     Assert.condition(
