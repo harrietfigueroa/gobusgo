@@ -1,0 +1,348 @@
+{
+  "code": 200,
+  "currentTime": 1794198032089,
+  "data": {
+    "entry": {
+      "polylines": [
+        {
+          "length": 349,
+          "levels": "",
+          "points": "}ppaH~driVBCLKLMNMh@c@TUd@a@@AFGHR@BBF@DBDDDBBDBFDFBB?D@f@AH?fA?D?J??LAN?vC?^?p@?j@?vC?t@AzB?D?pB?L?\\?pB?P?n@?vA?`D?J?????B?L??Ab@?L?z@?@?`@?n@?D?f@?J?j@?lA?^?P?v@?f@???F?H?@?fA?F?N?j@?DAfB?V?T?J?jA?D?J???????D?J?|A?JM?{@?}@?KFEFGPMLaBvAONOJMLk@f@g@b@a@\\GFGDKJmBbBOLMLwBjBGFIF{BnBIHMJuBjBIHMJQPgA~@qAfAMJML_Ax@aAz@a@\\A@GDMLA?KJOL[T[\\WRA@gA~@KHCBKJaAx@OLELCBa@x@INuApCIRINoAfCs@vACDIPINmAbC?@Ub@a@x@GLGLA@Uf@MTeBjDEHIPa@x@Ud@o@nA]p@KTOYq@_As@aAKOnCuFHOHQl@mAvAsCHSFMbAqBbAoBHOHOz@eBd@aATc@HQJUIMGIq@aAq@_AOUOQe@q@MQo@_AGIGIQUEIk@w@s@aAEGkEeGeEiGCCKOW_@]c@IMMQ_@g@IMIKg@q@OUs@cAOSGIYa@]e@SUCEEMKOACGGMMHS?CTg@HQTc@j@kALWLWLWJS`@y@d@_AVe@b@{@BEDIJKf@g@RQz@y@LKLKd@c@`@]HI\\[z@w@LKBCDEz@u@b@a@LKBAp@o@BADEHIJIBCf@c@FGxBmB@AJKLK`A{@b@a@fA_AJILMv@q@z@w@JKLKh@e@^[TEVWLMJIRSJUj@i@^]RQJKj@e@FGd@_@TUDCLKJKVSLKREz@w@LKJIj@i@RQr@o@DCFGLKz@w@HIf@c@@AJ[TQXWZ[NMb@_@LMHVHVZbAd@xAFRFRd@xA??X|@JXFTLMf@c@@ARQ`A}@XUpAkATS@A"
+        }
+      ],
+      "routeId": "1_7994",
+      "stopGroupings": [
+        {
+          "ordered": true,
+          "stopGroups": [
+            {
+              "id": "1",
+              "name": {
+                "name": "",
+                "names": [
+                  null
+                ],
+                "type": "destination"
+              },
+              "polylines": [
+                {
+                  "length": 349,
+                  "levels": "",
+                  "points": "}ppaH~driVBCLKLMNMh@c@TUd@a@@AFGHR@BBF@DBDDDBBDBFDFBB?D@f@AH?fA?D?J??LAN?vC?^?p@?j@?vC?t@AzB?D?pB?L?\\?pB?P?n@?vA?`D?J?????B?L??Ab@?L?z@?@?`@?n@?D?f@?J?j@?lA?^?P?v@?f@???F?H?@?fA?F?N?j@?DAfB?V?T?J?jA?D?J???????D?J?|A?JM?{@?}@?KFEFGPMLaBvAONOJMLk@f@g@b@a@\\GFGDKJmBbBOLMLwBjBGFIF{BnBIHMJuBjBIHMJQPgA~@qAfAMJML_Ax@aAz@a@\\A@GDMLA?KJOL[T[\\WRA@gA~@KHCBKJaAx@OLELCBa@x@INuApCIRINoAfCs@vACDIPINmAbC?@Ub@a@x@GLGLA@Uf@MTeBjDEHIPa@x@Ud@o@nA]p@KTOYq@_As@aAKOnCuFHOHQl@mAvAsCHSFMbAqBbAoBHOHOz@eBd@aATc@HQJUIMGIq@aAq@_AOUOQe@q@MQo@_AGIGIQUEIk@w@s@aAEGkEeGeEiGCCKOW_@]c@IMMQ_@g@IMIKg@q@OUs@cAOSGIYa@]e@SUCEEMKOACGGMMHS?CTg@HQTc@j@kALWLWLWJS`@y@d@_AVe@b@{@BEDIJKf@g@RQz@y@LKLKd@c@`@]HI\\[z@w@LKBCDEz@u@b@a@LKBAp@o@BADEHIJIBCf@c@FGxBmB@AJKLK`A{@b@a@fA_AJILMv@q@z@w@JKLKh@e@^[TEVWLMJIRSJUj@i@^]RQJKj@e@FGd@_@TUDCLKJKVSLKREz@w@LKJIj@i@RQr@o@DCFGLKz@w@HIf@c@@AJ[TQXWZ[NMb@_@LMHVHVZbAd@xAFRFRd@xA??X|@JXFTLMf@c@@ARQ`A}@XUpAkATS@A"
+                }
+              ],
+              "stopIds": [
+                "1_42010",
+                "1_1370",
+                "1_1557",
+                "1_200",
+                "1_230",
+                "1_900",
+                "1_11075"
+              ],
+              "subGroups": []
+            }
+          ],
+          "type": "direction"
+        }
+      ],
+      "stopIds": [
+        "1_11075",
+        "1_1370",
+        "1_1557",
+        "1_200",
+        "1_230",
+        "1_42010",
+        "1_900"
+      ]
+    },
+    "references": {
+      "agencies": [
+        {
+          "disclaimer": "",
+          "email": "",
+          "fareUrl": "https://kingcounty.gov/en/dept/metro/fares-and-payment/prices",
+          "id": "1",
+          "lang": "EN",
+          "name": "Metro Transit",
+          "phone": "206-553-3000",
+          "privateService": false,
+          "timezone": "America/Los_Angeles",
+          "url": "https://kingcounty.gov/en/dept/metro"
+        }
+      ],
+      "routes": [
+        {
+          "agencyId": "1",
+          "color": "",
+          "description": "First Hill-Pioneer Square-Downtown Seattle-Belltown",
+          "id": "1_7994",
+          "longName": "",
+          "nullSafeShortName": "Easy Loop",
+          "shortName": "Easy Loop",
+          "textColor": "",
+          "type": 3,
+          "url": "https://www.seattle.gov/transportation/projects-and-programs/programs/transportation-access-programs/easy-loop"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Federal Way Downtown Station - First Hill",
+          "id": "1_100495",
+          "longName": "",
+          "nullSafeShortName": "193",
+          "shortName": "193",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=193"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Aurora Village - Northgate Station - First Hill",
+          "id": "1_100177",
+          "longName": "",
+          "nullSafeShortName": "303",
+          "shortName": "303",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=303"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Kenmore P&R - 12 Av/E Terrace St",
+          "id": "1_102729",
+          "longName": "",
+          "nullSafeShortName": "322",
+          "shortName": "322",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=322"
+        },
+        {
+          "agencyId": "1",
+          "color": "",
+          "description": "South Mercer Island - First Hill",
+          "id": "1_102634",
+          "longName": "",
+          "nullSafeShortName": "630",
+          "shortName": "630",
+          "textColor": "",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=630"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Colman Park - Downtown Seattle",
+          "id": "1_100161",
+          "longName": "",
+          "nullSafeShortName": "27",
+          "shortName": "27",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=027"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Discovery Park - Downtown Seattle",
+          "id": "1_100194",
+          "longName": "",
+          "nullSafeShortName": "33",
+          "shortName": "33",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=033"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Westwood Village - Georgetown - Broadway",
+          "id": "1_100249",
+          "longName": "",
+          "nullSafeShortName": "60",
+          "shortName": "60",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=060"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "University District - Eastlake - Downtown Seattle",
+          "id": "1_100264",
+          "longName": "",
+          "nullSafeShortName": "70",
+          "shortName": "70",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=070"
+        },
+        {
+          "agencyId": "1",
+          "color": "FDB71A",
+          "description": "Woodinville - Downtown Seattle",
+          "id": "1_102754",
+          "longName": "",
+          "nullSafeShortName": "256",
+          "shortName": "256",
+          "textColor": "000000",
+          "type": 3,
+          "url": "https://kingcounty.gov/en/dept/metro/routes-and-service/schedules-and-maps/schedule?route=256"
+        }
+      ],
+      "situations": [],
+      "stopTimes": [],
+      "stops": [
+        {
+          "code": "11075",
+          "direction": "SE",
+          "id": "1_11075",
+          "lat": 47.610374,
+          "locationType": 0,
+          "lon": -122.32621,
+          "name": "Boren Ave & Seneca St",
+          "parent": "",
+          "routeIds": [
+            "1_100495",
+            "1_100177",
+            "1_102729",
+            "1_102634",
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_100495",
+            "1_100177",
+            "1_102729",
+            "1_102634",
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "1370",
+          "direction": "W",
+          "id": "1_1370",
+          "lat": 47.60178,
+          "locationType": 0,
+          "lon": -122.329803,
+          "name": "Yesler Way & 3rd Ave",
+          "parent": "",
+          "routeIds": [
+            "1_100161",
+            "1_100194",
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_100161",
+            "1_100194",
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "1557",
+          "direction": "NW",
+          "id": "1_1557",
+          "lat": 47.604376,
+          "locationType": 0,
+          "lon": -122.335763,
+          "name": "1st Ave & Marion St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "200",
+          "direction": "NW",
+          "id": "1_200",
+          "lat": 47.609692,
+          "locationType": 0,
+          "lon": -122.340632,
+          "name": "1st Ave & Pine St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "230",
+          "direction": "NW",
+          "id": "1_230",
+          "lat": 47.613752,
+          "locationType": 0,
+          "lon": -122.346884,
+          "name": "1st Ave & Bell St",
+          "parent": "",
+          "routeIds": [
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "42010",
+          "direction": "SE",
+          "id": "1_42010",
+          "lat": 47.603474,
+          "locationType": 0,
+          "lon": -122.322968,
+          "name": "9th Ave & Alder St",
+          "parent": "",
+          "routeIds": [
+            "1_100249",
+            "1_102634",
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_100249",
+            "1_102634",
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        },
+        {
+          "code": "900",
+          "direction": "NE",
+          "id": "1_900",
+          "lat": 47.616547,
+          "locationType": 0,
+          "lon": -122.335388,
+          "name": "Virginia St & 9th Ave",
+          "parent": "",
+          "routeIds": [
+            "1_100264",
+            "1_102754",
+            "1_100177",
+            "1_102729",
+            "1_7994"
+          ],
+          "staticRouteIds": [
+            "1_100264",
+            "1_102754",
+            "1_100177",
+            "1_102729",
+            "1_7994"
+          ],
+          "wheelchairBoarding": "ACCESSIBLE"
+        }
+      ],
+      "trips": []
+    }
+  },
+  "text": "OK",
+  "version": 2
+}

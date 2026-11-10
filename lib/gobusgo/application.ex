@@ -25,6 +25,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.OneBusAway.TripPathCache
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.RetentionPolicy
@@ -63,6 +64,12 @@ defmodule Gobusgo.Application do
   @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
   @vehicle_situation_view_agency_count_max 64
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
+
+  # The trip path cache holds the paths of 2,000 trips, which 2,000 King
+  # County Metro paths of 2026-11-09 fill with 1.2 MiB of table and 2.3 MiB
+  # of path text. Two builds run at once, each capped at its own heap.
+  @trip_path_cache_trip_count_max 2_000
+  @trip_path_builder_count_max 2
 
   # The shared vehicle view holds the newest fetch of each GBFS system.
   @vehicle_status_view_system_count_max 8
@@ -115,6 +122,9 @@ defmodule Gobusgo.Application do
              stop_count_max: @stop_view_stop_count_max},
             {RouteScheduleView,
              name: RouteScheduleView, route_count_max: @route_path_view_route_count_max},
+            {TripPathCache, name: TripPathCache, trip_count_max: @trip_path_cache_trip_count_max},
+            {Task.Supervisor,
+             name: Gobusgo.OneBusAway.TripPathBuilders, max_children: @trip_path_builder_count_max},
             {FetchView,
              name: @arrival_view,
              pubsub: Gobusgo.PubSub,
