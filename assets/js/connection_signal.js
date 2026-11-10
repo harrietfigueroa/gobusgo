@@ -1,11 +1,12 @@
-// The offline signal of a map page: a chip over the map that says the page
-// is offline, what the map shows, and how old the saved schedules are, and a
-// polite live region that announces going offline and coming back. The
+// The offline signal of a map page: a chip over the map whose headline says
+// the page is offline and whose caption says what the map shows and how old
+// the saved schedules are, and a polite live region that announces going
+// offline and coming back. The
 // stylesheet shows the chip while the document's root element carries
 // `data-connection="offline"`; this hook writes its texts and opens the
 // Settings tab's offline section on a click.
 
-import {AGE_REFRESH_MS, AnnouncementKind, announcementOf, signalLines} from "./offline_signal.js"
+import {AGE_REFRESH_MS, AnnouncementKind, announcementOf, signalMessage} from "./offline_signal.js"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
 import {OPEN_EVENT_NAME} from "./panel_sheet"
@@ -13,8 +14,7 @@ import {readSavedIndex} from "./offline_schedules"
 
 export const ConnectionSignal = {
   mounted() {
-    this.title = this.el.querySelector("[data-signal-title]")
-    this.age = this.el.querySelector("[data-signal-age]")
+    this.caption = this.el.querySelector("[data-signal-caption]")
     this.announcer = document.getElementById(this.el.dataset.announcerId)
     this.section = document.getElementById(this.el.dataset.sectionId)
     this.ageTimer = null
@@ -69,10 +69,9 @@ export const ConnectionSignal = {
   async write() {
     try {
       const savedIndex = await readSavedIndex()
-      const [title, ...ageLines] = signalLines({savedIndex, nowMs: Date.now()})
-      this.title.textContent = title
-      this.age.textContent = ageLines.join(" ")
-      this.age.hidden = ageLines.length === 0
+      const {caption} = signalMessage({savedIndex, nowMs: Date.now()})
+      this.caption.textContent = caption
+      this.caption.hidden = false
     } catch (error) {
       console.warn("Offline signal not written", error)
     }

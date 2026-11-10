@@ -19,6 +19,7 @@ defmodule GobusgoWeb.SharedVehicleToggle do
   use Phoenix.Component
 
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.Message
   alias GobusgoWeb.VehicleLive.SharedVehicles
 
   @doc """
@@ -49,7 +50,7 @@ defmodule GobusgoWeb.SharedVehicleToggle do
         <input id="shared-vehicles-shown" type="checkbox" checked={@shown} />
         Show shared scooters and bikes
       </label>
-      <p class="offline-note">{AppInfo.needs_connection(:shared_vehicles)}</p>
+      <p class="offline-note"><Message.message {AppInfo.needs_connection(:shared_vehicles)} /></p>
       <ul
         :if={@shown}
         id="shared-vehicles-legend"

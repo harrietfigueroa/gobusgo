@@ -40,6 +40,7 @@
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
   --connection-signal-age-color: #334155;
+  --message-caption-color: #475569;
   --panel-sheet-grip-color: #64748b;
   --panel-sheet-rule-color: #cbd5e1;
   --panel-sheet-chip-fill: #e2e8f0;
@@ -102,6 +103,7 @@
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.5);
   --panel-sheet-text-color: #e2e8f0;
   --connection-signal-age-color: #cbd5e1;
+  --message-caption-color: #cbd5e1;
   --panel-sheet-grip-color: #64748b;
   --panel-sheet-rule-color: #334155;
   --panel-sheet-chip-fill: #1e293b;
@@ -618,9 +620,22 @@ a.inline-target {
   font-weight: 600;
 }
 
-.connection-signal-age {
+.connection-signal-caption {
   color: var(--connection-signal-age-color);
   font-weight: 400;
+}
+
+/* A status message: a bold headline that states the state over a muted
+   caption with the next step, each on a line of its own. */
+.message-headline {
+  display: block;
+  font-weight: 700;
+}
+
+.message-caption {
+  display: block;
+  color: var(--message-caption-color);
+  font-size: 0.8125rem;
 }
 
 /* What needs a connection is hidden while the page is offline, and a note

@@ -25,7 +25,8 @@ import {
   journeysAnnouncement,
   nameRequest,
   queryOf,
-  stateText,
+  pickingMessage,
+  stateMessage,
   stopEnd,
   swappedEnds,
   tripRouteIds,
@@ -191,10 +192,33 @@ deepStrictEqual(swappedEnds({from: pike, to: othello}), {from: othello, to: pike
 deepStrictEqual(swappedEnds({from: LOCATION_END, to: othello}), {from: othello, to: NO_END}, "swap from the location")
 deepStrictEqual(swappedEnds({from: NO_END, to: othello}).from.kind, EndKind.stop, "swap into an empty From")
 
-// Every state has its sentence.
-for (const kind of [...Object.values(StateKind), JourneysKind.none, JourneysKind.unknownStop, JourneysKind.noStartStop, JourneysKind.failed]) {
-  deepStrictEqual(typeof stateText(kind), "string", `state text: ${kind}`)
+// Every state has its headline and its caption.
+const stateMessageCases = [
+  {kind: StateKind.loading, expected: {headline: "Finding journeys…", caption: "Searching today's and tomorrow's schedules."}},
+  {kind: StateKind.noServiceDate, expected: {headline: "No schedule for this time yet", caption: "Try again later."}},
+  {kind: StateKind.locationDenied, expected: {headline: "Location is off", caption: "Start from a stop instead, or allow location in your browser's settings."}},
+  {kind: StateKind.locationUnavailable, expected: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."}},
+  {kind: StateKind.sameStop, expected: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."}},
+  {kind: StateKind.notSaved, expected: {headline: "Not saved for offline", caption: "Connect to plan this trip."}},
+  {kind: JourneysKind.none, expected: {headline: "No journeys found", caption: "Nothing runs between these two today or tomorrow."}},
+  {kind: JourneysKind.unknownStop, expected: {headline: "Stop not in the schedules", caption: "Choose another stop nearby."}},
+  {kind: JourneysKind.noStartStop, expected: {headline: "No stop within a walk", caption: "Start from a stop instead."}},
+  {kind: JourneysKind.failed, expected: {headline: "Journeys didn't load", caption: "Check your connection and try again."}}
+]
+
+for (const {kind, expected} of stateMessageCases) {
+  deepStrictEqual(stateMessage(kind), expected, `state message: ${kind}`)
 }
+
+const routerStateKinds = [JourneysKind.none, JourneysKind.unknownStop, JourneysKind.noStartStop, JourneysKind.failed]
+const stateKindCount = Object.keys(StateKind).length + routerStateKinds.length
+deepStrictEqual(stateMessageCases.length, stateKindCount, "every state of the tab and of the router has a case")
+
+deepStrictEqual(
+  pickingMessage("From"),
+  {headline: "Pick a stop for From", caption: "Tap a stop on the map. Stops show once the map is zoomed in."},
+  "the message while a stop is picked"
+)
 
 // A query whose schedules are not saved says so, and any other failure says it failed.
 deepStrictEqual(failureState({kind: JourneysKind.failed, reason: FailureReason.notSaved, path: ""}), StateKind.notSaved, "a schedule not saved")

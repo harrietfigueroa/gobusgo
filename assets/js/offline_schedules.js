@@ -19,13 +19,14 @@ import {
   IndexKind,
   OFFLINE_SCHEDULES_CACHE_NAME,
   PlanKind,
-  StatusKind,
+  SettingKind,
   bundleStatus,
-  persistenceText,
   planBundle,
   savedIndex,
-  stalePaths
+  stalePaths,
+  statusMessage
 } from "./offline_bundle"
+import {writeMessage} from "./message"
 import {requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
 
@@ -209,29 +210,27 @@ function newestBuild(dates) {
   return timeFormat.format(new Date(newest))
 }
 
-// The status line for a saved bundle's `status`, of `bytes` stored.
-function statusText({status, bytes}) {
-  const size = (bytes / MEBIBYTE_BYTES).toFixed(1) + " MB"
-
-  switch (status.kind) {
-    case StatusKind.saved:
-      return "Saved for offline use: schedules for " + datesText(status.dates) + ", updated " + newestBuild(status.dates) + ", " + size + "."
-    case StatusKind.incomplete:
-      return "Partly saved: schedules for " + datesText(status.dates) + ", with " + status.missingCount + " files the browser removed. They are saved again while you are online."
-    case StatusKind.notSaved:
-      return "No schedules are saved for offline use yet. They are saved while you are online."
-    default:
-      return "Offline schedules: " + String(status.kind)
-  }
-}
-
 async function describe(persistence) {
   const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
   const savedIndex = await readIndex(cache)
   const present = await storedPaths(cache)
   const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
   const bytes = await storedBytes(cache)
-  return statusText({status, bytes}) + " " + persistenceText(persistence)
+  let dates = []
+
+  if (Object.hasOwn(status, "dates")) {
+    dates = status.dates
+  }
+
+  const sizeText = (bytes / MEBIBYTE_BYTES).toFixed(1) + " MB"
+  const datesShown = datesText(dates)
+  let updatedText = ""
+
+  if (dates.length > 0) {
+    updatedText = newestBuild(dates)
+  }
+
+  return statusMessage({kind: SettingKind.on, status, persistence, datesText: datesShown, updatedText, sizeText})
 }
 
 // Keeps the region's schedules saved while the setting is on, and shows
@@ -248,7 +247,7 @@ export const OfflineSchedules = {
     if (!isSupported()) {
       this.checkbox.checked = false
       this.checkbox.disabled = true
-      this.status.textContent = "This browser cannot save schedules for offline use."
+      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.unsupported})})
       return
     }
 
@@ -334,12 +333,12 @@ export const OfflineSchedules = {
   async clear() {
     this.stop()
     await caches.delete(OFFLINE_SCHEDULES_CACHE_NAME)
-    this.status.textContent = "Schedules are not saved for offline use."
+    writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
   },
 
   async show() {
     if (!isEnabled()) {
-      this.status.textContent = "Schedules are not saved for offline use."
+      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
       return
     }
 
@@ -350,7 +349,8 @@ export const OfflineSchedules = {
       }
 
       const persistence = await this.persistence
-      this.status.textContent = await describe(persistence)
+      const message = await describe(persistence)
+      writeMessage({element: this.status, message})
     } catch (error) {
       console.warn("Offline schedules status not read", error)
     }

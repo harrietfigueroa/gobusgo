@@ -17,8 +17,9 @@ import {
   SettingKind,
   savedBasemapOf,
   stalePaths,
-  statusText
+  statusMessage
 } from "./offline_basemap"
+import {writeMessage} from "./message"
 import {requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
 
@@ -98,7 +99,7 @@ export const OfflineBasemap = {
     if (!isSupported()) {
       this.checkbox.checked = false
       this.checkbox.disabled = true
-      this.status.textContent = statusText({kind: SettingKind.unsupported})
+      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.unsupported})})
       return
     }
 
@@ -205,7 +206,7 @@ export const OfflineBasemap = {
     const isOff = !storedSettings.readOfflineBasemapEnabled()
 
     if (isOff) {
-      this.status.textContent = statusText({kind: SettingKind.off})
+      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
       return
     }
 
@@ -217,7 +218,8 @@ export const OfflineBasemap = {
       const persistence = await this.persistence
       const saved = await readSavedBasemap(this.url)
       const bytes = await storedBytes(this.url)
-      this.status.textContent = statusText({kind: SettingKind.on, saved, bytes, persistence})
+      const message = statusMessage({kind: SettingKind.on, saved, bytes, persistence})
+      writeMessage({element: this.status, message})
     } catch (error) {
       console.warn("Offline map status not read", error)
     }

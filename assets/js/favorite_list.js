@@ -1,12 +1,16 @@
 // The rules of the Favorites tab's list, as pure functions of values: where
 // a dragged entry drops, which move buttons an entry offers, the text that
-// announces a move, and the camera move that centers the map on a chosen
-// favorite. Nothing here reads the document or the map.
+// announces a move, the camera move that centers the map on a chosen
+// favorite, and what the list says while it is empty. Nothing here reads
+// the document or the map.
 
 import {freeMiddleOffset} from "./reveal_offset.js"
 
 /** How long the move to a chosen favorite eases, where the browser does not ask for reduced motion. */
 export const FAVORITE_EASE_MS = 500
+
+/** What the Favorites tab says while it holds no favorite. */
+export const EMPTY_MESSAGE = Object.freeze({headline: "No favorites yet", caption: "Open a stop and tap ☆ to keep it here."})
 
 /** The zoom the move to a chosen favorite reaches at least, at which a street's stops stand apart with room for their route chips. */
 export const FAVORITE_ZOOM_MIN = 16

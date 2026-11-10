@@ -49,13 +49,13 @@ export const CenterZoom = Object.freeze({first: "first", kept: "kept"})
 /** What a follow move decision says: leave the map, or move it by the keep point's offset. */
 export const MoveKind = Object.freeze({stay: "stay", move: "move"})
 
-/** The texts of the notice, which is a polite live region. */
-export const NoticeText = Object.freeze({
-  following: "Following your location",
-  stopped: "Stopped following your location",
-  denied: "Location permission was denied, so the map stays where it is.",
-  unavailable: "Your location could not be found, so the map stays where it is.",
-  outside: "Your location is outside the area this map covers."
+/** The messages of the notice, which is a polite live region. */
+export const NoticeMessage = Object.freeze({
+  following: Object.freeze({headline: "Following your location", caption: "Move the map to stop."}),
+  stopped: Object.freeze({headline: "Stopped following your location", caption: "Press the location button to follow again."}),
+  denied: Object.freeze({headline: "Location is off", caption: "Allow location in your browser's settings. The map stays where it is."}),
+  unavailable: Object.freeze({headline: "Can't find your location", caption: "The map stays where it is."}),
+  outside: Object.freeze({headline: "You're outside this map", caption: "The map stays where it is."})
 })
 
 /** MapLibre's classes of its geolocate button, whose icons the button shows. */
@@ -99,8 +99,8 @@ const FOLLOW_EFFECT = Object.freeze({kind: EffectKind.follow})
 const followKinds = Object.values(FollowKind)
 const fixPlaces = Object.values(FixPlace)
 
-function notice(text) {
-  return {kind: EffectKind.notice, text}
+function notice(message) {
+  return {kind: EffectKind.notice, message}
 }
 
 function unchanged(state) {
@@ -117,9 +117,9 @@ export function isActive(state) {
 function onClick(state) {
   switch (state.kind) {
     case FollowKind.off:
-      return {state: {...OFF, kind: FollowKind.following, isNoticeOwed: true}, effects: [notice(NoticeText.following)]}
+      return {state: {...OFF, kind: FollowKind.following, isNoticeOwed: true}, effects: [notice(NoticeMessage.following)]}
     case FollowKind.following:
-      return {state: OFF, effects: [notice(NoticeText.stopped)]}
+      return {state: OFF, effects: [notice(NoticeMessage.stopped)]}
     case FollowKind.located:
       return onClickLocated(state)
     case FollowKind.blocked:
@@ -134,17 +134,17 @@ function onClick(state) {
 // the next.
 function onClickLocated(state) {
   if (state.place === FixPlace.outside) {
-    return {state: {...state, isNoticeOwed: false}, effects: [notice(NoticeText.outside)]}
+    return {state: {...state, isNoticeOwed: false}, effects: [notice(NoticeMessage.outside)]}
   }
 
   const isWaiting = state.place === FixPlace.none
   const followed = {...state, kind: FollowKind.following, isCentered: !isWaiting, isNoticeOwed: true}
 
   if (isWaiting) {
-    return {state: followed, effects: [notice(NoticeText.following)]}
+    return {state: followed, effects: [notice(NoticeMessage.following)]}
   }
 
-  return {state: followed, effects: [{kind: EffectKind.center, zoom: CenterZoom.kept}, notice(NoticeText.following)]}
+  return {state: followed, effects: [{kind: EffectKind.center, zoom: CenterZoom.kept}, notice(NoticeMessage.following)]}
 }
 
 // The first fix of a follow centers the map; a later one asks the hook to
@@ -166,13 +166,13 @@ function onFix({state, place}) {
   }
 
   if (place === FixPlace.outside) {
-    let text = NoticeText.stopped
+    let message = NoticeMessage.stopped
 
     if (state.isNoticeOwed) {
-      text = NoticeText.outside
+      message = NoticeMessage.outside
     }
 
-    return {state: {...fixed, kind: FollowKind.located, isCentered: false}, effects: [notice(text)]}
+    return {state: {...fixed, kind: FollowKind.located, isCentered: false}, effects: [notice(message)]}
   }
 
   if (state.isCentered) {
@@ -192,7 +192,7 @@ function onFailed(state) {
   const failed = {...state, isStale: true, isNoticeOwed: false}
 
   if (state.isNoticeOwed) {
-    return {state: failed, effects: [notice(NoticeText.unavailable)]}
+    return {state: failed, effects: [notice(NoticeMessage.unavailable)]}
   }
 
   return {state: failed, effects: NO_EFFECTS}
@@ -200,7 +200,7 @@ function onFailed(state) {
 
 function onDenied(state) {
   if (state.isNoticeOwed) {
-    return {state: BLOCKED, effects: [notice(NoticeText.denied)]}
+    return {state: BLOCKED, effects: [notice(NoticeMessage.denied)]}
   }
 
   return {state: BLOCKED, effects: NO_EFFECTS}
@@ -215,7 +215,7 @@ function onFollowEnd(state) {
   const isCenteredFollow = isFollowing && state.isCentered
 
   if (isCenteredFollow) {
-    return {state: {...state, kind: FollowKind.located, isCentered: false}, effects: [notice(NoticeText.stopped)]}
+    return {state: {...state, kind: FollowKind.located, isCentered: false}, effects: [notice(NoticeMessage.stopped)]}
   }
 
   return unchanged(state)

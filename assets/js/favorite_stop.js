@@ -1,12 +1,13 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
-import {appendParagraph, isNextArrivalLive, liveDot, nextArrivalText, writeArrivals} from "./stop_arrivals"
+import {isNextArrivalLive, liveDot, nextArrivalText, writeArrivals} from "./stop_arrivals"
 import {shownAt} from "./arrival_countdown"
 import {startArrivalTicker} from "./arrival_ticker"
 import {tripEndButtons} from "./trip_ends"
 import {FavoriteChangeKind, storedSettings} from "./stored_settings"
 import {FIT_EVENT_DATA, READY_EVENT_NAME} from "./basemap"
 import {COLLAPSE_EVENT_NAME, sheetInsets} from "./panel_sheet"
-import {dropIndex, FAVORITE_ZOOM_MIN, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
+import {EMPTY_MESSAGE, dropIndex, FAVORITE_ZOOM_MIN, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
+import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 
 // The rider's favorite stops, which the stored settings module keeps as
@@ -20,7 +21,6 @@ import {pageEvents} from "./page_events"
 
 const ELEMENT_ID = "favorite-stop"
 const BADGE_ID = "favorite-stop-badge"
-const EMPTY_TEXT = "No favorite stops yet. Open a stop on the map and choose “☆ Make this your favorite stop”."
 export const CHANGE_EVENT_NAME = "gobusgo:favorite-stops-change"
 const POSITION_EVENT_NAME = "stop:position"
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
@@ -261,7 +261,9 @@ export const FavoriteStop = {
     }
 
     if (entries.size === 0) {
-      appendParagraph(elements, EMPTY_TEXT)
+      const empty = document.createElement("p")
+      appendMessage({element: empty, message: EMPTY_MESSAGE})
+      elements.append(empty)
     }
 
     this.list.replaceChildren(elements)
