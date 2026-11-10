@@ -14,6 +14,7 @@
 
 ## Stylesheet
 
+- Tailwind collects class names from `assets/css/`, `assets/js/`, and `lib/gobusgo_web/`, and from no Markdown file, so a word in an `AGENTS.md` never adds a class to the build (GOB-350).
 - `assets/css/app.css` names the surface style of the boxes over the map once, as custom properties: the `surface` class gives it to an element, and the same rule gives it to MapLibre's control groups and popups.
 - The page has a light and a dark theme, named by the root element's `data-theme`. Under `dark` the stylesheet sets the dark values of every color the page sets and of the entries of Tailwind's palette the markup names, so the markup is the same in both themes, with text at a contrast of 4.5:1 or more (GOB-247).
 - Under `forced-colors: active` the stylesheet draws the marks that forced colors removes again in system colors (GOB-313). Links and checkbox labels with the `inline-target` class meet the target size (GOB-312).
