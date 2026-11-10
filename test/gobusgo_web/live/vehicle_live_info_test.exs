@@ -374,6 +374,15 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       refute has_element?(view, @panel <> " [phx-submit]")
     end
 
+    test "says how a vehicle is drawn zoomed in and zoomed out" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      text = view |> panel_text() |> String.replace(~r/\s+/, " ")
+
+      assert text =~
+               "Zoomed in, a vehicle is a bus with its route's number on its shoulder and a " <>
+                 "chevron the way it is heading; zoomed out, a dot."
+    end
+
     test "carries the disclaimer in a section of its own" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 

@@ -805,6 +805,7 @@ defmodule GobusgoWeb.VehicleLive do
       phx-hook="VehicleMarkers"
       data-statuses={JSON.encode!(VehicleMarkers.statuses())}
       data-motion={JSON.encode!(vehicle_motion())}
+      data-glyph-zoom-min={VehicleMarkers.glyph_zoom_min()}
       hidden
     >
     </div>

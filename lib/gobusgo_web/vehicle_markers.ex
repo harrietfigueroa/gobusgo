@@ -6,6 +6,9 @@ defmodule GobusgoWeb.VehicleMarkers do
   @minutes_per_hour 60
   @degrees_per_turn 360
   @faded_opacity 0.45
+  # Below this zoom a vehicle is a dot in its route's color, and from it a
+  # bus glyph with a route badge and a heading chevron (GOB-331).
+  @glyph_zoom_min 13
   @scheduled_color "#9ca3af"
   @unbacked_statuses [:stale, :unknown]
 
@@ -189,6 +192,13 @@ defmodule GobusgoWeb.VehicleMarkers do
   """
   @spec statuses() :: [status_definition()]
   def statuses, do: @statuses
+
+  @doc """
+  The zoom from which a map draws a vehicle as a bus glyph with a route
+  badge and a heading chevron; below it a vehicle is a dot.
+  """
+  @spec glyph_zoom_min() :: pos_integer()
+  def glyph_zoom_min, do: @glyph_zoom_min
 
   @doc "Returns the name a legend and a description give `badge`."
   @spec badge_name(badge()) :: String.t()
