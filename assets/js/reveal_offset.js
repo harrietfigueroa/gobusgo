@@ -8,7 +8,7 @@ const HALVING_DIVISOR = 2
 // `viewHeight`, to bring it out from under a sheet that covers `insets`:
 // along each axis on which it lies within `marginPixels` of the sheet, to
 // the middle of the part the sheet leaves, and not at all along the other,
-// so a point with room for its popup stays where it is.
+// so a point with room for its callout stays where it is.
 export function revealOffset({point, viewWidth, viewHeight, insets, marginPixels}) {
   const isCoveredBottom = point.y > viewHeight - insets.bottom - marginPixels
   const isCoveredLeft = point.x < insets.left + marginPixels

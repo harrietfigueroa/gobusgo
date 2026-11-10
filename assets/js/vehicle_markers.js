@@ -2,8 +2,8 @@ import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {assertCondition} from "./assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
-import {announceRiderPopupChange, RIDER_POPUP_CLASS_NAME} from "./rider_popups"
-import {compactPopupContent, nameCloseButton} from "./route_chips"
+import {closeCalloutOf, openCallout, updateCalloutOf, vehicleCalloutContent} from "./map_callout"
+import {vehicleCalloutText} from "./callout_text"
 import {alertLines} from "./service_alerts"
 import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
 import {mapColors} from "./theme"
@@ -55,8 +55,6 @@ const SCHEDULED_KEY = "scheduled"
 const NOT_SUPPLIED = "Not supplied"
 const FACTS_CLASS_NAME = "panel-detail-facts"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
-// The class of the popup of the vehicle the details view shows.
-const SELECTED_POPUP_CLASS_NAME = "popup-selected"
 const hasHeading = ["==", ["typeof", ["get", "heading"]], "number"]
 const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
@@ -67,7 +65,7 @@ function point(coordinates) {
 
 // Every agency's markers but those of `onCanvas`, which the canvas over the
 // map draws, as one GeoJSON collection, a point per marker at `targetOf`
-// its marker, with the texts its label and its popup show, and the glides
+// its marker, with the texts its label and its callout show, and the glides
 // that bring markers already drawn to their new positions. A marker in
 // `drawn`, the positions drawn now, that glides is placed where it is drawn
 // and glides from there; any other stands at its new position. A glide
@@ -168,7 +166,7 @@ function fetchedPosition({marker}) {
   return [marker.lon, marker.lat]
 }
 
-// The texts a marker's label, popup, and view show, as its feature holds
+// The texts a marker's label, callout, and view show, as its feature holds
 // them.
 function markerProperties(marker) {
   return {
@@ -376,44 +374,30 @@ function vehicleViewContent(properties, statusLabels) {
   return content
 }
 
-// The item a vehicle's popup names: the vehicle, and the status of a vehicle
-// whose marker carries a badge, so the status the badge shows is also text.
-function vehiclePopupItemName({properties, badgedLabels}) {
+// The status of a vehicle whose marker carries a badge, which its callout
+// shows by the badge alone, or an empty text for any other.
+function badgedStatusName({properties, badgedLabels}) {
   const statusLabel = badgedLabels.get(properties.status)
 
   if (statusLabel === undefined) {
-    return vehicleViewTitle(properties)
+    return ""
   }
 
-  return `${vehicleViewTitle(properties)}, ${statusLabel}`
+  return statusLabel
 }
 
-// A vehicle's popup is its route's number in its marker's color, with its
-// lateness beside it where the marker has one. A click on it hands the
-// vehicle to `onSelect`.
-function compactVehicleContent({properties, badgedLabels, onSelect}) {
-  const chips = []
-  let noteText = ""
-
-  if (typeof properties.route === "string") {
-    chips.push({name: properties.route, color: properties.color})
-  }
-
-  if (typeof properties.schedule === "string") {
-    noteText = properties.schedule
-  }
-
-  const {content} = compactPopupContent({
-    chips,
-    countMax: 1,
-    emptyText: vehicleName(properties),
-    noteText,
-    itemName: vehiclePopupItemName({properties, badgedLabels}),
-    action: "show the vehicle",
-    onSelect
+// A vehicle's callout: its route and headsign, and under them its lateness
+// and its next stop. A tap on it hands the vehicle to `onSelect`.
+function vehicleCallout({properties, badgedLabels, onSelect}) {
+  const {title, detail} = vehicleCalloutText({
+    route: properties.route,
+    headsign: properties.headsign,
+    schedule: properties.schedule,
+    nextStop: properties.nextStop,
+    fallbackName: vehicleName(properties)
   })
 
-  return content
+  return vehicleCalloutContent({title, detail, detailName: badgedStatusName({properties, badgedLabels}), onSelect})
 }
 
 function statusLabelEntry({status, label}) {
@@ -448,9 +432,9 @@ export const VehicleMarkers = {
     // the texts it was last written from.
     this.viewMarkerId = null
     this.viewText = ""
-    // The rider's popup of a vehicle, with its marker, or null while none
-    // is open.
-    this.riderPopup = null
+    // Where the vehicle the view shows was when it was chosen, where its
+    // callout stands.
+    this.viewLngLat = null
     // When the markers move between fetches, the tier decided last, and
     // each vehicle's state between fetches, by marker. Each agency's clock
     // is its fetch time and the page's monotonic time the fetch arrived at,
@@ -471,13 +455,14 @@ export const VehicleMarkers = {
     document.addEventListener("visibilitychange", this.onVisibilityChange)
     this.reducedMotion.addEventListener("change", this.onReducedMotionChange)
 
-    // The view moving to a stop, or closing, unmarks the vehicle's popup.
+    // The view moving to a stop, or closing, closes the vehicle's callout.
     this.onDetailChange = () => {
       const isViewLeft = this.viewMarkerId !== null && showsDetail({kind: DetailKind.vehicle, id: this.viewMarkerId}) === false
 
       if (isViewLeft) {
+        const markerId = this.viewMarkerId
         this.viewMarkerId = null
-        this.markSelected()
+        closeCalloutOf({kind: DetailKind.vehicle, id: markerId})
       }
     }
 
@@ -598,9 +583,9 @@ export const VehicleMarkers = {
 
     // A map keeps the listeners of a layer while the layer is added again.
     for (const layerName of markerLayerNames) {
-      // A click on a vehicle opens its compact popup and shows the vehicle
-      // in the details view. A vehicle the canvas draws stands above the
-      // layers, so a click it takes opens that vehicle alone.
+      // A tap on a vehicle opens its callout and shows the vehicle in the
+      // details view. A vehicle the canvas draws stands above the layers,
+      // so a tap it takes opens that vehicle alone.
       map.on("click", layerName, (event) => {
         const hit = overlayHitAt({map, point: event.point})
 
@@ -757,34 +742,30 @@ export const VehicleMarkers = {
     }
   },
 
-  // Opens the compact popup of the vehicle of `feature`, a feature of a
-  // marker layer, and shows the vehicle in the details view.
+  // Selects the vehicle of `feature`, a feature of a marker layer: opens
+  // its callout in place of any other and shows it in the details view.
   openVehicle(feature) {
-    const map = this.map
     const {properties} = feature
     const lngLat = feature.geometry.coordinates
-    const onSelect = () => { this.selectVehicle({properties, lngLat}) }
+    const content = this.calloutOf({properties, lngLat})
 
-    const content = compactVehicleContent({properties, badgedLabels: this.badgedLabels, onSelect})
-    const popup = new this.maplibre.Popup({className: RIDER_POPUP_CLASS_NAME})
-      .setLngLat(lngLat)
-      .setDOMContent(content)
-
-    const riderPopup = {popup, markerId: properties.markerId}
-
-    popup.on("close", () => {
-      if (this.riderPopup === riderPopup) {
-        this.riderPopup = null
-      }
-
-      announceRiderPopupChange()
+    openCallout({
+      map: this.map,
+      maplibre: this.maplibre,
+      lngLat,
+      content,
+      item: {kind: DetailKind.vehicle, id: properties.markerId},
+      closeButton: false
     })
 
-    popup.addTo(map)
-    nameCloseButton({content, itemName: vehicleViewTitle(properties)})
-    this.riderPopup = riderPopup
     this.selectVehicle({properties, lngLat})
-    announceRiderPopupChange()
+  },
+
+  // The callout of the vehicle of `properties`, at `lngLat`, which a tap
+  // shows in the details view again.
+  calloutOf({properties, lngLat}) {
+    const onSelect = () => { this.selectVehicle({properties, lngLat}) }
+    return vehicleCallout({properties, badgedLabels: this.badgedLabels, onSelect})
   },
 
   // Adds the source with every marker and the layers in the page's theme.
@@ -1186,18 +1167,18 @@ export const VehicleMarkers = {
     this.decideMotion()
   },
 
-  // Shows the vehicle of `properties` in the details view, marks its popup,
-  // and moves the map so the vehicle, at `lngLat`, stands beside the sheet.
+  // Shows the vehicle of `properties` in the details view, and moves the
+  // map so the vehicle, at `lngLat`, stands beside the sheet.
   selectVehicle({properties, lngLat}) {
     this.viewMarkerId = properties.markerId
     this.viewText = JSON.stringify(properties)
+    this.viewLngLat = lngLat
     showDetail({
       kind: DetailKind.vehicle,
       id: properties.markerId,
       title: vehicleViewTitle(properties),
       content: vehicleViewContent(properties, this.statusLabels)
     })
-    this.markSelected()
 
     if (this.map !== null) {
       revealOnMap({map: this.map, lngLat})
@@ -1232,13 +1213,12 @@ export const VehicleMarkers = {
         title: vehicleViewTitle(properties),
         content: vehicleViewContent(properties, this.statusLabels)
       })
-    }
-  },
 
-  markSelected() {
-    if (this.riderPopup !== null) {
-      const isSelected = this.riderPopup.markerId === this.viewMarkerId
-      this.riderPopup.popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
+      updateCalloutOf({
+        kind: DetailKind.vehicle,
+        id: properties.markerId,
+        content: this.calloutOf({properties, lngLat: this.viewLngLat})
+      })
     }
   },
 

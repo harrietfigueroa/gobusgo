@@ -6,8 +6,7 @@ import {tripEndButtons} from "./trip_ends"
 import {FavoriteChangeKind, storedSettings} from "./stored_settings"
 import {FIT_EVENT_DATA, READY_EVENT_NAME} from "./basemap"
 import {COLLAPSE_EVENT_NAME, sheetInsets} from "./panel_sheet"
-import {AUTO_OPEN_ZOOM_MIN} from "./open_stop_budget"
-import {EMPTY_MESSAGE, dropIndex, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
+import {EMPTY_MESSAGE, dropIndex, FAVORITE_ZOOM_MIN, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
 import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 
@@ -16,7 +15,7 @@ import {pageEvents} from "./page_events"
 // shows each one's next arrivals whatever the page's filter keeps and
 // wherever its map is, with the next arrival at the first favorite in the
 // badge of the Favorites tab. Each favorite's stop is open for the server
-// while the panel shows it, as an open popup's stop is, so its arrivals
+// while the panel shows it, as the selected stop is, so its arrivals
 // come with the "stop-arrivals:arrivals" event, and count down between
 // events from each arrival's time.
 
@@ -48,7 +47,7 @@ export function favoriteCountMax() {
   }
 }
 
-// The text of a popup's button while every favorite is taken.
+// The text of the stop view's favorite button while every favorite is taken.
 export function favoritesFullText(countMax) {
   return `${countMax} favorite stops already; remove one to add this stop`
 }
@@ -447,7 +446,7 @@ export const FavoriteStop = {
     const camera = favoriteCamera({
       lngLat: [reply.lon, reply.lat],
       zoom: this.map.getZoom(),
-      zoomMin: AUTO_OPEN_ZOOM_MIN,
+      zoomMin: FAVORITE_ZOOM_MIN,
       insets: sheetInsets(),
       reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
     })

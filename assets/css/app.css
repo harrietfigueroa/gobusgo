@@ -57,8 +57,7 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
-  --popup-selected-text-color: #0f172a;
-  --popup-selected-focus-color: var(--popup-selected-text-color);
+  --map-callout-detail-color: #475569;
   --panel-sheet-filter-badge-color: #0f172a;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
@@ -123,7 +122,7 @@
   --theme-option-checked-fill: #14532d;
   --filter-bar-fill: #0f172a;
   --filter-suggestion-active-fill: #14532d;
-  --popup-selected-text-color: #052e16;
+  --map-callout-detail-color: #cbd5e1;
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
@@ -300,23 +299,58 @@
   font-weight: 600;
 }
 
-/* A popup's compact row of route numbers is a button that opens the
-   popup's item in the panel sheet's details view. A chip without a color
-   of its own counts the routes the row leaves out. */
-.route-chip-row {
-  flex-wrap: wrap;
-  gap: var(--route-chip-gap);
+/* A stop's or a vehicle's callout is one button that shows its item in the
+   panel sheet's details view: a bold title, then a muted line or a row per
+   arrival, the route's chip, its headsign, and its time. */
+.map-callout-button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
+  min-width: 160px;
   border: 0;
   background: none;
-  padding-left: 0;
+  padding: 0;
   text-align: left;
   cursor: pointer;
 }
 
-.route-chip-row:focus-visible {
+.map-callout-button:focus-visible {
   outline: 2px solid var(--close-button-focus-color);
   outline-offset: 2px;
+}
+
+.map-callout-title {
+  font-weight: 700;
+}
+
+.map-callout-detail {
+  color: var(--map-callout-detail-color);
+}
+
+.map-callout-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-callout-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-callout-headsign {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-callout-time {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .route-chip {
@@ -327,35 +361,6 @@
   color: var(--route-chip-count-color);
   padding: 0 0.4em;
   line-height: 1.5;
-}
-
-/* The note beside a popup's route numbers: a stop's next arrival or a
-   vehicle's lateness. */
-.route-chip-note {
-  margin-left: 2px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.route-chip-note[hidden] {
-  display: none;
-}
-
-/* The popup of the item the details view shows is filled with the surface
-   border's color, its tip with it, and its chips ringed to stand apart. */
-.popup-selected .maplibregl-popup-content,
-.popup-selected .maplibregl-popup-tip {
-  background-color: var(--surface-border-color);
-  color: var(--popup-selected-text-color);
-}
-
-.popup-selected .route-chip {
-  box-shadow: 0 0 0 1px var(--popup-selected-text-color);
-}
-
-/* A focus ring inside the selected popup stands on its fill. */
-.popup-selected :focus-visible {
-  outline-color: var(--popup-selected-focus-color);
 }
 
 /* A popup's alert line is one line of the popup's width, cut with an
@@ -1379,12 +1384,6 @@ a.inline-target {
     forced-color-adjust: none;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M2.5 2.5l9 9M11.5 2.5l-9 9'/%3E%3C/svg%3E")
       center / var(--close-button-mark-size) no-repeat;
-  }
-
-  .popup-selected .maplibregl-popup-content,
-  .popup-selected .maplibregl-popup-tip {
-    border-color: Highlight;
-    outline: 2px solid Highlight;
   }
 
   .panel-detail-action[aria-pressed="true"],

@@ -26,7 +26,7 @@ const DRAG_DISTANCE_PIXELS_MIN = 24
 // viewport's height.
 const DRAG_HEIGHT_FRACTION_MAX = 0.9
 // The room kept between an item the map shows for the details view and the
-// sheet's edge, which holds a compact popup beside the item.
+// sheet's edge, which holds the item's callout beside it.
 const REVEAL_MARGIN_PIXELS = 96
 
 // An element inside a panel dispatches this bubbling DOM event to have the

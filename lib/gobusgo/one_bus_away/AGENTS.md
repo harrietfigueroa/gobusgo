@@ -652,7 +652,7 @@ The rules of the registry:
 
 ## Arrival records and arrivals view
 
-The arrivals at a stop go through the flow of the other datasets, one fetch whole in one record like a route path. The arrival source fetches the stops that processes have open. The vehicle page opens one when a rider opens a stop's popup.
+The arrivals at a stop go through the flow of the other datasets, one fetch whole in one record like a route path. The arrival source fetches the stops that processes have open. The vehicle page opens one when a rider selects a stop on the map, and one for each of the rider's favorite stops.
 
 - **Stored form.** `Gobusgo.OneBusAway.ArrivalRecorder.record/2` stores one stop's response under `raw/oba/arrivals-and-departures-for-stop/dt=<date>/stop=<stop>/`, the stop written like a route in a route path's destination, with `stopId` in `meta`. `Gobusgo.OneBusAway.RawArrivalResponse` holds the stored form.
 - **Event.** The recorder publishes the "response stored" event to `oba.arrivals.response-stored` under the key `oba/arrivals-and-departures-for-stop/<stop id>`, with `data.stopId`. The response consumer processes it.

@@ -12,6 +12,9 @@ export const FAVORITE_EASE_MS = 500
 /** What the Favorites tab says while it holds no favorite. */
 export const EMPTY_MESSAGE = Object.freeze({headline: "No favorites yet", caption: "Open a stop and tap ☆ to keep it here."})
 
+/** The zoom the move to a chosen favorite reaches at least, at which a street's stops stand apart with room for their route chips. */
+export const FAVORITE_ZOOM_MIN = 16
+
 /**
  * The index a dragged entry drops at, with the pointer at `pointerY`: the
  * count of the other entries, whose vertical middles are `middles`, that

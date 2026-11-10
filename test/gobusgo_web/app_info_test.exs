@@ -62,8 +62,8 @@ defmodule GobusgoWeb.AppInfoTest do
         }
 
         assert data_use_text(cadences) =~
-                 "While a stop's popup or its view in the panel is open, the arrivals at that stop are read " <>
-                   "#{unquote(text)}, less often the more stops are open."
+                 "Arrivals are read only for the stop you select on the map and for your " <>
+                   "favorite stops, each #{unquote(text)}, less often the more stops are open."
       end
     end
 
