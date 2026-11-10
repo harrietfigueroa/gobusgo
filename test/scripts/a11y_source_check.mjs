@@ -145,7 +145,7 @@ for (const {source, kinds} of cases) {
 // Every finding of assets/js/, by file and kind, with the line it is on.
 const found = new Map()
 
-for (const fileName of readdirSync(SOURCE_DIRECTORY)) {
+for (const fileName of readdirSync(SOURCE_DIRECTORY, {recursive: true})) {
   if (fileName.endsWith(".js")) {
     const source = readFileSync(new URL(fileName, SOURCE_DIRECTORY), "utf8")
 

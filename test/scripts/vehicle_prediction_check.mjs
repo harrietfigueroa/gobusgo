@@ -15,7 +15,7 @@ import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {gunzipSync} from "node:zlib"
 import {AssertionError} from "../../assets/js/assert.js"
-import {distanceMeters} from "../../assets/js/marker_glide.js"
+import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
 import {
   CorrectionKind,
   DrawnKind,
@@ -30,10 +30,7 @@ import {
 
 const LON_ORIGIN = -122.33
 const LAT_ORIGIN = 47.6
-const EARTH_RADIUS_METERS = 6371008.8
-const DEGREES_PER_HALF_TURN = 180
-const METERS_PER_DEGREE_LAT = Math.PI * EARTH_RADIUS_METERS / DEGREES_PER_HALF_TURN
-const METERS_PER_DEGREE_LON = METERS_PER_DEGREE_LAT * Math.cos(LAT_ORIGIN * Math.PI / DEGREES_PER_HALF_TURN)
+const METERS_PER_DEGREE_LON = metersPerDegreeLongitude(LAT_ORIGIN)
 const SERVICE_DATE_MS = 1794038400000
 const MS_PER_SECOND = 1000
 const TOLERANCE_METERS = 1
@@ -44,7 +41,7 @@ const OTHER_TRIP_ID = "1_99"
 
 // A [lon, lat] position `east` and `north` meters from the origin.
 function at({east, north = 0}) {
-  return [LON_ORIGIN + east / METERS_PER_DEGREE_LON, LAT_ORIGIN + north / METERS_PER_DEGREE_LAT]
+  return [LON_ORIGIN + east / METERS_PER_DEGREE_LON, LAT_ORIGIN + north / METERS_PER_DEGREE]
 }
 
 function msAt(seconds) {

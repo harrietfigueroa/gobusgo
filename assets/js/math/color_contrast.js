@@ -3,7 +3,7 @@
 // https://www.w3.org/TR/WCAG22/#dfn-relative-luminance — checked 2026-11-09
 // https://www.w3.org/TR/WCAG22/#dfn-contrast-ratio — checked 2026-11-09
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "../assert.js"
 
 const HEX_DIGIT_COUNT = 6
 const HEX_RADIX = 16

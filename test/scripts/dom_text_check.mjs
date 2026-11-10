@@ -28,7 +28,7 @@ function isScript(name) {
   return name.endsWith(".js") || name.endsWith(".mjs")
 }
 
-const names = readdirSync(sourceDirectory).filter(isScript)
+const names = readdirSync(sourceDirectory, {recursive: true}).filter(isScript)
 ok(names.length > 0, "assets/js holds no script to read")
 
 for (const name of names) {

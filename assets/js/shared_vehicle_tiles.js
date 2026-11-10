@@ -4,10 +4,10 @@
 // The tiles are Web Mercator tiles of the index's zoom, numbered as
 // `Gobusgo.Gbfs.VehicleTileSet` numbers them.
 
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, radians} from "./math/angles.js"
+import {clamp} from "./math/interpolation.js"
 import {tileKey} from "./shared_vehicle_format.js"
 
-const DEGREES_PER_TURN = 360
-const HALF_TURN_DEGREES = 180
 const HALVING_DIVISOR = 2
 const TILE_BASE = 2
 
@@ -17,24 +17,15 @@ export const VIEW_TILE_COUNT_MAX = 64
 /** The kinds of the tiles a view needs. */
 export const ViewKind = Object.freeze({tiles: "tiles", tooMany: "tooMany"})
 
-function clampIndex({index, tileCount}) {
-  if (index < 0) {
-    return 0
-  } else if (index >= tileCount) {
-    return tileCount - 1
-  } else {
-    return index
-  }
-}
-
 /** The tile of zoom `zoom` that holds the position `lat`, `lon`. */
 export function tileOf({lat, lon, zoom}) {
   const tileCount = TILE_BASE ** zoom
-  const latRadians = lat * Math.PI / HALF_TURN_DEGREES
+  const latRadians = radians(lat)
   const mercator = Math.log(Math.tan(latRadians) + 1 / Math.cos(latRadians))
-  const x = Math.floor((lon + HALF_TURN_DEGREES) / DEGREES_PER_TURN * tileCount)
+  const x = Math.floor((lon + DEGREES_PER_HALF_TURN) / DEGREES_PER_TURN * tileCount)
   const y = Math.floor((1 - mercator / Math.PI) / HALVING_DIVISOR * tileCount)
-  return {x: clampIndex({index: x, tileCount}), y: clampIndex({index: y, tileCount})}
+  const indexMax = tileCount - 1
+  return {x: clamp({value: x, min: 0, max: indexMax}), y: clamp({value: y, min: 0, max: indexMax})}
 }
 
 /**
