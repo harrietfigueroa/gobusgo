@@ -1,5 +1,5 @@
-// Checks where `assets/js/vehicle_prediction.js` draws a vehicle between
-// fetches. Cases written out by hand cover a moving bus, a dwell, a trip's
+// Checks where the vehicle prediction this script imports draws a vehicle
+// between fetches. Cases written out by hand cover a moving bus, a dwell, a trip's
 // end, a layover, a loop route, a stale report, a missing path, a report off
 // its path, a path of straight lines, each correction, and invalid inputs. A
 // replay of real King County Metro fetches stored on 2026-11-08 then
