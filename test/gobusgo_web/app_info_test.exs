@@ -19,8 +19,129 @@ defmodule GobusgoWeb.AppInfoTest do
   defp data_use_text(cadences), do: cadences |> AppInfo.data_use() |> Enum.join(" ")
 
   describe "about/0" do
-    test "says what the map shows" do
-      assert AppInfo.about() =~ "Puget Sound"
+    test "says what the map shows, as a headline and a caption" do
+      assert AppInfo.about() == %{
+               headline: "A live transit map of Puget Sound",
+               caption: "Where each vehicle is, the routes it runs on, and the stops it serves"
+             }
+    end
+  end
+
+  describe "summary/1" do
+    for {topic, headline, caption} <- [
+          {:theme, "Theme", "Match system follows your device's light or dark setting"},
+          {:offline, "Offline",
+           "The map, saved schedules, favorites, and trip planning keep working"},
+          {:offline_schedules, "Save schedules offline",
+           "Plan trips and see scheduled times without signal"},
+          {:show_direction, "Show my direction",
+           "Your location dot points the way you face or travel"},
+          {:disclaimer, "An independent project",
+           "Check with your agency before you rely on a position or a time."},
+          {:donation, "Free and independent",
+           "Donations pay for its server and storage, and buy no feature or priority"},
+          {:location, "Your location stays in your browser",
+           "Gobusgo's server never receives it"},
+          {:favorite_stop, "Favorites stay in your browser",
+           "The server learns a stop only to fetch its arrivals"},
+          {:credits, "Data from the region's transit agencies",
+           "Served by OneBusAway · map data © OpenStreetMap contributors"}
+        ] do
+      test "gives #{topic} its headline and caption" do
+        assert AppInfo.summary(unquote(topic)) == %{
+                 headline: unquote(headline),
+                 caption: unquote(caption)
+               }
+      end
+    end
+  end
+
+  describe "data_use_facts/1" do
+    test "states each cadence in a headline, with its caption" do
+      assert AppInfo.data_use_facts(@cadences) == [
+               %{
+                 headline: "Live vehicles every 5 seconds",
+                 caption: "From OneBusAway, while a map is open"
+               },
+               %{
+                 headline: "Arrivals every 30 seconds to 5 minutes",
+                 caption: "For the stops you open and your favorites, faster when fewer are open"
+               },
+               %{
+                 headline: "Routes and stops once a day",
+                 caption: "Each route at a minute of its own"
+               },
+               %{
+                 headline: "Service alerts with each read",
+                 caption: "For the trips running now and the stops that are open"
+               }
+             ]
+    end
+
+    test "states other cadences in the same words as data_use/1" do
+      cadences = %{
+        vehicle_interval_ms: 10_000,
+        route_period_minutes: 360,
+        arrival_refresh_age_ms_min: 1_000,
+        arrival_refresh_age_ms_max: 60_000
+      }
+
+      [vehicle_fact, arrival_fact, route_fact, _alert_fact] = AppInfo.data_use_facts(cadences)
+
+      assert {vehicle_fact.headline, arrival_fact.headline, route_fact.headline} ==
+               {"Live vehicles every 10 seconds", "Arrivals every second to a minute",
+                "Routes and stops every 6 hours"}
+    end
+
+    test "refuses a longest arrival age that is not over the shortest" do
+      cadences = %{@cadences | arrival_refresh_age_ms_max: 30_000}
+
+      assert_raise Gobusgo.Assert.AssertionError, fn -> AppInfo.data_use_facts(cadences) end
+    end
+  end
+
+  describe "shared_vehicles_summary/1" do
+    test "states the interval in its headline" do
+      assert AppInfo.shared_vehicles_summary(60_000) == %{
+               headline: "Scooters and bikes every 60 seconds",
+               caption: "Only while a page shows them"
+             }
+    end
+  end
+
+  describe "recorded_summary/1" do
+    for {day_count, caption} <- [
+          {1, "No address, cookie, or identifier of you, kept a day"},
+          {3, "No address, cookie, or identifier of you, kept 3 days"}
+        ] do
+      test "states a retention of #{day_count} days in its caption" do
+        assert AppInfo.recorded_summary(unquote(day_count)) == %{
+                 headline: "One anonymous record per page visit",
+                 caption: unquote(caption)
+               }
+      end
+    end
+
+    test "refuses a retention of no days" do
+      assert_raise Gobusgo.Assert.AssertionError, fn -> AppInfo.recorded_summary(0) end
+    end
+  end
+
+  describe "license_summary/0" do
+    test "names the license in its headline and the copyright line in its caption" do
+      assert AppInfo.license_summary() == %{
+               headline: "Open source under the MIT License",
+               caption: "Copyright (c) 2026 Harriet Waters"
+             }
+    end
+  end
+
+  describe "offline_basemap_summary/1" do
+    test "states the size in whole megabytes in its caption" do
+      assert AppInfo.offline_basemap_summary(%{bytes: 34_355_445}) == %{
+               headline: "Save the map offline",
+               caption: "Keeps streets and places when you lose signal · 34 MB"
+             }
     end
   end
 
@@ -308,7 +429,7 @@ defmodule GobusgoWeb.AppInfoTest do
     test "says the map draws its background offline only from a saved map" do
       %{works: works} = AppInfo.offline()
 
-      assert Enum.any?(works, &(&1 =~ "Save the map for offline use"))
+      assert Enum.any?(works, &(&1 =~ "With Save the map offline on"))
     end
 
     test "says the vehicles and the arrivals come from the saved schedules" do

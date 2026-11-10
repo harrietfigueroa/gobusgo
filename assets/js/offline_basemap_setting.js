@@ -1,4 +1,4 @@
-// The Save the map for offline use setting of the Settings tab. The
+// The Save the map offline setting of the Settings tab. The
 // checkbox is the setting, kept through the stored settings module and off
 // by default. While it is on, the basemap's offline extract, whose address
 // the element carries, is saved whole in its own Cache API store, apart

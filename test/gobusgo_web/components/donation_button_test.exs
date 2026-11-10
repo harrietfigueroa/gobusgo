@@ -112,11 +112,25 @@ defmodule GobusgoWeb.DonationButtonTest do
   end
 
   describe "the donation section of the About group" do
-    test "says what donations fund" do
+    test "says what donations fund behind a closed disclosure" do
       set_donation_url(@donation_url)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert view |> element(@section) |> render() =~ AppInfo.donation()
+      assert has_element?(view, @section <> " details#app-info-donation-more:not([open])")
+
+      assert view |> element(@section <> " #app-info-donation-more") |> render() =~
+               AppInfo.donation()
+    end
+
+    test "heads the section with its headline and caption" do
+      set_donation_url(@donation_url)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> element(@section <> " > h3.message-headline") |> render() =~
+               ">Free and independent<"
+
+      assert view |> element(@section <> " > p.message-caption") |> render() =~
+               ">Donations pay for its server and storage, and buy no feature or priority<"
     end
 
     test "links the configured address in a new tab" do

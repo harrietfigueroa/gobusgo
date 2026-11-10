@@ -16,6 +16,9 @@ defmodule GobusgoWeb.AppInfoPanel do
   licenses, and the commit the application was built from where the build
   names one, from `GobusgoWeb.AppInfo` and the statuses of
   `GobusgoWeb.VehicleMarkers`. It sends the server no event.
+
+  Each setting and each fact is a bold headline over a muted caption, and
+  the full sentences of a topic stand behind a disclosure under it.
   """
 
   use Phoenix.Component
@@ -29,6 +32,7 @@ defmodule GobusgoWeb.AppInfoPanel do
   alias GobusgoWeb.AppInfo
   alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
+  alias GobusgoWeb.Message
   alias GobusgoWeb.VehicleMarkers
 
   # A route-colored status has no one color, so its swatch is a sample of
@@ -68,13 +72,15 @@ defmodule GobusgoWeb.AppInfoPanel do
           phx-hook="OfflineSchedules"
           phx-update="ignore"
         >
-          <h3 class="font-semibold">Offline schedules</h3>
-          <p>{AppInfo.offline_schedules()}</p>
-          <label class="inline-target flex items-center gap-2">
-            <input id="offline-schedules-enabled" type="checkbox" checked />
-            Save schedules for offline use
-          </label>
+          <.setting
+            input_id="offline-schedules-enabled"
+            message={AppInfo.summary(:offline_schedules)}
+            checked
+          />
           <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
+          <.more id="app-info-offline-schedules-more" summary="How schedules are saved">
+            <p>{AppInfo.offline_schedules()}</p>
+          </.more>
         </section>
         <.offline_basemap :if={@offline_archive != nil} offline_archive={@offline_archive} />
         <section
@@ -83,31 +89,40 @@ defmodule GobusgoWeb.AppInfoPanel do
           phx-hook="ShowDirection"
           phx-update="ignore"
         >
-          <h3 class="font-semibold">Your direction</h3>
-          <p>{AppInfo.show_direction()}</p>
-          <label class="inline-target flex items-center gap-2">
-            <input id="show-direction-enabled" type="checkbox" checked /> Show my direction
-          </label>
+          <.setting
+            input_id="show-direction-enabled"
+            message={AppInfo.summary(:show_direction)}
+            checked
+          />
+          <.more id="app-info-show-direction-more" summary="How your direction is found">
+            <p>{AppInfo.show_direction()}</p>
+          </.more>
         </section>
       </section>
       <section id="app-info-about" class="flex flex-col gap-5" aria-labelledby="app-info-about-title">
         <h2 id="app-info-about-title" class="text-base font-semibold">About</h2>
-        <p>{AppInfo.about()}</p>
+        <p id="app-info-what"><Message.message {AppInfo.about()} /></p>
         <section id="app-info-disclaimer" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Disclaimer</h3>
-          <p>{AppInfo.disclaimer()}</p>
+          <.heading message={AppInfo.summary(:disclaimer)} />
+          <.more id="app-info-disclaimer-more" summary="Full disclaimer">
+            <p>{AppInfo.disclaimer()}</p>
+          </.more>
         </section>
         <DonationButton.section />
         <.legend />
         <.data_use />
         <.shared_vehicles />
         <section id="app-info-location" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Your location</h3>
-          <p>{AppInfo.location()}</p>
+          <.heading message={AppInfo.summary(:location)} />
+          <.more id="app-info-location-more" summary="How your location is used">
+            <p>{AppInfo.location()}</p>
+          </.more>
         </section>
         <section id="app-info-favorite-stop" class="flex flex-col gap-2">
-          <h3 class="font-semibold">Your favorite stops</h3>
-          <p>{AppInfo.favorite_stop()}</p>
+          <.heading message={AppInfo.summary(:favorite_stop)} />
+          <.more id="app-info-favorite-stop-more" summary="How favorites are kept">
+            <p>{AppInfo.favorite_stop()}</p>
+          </.more>
         </section>
         <.recorded />
         <.credits agencies={@agencies} />
@@ -125,16 +140,18 @@ defmodule GobusgoWeb.AppInfoPanel do
 
     ~H"""
     <section id={@section_id} class="flex flex-col gap-2" tabindex="-1">
-      <h3 class="font-semibold">Offline</h3>
-      <p>Without a connection, the page shows what it already has.</p>
-      <h4 class="font-medium">What works offline</h4>
-      <ul id="app-info-offline-works" class="list-disc pl-5">
-        <li :for={text <- @offline.works}>{text}</li>
-      </ul>
-      <h4 class="font-medium">What needs a connection</h4>
-      <ul id="app-info-offline-needs-connection" class="list-disc pl-5">
-        <li :for={text <- @offline.needs_connection}>{text}</li>
-      </ul>
+      <.heading message={AppInfo.summary(:offline)} />
+      <.more id="app-info-offline-more" summary="What works and what needs a connection">
+        <p>Without a connection, the page shows what it already has.</p>
+        <h4 class="font-medium">What works offline</h4>
+        <ul id="app-info-offline-works" class="list-disc pl-5">
+          <li :for={text <- @offline.works}>{text}</li>
+        </ul>
+        <h4 class="font-medium">What needs a connection</h4>
+        <ul id="app-info-offline-needs-connection" class="list-disc pl-5">
+          <li :for={text <- @offline.needs_connection}>{text}</li>
+        </ul>
+      </.more>
     </section>
     """
   end
@@ -150,12 +167,15 @@ defmodule GobusgoWeb.AppInfoPanel do
       phx-update="ignore"
       data-archive-url={@offline_archive.url}
     >
-      <h3 class="font-semibold">Offline map</h3>
-      <p>{AppInfo.offline_basemap(@offline_archive)}</p>
-      <label class="inline-target flex items-center gap-2">
-        <input id="offline-basemap-enabled" type="checkbox" /> Save the map for offline use
-      </label>
+      <.setting
+        input_id="offline-basemap-enabled"
+        message={AppInfo.offline_basemap_summary(@offline_archive)}
+        checked={false}
+      />
       <p id="offline-basemap-status" data-offline-status aria-live="polite"></p>
+      <.more id="app-info-offline-basemap-more" summary="How the map is saved">
+        <p>{AppInfo.offline_basemap(@offline_archive)}</p>
+      </.more>
     </section>
     """
   end
@@ -167,8 +187,7 @@ defmodule GobusgoWeb.AppInfoPanel do
 
     ~H"""
     <section id="app-info-theme" class="flex flex-col gap-2" phx-hook="ColorTheme" phx-update="ignore">
-      <h3 class="font-semibold">Theme</h3>
-      <p>{AppInfo.theme()}</p>
+      <.heading message={AppInfo.summary(:theme)} />
       <fieldset class="theme-options">
         <legend class="sr-only">Theme</legend>
         <label :for={option <- @options} class="theme-option">
@@ -183,6 +202,9 @@ defmodule GobusgoWeb.AppInfoPanel do
         </label>
       </fieldset>
       <p id="theme-setting-status" data-theme-status aria-live="polite"></p>
+      <.more id="app-info-theme-more" summary="How the theme is kept">
+        <p>{AppInfo.theme()}</p>
+      </.more>
     </section>
     """
   end
@@ -200,14 +222,14 @@ defmodule GobusgoWeb.AppInfoPanel do
       phx-update="ignore"
       hidden
     >
-      <h3 class="font-semibold">Install app</h3>
+      <h3 class="message-headline">Install Gobusgo</h3>
       <div
         :for={offer <- @offers}
         class="flex flex-col items-start gap-2"
         data-install-kind={offer.kind}
         hidden
       >
-        <p>{offer.text}</p>
+        <p class="message-caption">{offer.caption}</p>
         <button
           :if={offer.kind == "prompt"}
           type="button"
@@ -312,35 +334,47 @@ defmodule GobusgoWeb.AppInfoPanel do
     {:proportional, %{interval_ms_min: age_ms_min, interval_ms_max: age_ms_max}} =
       Sources.arrival_refresh_policy()
 
+    cadences = %{
+      vehicle_interval_ms: Sources.vehicle_interval_ms_min(),
+      route_period_minutes: RouteSchedule.period_minutes(),
+      arrival_refresh_age_ms_min: age_ms_min,
+      arrival_refresh_age_ms_max: age_ms_max
+    }
+
     assigns =
       assign(assigns,
-        paragraphs:
-          AppInfo.data_use(%{
-            vehicle_interval_ms: Sources.vehicle_interval_ms_min(),
-            route_period_minutes: RouteSchedule.period_minutes(),
-            arrival_refresh_age_ms_min: age_ms_min,
-            arrival_refresh_age_ms_max: age_ms_max
-          })
+        facts: AppInfo.data_use_facts(cadences),
+        paragraphs: AppInfo.data_use(cadences)
       )
 
     ~H"""
-    <section id="app-info-data-use" class="flex flex-col gap-2">
-      <h3 class="font-semibold">How OneBusAway data is used</h3>
-      <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+    <section
+      id="app-info-data-use"
+      class="flex flex-col gap-2"
+      aria-labelledby="app-info-data-use-title"
+    >
+      <h3 id="app-info-data-use-title" class="sr-only">How OneBusAway data is used</h3>
+      <p :for={fact <- @facts} class="app-info-fact"><Message.message {fact} /></p>
+      <.more id="app-info-data-use-more" summary="How OneBusAway data is used">
+        <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+      </.more>
     </section>
     """
   end
 
   defp shared_vehicles(assigns) do
+    facts = shared_vehicle_facts()
+
     assigns =
       assign(assigns,
         systems: Systems.all(),
-        paragraphs: AppInfo.shared_vehicles(shared_vehicle_facts())
+        summary: AppInfo.shared_vehicles_summary(facts.interval_ms),
+        paragraphs: AppInfo.shared_vehicles(facts)
       )
 
     ~H"""
     <section id="app-info-shared-vehicles" class="flex flex-col gap-2">
-      <h3 class="font-semibold">Shared scooters and bikes</h3>
+      <.heading message={@summary} />
       <p :for={system <- @systems} id={"app-info-shared-vehicles-#{system.id}"}>
         Shared scooter and bike data is provided by {system.operator_name}, under {system.operator_name}'s <a
           href={system.terms_url}
@@ -348,7 +382,9 @@ defmodule GobusgoWeb.AppInfoPanel do
           rel="noopener"
         >{system.terms_name}</a>.
       </p>
-      <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+      <.more id="app-info-shared-vehicles-more" summary="How scooter and bike data is used">
+        <p :for={paragraph <- @paragraphs}>{paragraph}</p>
+      </.more>
     </section>
     """
   end
@@ -372,26 +408,31 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   defp recorded(assigns) do
+    day_count = RetentionPolicy.usage_day_count()
+
     assigns =
       assign(assigns,
+        summary: AppInfo.recorded_summary(day_count),
         fields: AppInfo.recorded(),
-        retention: AppInfo.recorded_retention(RetentionPolicy.usage_day_count()),
+        retention: AppInfo.recorded_retention(day_count),
         session_cookie: AppInfo.session_cookie(GobusgoWeb.Endpoint.session_cookie_age_seconds())
       )
 
     ~H"""
     <section id="app-info-recorded" class="flex flex-col gap-2">
-      <h3 class="font-semibold">What is recorded</h3>
-      <p>
-        To count visits, Gobusgo stores one record each time a page disconnects. A record holds
-        the following and nothing else:
-      </p>
-      <ul class="list-disc pl-5">
-        <li :for={field <- @fields} id={"app-info-recorded-#{field.field}"}>{field.text}</li>
-      </ul>
-      <p>{AppInfo.recorded_never()}</p>
-      <p id="app-info-recorded-retention">{@retention}</p>
-      <p id="app-info-session-cookie">{@session_cookie}</p>
+      <.heading message={@summary} />
+      <.more id="app-info-recorded-more" summary="What a record holds, and the cookie">
+        <p>
+          To count visits, Gobusgo stores one record each time a page disconnects. A record holds
+          the following and nothing else:
+        </p>
+        <ul class="list-disc pl-5">
+          <li :for={field <- @fields} id={"app-info-recorded-#{field.field}"}>{field.text}</li>
+        </ul>
+        <p>{AppInfo.recorded_never()}</p>
+        <p id="app-info-recorded-retention">{@retention}</p>
+        <p id="app-info-session-cookie">{@session_cookie}</p>
+      </.more>
     </section>
     """
   end
@@ -403,16 +444,18 @@ defmodule GobusgoWeb.AppInfoPanel do
 
     ~H"""
     <section id="app-info-credits" class="flex flex-col gap-2">
-      <h3 class="font-semibold">Credits</h3>
-      <p>
-        Transit data is provided on an "as is" basis by {agencies_text(@agencies)}, under the
-        <a href={@terms.url} class="underline" rel="noopener">{@terms.name}</a>
-        of Sound Transit's Open Transit Data program, and served by OneBusAway.
-      </p>
-      <p>
-        Map data © OpenStreetMap contributors, under the Open Database License, from a
-        Protomaps build.
-      </p>
+      <.heading message={AppInfo.summary(:credits)} />
+      <.more id="app-info-credits-more" summary="Credits and data terms">
+        <p>
+          Transit data is provided on an "as is" basis by {agencies_text(@agencies)}, under the
+          <a href={@terms.url} class="underline" rel="noopener">{@terms.name}</a>
+          of Sound Transit's Open Transit Data program, and served by OneBusAway.
+        </p>
+        <p>
+          Map data © OpenStreetMap contributors, under the Open Database License, from a
+          Protomaps build.
+        </p>
+      </.more>
     </section>
     """
   end
@@ -429,15 +472,17 @@ defmodule GobusgoWeb.AppInfoPanel do
 
     ~H"""
     <section id="app-info-licenses" class="flex flex-col gap-2">
-      <h3 class="font-semibold">License</h3>
-      <p>Gobusgo is offered under the {@app_license.name}. {@app_license.copyright}.</p>
-      <p :if={@revision} id="app-info-revision">
-        This version is built from commit <span class="break-all font-mono">{@revision}</span>.
-      </p>
-      <p>The page also uses:</p>
-      <ul class="list-disc pl-5">
-        <li :for={component <- @components}>{component.name}: {component.license}</li>
-      </ul>
+      <.heading message={AppInfo.license_summary()} />
+      <.more id="app-info-licenses-more" summary="Licenses">
+        <p>Gobusgo is offered under the {@app_license.name}. {@app_license.copyright}.</p>
+        <p :if={@revision} id="app-info-revision">
+          This version is built from commit <span class="break-all font-mono">{@revision}</span>.
+        </p>
+        <p>The page also uses:</p>
+        <ul class="list-disc pl-5">
+          <li :for={component <- @components}>{component.name}: {component.license}</li>
+        </ul>
+      </.more>
     </section>
     """
   end
@@ -446,5 +491,53 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   defp agencies_text(agencies) do
     "the following transit agencies: " <> Enum.map_join(agencies, ", ", & &1.name)
+  end
+
+  # A section's headline, its heading, over its caption.
+  attr :message, :map, required: true
+
+  defp heading(assigns) do
+    ~H"""
+    <h3 class="message-headline">{@message.headline}</h3>
+    <p class="message-caption">{@message.caption}</p>
+    """
+  end
+
+  # A setting's checkbox, named by the headline and described by the
+  # caption. The browser checks the stored setting, so the server renders
+  # the default.
+  attr :input_id, :string, required: true
+  attr :message, :map, required: true
+  attr :checked, :boolean, required: true
+
+  defp setting(assigns) do
+    ~H"""
+    <div class="app-info-setting">
+      <div class="flex min-w-0 flex-col">
+        <label for={@input_id} class="message-headline inline-target">{@message.headline}</label>
+        <p id={@input_id <> "-caption"} class="message-caption">{@message.caption}</p>
+      </div>
+      <input
+        id={@input_id}
+        type="checkbox"
+        checked={@checked}
+        aria-describedby={@input_id <> "-caption"}
+      />
+    </div>
+    """
+  end
+
+  # The full sentences of a topic, behind a disclosure.
+  attr :id, :string, required: true
+  attr :summary, :string, required: true
+  slot :inner_block, required: true
+
+  defp more(assigns) do
+    ~H"""
+    <details id={@id} class="app-info-more">
+      <summary class="inline-target cursor-pointer">{@summary}</summary>
+      <div class="flex flex-col gap-2 pt-2">{render_slot(@inner_block)}</div>
+    </details>
+    """
   end
 end

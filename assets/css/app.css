@@ -598,6 +598,28 @@ a.inline-target {
   font-size: 0.8125rem;
 }
 
+/* A setting of the info panel: its headline, which names the checkbox, and
+   its caption on the left, and the checkbox on the right. */
+.app-info-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-info-setting input[type="checkbox"] {
+  flex: none;
+  width: var(--inline-target-size);
+  height: var(--inline-target-size);
+}
+
+/* The disclosure that holds a topic's full sentences under its caption. */
+.app-info-more > summary {
+  color: var(--message-caption-color);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+}
+
 /* What needs a connection is hidden while the page is offline, and a note
    saying so is shown in its place. The badges of the Alerts and Favorites
    tabs and the alert lines of the details view are hidden with it. */

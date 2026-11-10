@@ -97,6 +97,10 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     view |> element(@panel) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
   end
 
+  defp text(view, selector) do
+    view |> element(selector) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+  end
+
   defp attribute(view, selector, name) do
     [value] =
       view
@@ -204,7 +208,132 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     test "holds what the app is under the About heading" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert view |> element("#app-info-about") |> render() =~ AppInfo.about()
+      assert text(view, "#app-info-about > #app-info-what") ==
+               "A live transit map of Puget Sound. " <>
+                 "Where each vehicle is, the routes it runs on, and the stops it serves"
+    end
+  end
+
+  describe "the info panel's headlines and captions" do
+    for {section, headline, caption} <- [
+          {"app-info-install", "Install Gobusgo", nil},
+          {"app-info-theme", "Theme", "Match system follows your device's light or dark setting"},
+          {"app-info-offline", "Offline",
+           "The map, saved schedules, favorites, and trip planning keep working"},
+          {"app-info-disclaimer", "An independent project",
+           "Check with your agency before you rely on a position or a time."},
+          {"app-info-shared-vehicles", "Scooters and bikes every 60 seconds",
+           "Only while a page shows them"},
+          {"app-info-location", "Your location stays in your browser",
+           "Gobusgo's server never receives it"},
+          {"app-info-favorite-stop", "Favorites stay in your browser",
+           "The server learns a stop only to fetch its arrivals"},
+          {"app-info-recorded", "One anonymous record per page visit",
+           "No address, cookie, or identifier of you, kept 3 days"},
+          {"app-info-credits", "Data from the region's transit agencies",
+           "Served by OneBusAway · map data © OpenStreetMap contributors"},
+          {"app-info-licenses", "Open source under the MIT License",
+           "Copyright (c) 2026 Harriet Waters"}
+        ] do
+      test "heads #{section} with its headline and caption" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        selector = "#" <> unquote(section)
+
+        assert text(view, selector <> " > h3.message-headline") == unquote(headline)
+
+        if unquote(caption) do
+          assert text(view, selector <> " > p.message-caption") == unquote(caption)
+        end
+      end
+    end
+
+    for {input, headline, caption} <- [
+          {"offline-schedules-enabled", "Save schedules offline",
+           "Plan trips and see scheduled times without signal"},
+          {"show-direction-enabled", "Show my direction",
+           "Your location dot points the way you face or travel"}
+        ] do
+      test "names the #{input} checkbox by its headline and describes it by its caption" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        input = unquote(input)
+
+        assert text(view, ~s(label[for="#{input}"])) == unquote(headline)
+        assert attribute(view, "#" <> input, "aria-describedby") == input <> "-caption"
+        assert text(view, "#" <> input <> "-caption") == unquote(caption)
+      end
+    end
+
+    test "states the OneBusAway cadences as facts, each a headline and a caption" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      facts =
+        view
+        |> element("#app-info-data-use")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("p.app-info-fact")
+        |> Enum.map(&LazyHTML.text/1)
+
+      assert facts == [
+               "Live vehicles every 10 seconds. From OneBusAway, while a map is open",
+               "Arrivals every 30 seconds to 5 minutes. " <>
+                 "For the stops you open and your favorites, faster when fewer are open",
+               "Routes and stops once a day. Each route at a minute of its own",
+               "Service alerts with each read. For the trips running now and the stops that are open"
+             ]
+    end
+
+    for {disclosure, summary} <- [
+          {"app-info-theme-more", "How the theme is kept"},
+          {"app-info-offline-more", "What works and what needs a connection"},
+          {"app-info-offline-schedules-more", "How schedules are saved"},
+          {"app-info-show-direction-more", "How your direction is found"},
+          {"app-info-disclaimer-more", "Full disclaimer"},
+          {"app-info-data-use-more", "How OneBusAway data is used"},
+          {"app-info-shared-vehicles-more", "How scooter and bike data is used"},
+          {"app-info-location-more", "How your location is used"},
+          {"app-info-favorite-stop-more", "How favorites are kept"},
+          {"app-info-recorded-more", "What a record holds, and the cookie"},
+          {"app-info-credits-more", "Credits and data terms"},
+          {"app-info-licenses-more", "Licenses"}
+        ] do
+      test "holds the full sentences of #{disclosure} behind a closed disclosure" do
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        selector = "#" <> unquote(disclosure)
+
+        assert has_element?(view, "details" <> selector <> ":not([open])")
+        assert text(view, selector <> " > summary") == unquote(summary)
+      end
+    end
+
+    test "holds the transit data terms and the credits behind their disclosure" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      %{url: url} = AppInfo.terms()
+
+      assert has_element?(view, ~s(#app-info-credits-more a[href="#{url}"]))
+      assert text(view, "#app-info-credits-more") =~ "OpenStreetMap contributors"
+    end
+
+    test "holds every field of the usage record, what it never holds, and the cookie behind their disclosure" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      disclosure = text(view, "#app-info-recorded-more")
+
+      for %{text: field_text} <- AppInfo.recorded() do
+        assert disclosure =~ field_text
+      end
+
+      assert disclosure =~ AppInfo.recorded_never()
+      assert has_element?(view, "#app-info-recorded-more #app-info-session-cookie")
+    end
+
+    test "holds every license behind its disclosure" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      disclosure = text(view, "#app-info-licenses-more")
+
+      for %{name: name, license: license} <- AppInfo.components() do
+        assert disclosure =~ name
+        assert disclosure =~ license
+      end
     end
   end
 
@@ -243,12 +372,6 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
 
       refute has_element?(view, @panel <> " [phx-click]")
       refute has_element?(view, @panel <> " [phx-submit]")
-    end
-
-    test "says what the app is" do
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      assert panel_text(view) =~ AppInfo.about()
     end
 
     test "carries the disclaimer in a section of its own" do
@@ -490,7 +613,10 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
         |> LazyHTML.text()
 
       assert text =~ AppInfo.offline_basemap(%{bytes: @offline_bytes})
-      assert text =~ "Save the map for offline use"
+      assert text(view, ~s(label[for="offline-basemap-enabled"])) == "Save the map offline"
+
+      assert text(view, "#offline-basemap-enabled-caption") ==
+               "Keeps streets and places when you lose signal · 34 MB"
     end
 
     test "offers the offline map setting unchecked, the default", %{tmp_dir: tmp_dir} do
@@ -557,7 +683,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
-    for %{kind: kind, text: text} <- AppInfo.install_offers() do
+    for %{kind: kind, caption: caption} <- AppInfo.install_offers() do
       test "holds the #{kind} install offer, hidden until the browser picks it" do
         {:ok, view, _html} = live(build_conn(), "/vehicles")
 
@@ -570,7 +696,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
           |> LazyHTML.from_fragment()
           |> LazyHTML.text()
 
-        assert offer =~ unquote(text)
+        assert offer =~ unquote(caption)
       end
     end
 
