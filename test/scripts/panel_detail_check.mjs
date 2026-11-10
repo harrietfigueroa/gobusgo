@@ -1,13 +1,13 @@
 // Checks what the details view of the panel sheet decides as pure functions
 // of values written out by hand: the next-arrival text the Favorites badge
-// shows, which arrival lines carry the live mark, and how far the map moves
+// shows, which arrival rows carry the live dot, and how far the map moves
 // to bring the view's item out from under the sheet. Run it with
 // `node test/scripts/panel_detail_check.mjs`; it exits
 // non-zero on the first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
 import {revealOffset} from "../../assets/js/reveal_offset.js"
-import {arrivalLines, isNextArrivalLive, nextArrivalText, nextArrivalTimeText} from "../../assets/js/stop_arrivals.js"
+import {arrivalRows, isNextArrivalLive, nextArrivalText, nextArrivalTimeText} from "../../assets/js/stop_arrivals.js"
 
 const arrival = {route: "E", headsign: "Aurora Village", minutes: 2, predicted: true}
 
@@ -31,48 +31,47 @@ const liveCases = [
   {
     name: "a predicted and a scheduled arrival",
     shown: {status: "arrivals", age_minutes: 0, arrivals: [arrival, scheduledArrival]},
-    lines: [
-      {text: "Arrivals", isLive: false},
-      {text: "E to Aurora Village: 2 min", isLive: true},
-      {text: "5 to Shoreline: 7 min (scheduled)", isLive: false}
-    ],
+    live: [true, false],
     isNextLive: true
   },
   {
     name: "a scheduled arrival first",
     shown: {status: "arrivals", age_minutes: 2, arrivals: [scheduledArrival, arrival]},
-    lines: [
-      {text: "Arrivals (as of 2 min ago)", isLive: false},
-      {text: "5 to Shoreline: 7 min (scheduled)", isLive: false},
-      {text: "E to Aurora Village: 2 min", isLive: true}
-    ],
+    live: [false, true],
     isNextLive: false
   },
   {
     name: "the saved schedules' arrivals",
     shown: {status: "arrivals", age_minutes: 0, scheduled: true, arrivals: [scheduledArrival]},
-    lines: [
-      {text: "Scheduled arrivals", isLive: false},
-      {text: "5 to Shoreline: 7 min (scheduled)", isLive: false}
-    ],
+    live: [false],
     isNextLive: false
   },
   {
     name: "no arrival soon",
     shown: {status: "arrivals", age_minutes: 0, arrivals: []},
-    lines: [{text: "Arrivals", isLive: false}, {text: "No arrivals soon", isLive: false}],
+    live: [],
     isNextLive: false
   },
   {
     name: "waiting",
     shown: {status: "waiting"},
-    lines: [{text: "Waiting for this stop's arrivals", isLive: false}],
+    live: [],
     isNextLive: false
   }
 ]
 
-for (const {name, shown, lines, isNextLive} of liveCases) {
-  deepStrictEqual(arrivalLines(shown), lines, `lines: ${name}`)
+function rowsLive(shown) {
+  const rows = arrivalRows(shown)
+
+  if (rows.kind === "rows") {
+    return Array.from(rows.rows, (row) => row.isLive)
+  }
+
+  return []
+}
+
+for (const {name, shown, live, isNextLive} of liveCases) {
+  deepStrictEqual(rowsLive(shown), live, `live dots: ${name}`)
   deepStrictEqual(isNextArrivalLive(shown), isNextLive, `next live: ${name}`)
 }
 

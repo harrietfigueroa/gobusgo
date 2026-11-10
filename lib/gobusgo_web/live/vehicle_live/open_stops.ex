@@ -25,9 +25,11 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
+  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.StopArrivals
 
   @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @route_view Gobusgo.OneBusAway.RouteView
 
   @typedoc "The hash of what was last sent for each open stop, by stop identifier."
   @type t :: %{String.t() => non_neg_integer() | nil}
@@ -142,7 +144,30 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
             {vehicle_id, vehicle}
           end
 
-        StopArrivals.arrivals(%{fetch: fetch, vehicles: vehicles, now: DateTime.utc_now()})
+        StopArrivals.arrivals(%{
+          fetch: fetch,
+          vehicles: vehicles,
+          route_colors: route_colors(fetch),
+          now: DateTime.utc_now()
+        })
+    end
+  end
+
+  # The CSS color of each route the route view holds for the agencies of
+  # the routes `fetch` names. OneBusAway names a route by its agency's
+  # identifier, an underscore, and the agency's own identifier for it.
+  # https://developer.onebusaway.org/api/where/elements/agency-and-id — checked 2026-11-09
+  defp route_colors(%{arrivals: arrivals}) do
+    agency_ids =
+      for %{"routeId" => route_id} <- arrivals, is_binary(route_id), uniq: true do
+        route_id |> String.split("_", parts: 2) |> hd()
+      end
+
+    for agency_id <- agency_ids,
+        %{routes: routes} <- [FetchView.current_fetch(@route_view, agency_id)],
+        {route_id, route} <- routes,
+        into: %{} do
+      {route_id, RouteLines.css_color(route["color"])}
     end
   end
 end

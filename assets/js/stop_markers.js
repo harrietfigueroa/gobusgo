@@ -220,7 +220,7 @@ export const StopMarkers = {
     this.onFavoriteChange = (event) => {
       if (this.view !== null) {
         const {favorites} = event.detail
-        writeFavoriteButton({button: this.view.favoriteButton, stopId: this.view.stop.id, favorites})
+        writeFavoriteButton({button: this.view.favoriteButton, note: this.view.note, stopId: this.view.stop.id, favorites})
       }
     }
 
@@ -277,10 +277,10 @@ export const StopMarkers = {
   // from the answer the view last got.
   writeViewArrivals(nowMs) {
     const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
-    writeArrivals(this.view.arrivalsElement, shown)
+    writeArrivals({element: this.view.arrivalsElement, shown, withKey: true})
 
     const next = shownAt({shown: this.view.shown, nowMs, countMax: CALLOUT_ARRIVAL_COUNT_MAX})
-    const rows = arrivalRows({shown: next, chips: this.view.stop.routeChips})
+    const rows = arrivalRows(next)
     writeCalloutArrivals({element: this.view.calloutArrivalsElement, rows})
     markArrivalNote({note: this.view.calloutArrivalsElement, shown: next})
   },
@@ -314,13 +314,14 @@ export const StopMarkers = {
       return
     }
 
-    const {content, favoriteButton, arrivalsElement} = stopViewElements(stop)
+    const {content, favoriteButton, note, arrivalsElement} = stopViewElements(stop)
     const callout = stopCalloutContent({name: suppliedName(stop), onSelect: () => { this.selectStop(stop) }})
     const earlier = this.view
     this.view = {
       stop,
       content,
       favoriteButton,
+      note,
       arrivalsElement,
       callout: callout.content,
       calloutArrivalsElement: callout.arrivalsElement,

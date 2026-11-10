@@ -23,6 +23,7 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias GobusgoWeb.VehicleLive.OpenStops
+  alias Gobusgo.Test.RouteViewSeeds
 
   @moduletag :tmp_dir
   @moduletag capture_log: true
@@ -33,6 +34,7 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
   @registration_check_interval_ms 20
   @registration_check_count_max 250
   @arrival_view Gobusgo.OneBusAway.ArrivalView
+  @route_view Gobusgo.OneBusAway.RouteView
   @stop_id "1_1471"
   @trip_id "1_800582101"
   @vehicle_id "1_4342"
@@ -60,7 +62,7 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
   end
 
   defp restart_views do
-    for view <- [VehicleView, StopView, @arrival_view] do
+    for view <- [VehicleView, StopView, @arrival_view, @route_view] do
       :ok = Supervisor.terminate_child(Gobusgo.Supervisor, view)
       {:ok, _pid} = Supervisor.restart_child(Gobusgo.Supervisor, view)
     end
@@ -239,6 +241,23 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
           %{route: "36", headsign: "Othello Station", minutes: 12, predicted: true, time_ms: _}
         ]
       })
+    end
+
+    test "gives each arrival its route's color from the route view", %{now: now} do
+      apply_stops([@stop_id], now)
+      apply_arrivals([arrival(now, 12)], %{stop_id: @stop_id, now: now, sequence: 0})
+
+      RouteViewSeeds.colored_routes(@route_view, %{
+        agency_id: "1",
+        routes: [{"1_100210", "FDB71A"}],
+        fetched_at: now
+      })
+
+      view = open_page()
+
+      open_stop(view)
+
+      assert_push_event(view, @event, %{arrivals: [%{route: "36", color: "#FDB71A"}]})
     end
 
     test "is answered with waiting for a stop that has no fetch, then with its arrivals",
