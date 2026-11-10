@@ -40,18 +40,26 @@ defmodule GobusgoWeb.DonationButton do
   end
 
   @doc """
-  The donation section of the info panel's About group: what donations fund,
-  from `GobusgoWeb.AppInfo`, and the same link as the button. With no
+  The donation section of the info panel's About group: a headline and a
+  caption of what donations fund, from `GobusgoWeb.AppInfo`, the same link
+  as the button, and the full statement behind a disclosure. With no
   address configured it renders nothing.
   """
   def section(assigns) do
     {:ok, url} = Gobusgo.Config.donation_url()
-    assigns = assign(assigns, url: url, label: AppInfo.donation_label(), text: AppInfo.donation())
+
+    assigns =
+      assign(assigns,
+        url: url,
+        label: AppInfo.donation_label(),
+        summary: AppInfo.summary(:donation),
+        text: AppInfo.donation()
+      )
 
     ~H"""
     <section :if={@url} id="app-info-donation" class="flex flex-col gap-2">
-      <h3 class="font-semibold">Donations</h3>
-      <p>{@text}</p>
+      <h3 class="message-headline">{@summary.headline}</h3>
+      <p class="message-caption">{@summary.caption}</p>
       <p>
         <a
           id="app-info-donation-link"
@@ -63,6 +71,10 @@ defmodule GobusgoWeb.DonationButton do
           <.symbol />{@label}
         </a>
       </p>
+      <details id="app-info-donation-more" class="app-info-more">
+        <summary class="inline-target cursor-pointer">What donations fund</summary>
+        <p class="pt-2">{@text}</p>
+      </details>
     </section>
     """
   end
