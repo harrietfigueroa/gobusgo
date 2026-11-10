@@ -112,7 +112,7 @@ defmodule GobusgoWeb.Layouts do
           role="status"
           hidden
         >
-          <p>A new version of Gobusgo is ready.</p>
+          <p data-release-message>A new version of Gobusgo is ready.</p>
           <button type="button" class="font-semibold underline" data-release-reload>Reload</button>
         </div>
       </body>
