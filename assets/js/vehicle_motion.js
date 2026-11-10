@@ -15,7 +15,8 @@ import {
   anchorReport,
   beginCorrection,
   drawCorrected,
-  predictPosition
+  predictPosition,
+  reportBefore
 } from "./vehicle_prediction.js"
 
 /** How a vehicle is drawn: predicted along its trip, at its last report, or where the fetch puts it. */
@@ -87,18 +88,19 @@ export function trackedVehicle({tracked, marker, path, atMs}) {
     return Object.freeze({plan, path: null, previousReport: null, anchor: null, correction: SETTLED, drawn: atPoint(plan.position)})
   }
 
-  // The report before the last is the one held before it, or the one held
-  // before that when the fetch repeats the report.
+  // The report the last is anchored against is the one `reportBefore`
+  // gives from the reports held before it, or the one the vehicle was
+  // anchored against when the fetch repeats the report.
   const lastReport = plan.report
   let isRepeated = false
   let previousReport = null
 
   if (predictedOf(tracked)) {
     isRepeated = tracked.plan.report.reportedAtMs === lastReport.reportedAtMs
-    previousReport = tracked.plan.report
-
     if (isRepeated) {
       previousReport = tracked.previousReport
+    } else {
+      previousReport = reportBefore({report: lastReport, lastReport: tracked.plan.report, previousReport: tracked.previousReport})
     }
   }
 

@@ -1,6 +1,7 @@
 // Where a vehicle is drawn between fetches: its last report, advanced along
 // its trip's path at the schedule's pace and shifted by the lateness that
-// report shows. Everything here is pure: the path, the reports, and
+// report shows, or held where it stands until it is due to leave. Everything
+// here is pure: the path, the reports, and
 // the time asked about are given as values, so a prediction is a function of
 // them alone and a replay of stored fetches measures it.
 //
@@ -23,9 +24,21 @@ export const PATH_STOP_COUNT_MAX = 500
 /** How long after its report a prediction advances: the age at which a report is stale. */
 export const PREDICTION_HORIZON_MS = 2 * 60 * 1000
 
-// Two reports this close together are one vehicle standing still, which the
+// Two reports this close together are one vehicle standing, which the
 // schedule would otherwise drive on through its stop.
 const STILL_METERS_MAX = 10
+
+// A vehicle that has stood less than the hold leaves this long after its
+// stand began, and one that has stood the hold or longer stays, both the
+// best of those measured on a weekday's replay of King County Metro and
+// Sound Transit fetches.
+const STAND_DWELL_SECONDS = 30
+const STAND_HOLD_SECONDS = 90
+
+// A vehicle this close to its trip's first stop, or to any stop, stands at
+// that stop.
+const FIRST_STOP_REACH_METERS = 50
+const STOP_REACH_METERS = 30
 
 // A report farther than this from its trip's path is not on that path.
 const PATH_DISTANCE_METERS_MAX = 60
@@ -232,6 +245,121 @@ function atReport({kind, report}) {
   return Object.freeze({kind, position: report.position})
 }
 
+function isStanding({source, target}) {
+  return distanceMeters(source.position, target.position) < STILL_METERS_MAX
+}
+
+/**
+ * The report a vehicle's new report `report` is anchored against, given the
+ * vehicle's last report `lastReport` and the report that one was anchored
+ * against, `previousReport`, or null: the first report of a stand that
+ * `report` continues, or `lastReport` otherwise.
+ */
+export function reportBefore({report, lastReport, previousReport}) {
+  assertReport(report, "the new report")
+  assertReport(lastReport, "the last report")
+  if (previousReport === null) {
+    return lastReport
+  }
+
+  const isStandHeld = isStanding({source: previousReport, target: lastReport})
+  const isStandContinued = isStanding({source: previousReport, target: report})
+  const isSameStand = isStandHeld && isStandContinued
+  if (isSameStand) {
+    return previousReport
+  }
+  return lastReport
+}
+
+// Whether a standing vehicle leaves its stand before its next report.
+const StandDepartureKind = Object.freeze({leaves: "leaves", stays: "stays"})
+
+// The schedule's time, in seconds after the service date, at which the
+// trip leaves `meters` along its path: a stop's departure where a stop
+// stands within reach, and the time it passes there otherwise.
+function scheduledDepartureSeconds({stops, meters}) {
+  for (const stop of stops) {
+    if (Math.abs(stop.distanceMeters - meters) <= STOP_REACH_METERS) {
+      return stop.departureSeconds
+    }
+  }
+  return scheduledSeconds({stops, meters})
+}
+
+// When a vehicle standing at `meters` since `standSeconds`, last reported
+// at `lastSeconds`, leaves, in seconds after the service date: at its
+// trip's scheduled first departure while it lays over before it, and
+// otherwise a dwell after its stand began, unless it has stood the hold
+// already and stays.
+function standDeparture({stops, meters, standSeconds, lastSeconds}) {
+  const first = stops[0]
+  const isAtFirstStop = meters <= first.distanceMeters + FIRST_STOP_REACH_METERS
+  const isBeforeDeparture = lastSeconds < first.departureSeconds
+  const isLayingOver = isAtFirstStop && isBeforeDeparture
+  if (isLayingOver) {
+    return {kind: StandDepartureKind.leaves, seconds: first.departureSeconds}
+  }
+
+  const stoodSeconds = lastSeconds - standSeconds
+  if (stoodSeconds >= STAND_HOLD_SECONDS) {
+    return {kind: StandDepartureKind.stays}
+  }
+  return {kind: StandDepartureKind.leaves, seconds: Math.max(lastSeconds, standSeconds + STAND_DWELL_SECONDS)}
+}
+
+// The anchor of a vehicle whose `lastReport` stands where `standReport`,
+// the first report of its stand, did: along the path with the lateness that
+// has it leave when `standDeparture` says, or at its report while it stays,
+// has no path, or stands off it.
+function standAnchor({path, lastReport, standReport}) {
+  assertCondition(standReport.reportedAtMs <= lastReport.reportedAtMs, `a stand begins at ${standReport.reportedAtMs}, after its last report at ${lastReport.reportedAtMs}`)
+  if (path === null) {
+    return atReport({kind: PredictionKind.still, report: lastReport})
+  }
+
+  const projection = projectReport({path, lastReport, previousReport: standReport})
+  if (projection.offsetMeters > PATH_DISTANCE_METERS_MAX) {
+    return atReport({kind: PredictionKind.still, report: lastReport})
+  }
+
+  const lastSeconds = (lastReport.reportedAtMs - path.serviceDateMs) / MS_PER_SECOND
+  const standSeconds = (standReport.reportedAtMs - path.serviceDateMs) / MS_PER_SECOND
+  const departure = standDeparture({stops: path.stops, meters: projection.distanceMeters, standSeconds, lastSeconds})
+  switch (departure.kind) {
+    case StandDepartureKind.stays:
+      return atReport({kind: PredictionKind.still, report: lastReport})
+    case StandDepartureKind.leaves:
+      break
+    default:
+      unreachable(departure.kind, "a stand of no kind")
+  }
+
+  const leavingSeconds = scheduledDepartureSeconds({stops: path.stops, meters: projection.distanceMeters})
+  return alongAnchor({lastReport, distanceMeters: projection.distanceMeters, deviationSeconds: departure.seconds - leavingSeconds})
+}
+
+// The report's nearest point of its trip's path, at or after the projection
+// of the report before it on the same run.
+function projectReport({path, lastReport, previousReport}) {
+  assertCondition(path.tripId === lastReport.tripId, `the path of trip ${path.tripId} is not that of trip ${lastReport.tripId}`)
+  assertCondition(path.serviceDateMs === lastReport.serviceDateMs, `the path of ${path.serviceDateMs} is not that of ${lastReport.serviceDateMs}`)
+  const distanceMetersMin = projectionFloor({path, lastReport, previousReport})
+  return project({path, position: lastReport.position, distanceMetersMin})
+}
+
+function alongAnchor({lastReport, distanceMeters: anchorMeters, deviationSeconds}) {
+  assertCondition(Number.isFinite(deviationSeconds), `deviation ${deviationSeconds} is not a number`)
+  return Object.freeze({
+    kind: PredictionKind.alongPath,
+    position: lastReport.position,
+    reportedAtMs: lastReport.reportedAtMs,
+    tripId: lastReport.tripId,
+    serviceDateMs: lastReport.serviceDateMs,
+    distanceMeters: anchorMeters,
+    deviationSeconds
+  })
+}
+
 // The distance along the path at or after which `lastReport` projects: the
 // projection of the report before it on the same trip, where that report is
 // on the path, and the path's start otherwise.
@@ -257,19 +385,22 @@ function projectionFloor({path, lastReport, previousReport}) {
 /**
  * What a vehicle's last report says about where it goes next, worked out
  * once per report. `path` is a prepared path of the report's trip, or null
- * for a trip with no path; `previousReport` is the report before the last,
- * or null when there is none. A report is `{position, reportedAtMs, tripId,
- * serviceDateMs}`. The anchor is a still vehicle, a trip with no path, or a
- * report off its path, each drawn at the report, or the report's distance
- * along the path and its lateness against the schedule there.
+ * for a trip with no path; `previousReport` is the report `reportBefore`
+ * gives, or null when there is none. A report is `{position, reportedAtMs,
+ * tripId, serviceDateMs}`. The anchor is a vehicle that stays where it
+ * stands, a trip with no path, or a report off its path, each drawn at the
+ * report, or the report's distance along the path and its lateness against
+ * the schedule there. A standing vehicle that leaves is anchored along its
+ * path with the lateness that has it leave on time: at its trip's scheduled
+ * first departure while it lays over before it, and otherwise 30 s after
+ * its stand began, unless it has stood 90 s already, when it stays.
  */
 export function anchorReport({path, lastReport, previousReport}) {
   assertReport(lastReport, "the last report")
   if (previousReport !== null) {
     assertReport(previousReport, "the report before the last")
-    const movedMeters = distanceMeters(previousReport.position, lastReport.position)
-    if (movedMeters < STILL_METERS_MAX) {
-      return atReport({kind: PredictionKind.still, report: lastReport})
+    if (isStanding({source: previousReport, target: lastReport})) {
+      return standAnchor({path, lastReport, standReport: previousReport})
     }
   }
 
@@ -277,28 +408,14 @@ export function anchorReport({path, lastReport, previousReport}) {
     return atReport({kind: PredictionKind.noPath, report: lastReport})
   }
 
-  assertCondition(path.tripId === lastReport.tripId, `the path of trip ${path.tripId} is not that of trip ${lastReport.tripId}`)
-  assertCondition(path.serviceDateMs === lastReport.serviceDateMs, `the path of ${path.serviceDateMs} is not that of ${lastReport.serviceDateMs}`)
-  const distanceMetersMin = projectionFloor({path, lastReport, previousReport})
-  const projection = project({path, position: lastReport.position, distanceMetersMin})
+  const projection = projectReport({path, lastReport, previousReport})
   if (projection.offsetMeters > PATH_DISTANCE_METERS_MAX) {
     return atReport({kind: PredictionKind.offPath, report: lastReport})
   }
 
   const reportSeconds = (lastReport.reportedAtMs - path.serviceDateMs) / MS_PER_SECOND
   const scheduleSeconds = scheduledSeconds({stops: path.stops, meters: projection.distanceMeters})
-  const deviationSeconds = reportSeconds - scheduleSeconds
-  assertCondition(Number.isFinite(deviationSeconds), `deviation ${deviationSeconds} is not a number`)
-
-  return Object.freeze({
-    kind: PredictionKind.alongPath,
-    position: lastReport.position,
-    reportedAtMs: lastReport.reportedAtMs,
-    tripId: lastReport.tripId,
-    serviceDateMs: lastReport.serviceDateMs,
-    distanceMeters: projection.distanceMeters,
-    deviationSeconds
-  })
+  return alongAnchor({lastReport, distanceMeters: projection.distanceMeters, deviationSeconds: reportSeconds - scheduleSeconds})
 }
 
 /**
