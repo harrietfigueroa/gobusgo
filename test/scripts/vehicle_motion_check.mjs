@@ -155,6 +155,15 @@ ok(caughtMidway > 205, "a second into the catch-up the marker has gained")
 ok(caughtMidway < 305, "a second into the catch-up the marker has not arrived")
 isNear({position: drawnVehicle({tracked: caught, atMs: msAt({seconds: 42})}).drawn.position, east: 310, message: "after 2 s the marker is at the prediction"})
 
+// A vehicle that keeps standing is anchored against the first report of its
+// stand: after 100 s at 1,000 m it stays, where two reports 30 s apart
+// alone would have it leave.
+const standFirst = trackedVehicle({tracked: null, marker: marker({east: 1000, seconds: 200}), path: street, atMs: msAt({seconds: 200})})
+const standSecond = trackedVehicle({tracked: standFirst, marker: marker({east: 1002, seconds: 270}), path: street, atMs: msAt({seconds: 270})})
+const standThird = trackedVehicle({tracked: standSecond, marker: marker({east: 1004, seconds: 300}), path: street, atMs: msAt({seconds: 300})})
+deepStrictEqual(standThird.previousReport.reportedAtMs, msAt({seconds: 200}), "a continued stand keeps its first report")
+ok(!isAnimated(standThird), "a vehicle that has stood 100 s is not animated")
+
 // The same report again changes nothing.
 const same = trackedVehicle({tracked: ahead, marker: fetched, path: street, atMs: msAt({seconds: 40})})
 deepStrictEqual(same.correction, ahead.correction, "the same report keeps the correction")

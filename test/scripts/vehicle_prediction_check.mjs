@@ -1,6 +1,7 @@
 // Checks where the vehicle prediction this script imports draws a vehicle
-// between fetches. Cases written out by hand cover a moving bus, a dwell, a trip's
-// end, a layover, a loop route, a stale report, a missing path, a report off
+// between fetches. Cases written out by hand cover a moving bus, a dwell, a
+// bus standing and leaving its stand, a layover before a trip's first
+// departure, a trip's end, a layover, a loop route, a stale report, a missing path, a report off
 // its path, a path of straight lines, each correction, and invalid inputs. A
 // replay of real King County Metro fetches stored on 2026-11-08 then
 // measures the error at the time of each later report and fails when its
@@ -25,7 +26,8 @@ import {
   beginCorrection,
   drawCorrected,
   predictPosition,
-  preparePath
+  preparePath,
+  reportBefore
 } from "../../assets/js/vehicle_prediction.js"
 
 const LON_ORIGIN = -122.33
@@ -95,6 +97,17 @@ const straightPath = pathOfStops({
     {distanceMeters: 0, arrivalSeconds: 0, departureSeconds: 0},
     {distanceMeters: 1000, arrivalSeconds: 200, departureSeconds: 200},
     {distanceMeters: 2000, arrivalSeconds: 400, departureSeconds: 400}
+  ]
+})
+
+// A trip whose first stop departs 300 s after its service date, where a bus
+// that has finished its previous trip lays over.
+const layoverStartPath = pathOfStops({
+  points: [{east: 0}, {east: 2000}],
+  stops: [
+    {distanceMeters: 0, arrivalSeconds: 300, departureSeconds: 300},
+    {distanceMeters: 1000, arrivalSeconds: 500, departureSeconds: 500},
+    {distanceMeters: 2000, arrivalSeconds: 700, departureSeconds: 700}
   ]
 })
 
@@ -189,6 +202,47 @@ const alongCases = [
     previous: {east: 1900, seconds: 385},
     atSeconds: 500,
     meters: 2000
+  },
+  {
+    // The stand began at 210 s, so the bus leaves its stop at 240 s.
+    name: "a bus that has stood under 90 s holds until 30 s after its stand began",
+    path: streetPath,
+    last: {east: 1004, seconds: 230},
+    previous: {east: 1000, seconds: 210},
+    atSeconds: 235,
+    meters: 1004
+  },
+  {
+    name: "a bus that has stood under 90 s then advances at the schedule's pace",
+    path: streetPath,
+    last: {east: 1004, seconds: 230},
+    previous: {east: 1000, seconds: 210},
+    atSeconds: 250,
+    meters: 1050
+  },
+  {
+    name: "a bus that last reported after 30 s of its stand leaves at once",
+    path: streetPath,
+    last: {east: 1004, seconds: 260},
+    previous: {east: 1000, seconds: 210},
+    atSeconds: 270,
+    meters: 1050
+  },
+  {
+    name: "a bus laying over at its trip's first stop holds until the scheduled departure",
+    path: layoverStartPath,
+    last: {east: 3, seconds: 200},
+    previous: {east: 0, seconds: 50},
+    atSeconds: 290,
+    meters: 3
+  },
+  {
+    name: "a bus laying over at its trip's first stop leaves at the scheduled departure",
+    path: layoverStartPath,
+    last: {east: 3, seconds: 200},
+    previous: {east: 0, seconds: 50},
+    atSeconds: 320,
+    meters: 100
   }
 ]
 
@@ -217,10 +271,26 @@ for (const {name, expected, ...entry} of positionCases) {
 
 const reportCases = [
   {
-    name: "a bus whose last two reports stood still is drawn at its last report",
+    name: "a bus that has stood 90 s or more is drawn at its last report",
     path: streetPath,
     last: {east: 1004, seconds: 230},
-    previous: {east: 1000, seconds: 200},
+    previous: {east: 1000, seconds: 140},
+    atSeconds: 290,
+    kind: PredictionKind.still
+  },
+  {
+    name: "a bus that has stood past its trip's scheduled first departure is drawn at its last report",
+    path: layoverStartPath,
+    last: {east: 3, seconds: 400},
+    previous: {east: 0, seconds: 250},
+    atSeconds: 450,
+    kind: PredictionKind.still
+  },
+  {
+    name: "a standing bus with no path is drawn at its last report",
+    path: null,
+    last: {east: 1004, seconds: 230},
+    previous: {east: 1000, seconds: 210},
     atSeconds: 290,
     kind: PredictionKind.still
   },
@@ -231,6 +301,21 @@ const reportCases = [
 for (const {name, kind, ...entry} of reportCases) {
   const prediction = predictionOf(entry)
   deepStrictEqual(prediction, {kind, position: report(entry.last).position}, name)
+}
+
+// The report a new report is anchored against: the first report of the
+// stand it continues, or the report before it.
+const STAND_START = report({east: 1000, seconds: 100})
+const STAND_NEXT = report({east: 1003, seconds: 130})
+const reportBeforeCases = [
+  {name: "a report that continues a stand is anchored against its first report", input: {report: report({east: 1006, seconds: 160}), lastReport: STAND_NEXT, previousReport: STAND_START}, expected: STAND_START},
+  {name: "a report that leaves a stand is anchored against the report before it", input: {report: report({east: 1030, seconds: 160}), lastReport: STAND_NEXT, previousReport: STAND_START}, expected: STAND_NEXT},
+  {name: "a report after a move is anchored against the report before it", input: {report: report({east: 1005, seconds: 160}), lastReport: STAND_NEXT, previousReport: report({east: 900, seconds: 100})}, expected: STAND_NEXT},
+  {name: "a second report is anchored against the first", input: {report: STAND_NEXT, lastReport: STAND_START, previousReport: null}, expected: STAND_START}
+]
+
+for (const {name, input, expected} of reportBeforeCases) {
+  deepStrictEqual(reportBefore(input), expected, name)
 }
 
 const movingPrediction = predictionOf({...MOVING, atSeconds: 190})
@@ -331,12 +416,13 @@ const REPORT_TRIP_FIELD = 3
 const REPORT_AGE_FIELD = 4
 const DESIGN_TOLERANCE_METERS = 10
 
-// What this module measured on the committed fixture, a sample of 60
-// vehicles drawn with the seed the fixture records, and on the whole
-// store's cut of every vehicle of the day (13,461 pairs), the cut an
-// argument names. The whole store's 128 m and 416 m are within 10 m of the
-// 128 m and 420 m the prototype measured on the same fetches.
-const SAMPLE_EXPECTED = Object.freeze({p50Meters: 136, p90Meters: 435, tripEndP90Meters: 65})
+// What this module measures on the committed fixture, a sample of 60
+// vehicles drawn with the seed the fixture records, and what it is expected
+// to measure on the whole store's cut of every vehicle of the day (13,461
+// pairs), the cut an argument names. The whole store's 128 m and 416 m are
+// unmeasured under the rule that has a standing vehicle leave, for want
+// of a Sunday store.
+const SAMPLE_EXPECTED = Object.freeze({p50Meters: 131, p90Meters: 411, tripEndP90Meters: 65})
 const WHOLE_STORE_EXPECTED = Object.freeze({p50Meters: 128, p90Meters: 416, tripEndP90Meters: 21})
 
 // A vehicle that has just stopped is driven on until its next report shows
@@ -344,6 +430,9 @@ const WHOLE_STORE_EXPECTED = Object.freeze({p50Meters: 128, p90Meters: 416, trip
 // stops a sample holds, and its median is what is asserted.
 const STILL_P50_METERS_MAX = DESIGN_TOLERANCE_METERS
 const MOVED_METERS_MIN = 15
+// Two reports this close together are a vehicle standing, as the
+// prediction judges it.
+const STAND_METERS_MAX = 10
 const TRIP_END_METERS = 150
 const MEDIAN = 0.5
 const NINETIETH = 0.9
@@ -442,7 +531,24 @@ function reportsOf(entries) {
   return reports
 }
 
-function previousOf({reports, index}) {
+// The report each report is anchored against, as the page chooses it from
+// the reports a vehicle's fetches bring in order: the first report of a
+// stand the report continues, or the report before it.
+function previousReportsOf(reports) {
+  const previousReports = []
+  let previousReport = null
+  for (let index = 0; index < reports.length; index++) {
+    if (index > 0) {
+      previousReport = reportBefore({report: reports[index], lastReport: reports[index - 1], previousReport})
+    }
+    previousReports.push(previousReport)
+  }
+  return previousReports
+}
+
+// The report just before the one at `index`, which says whether a vehicle
+// was standing when it sent that one, whatever the prediction makes of it.
+function reportJustBefore({reports, index}) {
   let previousReport = null
   if (index > 0) {
     previousReport = reports[index - 1]
@@ -450,13 +556,14 @@ function previousOf({reports, index}) {
   return previousReport
 }
 
-const errors = {headline: [], today: [], still: [], moving: [], layover: [], tripEnd: []}
+const errors = {headline: [], today: [], still: [], moving: [], layover: [], tripEnd: [], restarted: [], stayed: []}
 
-function measurePair({entries, reports, pair}) {
+function measurePair({entries, reports, previousReports, pair}) {
   const [lastIndex, truthIndex, sourceLon, sourceLat, tripIndex] = pair
   const lastReport = reportOf({entry: entries[lastIndex], tripIndex})
   const truth = reports[truthIndex]
-  const previousReport = previousOf({reports, index: lastIndex})
+  const previousReport = previousReports[lastIndex]
+  const justBefore = reportJustBefore({reports, index: lastIndex})
   if (!preparedPaths.has(tripIndex)) {
     return
   }
@@ -465,7 +572,7 @@ function measurePair({entries, reports, pair}) {
   const anchor = anchorReport({path, lastReport, previousReport})
   const prediction = predictPosition({path, anchor, atMs: truth.reportedAtMs})
   const error = distanceMeters(prediction.position, truth.position)
-  const isPreviousOnTrip = previousReport !== null && previousReport.tripId === lastReport.tripId
+  const isPreviousOnTrip = justBefore !== null && justBefore.tripId === lastReport.tripId
   const lone = anchorReport({path, lastReport, previousReport: null})
   const isOnPath = lone.kind === PredictionKind.alongPath
   const isMeasured = isPreviousOnTrip && isOnPath
@@ -484,17 +591,31 @@ function measurePair({entries, reports, pair}) {
 
   errors.headline.push(error)
   errors.today.push(distanceMeters([sourceLon, sourceLat], truth.position))
-  if (distanceMeters(lastReport.position, truth.position) < MOVED_METERS_MIN) {
+  const isStill = distanceMeters(lastReport.position, truth.position) < MOVED_METERS_MIN
+  if (isStill) {
     errors.still.push(error)
   } else {
     errors.moving.push(error)
+  }
+  const isAfterStand = distanceMeters(justBefore.position, lastReport.position) < STAND_METERS_MAX
+  if (isAfterStand) {
+    measureStand({error, isStill})
+  }
+}
+
+function measureStand({error, isStill}) {
+  if (isStill) {
+    errors.stayed.push(error)
+  } else {
+    errors.restarted.push(error)
   }
 }
 
 for (const vehicle of fixture.vehicles) {
   const reports = reportsOf(vehicle.reports)
+  const previousReports = previousReportsOf(reports)
   for (const pair of vehicle.pairs) {
-    measurePair({entries: vehicle.reports, reports, pair})
+    measurePair({entries: vehicle.reports, reports, previousReports, pair})
   }
 }
 
@@ -509,6 +630,7 @@ const headlineP90 = percentile(errors.headline, NINETIETH)
 console.log(`replay: ${summary(errors.headline)}; today's marker ${summary(errors.today)}`)
 console.log(`replay: standing still ${summary(errors.still)}; moving ${summary(errors.moving)}`)
 console.log(`replay: within ${TRIP_END_METERS} m of the trip's end ${summary(errors.tripEnd)}; onto the next trip ${summary(errors.layover)}`)
+console.log(`replay: after a stand, moved on ${summary(errors.restarted)}; still standing ${summary(errors.stayed)}`)
 const tripEndP90 = percentile(errors.tripEnd, NINETIETH)
 ok(Math.abs(headlineP50 - expected.p50Meters) <= DESIGN_TOLERANCE_METERS, `the median error ${headlineP50} m is the measured ${expected.p50Meters} m`)
 ok(Math.abs(headlineP90 - expected.p90Meters) <= DESIGN_TOLERANCE_METERS, `the 90th percentile ${headlineP90} m is the measured ${expected.p90Meters} m`)
@@ -553,13 +675,13 @@ function countCorrection(kind) {
 
 function replayCorrections(entries) {
   const reports = reportsOf(entries)
+  const previousReports = previousReportsOf(reports)
   let shown = null
 
   for (const {atMs, index, isArrival} of eventsOf(entries)) {
     if (isArrival) {
       const path = pathParameterOf(entries[index][REPORT_TRIP_FIELD])
-      const previousReport = previousOf({reports, index})
-      const anchor = anchorReport({path, lastReport: reports[index], previousReport})
+      const anchor = anchorReport({path, lastReport: reports[index], previousReport: previousReports[index]})
       const prediction = predictPosition({path, anchor, atMs})
       let correction = {kind: CorrectionKind.settled}
       if (shown !== null) {
