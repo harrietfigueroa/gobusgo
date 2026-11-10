@@ -14,7 +14,7 @@ import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"
 import {SpriteCache} from "./vehicle_sprites"
-import {BADGE_FONT, GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
+import {BADGE_FONT, GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, dotStrokeOpacity, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
 import {selectionColor, selectionHaloOpacity, selectionHaloRadius, selectionRingRadius, selectionRingWidth} from "./selection_mark"
 import {
   LINE_CASING_WIDTH_PIXELS,
@@ -333,7 +333,7 @@ class VehicleOverlay {
     this.drawSelection(drawn)
     this.drawMarkers({drawn, colors, ratio})
     this.drawBadges({drawn, colors, ratio})
-    this.drawRouteBadges({drawn, ratio})
+    this.drawRouteBadges({drawn, colors, ratio})
 
     this.drawn = drawn
   }
@@ -488,7 +488,8 @@ class VehicleOverlay {
     for (const {x, y, marker, feature: {properties}} of drawn) {
       if (marker.kind === MarkerKind.round) {
         const opacity = this.opacityOf(properties)
-        const sprite = this.sprites.dot({color: properties.color, opacity, strokeColor: colors.vehicleStroke})
+        const strokeOpacity = dotStrokeOpacity({opacity, colors})
+        const sprite = this.sprites.dot({color: properties.color, opacity, strokeColor: colors.vehicleStroke, strokeOpacity})
         this.stampCentered({sprite, x, y, ratio})
       } else {
         const style = glyphStyle({status: properties.status, color: properties.color, colors})
@@ -528,7 +529,7 @@ class VehicleOverlay {
 
   // A glyph's route badge is measured once, when its bitmap is made, and is
   // left out where it would cover another glyph or badge.
-  drawRouteBadges({drawn, ratio}) {
+  drawRouteBadges({drawn, colors, ratio}) {
     const context = this.canvas.getContext("2d")
     context.font = BADGE_FONT
     const candidates = []
@@ -540,7 +541,7 @@ class VehicleOverlay {
         let badgeWidth = null
 
         if (hasRouteBadge(properties)) {
-          const badge = routeBadgeStyle({status: properties.status, route: properties.route, color: properties.color})
+          const badge = routeBadgeStyle({status: properties.status, route: properties.route, color: properties.color, colors})
           const sprite = this.sprites.routeBadge({badge, measure: context})
           sprites.set(vehicle.id, sprite)
           badgeWidth = sprite.width

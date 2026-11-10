@@ -7,6 +7,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {chipTextColor} from "./route_chip_color.js"
+import {StrokeOpacityKind} from "./theme.js"
 
 /** The radius of a regional dot, in CSS pixels. */
 export const MARKER_RADIUS_PIXELS = 6
@@ -70,6 +71,7 @@ const STALE_BADGE_INK = "#ffffff"
 const SCHEDULED_FILL = "#ffffff"
 const SCHEDULED_INK = "#475569"
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i
+const FULL_OPACITY = 1
 
 // The bus of the glyph, in a box of 24 units: a body with a window line and
 // two wheels.
@@ -121,11 +123,13 @@ export function glyphStyle({status, color, colors}) {
 
 /**
  * The route badge on the shoulder of a vehicle of `status` on the route
- * named `route`, or null for none, of `color`: the route's number in its
- * route's color while live, white and slate for schedule only, and dark
- * with a clock while stale or a question mark with no report time.
+ * named `route`, or null for none, of `color`, in the map colors `colors`:
+ * the route's number in its route's color while live, white and slate for
+ * schedule only, and dark with a clock while stale or a question mark with
+ * no report time, each but the schedule-only one bordered in the colors'
+ * route badge border.
  */
-export function routeBadgeStyle({status, route, color}) {
+export function routeBadgeStyle({status, route, color, colors}) {
   let text = ""
 
   if (typeof route === "string") {
@@ -134,11 +138,11 @@ export function routeBadgeStyle({status, route, color}) {
 
   switch (status) {
     case "reported":
-      return {text, mark: BadgeMark.none, fill: color, ink: chipTextColor(color), border: STALE_BADGE_INK}
+      return {text, mark: BadgeMark.none, fill: color, ink: chipTextColor(color), border: colors.routeBadgeBorder}
     case "stale":
-      return {text, mark: BadgeMark.clock, fill: STALE_BADGE_FILL, ink: STALE_BADGE_INK, border: STALE_BADGE_INK}
+      return {text, mark: BadgeMark.clock, fill: STALE_BADGE_FILL, ink: STALE_BADGE_INK, border: colors.routeBadgeBorder}
     case "unknown":
-      return {text, mark: BadgeMark.question, fill: STALE_BADGE_FILL, ink: STALE_BADGE_INK, border: STALE_BADGE_INK}
+      return {text, mark: BadgeMark.question, fill: STALE_BADGE_FILL, ink: STALE_BADGE_INK, border: colors.routeBadgeBorder}
     case "scheduled":
       return {text, mark: BadgeMark.none, fill: SCHEDULED_FILL, ink: SCHEDULED_INK, border: SCHEDULED_INK}
     default:
@@ -171,17 +175,40 @@ export function parseGlyphImageName(name) {
   return {kind: GlyphImageKind.glyph, part, status, color, theme, route: routeFields.join(NAME_SEPARATOR)}
 }
 
-/** Draws a regional dot onto `canvas`: a circle in `color` centered on `x`, `y`, outlined in `strokeColor`. */
-export function drawRoundMarker(canvas, {x, y, color, strokeColor}) {
+/**
+ * The opacity of the stroke of a regional dot of `opacity` in the map colors
+ * `colors`: whole where the colors keep the stroke whole, and the dot's own
+ * otherwise. `opacity` is a number or a paint expression that gives one.
+ */
+export function dotStrokeOpacity({opacity, colors}) {
+  switch (colors.vehicleStrokeOpacity) {
+    case StrokeOpacityKind.full:
+      return FULL_OPACITY
+    case StrokeOpacityKind.marker:
+      return opacity
+    default:
+      return unreachable(colors.vehicleStrokeOpacity, "a stroke's opacity kind")
+  }
+}
+
+/**
+ * Draws a regional dot onto `canvas`: a circle in `color` at `fillOpacity`
+ * centered on `x`, `y`, outlined in `strokeColor` at `strokeOpacity`.
+ */
+export function drawRoundMarker(canvas, {x, y, color, fillOpacity, strokeColor, strokeOpacity}) {
   const context = canvas.getContext("2d")
+  context.save()
   context.beginPath()
   context.arc(x, y, MARKER_RADIUS_PIXELS, 0, FULL_TURN)
+  context.globalAlpha = fillOpacity
   context.fillStyle = color
   context.fill()
   context.lineJoin = "round"
   context.lineWidth = MARKER_STROKE_WIDTH_PIXELS
+  context.globalAlpha = strokeOpacity
   context.strokeStyle = strokeColor
   context.stroke()
+  context.restore()
 }
 
 function lineDash(outlineKind) {

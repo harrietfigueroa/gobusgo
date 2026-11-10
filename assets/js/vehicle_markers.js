@@ -35,6 +35,7 @@ import {
   drawBusGlyph,
   drawChevron,
   drawRouteBadge,
+  dotStrokeOpacity,
   glyphStyle,
   parseGlyphImageName,
   routeBadgeStyle
@@ -285,7 +286,7 @@ function glyphPartImage(named) {
       return drawnImage({width: CHEVRON_SIZE_PIXELS, height: CHEVRON_SIZE_PIXELS, draw})
     }
     case "badge": {
-      const badge = routeBadgeStyle({status: named.status, route: named.route, color: named.color})
+      const badge = routeBadgeStyle({status: named.status, route: named.route, color: named.color, colors})
       const measuring = document.createElement("canvas").getContext("2d")
       measuring.font = BADGE_FONT
       const width = badgeWidth({badge, measure: (text) => measuring.measureText(text).width})
@@ -834,7 +835,7 @@ export const VehicleMarkers = {
         "circle-opacity": opacity,
         "circle-stroke-color": colors.vehicleStroke,
         "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS,
-        "circle-stroke-opacity": opacity
+        "circle-stroke-opacity": dotStrokeOpacity({opacity, colors})
       }
     })
 
