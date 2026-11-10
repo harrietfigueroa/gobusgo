@@ -69,9 +69,8 @@ for (const {case: caseName, given, suffix} of suffixCases) {
   deepStrictEqual(calloutNameSuffix(given), suffix, caseName)
 }
 
-const chips = [{name: "E Line", color: "#b91c1c"}, {name: "10", color: "#0f766e"}]
-const live = {route: "E Line", headsign: "Aurora Village", minutes: 2, predicted: true}
-const scheduled = {route: "49", headsign: "University District", minutes: 11, predicted: false}
+const live = {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", minutes: 2, predicted: true}
+const scheduled = {route: "49", color: null, headsign: "University District", minutes: 11, predicted: false}
 
 const rowCases = [
   {case: "waiting", shown: {status: "waiting"}, rows: {kind: ArrivalRowsKind.note, text: "Waiting for this stop's arrivals"}},
@@ -87,7 +86,7 @@ const rowCases = [
     rows: {kind: ArrivalRowsKind.note, text: "No arrivals soon"}
   },
   {
-    case: "a live arrival on a route with a chip and a scheduled one on a route with none",
+    case: "a live arrival on a route with a color and a scheduled one on a route with none",
     shown: {status: "arrivals", age_minutes: 0, arrivals: [live, scheduled]},
     rows: {
       kind: ArrivalRowsKind.rows,
@@ -99,7 +98,7 @@ const rowCases = [
   },
   {
     case: "an arrival now, with no route and no headsign",
-    shown: {status: "arrivals", age_minutes: 0, arrivals: [{route: null, headsign: null, minutes: 0, predicted: true}]},
+    shown: {status: "arrivals", age_minutes: 0, arrivals: [{route: null, color: null, headsign: null, minutes: 0, predicted: true}]},
     rows: {
       kind: ArrivalRowsKind.rows,
       rows: [{route: null, color: null, headsign: null, time: "now", isLive: true}]
@@ -108,7 +107,14 @@ const rowCases = [
 ]
 
 for (const {case: caseName, shown, rows} of rowCases) {
-  deepStrictEqual(arrivalRows({shown, chips}), rows, caseName)
+  deepStrictEqual(arrivalRows(shown), rows, caseName)
 }
 
-console.log(`callout texts: ${vehicleCases.length + suffixCases.length + rowCases.length} cases hold`)
+// The saved schedules' arrivals name no color.
+{
+  const shown = {status: "arrivals", age_minutes: 0, scheduled: true, arrivals: [{route: "49", headsign: null, minutes: 3, predicted: false}]}
+  const rows = {kind: ArrivalRowsKind.rows, rows: [{route: "49", color: null, headsign: null, time: "3 min", isLive: false}]}
+  deepStrictEqual(arrivalRows(shown), rows, "an arrival with no color")
+}
+
+console.log(`callout texts: ${vehicleCases.length + suffixCases.length + rowCases.length + 1} cases hold`)

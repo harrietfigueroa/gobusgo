@@ -34,7 +34,8 @@ defmodule GobusgoWeb.StopArrivals do
 
   @typedoc """
   One arrival a page shows. `route` is the route's short name, or its long
-  name when it has no short name. `headsign` is the trip's, without a
+  name when it has no short name, and `color` the route's CSS color, or
+  `nil` for a route with none. `headsign` is the trip's, without a
   leading short name of the route. `minutes` is the whole minutes until the
   arrival at the time the line was made, `time_ms` the arrival's time in
   Unix milliseconds, from which a page counts the minutes down itself, and
@@ -42,6 +43,7 @@ defmodule GobusgoWeb.StopArrivals do
   """
   @type line :: %{
           route: String.t() | nil,
+          color: String.t() | nil,
           headsign: String.t() | nil,
           minutes: non_neg_integer(),
           time_ms: integer(),
@@ -89,21 +91,28 @@ defmodule GobusgoWeb.StopArrivals do
   @doc """
   Returns what a page shows at `now` for `fetch`, a stop's fetch in the
   arrivals view. `vehicles` holds, by identifier, the vehicles of
-  `vehicle_ids/1` that the vehicle view holds now.
+  `vehicle_ids/1` that the vehicle view holds now, and `route_colors` the
+  CSS color of each route, by identifier, that the route view gives one.
   """
   @spec arrivals(%{
           fetch: ArrivalBatch.Records.decoded(),
           vehicles: %{String.t() => VehicleView.State.vehicle()},
+          route_colors: %{String.t() => String.t()},
           now: DateTime.t()
         }) :: t()
-  def arrivals(%{fetch: %{id: stop_id} = fetch, vehicles: vehicles, now: %DateTime{} = now})
-      when is_binary(stop_id) and is_map(vehicles) do
+  def arrivals(%{
+        fetch: %{id: stop_id} = fetch,
+        vehicles: vehicles,
+        route_colors: route_colors,
+        now: %DateTime{} = now
+      })
+      when is_binary(stop_id) and is_map(vehicles) and is_map(route_colors) do
     now_ms = DateTime.to_unix(now, :millisecond)
     fetched_at_ms = DateTime.to_unix(fetch.fetched_at, :millisecond)
 
     lines =
       fetch.arrivals
-      |> Enum.map(&timed(&1, vehicles))
+      |> Enum.map(&timed(&1, vehicles, route_colors))
       |> Enum.filter(fn %{time_ms: time_ms} -> time_ms >= now_ms end)
       |> Enum.sort_by(& &1.time_ms)
       |> Enum.uniq_by(& &1.key)
@@ -118,7 +127,7 @@ defmodule GobusgoWeb.StopArrivals do
     }
   end
 
-  defp timed(arrival, vehicles) do
+  defp timed(arrival, vehicles, route_colors) do
     {scheduled_ms, predicted_ms} = times(arrival)
 
     time_ms =
@@ -132,6 +141,7 @@ defmodule GobusgoWeb.StopArrivals do
       time_ms: time_ms,
       predicted: predicted_ms != nil,
       route: route_name(arrival),
+      color: Map.get(route_colors, arrival["routeId"]),
       headsign: headsign(arrival)
     }
   end
@@ -192,6 +202,7 @@ defmodule GobusgoWeb.StopArrivals do
   defp line(%{time_ms: time_ms} = timed, now_ms) do
     %{
       route: timed.route,
+      color: timed.color,
       headsign: timed.headsign,
       minutes: div(time_ms - now_ms, @ms_per_minute),
       time_ms: time_ms,

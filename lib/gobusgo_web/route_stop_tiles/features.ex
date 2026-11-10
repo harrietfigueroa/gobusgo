@@ -3,11 +3,6 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
   @point_count_min 2
   @text_separator ", "
   @route_id_separator ","
-  # A stop many routes serve names the first of them and counts the rest, so
-  # its routes stay on one line of the label.
-  @label_route_count_max 4
-  @label_route_separator " "
-  @label_part_separator " · "
 
   @moduledoc """
   The GeoJSON features of the route and stop tile archive, one encoded
@@ -17,8 +12,8 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
   `color`, `shortName`, `longName`, and `agencyName`. A stop's feature is a
   point with `stopId`, `name`, `code`, `direction`, `routes` and `agencies`,
   the names of its routes and of their agencies joined by
-  `#{@text_separator}`, `label`, the text a map shows beside the stop, and
-  `routeChips`, each named route's name and CSS color as a JSON list of
+  `#{@text_separator}`, `routeChips`, each named route's name and CSS
+  color, which a map draws as chips beside the stop, as a JSON list of
   pairs, and `routeIds`, the identifiers of its drawn routes with
   `#{@route_id_separator}` before, between, and after them, so that a map
   can test for one route with a substring. A vector tile's property holds no
@@ -87,7 +82,6 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
         "routes" => Enum.join(marker.routes, @text_separator),
         "agencies" => Enum.join(marker.agencies, @text_separator),
         "routeIds" => route_ids_text(route_ids),
-        "label" => label(marker),
         "routeChips" => route_chips_text(marker.route_chips)
       })
 
@@ -106,36 +100,6 @@ defmodule GobusgoWeb.RouteStopTiles.Features do
     pairs = for %{name: name, color: color} <- route_chips, do: [name, color]
     JSON.encode!(pairs)
   end
-
-  @doc """
-  What a map shows beside a stop while its popup is closed: its routes on
-  one line, the first #{@label_route_count_max} and the count of the rest,
-  and its direction and the agencies of its routes on the next. A stop with
-  none of them has an empty label.
-  """
-  @spec label(%{routes: [String.t()], direction: String.t() | nil, agencies: [String.t()]}) ::
-          String.t()
-  def label(%{routes: routes, direction: direction, agencies: agencies})
-      when is_list(routes) and is_list(agencies) do
-    details =
-      [direction_text(direction), Enum.join(agencies, @text_separator)]
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.join(@label_part_separator)
-
-    [label_routes(routes), details]
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.join("\n")
-  end
-
-  defp direction_text(direction) when is_binary(direction), do: direction
-  defp direction_text(nil), do: ""
-
-  defp label_routes(routes) when length(routes) > @label_route_count_max do
-    shown = routes |> Enum.take(@label_route_count_max) |> Enum.join(@label_route_separator)
-    "#{shown} +#{length(routes) - @label_route_count_max}"
-  end
-
-  defp label_routes(routes), do: Enum.join(routes, @label_route_separator)
 
   defp route_ids_text(route_ids) do
     @route_id_separator <> Enum.join(route_ids, @route_id_separator) <> @route_id_separator

@@ -53,8 +53,15 @@ defmodule GobusgoWeb.StopArrivalsTest do
     )
   end
 
+  @route_colors %{"1_100210" => "#FDB71A"}
+
   defp shown(arrivals, vehicles \\ %{}) do
-    StopArrivals.arrivals(%{fetch: fetch(arrivals), vehicles: vehicles, now: @now})
+    StopArrivals.arrivals(%{
+      fetch: fetch(arrivals),
+      vehicles: vehicles,
+      route_colors: @route_colors,
+      now: @now
+    })
   end
 
   defp line(fields, vehicles \\ %{}) do
@@ -69,7 +76,7 @@ defmodule GobusgoWeb.StopArrivalsTest do
   end
 
   describe "arrivals/1" do
-    test "names the stop and holds the arrival's route, headsign, minutes, time, and kind" do
+    test "names the stop and holds the arrival's route, its color, headsign, minutes, time, and kind" do
       assert shown([arrival(%{})]) == %{
                stop_id: "1_1471",
                status: :arrivals,
@@ -77,6 +84,7 @@ defmodule GobusgoWeb.StopArrivalsTest do
                arrivals: [
                  %{
                    route: "36",
+                   color: "#FDB71A",
                    headsign: "Othello Station",
                    minutes: 12,
                    time_ms: in_minutes(12),
@@ -90,6 +98,10 @@ defmodule GobusgoWeb.StopArrivalsTest do
       assert %{status: :arrivals, arrivals: []} = shown([])
     end
 
+    test "gives no color to an arrival on a route the colors leave out" do
+      assert %{color: nil} = line(%{"routeId" => "1_999"})
+    end
+
     for {name, age_seconds, age_minutes} <- [
           {"just made", 0, 0},
           {"made 59 seconds ago", 59, 0},
@@ -100,7 +112,12 @@ defmodule GobusgoWeb.StopArrivalsTest do
         fetched_at = DateTime.add(@now, -unquote(age_seconds), :second)
 
         assert %{age_minutes: unquote(age_minutes)} =
-                 StopArrivals.arrivals(%{fetch: fetch([], fetched_at), vehicles: %{}, now: @now})
+                 StopArrivals.arrivals(%{
+                   fetch: fetch([], fetched_at),
+                   vehicles: %{},
+                   route_colors: %{},
+                   now: @now
+                 })
       end
     end
   end

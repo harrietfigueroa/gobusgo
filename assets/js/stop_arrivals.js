@@ -1,20 +1,29 @@
 // The texts of a stop's arrivals, as the server sends them with the
-// "stop-arrivals:arrivals" event.
+// "stop-arrivals:arrivals" event, in the glanceable style: a row per
+// arrival of its route's chip, its headsign, and its time, with a live dot
+// beside a predicted time, and a key under the rows.
 
 import {unreachable} from "./assert.js"
+import {appendSpaced, chipElements} from "./route_chips.js"
+import {arrivalsKey} from "./stop_text.js"
 import {appendMessage} from "./message.js"
 
-const ARRIVALS_HEADING = "Arrivals"
-const SCHEDULED_ARRIVALS_HEADING = "Scheduled arrivals"
 const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
 const ARRIVALS_NONE = "No arrivals soon"
 const ARRIVALS_REFUSED = "No arrivals for this stop"
 const ARRIVALS_BUSY = "Too many stops open; close one to see this stop's arrivals"
 const ARRIVAL_NOW = "now"
-const ARRIVAL_SCHEDULED_NOTE = " (scheduled)"
-const ARRIVAL_UNNAMED = "Arrival"
 const ARRIVALS_NEED_CONNECTION = Object.freeze({headline: "Live arrivals need a connection", caption: "They come back when you're online."})
 const LIVE_LABEL = "live time"
+const ROWS_CLASS_NAME = "arrival-rows"
+const ROW_CLASS_NAME = "arrival-row"
+const HEADSIGN_CLASS_NAME = "arrival-headsign"
+const TIME_CLASS_NAME = "arrival-time"
+const LIVE_TIME_CLASS_NAME = "arrival-time arrival-time-live"
+const NOTE_CLASS_NAME = "arrival-note"
+const KEY_CLASS_NAME = "arrival-key"
+const KEY_DOT_CLASS_NAME = "live-dot arrival-key-dot"
+const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 
 /** The class of the dot beside a time that is a live prediction. */
 export const LIVE_DOT_CLASS_NAME = "live-dot"
@@ -31,38 +40,6 @@ export function appendParagraph(element, text) {
   element.appendChild(paragraph)
 }
 
-// One arrival as a line: where it goes, and how soon. A time that is the
-// schedule and no prediction says so, and a prediction is live.
-function arrivalLine({route, headsign, minutes, predicted}) {
-  const names = []
-
-  if (typeof route === "string") {
-    names.push(route)
-  }
-
-  if (typeof headsign === "string") {
-    names.push(`to ${headsign}`)
-  }
-
-  let name = ARRIVAL_UNNAMED
-  let time = `${minutes} min`
-  let note = ARRIVAL_SCHEDULED_NOTE
-
-  if (names.length > 0) {
-    name = names.join(" ")
-  }
-
-  if (minutes === 0) {
-    time = ARRIVAL_NOW
-  }
-
-  if (predicted) {
-    note = ""
-  }
-
-  return {text: `${name}: ${time}${note}`, isLive: predicted}
-}
-
 /**
  * Whether `shown` is a stop's arrivals from the saved schedules, which an
  * offline page writes for itself, and not the server's.
@@ -71,61 +48,8 @@ export function isScheduledShown(shown) {
   return shown.scheduled === true
 }
 
-// The heading of a stop's arrivals: that they are the schedule's, or the age
-// of the fetch they come from once it is a minute old.
-function arrivalsHeadingText({ageMinutes, isScheduled}) {
-  if (isScheduled) {
-    return SCHEDULED_ARRIVALS_HEADING
-  } else if (ageMinutes >= 1) {
-    return `${ARRIVALS_HEADING} (as of ${ageMinutes} min ago)`
-  } else {
-    return ARRIVALS_HEADING
-  }
-}
-
-/**
- * The lines a page shows for what the server says of a stop's arrivals, each
- * its text and whether it is a live prediction.
- */
-export function arrivalLines(shown) {
-  const {status, age_minutes: ageMinutes, arrivals} = shown
-  const heading = arrivalsHeadingText({ageMinutes, isScheduled: isScheduledShown(shown)})
-
-  switch (status) {
-    case "waiting":
-      return [plainLine(ARRIVALS_WAITING)]
-    case "refused":
-      return [plainLine(ARRIVALS_REFUSED)]
-    case "busy":
-      return [plainLine(ARRIVALS_BUSY)]
-    case "arrivals":
-      if (arrivals.length === 0) {
-        return [plainLine(heading), plainLine(ARRIVALS_NONE)]
-      } else {
-        const lines = Array.from(arrivals, arrivalLine)
-        return [plainLine(heading), ...lines]
-      }
-    default:
-      return unreachable(status, "arrivals status")
-  }
-}
-
 /** The kinds of what a stop's arrivals show as rows: the rows, or one note in their place. */
 export const ArrivalRowsKind = Object.freeze({rows: "rows", note: "note"})
-
-const ChipLookupKind = Object.freeze({found: "found", missing: "missing"})
-
-// The chip named `route` among `chips`, a stop's route chips, or missing
-// for a route the stop has no chip of.
-function chipLookup({route, chips}) {
-  const chip = chips.find((candidate) => candidate.name === route)
-
-  if (chip === undefined) {
-    return {kind: ChipLookupKind.missing}
-  }
-
-  return {kind: ChipLookupKind.found, color: chip.color}
-}
 
 function arrivalTimeText(minutes) {
   if (minutes === 0) {
@@ -139,13 +63,26 @@ function noteRows(text) {
   return {kind: ArrivalRowsKind.note, text}
 }
 
+// An arrival's row; a text the arrival lacks is null in the row.
+function arrivalRow(arrival) {
+  const row = {route: null, color: null, headsign: null, time: arrivalTimeText(arrival.minutes), isLive: arrival.predicted === true}
+
+  for (const field of ["route", "color", "headsign"]) {
+    if (typeof arrival[field] === "string") {
+      row[field] = arrival[field]
+    }
+  }
+
+  return row
+}
+
 /**
  * What `shown`, a stop's arrivals as the server sends them, shows as rows:
- * each arrival's route, the color of its chip among `chips`, the stop's
- * route chips, its headsign, how soon it comes, and whether that is a live
- * prediction; or the note that stands in their place.
+ * each arrival's route, its route's color, its headsign, how soon it comes,
+ * and whether that is a live prediction; or the note that stands in their
+ * place.
  */
-export function arrivalRows({shown, chips}) {
+export function arrivalRows(shown) {
   const {status, arrivals} = shown
 
   switch (status) {
@@ -160,40 +97,10 @@ export function arrivalRows({shown, chips}) {
         return noteRows(ARRIVALS_NONE)
       }
 
-      return {
-        kind: ArrivalRowsKind.rows,
-        rows: Array.from(arrivals, (arrival) => arrivalRow({arrival, chips}))
-      }
+      return {kind: ArrivalRowsKind.rows, rows: Array.from(arrivals, arrivalRow)}
     default:
       return unreachable(status, "arrivals status")
   }
-}
-
-function arrivalRow({arrival, chips}) {
-  const {route, headsign, minutes, predicted} = arrival
-  let routeName = null
-  let color = null
-
-  if (typeof route === "string") {
-    routeName = route
-    const lookup = chipLookup({route, chips})
-
-    if (lookup.kind === ChipLookupKind.found) {
-      color = lookup.color
-    }
-  }
-
-  let headsignText = null
-
-  if (typeof headsign === "string") {
-    headsignText = headsign
-  }
-
-  return {route: routeName, color, headsign: headsignText, time: arrivalTimeText(minutes), isLive: predicted === true}
-}
-
-function plainLine(text) {
-  return {text, isLive: false}
 }
 
 /** Whether the next arrival of what the server says of a stop's arrivals is a live prediction. */
@@ -249,20 +156,92 @@ export function nextArrivalTimeText({status, arrivals}) {
   }
 
   const [{minutes}] = arrivals
+  return arrivalTimeText(minutes)
+}
 
-  if (minutes === 0) {
-    return ARRIVAL_NOW
-  } else {
-    return `${minutes} min`
+function textElement({tagName, className, text}) {
+  const element = document.createElement(tagName)
+  element.className = className
+  element.textContent = text
+  return element
+}
+
+function chipOf({route, color}) {
+  const chips = []
+
+  if (route !== null) {
+    chips.push({name: route, color})
   }
+
+  return chips
+}
+
+/**
+ * One arrival's row, of the shape `arrivalRows` gives, as an element of
+ * `tagName`: its route's chip, its headsign, and how soon, a live time in
+ * bold with the live dot beside it.
+ */
+export function arrivalRowElement({row, tagName}) {
+  const {route, color, headsign, time, isLive} = row
+  const element = document.createElement(tagName)
+  element.className = ROW_CLASS_NAME
+  const children = chipElements({chips: chipOf({route, color}), countMax: 1, emptyText: ""})
+
+  let headsignText = ""
+
+  if (headsign !== null) {
+    headsignText = headsign
+  }
+
+  children.push(textElement({tagName: "span", className: HEADSIGN_CLASS_NAME, text: headsignText}))
+
+  let timeClassName = TIME_CLASS_NAME
+
+  if (isLive) {
+    timeClassName = LIVE_TIME_CLASS_NAME
+  }
+
+  const timeElement = textElement({tagName: "span", className: timeClassName, text: time})
+
+  if (isLive) {
+    timeElement.append(liveDot())
+  }
+
+  children.push(timeElement)
+  appendSpaced({element, children})
+  return element
+}
+
+// The key under a stop's arrivals: the line a sighted rider reads, a live
+// dot before it for the server's arrivals, and the sentences a screen
+// reader reads in its place.
+function keyElement(shown) {
+  const isScheduled = isScheduledShown(shown)
+  const key = arrivalsKey({ageMinutes: shown.age_minutes, isScheduled})
+  const element = document.createElement("p")
+  element.className = KEY_CLASS_NAME
+
+  const visible = document.createElement("span")
+  visible.setAttribute("aria-hidden", "true")
+
+  if (!isScheduled) {
+    const dot = document.createElement("span")
+    dot.className = KEY_DOT_CLASS_NAME
+    visible.append(dot, " ")
+  }
+
+  visible.append(key.shown)
+  element.append(visible, textElement({tagName: "span", className: HIDDEN_TEXT_CLASS_NAME, text: key.spoken}))
+  return element
 }
 
 // Writes a stop's arrivals into `element` as text nodes: the names come
-// from outside the application and are never parsed as HTML. The
-// stylesheet shows the server's arrivals while the page is connected and
-// the note that they need a connection while it is offline; the saved
-// schedules' arrivals are shown whatever the connection, with no note.
-export function writeArrivals(element, shown) {
+// from outside the application and are never parsed as HTML. The rows are
+// a list, and the key under them comes `withKey`. The stylesheet shows the
+// server's arrivals while the page is connected and the note that they need
+// a connection while it is offline; the saved schedules' arrivals are shown
+// whatever the connection, with no note.
+export function writeArrivals({element, shown, withKey}) {
   element.replaceChildren()
   const isScheduled = isScheduledShown(shown)
   let className = NEEDS_CONNECTION_CLASS_NAME
@@ -271,14 +250,25 @@ export function writeArrivals(element, shown) {
     className = ""
   }
 
-  for (const {text, isLive} of arrivalLines(shown)) {
-    const paragraph = classedParagraph({text, className})
+  const rows = arrivalRows(shown)
 
-    if (isLive) {
-      paragraph.append(liveDot())
+  if (rows.kind === ArrivalRowsKind.note) {
+    element.append(textElement({tagName: "p", className: `${NOTE_CLASS_NAME} ${className}`, text: rows.text}))
+  } else {
+    const list = document.createElement("ul")
+    list.className = `${ROWS_CLASS_NAME} ${className}`
+
+    for (const row of rows.rows) {
+      list.append(arrivalRowElement({row, tagName: "li"}))
     }
 
-    element.append(paragraph)
+    element.append(list)
+
+    if (withKey) {
+      const key = keyElement(shown)
+      key.classList.toggle(NEEDS_CONNECTION_CLASS_NAME, !isScheduled)
+      element.append(key)
+    }
   }
 
   if (!isScheduled) {

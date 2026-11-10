@@ -16,13 +16,14 @@ export const CasingKind = Object.freeze({none: "none", casing: "casing"})
 // can be as light as the land of the light map or as dark as the land of
 // the dark one, so its line gets a casing, and a marker a stroke, in a
 // color that stands apart from the land: dark on the light map, light on
-// the dark one. On the dark map the stops and the labels turn light on dark.
+// the dark one. A stop's sign is dark on the light map and light on the dark
+// one, outlined in the other, and so is its arrow.
 const lightMapColors = Object.freeze({
   routeCasing: {kind: CasingKind.casing, color: "#334155"},
-  stopFill: "#ffffff",
-  stopStroke: "#334155",
-  stopLabel: "#334155",
-  stopHalo: "#ffffff",
+  stopSignFill: "#0f172a",
+  stopSignInk: "#ffffff",
+  chipCountFill: "#e2e8f0",
+  chipCountInk: "#0f172a",
   vehicleStroke: "#334155",
   vehicleLabel: "#0f172a",
   vehicleHalo: "#ffffff",
@@ -36,10 +37,10 @@ const lightMapColors = Object.freeze({
 
 const darkMapColors = Object.freeze({
   routeCasing: {kind: CasingKind.casing, color: "#e2e8f0"},
-  stopFill: "#1e293b",
-  stopStroke: "#e2e8f0",
-  stopLabel: "#e2e8f0",
-  stopHalo: "#0f172a",
+  stopSignFill: "#e2e8f0",
+  stopSignInk: "#0f172a",
+  chipCountFill: "#334155",
+  chipCountInk: "#e2e8f0",
   vehicleStroke: "#e2e8f0",
   vehicleLabel: "#e2e8f0",
   vehicleHalo: "#0f172a",

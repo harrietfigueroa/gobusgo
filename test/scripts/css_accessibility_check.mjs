@@ -77,7 +77,7 @@ const pairs = [
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-badge-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-alert-badge-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-filter-badge-color", background: "--surface-border-color"},
-  {kind: PairKind.text, foreground: "--map-callout-detail-color", background: "--surface-fill"},
+  {kind: PairKind.text, foreground: "--muted-text-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--route-chip-count-color", background: "--route-chip-count-fill"},
   {kind: PairKind.nonText, foreground: "--surface-border-color", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--surface-border-color", background: "--panel-detail-action-fill"},

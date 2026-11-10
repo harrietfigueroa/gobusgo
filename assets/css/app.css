@@ -57,7 +57,7 @@
   --map-attribution-color: rgb(0 0 0 / 0.75);
   --theme-option-checked-fill: #dcfce7;
   --theme-option-height: 44px;
-  --map-callout-detail-color: #475569;
+  --muted-text-color: #475569;
   --panel-sheet-filter-badge-color: #0f172a;
   --panel-detail-action-fill: #ffffff;
   --panel-detail-action-pressed-fill: #dcfce7;
@@ -122,7 +122,7 @@
   --theme-option-checked-fill: #14532d;
   --filter-bar-fill: #0f172a;
   --filter-suggestion-active-fill: #14532d;
-  --map-callout-detail-color: #cbd5e1;
+  --muted-text-color: #cbd5e1;
   --panel-detail-action-fill: #0f172a;
   --panel-detail-action-pressed-fill: #14532d;
   --filter-kind-color: #94a3b8;
@@ -325,7 +325,7 @@
 }
 
 .map-callout-detail {
-  color: var(--map-callout-detail-color);
+  color: var(--muted-text-color);
 }
 
 .map-callout-rows {
@@ -334,13 +334,32 @@
   gap: 4px;
 }
 
-.map-callout-row {
+/* An arrival is a row of its route's chip, its headsign, and its time. A
+   live time is bold with the live dot beside it; a scheduled one is plain,
+   so the two differ by weight and mark as well as by color. In the stop
+   view and the Favorites tab each row is a card; in a callout it is a line. */
+.arrival-rows {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.map-callout-headsign {
+.arrival-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arrival-rows .arrival-row {
+  padding: 8px 10px;
+  border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+  border-radius: var(--surface-radius);
+}
+
+.arrival-headsign {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -348,9 +367,30 @@
   white-space: nowrap;
 }
 
-.map-callout-time {
-  font-weight: 700;
+.arrival-time {
+  color: var(--muted-text-color);
   white-space: nowrap;
+}
+
+.arrival-time-live {
+  color: inherit;
+  font-weight: 700;
+}
+
+.arrival-note,
+.arrival-key {
+  color: var(--muted-text-color);
+}
+
+.arrival-key {
+  margin-top: 6px;
+  font-size: 0.8125rem;
+}
+
+/* The key's dot stands for every live dot, so it stays still. */
+.arrival-key-dot {
+  margin-left: 0;
+  animation: none;
 }
 
 .route-chip {
@@ -879,6 +919,59 @@ a.inline-target {
   opacity: 0.7;
 }
 
+/* The stop view's header: pills of the stop's code and direction, and the
+   favorite button, a star of a map control's size. */
+.panel-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.panel-detail-pill {
+  padding: 1px 8px;
+  border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
+
+.panel-detail-favorite {
+  flex-shrink: 0;
+  width: var(--close-button-hit-size);
+  height: var(--close-button-hit-size);
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.panel-detail-favorite[aria-pressed="true"] {
+  background-color: var(--panel-detail-action-pressed-fill);
+  color: var(--panel-sheet-selected-color);
+}
+
+.panel-detail-favorite:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.panel-detail-caption {
+  margin-top: 4px;
+  color: var(--muted-text-color);
+  font-size: 0.875rem;
+}
+
+.panel-detail-caption[hidden] {
+  display: none;
+}
+
 /* A favorite's entry: a drag handle, its name, which centers the map on
    the stop, and its move buttons, each a target of a map control's size. */
 .favorite-stop-handle {
@@ -929,10 +1022,6 @@ a.inline-target {
 
 .favorite-stop-dragging .favorite-stop-handle {
   cursor: grabbing;
-}
-
-.panel-detail-arrivals p:first-child {
-  font-weight: 600;
 }
 
 /* The filter bar holds its tokens and its text box in one box, as one text
@@ -1323,6 +1412,7 @@ a.inline-target {
 .panel-sheet-handle:focus-visible,
 .panel-sheet-back:focus-visible,
 .panel-detail-action:focus-visible,
+.panel-detail-favorite:focus-visible,
 .favorite-stop-name:focus-visible,
 .favorite-stop-move:focus-visible,
 .panel-sheet-tab:focus-visible,
@@ -1409,6 +1499,7 @@ a.inline-target {
   }
 
   .panel-detail-action[aria-pressed="true"],
+  .panel-detail-favorite[aria-pressed="true"],
   .filter-suggestion[aria-selected="true"] {
     background-color: Highlight;
     color: HighlightText;
