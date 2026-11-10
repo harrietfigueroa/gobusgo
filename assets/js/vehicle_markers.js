@@ -17,6 +17,8 @@ import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
+import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
+import {drawPointedMarker, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS} from "./vehicle_marker_shapes"
 
 const SOURCE_NAME = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
@@ -32,12 +34,9 @@ const ROUTE_HALO_WIDTH_PIXELS = 1.5
 const POINTED_IMAGE_PREFIX = "vehicle-marker-pointed-"
 const POINTED_IMAGE_SIZE_PIXELS = 28
 const POINTED_IMAGE_PIXEL_RATIO = 2
-const POINTED_TIP_INSET_PIXELS = 2
 const BADGE_LAYER_NAME = "vehicle-markers-badge"
 const BADGE_IMAGE_PIXEL_RATIO = 2
 const HALVING_DIVISOR = 2
-const MARKER_RADIUS_PIXELS = 6
-const MARKER_STROKE_WIDTH_PIXELS = 1.5
 // The badge's lower left corner stands this far inside the marker's edge,
 // right of and above its center, so the badge sits on its upper right edge.
 const BADGE_INSET_PIXELS = 2
@@ -61,19 +60,24 @@ function point(coordinates) {
   return {type: "Point", coordinates}
 }
 
-// Every agency's markers as one GeoJSON collection, a point per marker with
-// the texts its label and its popup show, and the glides that bring markers
-// already drawn to their new positions. A marker in `drawn`, the positions
-// drawn now, that glides is placed where it is drawn and glides from there;
-// any other stands at its new position. `drawn` comes back as the positions
-// the collection draws, so a vehicle that leaves the fetch leaves it too.
-function placeMarkers({markersByAgency, drawn, startMs, reducedMotion}) {
+// Every agency's markers but those of `onCanvas`, which the canvas over the
+// map draws, as one GeoJSON collection, a point per marker with the texts
+// its label and its popup show, and the glides that bring markers already
+// drawn to their new positions. A marker in `drawn`, the positions drawn
+// now, that glides is placed where it is drawn and glides from there; any
+// other stands at its new position. `drawn` comes back as the positions the
+// collection draws, so a vehicle that leaves the fetch leaves it too.
+function placeMarkers({markersByAgency, onCanvas, drawn, startMs, reducedMotion}) {
   const features = []
   const placed = new Map()
   const gliding = new Map()
 
   for (const markers of markersByAgency.values()) {
     for (const marker of markers) {
+      if (onCanvas.has(marker.id)) {
+        continue
+      }
+
       const target = [marker.lon, marker.lat]
       let position = target
 
@@ -87,11 +91,34 @@ function placeMarkers({markersByAgency, drawn, startMs, reducedMotion}) {
       }
 
       placed.set(marker.id, position)
-      features.push({type: "Feature", geometry: point(position), properties: markerProperties(marker)})
+      features.push(markerFeature({marker, position}))
     }
   }
 
   return {collection: {type: "FeatureCollection", features}, drawn: placed, gliding}
+}
+
+function markerFeature({marker, position}) {
+  return {type: "Feature", geometry: point(position), properties: markerProperties(marker)}
+}
+
+// The markers of `markersByAgency` by their identifiers.
+function markersById(markersByAgency) {
+  const byId = new Map()
+
+  for (const markers of markersByAgency.values()) {
+    for (const marker of markers) {
+      byId.set(marker.id, marker)
+    }
+  }
+
+  return byId
+}
+
+// The position a marker on the canvas is drawn at when its caller gives
+// none: its fetch's.
+function fetchedPosition({marker}) {
+  return [marker.lon, marker.lat]
 }
 
 // The texts a marker's label, popup, and view show, as its feature holds
@@ -148,24 +175,8 @@ function pointedImage({color, strokeColor}) {
 
   const context = canvas.getContext("2d")
   const center = POINTED_IMAGE_SIZE_PIXELS / HALVING_DIVISOR
-  const tipDistance = center - POINTED_TIP_INSET_PIXELS
-  // The angle at the circle's center between the tip and each point where
-  // a line from the tip touches the circle.
-  const tangentAngle = Math.acos(MARKER_RADIUS_PIXELS / tipDistance)
-  const up = -Math.PI / HALVING_DIVISOR
-
   context.scale(POINTED_IMAGE_PIXEL_RATIO, POINTED_IMAGE_PIXEL_RATIO)
-  context.beginPath()
-  context.moveTo(center, center - tipDistance)
-  context.arc(center, center, MARKER_RADIUS_PIXELS, up + tangentAngle, up - tangentAngle)
-  context.closePath()
-  context.fillStyle = color
-  context.fill()
-  context.lineJoin = "round"
-  context.lineWidth = MARKER_STROKE_WIDTH_PIXELS
-  context.strokeStyle = strokeColor
-  context.stroke()
-
+  drawPointedMarker(canvas, {x: center, y: center, angleRadians: 0, color, strokeColor})
   return context.getImageData(0, 0, size, size)
 }
 
@@ -381,6 +392,11 @@ export const VehicleMarkers = {
     this.drawn = new Map()
     this.gliding = new Map()
     this.frame = null
+    // The canvas over the map, the markers it draws in place of the
+    // source, and where it draws each of them.
+    this.overlay = null
+    this.onCanvas = new Set()
+    this.canvasPositionAt = fetchedPosition
     // The marker the details view shows, or null while it shows none, and
     // the texts it was last written from.
     this.viewMarkerId = null
@@ -416,6 +432,8 @@ export const VehicleMarkers = {
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
       this.map = null
+      this.overlay = null
+      this.onCanvas = new Set()
       this.stopGliding()
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => { this.attach(map, maplibre) })
@@ -449,6 +467,7 @@ export const VehicleMarkers = {
     this.events.handle(SCHEDULED_MARKERS_EVENT_NAME, ({markers}) => {
       this.isScheduled = true
       this.markersByAgency = new Map([[SCHEDULED_KEY, markers]])
+      this.drawInSource()
       this.draw()
       this.updateView(markers)
     })
@@ -459,6 +478,7 @@ export const VehicleMarkers = {
       if (this.isScheduled) {
         this.isScheduled = false
         this.markersByAgency = new Map()
+        this.drawInSource()
         this.draw()
         this.events.push({name: "vehicle-markers:ready", payload: {}})
       }
@@ -497,17 +517,159 @@ export const VehicleMarkers = {
     // A map keeps the listeners of a layer while the layer is added again.
     for (const layerName of markerLayerNames) {
       // A click on a vehicle opens its compact popup and shows the vehicle
-      // in the details view.
+      // in the details view. A vehicle the canvas draws stands above the
+      // layers, so a click it takes opens that vehicle alone.
       map.on("click", layerName, (event) => {
-        const [feature] = event.features
-        this.openVehicle(feature)
+        const hit = overlayHitAt({map, point: event.point})
+
+        if (hit.kind === HitKind.missing) {
+          const [feature] = event.features
+          this.openVehicle(feature)
+        }
       })
 
       map.on("mouseenter", layerName, () => { canvas.style.cursor = "pointer" })
       map.on("mouseleave", layerName, () => { canvas.style.cursor = "" })
     }
 
+    this.attachOverlay(map)
     this.map = map
+  },
+
+  // Adds the canvas over `map`. The canvas takes no pointer events, so the
+  // map's own click and pointer moves find the vehicles it draws.
+  attachOverlay(map) {
+    const canvas = map.getCanvas()
+    this.overlay = attachVehicleOverlay({map, statuses: this.statuses})
+
+    map.on("click", (event) => {
+      const hit = overlayHitAt({map, point: event.point})
+
+      if (hit.kind === HitKind.found) {
+        this.openVehicle(hit.feature)
+      }
+    })
+
+    this.isPointerOnCanvasVehicle = false
+    map.on("mousemove", (event) => {
+      const hit = overlayHitAt({map, point: event.point})
+      const isOnVehicle = hit.kind === HitKind.found
+
+      if (isOnVehicle) {
+        canvas.style.cursor = "pointer"
+      } else if (this.isPointerOnCanvasVehicle) {
+        canvas.style.cursor = ""
+      }
+
+      this.isPointerOnCanvasVehicle = isOnVehicle
+    })
+  },
+
+  // Moves the markers of `markerIds` off the source and onto the canvas over
+  // the map, in one update of the source, and draws them there at
+  // `positionAt({marker, nowMs})`, a marker as the server sent it and the
+  // page's monotonic time in milliseconds, at `rateHz` while the camera is still
+  // and at each frame of a camera move. A call replaces the set of the one
+  // before it: a marker it leaves out goes back to the source at the
+  // position it was drawn at. A page that asks for reduced motion keeps
+  // every marker in the source.
+  drawOnCanvas({markerIds, rateHz, positionAt}) {
+    const isReducedMotion = window.matchMedia(REDUCED_MOTION_QUERY).matches
+    const isDrawable = this.overlay !== null && !isReducedMotion
+
+    if (!isDrawable) {
+      return
+    }
+
+    const entering = new Set(markerIds)
+    const leaving = []
+
+    for (const markerId of this.onCanvas) {
+      if (!entering.has(markerId)) {
+        leaving.push(markerId)
+      }
+    }
+
+    const returned = this.returnedFeatures(leaving)
+    const removed = []
+
+    for (const markerId of entering) {
+      if (!this.onCanvas.has(markerId)) {
+        removed.push(markerId)
+        this.gliding.delete(markerId)
+        this.drawn.delete(markerId)
+      }
+    }
+
+    this.onCanvas = entering
+    this.canvasPositionAt = positionAt
+    this.updateSource({add: returned, remove: removed})
+    this.overlay.start({rateHz, vehiclesAt: (nowMs) => this.canvasVehicles(nowMs)})
+  },
+
+  // Moves every marker on the canvas back to the source, in one update, at
+  // the position it was drawn at, and stops the canvas.
+  drawInSource() {
+    if (this.onCanvas.size === 0) {
+      return
+    }
+
+    const returned = this.returnedFeatures(this.onCanvas)
+    this.onCanvas = new Set()
+    this.canvasPositionAt = fetchedPosition
+    this.overlay.stop()
+    this.updateSource({add: returned, remove: []})
+  },
+
+  // The features of the markers of `markerIds` the fetches still hold, at
+  // the positions the canvas draws them at now, which become their drawn
+  // positions in the source.
+  returnedFeatures(markerIds) {
+    const byId = markersById(this.markersByAgency)
+    const nowMs = performance.now()
+    const features = []
+
+    for (const markerId of markerIds) {
+      const marker = byId.get(markerId)
+
+      if (marker !== undefined) {
+        const position = this.canvasPositionAt({marker, nowMs})
+        this.drawn.set(markerId, position)
+        features.push(markerFeature({marker, position}))
+      }
+    }
+
+    return features
+  },
+
+  // The vehicles the canvas draws at `nowMs`: the markers on the canvas the
+  // fetches still hold, with their texts as the latest fetch has them.
+  canvasVehicles(nowMs) {
+    const byId = markersById(this.markersByAgency)
+    const features = []
+
+    for (const markerId of this.onCanvas) {
+      const marker = byId.get(markerId)
+
+      if (marker !== undefined) {
+        const position = this.canvasPositionAt({marker, nowMs})
+        features.push(markerFeature({marker, position}))
+      }
+    }
+
+    return features
+  },
+
+  // A map whose style is being set anew has no source, and the markers
+  // held here are drawn when it is added.
+  updateSource({add, remove}) {
+    const source = this.map.getSource(SOURCE_NAME)
+    const isChanged = add.length > 0 || remove.length > 0
+    const isDue = source !== undefined && isChanged
+
+    if (isDue) {
+      source.updateData({add, remove})
+    }
   },
 
   // Opens the compact popup of the vehicle of `feature`, a feature of a
@@ -547,6 +709,7 @@ export const VehicleMarkers = {
     // A new map draws every marker at its position, with nothing to glide from.
     const {collection, drawn} = placeMarkers({
       markersByAgency: this.markersByAgency,
+      onCanvas: this.onCanvas,
       drawn: new Map(),
       startMs: performance.now(),
       reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
@@ -644,6 +807,7 @@ export const VehicleMarkers = {
     if (hasSource) {
       const {collection, drawn, gliding} = placeMarkers({
         markersByAgency: this.markersByAgency,
+        onCanvas: this.onCanvas,
         drawn: this.drawn,
         startMs: performance.now(),
         reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches
@@ -653,6 +817,11 @@ export const VehicleMarkers = {
       this.gliding = gliding
       this.map.getSource(SOURCE_NAME).setData(collection)
       this.requestGlideFrame()
+    }
+
+    // The canvas draws the texts and statuses of the latest fetch.
+    if (this.overlay !== null) {
+      this.overlay.drawIfRunning()
     }
   },
 

@@ -6,6 +6,7 @@ import {viewBox} from "./map_view_text"
 import {sheetInsets} from "./panel_sheet"
 import {MARKER_LAYER_NAME as STOP_LAYER_NAME, ZOOM_MIN as STOP_ZOOM_MIN} from "./stop_markers"
 import {markerLayerNames as vehicleLayerNames} from "./vehicle_markers"
+import {overlayFeaturesIn} from "./vehicle_overlay"
 
 // The layers of `layerNames` the map's style holds now; a style being set
 // anew holds none of them, and a map with no tile archive no stop layer.
@@ -57,6 +58,13 @@ export function readView(map) {
   })
 
   const vehicles = renderedById({map, box, layerNames: vehicleLayerNames, idName: "markerId"})
+
+  // The vehicles the canvas over the map draws are in no layer, and stand
+  // where its last draw put them.
+  for (const feature of overlayFeaturesIn({map, box})) {
+    vehicles.set(feature.properties.markerId, feature)
+  }
+
   const hasStopLayer = map.getLayer(STOP_LAYER_NAME) !== undefined
   const isZoomedOut = map.getZoom() < STOP_ZOOM_MIN
   const isStopsHidden = hasStopLayer && isZoomedOut

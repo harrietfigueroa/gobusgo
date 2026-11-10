@@ -1,5 +1,6 @@
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
+import {HitKind, overlayHitAt} from "./vehicle_overlay"
 
 // `routeList` and everything above it are pure: the list is a function of
 // the features under the pointer, which lets it be run apart from a map.
@@ -152,8 +153,15 @@ function presentLayerNames(map, layerNames) {
 }
 
 // Whether `point` is on the marker of a vehicle or a stop, which stands
-// above the lines and has a popup of its own.
+// above the lines and has a popup of its own, a vehicle the canvas over the
+// map draws included.
 function onMarker({map, point}) {
+  const hit = overlayHitAt({map, point})
+
+  if (hit.kind === HitKind.found) {
+    return true
+  }
+
   const markerLayers = presentLayerNames(map, [...vehicleMarkerLayerNames, STOP_MARKER_LAYER_NAME])
 
   if (markerLayers.length > 0) {
