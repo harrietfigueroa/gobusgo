@@ -1,14 +1,16 @@
 // The texts of a vehicle's details view as labels, as pure functions of the
 // texts its marker carries: the route as the title, a muted line of where it
-// goes and which vehicle it is, key-value rows of its status, its lateness,
-// and its next stop, and a muted note on where its position comes from.
-// Nothing here reads the document.
+// goes and which vehicle it is, key-value rows of its status, the age of its
+// last report, where its marker stands, its lateness, and its next stop, and
+// a muted note on where its marker stands. Nothing here reads the document.
+
+import {unreachable} from "./assert.js"
+import {MarkerPositionKind} from "./vehicle_motion.js"
 
 const PART_SEPARATOR = " · "
 const AGENCY_SEPARATOR = "_"
 const AGE_SUFFIX = " ago"
 const SCHEDULED_TRIP_TEXT = "scheduled trip"
-const POSITION_NOTE = "Position is the source's estimate."
 const SCHEDULED_POSITION_NOTE = "Position is the saved schedule's; delays, cancellations, and detours are unknown."
 
 function isText(value) {
@@ -40,25 +42,35 @@ function capitalized(text) {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-function statusValue({statusLabel, locationAge}) {
-  const short = shortStatusLabel(statusLabel)
-  const isAge = isText(locationAge) && locationAge.endsWith(AGE_SUFFIX)
-
-  if (isAge) {
-    return short + PART_SEPARATOR + locationAge
+// The value of the Position row and the note under the rows, by where the
+// marker stands.
+function positionTexts(position) {
+  switch (position) {
+    case MarkerPositionKind.estimated:
+      return {
+        value: "Estimated",
+        note: "The marker is an estimate: it moves along the route at the schedule's pace from the last report, which the ring marks."
+      }
+    case MarkerPositionKind.lastReport:
+      return {value: "At last report", note: "The marker stands at the last report."}
+    case MarkerPositionKind.fetched:
+      return {value: "Source's estimate", note: "The marker stands where the source estimates the vehicle is."}
+    default:
+      return unreachable(position, "a marker stands somewhere")
   }
-
-  return short
 }
 
 /**
  * A vehicle's view: the route as the title, or its headsign, or the vehicle
  * for one with neither; a muted line of "To" its headsign, where the title
- * is not the headsign, and the vehicle; the rows of its status with the age
- * of its last report, its lateness, and its next stop, each where the marker
- * has it; and the note on its position.
+ * is not the headsign, and the vehicle; the rows of its status, the age of
+ * its last report, where its marker stands, `position`, a
+ * `MarkerPositionKind`, its lateness, and its next stop, each where the
+ * marker has it; and the note on where its marker stands. A saved
+ * schedule's trip names no position row, and its note says what the saved
+ * schedule leaves out.
  */
-export function vehicleViewText({route, headsign, vehicleId, statusLabel, locationAge, schedule, nextStop, isScheduledTrip}) {
+export function vehicleViewText({route, headsign, vehicleId, statusLabel, locationAge, schedule, nextStop, isScheduledTrip, position}) {
   const vehicle = vehicleText({vehicleId, isScheduledTrip})
   const meta = []
   let title = capitalized(vehicle)
@@ -76,7 +88,20 @@ export function vehicleViewText({route, headsign, vehicleId, statusLabel, locati
     meta.push(vehicle)
   }
 
-  const rows = [{key: "Status", value: statusValue({statusLabel, locationAge})}]
+  const rows = [{key: "Status", value: shortStatusLabel(statusLabel)}]
+  const isAge = isText(locationAge) && locationAge.endsWith(AGE_SUFFIX)
+
+  if (isAge) {
+    rows.push({key: "Last reported", value: locationAge})
+  }
+
+  const positionText = positionTexts(position)
+  let note = SCHEDULED_POSITION_NOTE
+
+  if (!isScheduledTrip) {
+    rows.push({key: "Position", value: positionText.value})
+    note = positionText.note
+  }
 
   if (isText(schedule)) {
     rows.push({key: "Schedule", value: schedule})
@@ -84,12 +109,6 @@ export function vehicleViewText({route, headsign, vehicleId, statusLabel, locati
 
   if (isText(nextStop)) {
     rows.push({key: "Next stop", value: nextStop})
-  }
-
-  let note = POSITION_NOTE
-
-  if (isScheduledTrip) {
-    note = SCHEDULED_POSITION_NOTE
   }
 
   return {title, meta: meta.join(PART_SEPARATOR), rows, note}

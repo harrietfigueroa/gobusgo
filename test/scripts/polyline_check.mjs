@@ -1,14 +1,15 @@
 // Checks the polyline module against cases written out by hand on a plane
 // in meters: the nearest point of a line beside a segment's middle, before
 // its start, past its end, at a corner, at or past a minimum distance along
-// it, and on a segment of no length, and the segment that holds a distance
+// it, and on a segment of no length, the segment that holds a distance
 // along a line, before its start, at a point, inside a segment, and past
-// its end. Run it with `node test/scripts/polyline_check.mjs`; it exits
-// non-zero on the first case that differs.
+// its end, and the points of a line between two distances along it. Run it
+// with `node test/scripts/polyline_check.mjs`; it exits non-zero on the
+// first case that differs.
 
 import {deepStrictEqual, strictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
-import {nearestAlong, segmentIndexAt} from "../../assets/js/math/polyline.js"
+import {nearestAlong, pointsBetween, segmentIndexAt} from "../../assets/js/math/polyline.js"
 
 // An L-shaped line: 100 m east, then 100 m north.
 const LINE = {
@@ -72,6 +73,37 @@ throws(segmentOfOnePoint, AssertionError, "a line of one point")
 
 function segmentOfOnePoint() {
   segmentIndexAt({cumulative: [0], along: 0})
+}
+
+function pairOf({x, y}) {
+  return [x, y]
+}
+
+function linePair(x, index) {
+  return [x, LINE.ys[index]]
+}
+
+// The L-shaped line's points, as a caller that keeps [x, y] pairs holds them.
+const L_POINTS = Array.from(LINE.xs, linePair)
+
+const betweenCases = [
+  {name: "inside one segment", from: 20, to: 60, points: [{x: 20, y: 0}, {x: 60, y: 0}]},
+  {name: "across the corner", from: 50, to: 150, points: [{x: 50, y: 0}, {x: 100, y: 0}, {x: 100, y: 50}]},
+  {name: "from a point to the end", from: 100, to: 200, points: [{x: 100, y: 0}, {x: 100, y: 100}]},
+  {name: "the whole line", from: 0, to: 200, points: [{x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}]},
+  {name: "one distance", from: 150, to: 150, points: [{x: 100, y: 50}, {x: 100, y: 50}]},
+  {name: "outside the line, clamped to its ends", from: -40, to: 260, points: [{x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}]}
+]
+
+for (const {name, from, to, points} of betweenCases) {
+  const expected = Array.from(points, pairOf)
+  deepStrictEqual(pointsBetween({points: L_POINTS, cumulative: LINE.cumulative, from, to}), expected, name)
+}
+
+throws(reversedDistances, AssertionError, "a start past the end")
+
+function reversedDistances() {
+  pointsBetween({points: L_POINTS, cumulative: LINE.cumulative, from: 150, to: 50})
 }
 
 console.log("polyline: every case holds")

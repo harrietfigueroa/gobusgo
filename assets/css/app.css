@@ -75,6 +75,7 @@
   --rider-heading-size: 72px;
   --badge-ink: #0f172a;
   --badge-paper: #ffffff;
+  --report-tie-casing-color: #334155;
   --shared-vehicle-letter-color: #ffffff;
   --shared-vehicle-low-letter-color: #0f172a;
   --rider-dot-border-color: #334155;
@@ -132,6 +133,7 @@
   --rider-heading-color: rgb(56 189 248);
   --badge-ink: #e2e8f0;
   --badge-paper: #0f172a;
+  --report-tie-casing-color: #e2e8f0;
   --rider-dot-border-color: #ffffff;
   --color-white: #0f172a;
   --color-slate-200: #334155;
@@ -1238,6 +1240,21 @@ a.inline-target {
   stroke: var(--badge-paper);
   stroke-width: 1.4;
   stroke-linecap: round;
+}
+
+/* The legend's tie between a last report and its marker: a ring and a
+   dashed line in a route's color over a casing in the theme's, as the
+   map's canvas draws them, which forced colors leave as they are. */
+.report-tie {
+  forced-color-adjust: none;
+}
+
+.report-tie-casing {
+  stroke: var(--report-tie-casing-color);
+}
+
+.report-tie-paper {
+  fill: var(--badge-paper);
 }
 
 /* The legend's shared vehicle swatch: a disc in the kind's color with the

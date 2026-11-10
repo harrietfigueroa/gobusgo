@@ -1,11 +1,12 @@
 // A 2D canvas over a map's own canvas that draws the vehicles it is handed,
 // in the shapes, colors, opacities, badges, and chevrons of the map's vehicle
-// layers. The map never draws a frame for it: it redraws on the map's
-// `render` event when the camera has changed since its last draw, so it
-// stands where the frame MapLibre just drew stands, and from a timer of its
-// own while the camera is still. It never asks the map for a frame and
-// changes no source, so the map's `idle` event keeps meaning that the map
-// has come to rest.
+// layers, and a second canvas under it that draws the ties between
+// vehicles' last reports and their markers. The map never draws a frame
+// for either: they redraw on the map's `render` event when the camera has
+// changed since their last draw, so they stand where the frame MapLibre
+// just drew stands, and from a timer of their own while the camera is
+// still. They never ask the map for a frame and change no source, so the
+// map's `idle` event keeps meaning that the map has come to rest.
 // https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#project — checked 2026-11-09
 
 import {assertCondition} from "./assert.js"
@@ -14,6 +15,18 @@ import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./colo
 import {mapColors} from "./theme"
 import {SpriteCache} from "./vehicle_sprites"
 import {BADGE_FONT, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
+import {
+  LINE_CASING_WIDTH_PIXELS,
+  LINE_DASH_PIXELS,
+  LINE_WIDTH_PIXELS,
+  RING_CASING_WIDTH_PIXELS,
+  RING_RADIUS_PIXELS,
+  RING_WIDTH_PIXELS,
+  isTieRedrawDue,
+  markerCoverPixels,
+  screenTie,
+  tieStrokes
+} from "./report_tie_layout"
 import {
   badgeCorner,
   chevronCenter,
@@ -29,9 +42,12 @@ import {
 } from "./vehicle_overlay_layout"
 
 const CANVAS_CLASS_NAME = "vehicle-overlay"
+const TIE_CANVAS_CLASS_NAME = "vehicle-overlay vehicle-ties"
 const MS_PER_SECOND = 1000
 const OPACITY_FALLBACK = 1
 const HALVING_DIVISOR = 2
+const FULL_TURN = HALVING_DIVISOR * Math.PI
+const NO_DASH = Object.freeze([])
 
 // The overlay of each map, which the map's other readers ask through the
 // functions below.
@@ -85,6 +101,36 @@ function cameraKey(map) {
   return parts.join(" ")
 }
 
+function clearCanvas(canvas) {
+  const context = canvas.getContext("2d")
+  context.setTransform(1, 0, 0, 1, 0, 0)
+  context.clearRect(0, 0, canvas.width, canvas.height)
+}
+
+// Adds each line of `lines`, screen points, to the context's path.
+function traceLines({context, lines}) {
+  context.beginPath()
+
+  for (const line of lines) {
+    context.moveTo(line[0].x, line[0].y)
+
+    for (let index = 1; index < line.length; index++) {
+      context.lineTo(line[index].x, line[index].y)
+    }
+  }
+}
+
+// Adds a circle of the ring's radius around each point of `rings` to the
+// context's path.
+function traceRings({context, rings}) {
+  context.beginPath()
+
+  for (const {x, y} of rings) {
+    context.moveTo(x + RING_RADIUS_PIXELS, y)
+    context.arc(x, y, RING_RADIUS_PIXELS, 0, FULL_TURN)
+  }
+}
+
 class VehicleOverlay {
   constructor({map, statuses, glyphZoomMin}) {
     this.map = map
@@ -103,17 +149,26 @@ class VehicleOverlay {
     // Right after the map's canvas, so MapLibre's popups and markers, which
     // come after it in the same container, stand above it.
     map.getCanvas().after(this.canvas)
+    // The ties stand under the vehicles, between the two canvases.
+    this.tieCanvas = document.createElement("canvas")
+    this.tieCanvas.className = TIE_CANVAS_CLASS_NAME
+    this.tieCanvas.setAttribute("aria-hidden", "true")
+    map.getCanvas().after(this.tieCanvas)
     this.vehiclesAt = null
+    this.tiesAt = null
+    this.tieIntervalMs = 0
+    this.tiesDrawnAtMs = null
     this.timer = null
     this.drawn = []
     this.drawnKey = ""
     this.sprites = new SpriteCache()
 
     this.onRender = () => {
-      const isCameraChanged = this.vehiclesAt !== null && cameraKey(map) !== this.drawnKey
+      const isShowing = this.vehiclesAt !== null || this.tiesAt !== null
+      const isCameraChanged = isShowing && cameraKey(map) !== this.drawnKey
 
       if (isCameraChanged) {
-        this.draw()
+        this.draw({isTieForced: true})
       }
     }
 
@@ -122,10 +177,12 @@ class VehicleOverlay {
     this.onRestyle = () => {
       this.sprites.clear()
       this.drawIfRunning()
+      this.drawTiesIfShown()
     }
     this.onRestyled = (event) => {
       if (event.detail.map === map) {
         this.drawIfRunning()
+        this.drawTiesIfShown()
       }
     }
 
@@ -147,19 +204,39 @@ class VehicleOverlay {
     window.clearInterval(this.timer)
     this.vehiclesAt = vehiclesAt
     this.timer = window.setInterval(() => { this.tick() }, MS_PER_SECOND / rateHz)
-    this.draw()
+    this.draw({isTieForced: false})
   }
 
-  // Stops the timer, clears the canvas, and leaves nothing drawn.
+  // Stops the timer, clears the vehicles' canvas, and leaves no vehicle
+  // drawn; the ties stay as they are shown.
   stop() {
     window.clearInterval(this.timer)
     this.timer = null
     this.vehiclesAt = null
     this.drawn = []
     this.drawnKey = ""
-    const context = this.canvas.getContext("2d")
-    context.setTransform(1, 0, 0, 1, 0, 0)
-    context.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    clearCanvas(this.canvas)
+  }
+
+  // Draws the ties `tiesAt` gives on the canvas under the vehicles, now, at
+  // each frame the map draws from another camera, and at each tick of the
+  // vehicles' timer once `intervalMs` has passed since they were last
+  // drawn. `tiesAt` is called with the page's monotonic time in
+  // milliseconds and gives ties, each with its route's `color`, its `ring`
+  // as [lon, lat], and its `line` from the ring to its marker as a list of
+  // [lon, lat]. A second call replaces the first.
+  showTies({tiesAt, intervalMs}) {
+    assertCondition(intervalMs >= 0, `an interval is not negative, got: ${intervalMs}`)
+    this.tiesAt = tiesAt
+    this.tieIntervalMs = intervalMs
+    this.drawTies()
+  }
+
+  // Clears the ties' canvas and draws no tie until they are shown again.
+  hideTies() {
+    this.tiesAt = null
+    this.tiesDrawnAtMs = null
+    clearCanvas(this.tieCanvas)
   }
 
   // A draw from the timer while the camera moves would stand where the
@@ -169,36 +246,63 @@ class VehicleOverlay {
     const isDue = isStill && document.visibilityState === "visible"
 
     if (isDue) {
-      this.draw()
+      this.draw({isTieForced: false})
     }
   }
 
   drawIfRunning() {
     if (this.vehiclesAt !== null) {
-      this.draw()
+      this.drawVehicles()
     }
   }
 
-  // The canvas follows the container's size at the device's pixel ratio.
-  fitCanvas() {
+  drawTiesIfShown() {
+    if (this.tiesAt !== null) {
+      this.drawTies()
+    }
+  }
+
+  // Draws the vehicles, then the ties where `isTieForced` or their interval
+  // has passed, so a tie ends where its vehicle was drawn.
+  draw({isTieForced}) {
+    if (this.vehiclesAt !== null) {
+      this.drawVehicles()
+    }
+
+    const isTieShown = this.tiesAt !== null
+    const isTieDue = isTieForced || isTieRedrawDue({drawnAtMs: this.tiesDrawnAtMs, nowMs: performance.now(), intervalMs: this.tieIntervalMs})
+    const isTieDrawn = isTieShown && isTieDue
+
+    if (isTieDrawn) {
+      this.drawTies()
+    }
+
+    this.drawnKey = cameraKey(this.map)
+  }
+
+  // Both canvases follow the container's size at the device's pixel ratio.
+  fitCanvases() {
     const container = this.map.getContainer()
     const ratio = window.devicePixelRatio
     const width = Math.round(container.clientWidth * ratio)
     const height = Math.round(container.clientHeight * ratio)
-    const isResized = this.canvas.width !== width || this.canvas.height !== height
 
-    if (isResized) {
-      this.canvas.width = width
-      this.canvas.height = height
-      this.canvas.style.width = `${container.clientWidth}px`
-      this.canvas.style.height = `${container.clientHeight}px`
+    for (const canvas of [this.canvas, this.tieCanvas]) {
+      const isResized = canvas.width !== width || canvas.height !== height
+
+      if (isResized) {
+        canvas.width = width
+        canvas.height = height
+        canvas.style.width = `${container.clientWidth}px`
+        canvas.style.height = `${container.clientHeight}px`
+      }
     }
 
     return {width: container.clientWidth, height: container.clientHeight, ratio}
   }
 
-  draw() {
-    const {width, height, ratio} = this.fitCanvas()
+  drawVehicles() {
+    const {width, height, ratio} = this.fitCanvases()
     const features = this.vehiclesAt(performance.now())
     const vehicles = []
 
@@ -220,14 +324,87 @@ class VehicleOverlay {
     this.drawRouteBadges({drawn, ratio})
 
     this.drawn = drawn
-    this.drawnKey = cameraKey(this.map)
+  }
+
+  // The ties of `tiesAt` on the screen, each cut where its marker covers it:
+  // every casing first, then each route color's dashed lines, then the
+  // rings, a casing filled with the theme's paper and a stroke in the
+  // route's color.
+  drawTies() {
+    const {ratio} = this.fitCanvases()
+    const nowMs = performance.now()
+    const reachPixels = markerCoverPixels(this.markerKind())
+    const screenTies = []
+
+    for (const tie of this.tiesAt(nowMs)) {
+      const ring = this.map.project(tie.ring)
+      const line = []
+
+      for (const position of tie.line) {
+        line.push(this.map.project(position))
+      }
+
+      screenTies.push(screenTie({color: tie.color, ring, line, reachPixels}))
+    }
+
+    const strokes = tieStrokes(screenTies)
+    const colors = mapColors(currentTheme())
+    const casingColor = colors.routeCasing.color
+    const context = this.tieCanvas.getContext("2d")
+    clearCanvas(this.tieCanvas)
+    context.setTransform(ratio, 0, 0, ratio, 0, 0)
+    context.lineCap = "round"
+    context.lineJoin = "round"
+
+    context.setLineDash(NO_DASH)
+    context.lineWidth = LINE_CASING_WIDTH_PIXELS
+    context.strokeStyle = casingColor
+    traceLines({context, lines: strokes.lines})
+    context.stroke()
+
+    context.lineCap = "butt"
+    context.setLineDash(LINE_DASH_PIXELS)
+    context.lineWidth = LINE_WIDTH_PIXELS
+
+    for (const batch of strokes.colors) {
+      context.strokeStyle = batch.color
+      traceLines({context, lines: batch.lines})
+      context.stroke()
+    }
+
+    context.setLineDash(NO_DASH)
+    traceRings({context, rings: strokes.rings})
+    context.fillStyle = colors.badgePaper
+    context.fill()
+    context.lineWidth = RING_CASING_WIDTH_PIXELS
+    context.strokeStyle = casingColor
+    context.stroke()
+    context.lineWidth = RING_WIDTH_PIXELS
+
+    for (const batch of strokes.colors) {
+      context.strokeStyle = batch.color
+      traceRings({context, rings: batch.rings})
+      context.stroke()
+    }
+
+    this.tiesDrawnAtMs = nowMs
+  }
+
+  // The kind of every marker at the map's zoom: a dot below the glyph's
+  // zoom, and a glyph from it.
+  markerKind() {
+    if (this.map.getZoom() < this.glyphZoomMin) {
+      return MarkerKind.round
+    }
+
+    return MarkerKind.glyph
   }
 
   // The marker of a vehicle: a dot below the glyph's zoom, and otherwise a
   // glyph whose chevron turns on the screen so its heading stays a compass
   // direction, or a glyph with no chevron for a vehicle with no heading.
   markerOf(properties) {
-    if (this.map.getZoom() < this.glyphZoomMin) {
+    if (this.markerKind() === MarkerKind.round) {
       const round = {kind: MarkerKind.round}
       return round
     }
@@ -349,6 +526,7 @@ class VehicleOverlay {
     window.removeEventListener(THEME_CHANGE_EVENT_NAME, this.onRestyle)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     this.canvas.remove()
+    this.tieCanvas.remove()
     overlays.delete(this.map)
   }
 }

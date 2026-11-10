@@ -251,7 +251,11 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   defp legend(assigns) do
-    assigns = assign(assigns, statuses: VehicleMarkers.statuses())
+    assigns =
+      assign(assigns,
+        statuses: VehicleMarkers.statuses(),
+        tie_color: @glyph_swatches.reported.fill
+      )
 
     ~H"""
     <section id="app-info-legend" class="flex flex-col gap-2">
@@ -273,6 +277,32 @@ defmodule GobusgoWeb.AppInfoPanel do
           <span class="font-medium">{status.label}</span>
         </li>
       </ul>
+      <ul class="flex flex-col gap-2 rounded-md border border-gray-300 bg-white p-3">
+        <li id="app-info-tie-ring" class="flex items-center gap-3">
+          <span class="relative h-6 w-8 shrink-0" aria-hidden="true">
+            <svg class="report-tie absolute top-0 left-1 h-6 w-6" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="5" class="report-tie-paper" />
+              <circle cx="12" cy="12" r="5" fill="none" stroke-width="5" class="report-tie-casing" />
+              <circle cx="12" cy="12" r="5" fill="none" stroke-width="2" stroke={@tie_color} />
+            </svg>
+          </span>
+          <span class="font-medium">Last report</span>
+        </li>
+        <li id="app-info-tie-line" class="flex items-center gap-3">
+          <span class="relative h-6 w-8 shrink-0" aria-hidden="true">
+            <svg class="report-tie absolute top-0 left-0 h-6 w-8" viewBox="0 0 32 24">
+              <path d="M4 12h24" stroke-width="6" stroke-linecap="round" class="report-tie-casing" />
+              <path d="M4 12h24" stroke-width="3" stroke-dasharray="4 3" stroke={@tie_color} />
+            </svg>
+          </span>
+          <span class="font-medium">Path since the last report</span>
+        </li>
+      </ul>
+      <p>
+        A live vehicle's marker is an estimate: between reports it moves along its route at the
+        schedule's pace. Zoomed in, and for the vehicle you select, a ring marks its last report
+        and a dashed line joins the ring to the marker along the route.
+      </p>
       <p>
         Zoomed in, a vehicle is a bus with its route's number on its shoulder and a chevron the
         way it is heading; zoomed out, a dot.

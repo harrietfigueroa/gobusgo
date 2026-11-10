@@ -40,7 +40,19 @@ import {
   routeBadgeStyle
 } from "./vehicle_marker_shapes"
 import {MotionTierKind, STILL_TIER, isPositionInBounds, markerIdsInBounds, motionSettingsOf, motionTier} from "./motion_tier"
-import {PathTripKind, drawnVehicle, isAnimated, pathTrip, placedAtFetch, resumedOnCanvas, trackedVehicle} from "./vehicle_motion"
+import {
+  MarkerPositionKind,
+  PathTripKind,
+  drawnVehicle,
+  isAnimated,
+  markerPositionKind,
+  pathTrip,
+  placedAtFetch,
+  resumedOnCanvas,
+  trackedVehicle
+} from "./vehicle_motion"
+import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
+import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
 import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
 import {tripPathKey, withTripPaths} from "./trip_path"
 import {preparePath} from "./vehicle_prediction"
@@ -301,8 +313,9 @@ function isScheduledTrip(properties) {
 }
 
 // The texts of the view of the vehicle of `properties`, whose status's
-// label `statusLabels` holds.
-function viewTextOf({properties, statusLabels}) {
+// label `statusLabels` holds and whose marker stands at `position`, a
+// `MarkerPositionKind`.
+function viewTextOf({properties, statusLabels, position}) {
   return vehicleViewText({
     route: properties.route,
     headsign: properties.headsign,
@@ -311,7 +324,8 @@ function viewTextOf({properties, statusLabels}) {
     locationAge: properties.locationAge,
     schedule: properties.schedule,
     nextStop: properties.nextStop,
-    isScheduledTrip: isScheduledTrip(properties)
+    isScheduledTrip: isScheduledTrip(properties),
+    position
   })
 }
 
@@ -383,13 +397,13 @@ function badgedStatusName({properties, badgedLabels}) {
 
 // A vehicle's callout: its route and headsign, and under them its lateness
 // and its next stop. A tap on it hands the vehicle to `onSelect`.
-function vehicleCallout({properties, badgedLabels, statusLabels, onSelect}) {
+function vehicleCallout({properties, badgedLabels, statusLabels, position, onSelect}) {
   const {title, detail} = vehicleCalloutText({
     route: properties.route,
     headsign: properties.headsign,
     schedule: properties.schedule,
     nextStop: properties.nextStop,
-    fallbackName: viewTextOf({properties, statusLabels}).title
+    fallbackName: viewTextOf({properties, statusLabels, position}).title
   })
 
   return vehicleCalloutContent({title, detail, detailName: badgedStatusName({properties, badgedLabels}), onSelect})
@@ -438,6 +452,12 @@ export const VehicleMarkers = {
     // The zoom from which a vehicle is a bus glyph, and below which a dot.
     this.glyphZoomMin = Number(this.el.dataset.glyphZoomMin)
     this.tier = STILL_TIER
+    // The tier motion would take with no reduced-motion preference, inside
+    // which the vehicles in view show their ties, still or moving, the
+    // vehicles that show them, and how often a moving tie is drawn again.
+    this.bandTier = STILL_TIER
+    this.tiedIds = []
+    this.tieIntervalMs = TIE_REDRAW_INTERVAL_MS
     this.tracked = new Map()
     this.agencyOfMarker = new Map()
     this.clocks = new Map()
@@ -460,6 +480,7 @@ export const VehicleMarkers = {
         const markerId = this.viewMarkerId
         this.viewMarkerId = null
         closeCalloutOf({kind: DetailKind.vehicle, id: markerId})
+        this.decideMotion()
       }
     }
 
@@ -761,7 +782,19 @@ export const VehicleMarkers = {
   // shows in the details view again.
   calloutOf({properties, lngLat}) {
     const onSelect = () => { this.selectVehicle({properties, lngLat}) }
-    return vehicleCallout({properties, badgedLabels: this.badgedLabels, statusLabels: this.statusLabels, onSelect})
+    const position = this.positionOf(properties.markerId)
+    return vehicleCallout({properties, badgedLabels: this.badgedLabels, statusLabels: this.statusLabels, position, onSelect})
+  },
+
+  // Where the marker of `markerId` stands, as its view names it.
+  positionOf(markerId) {
+    const tracked = this.tracked.get(markerId)
+
+    if (tracked === undefined) {
+      return MarkerPositionKind.fetched
+    }
+
+    return markerPositionKind(tracked)
   },
 
   // Adds the source with every marker and the layers in the page's theme.
@@ -1035,7 +1068,10 @@ export const VehicleMarkers = {
   // rate, from the zoom, the count of markers inside the map's bounds, the
   // reduced-motion preference, and whether the page is shown; then moves
   // the animated vehicles in view onto the canvas, or every vehicle back
-  // to the source, and asks for the paths the vehicles in view lack.
+  // to the source, asks for the paths the vehicles that show their ties
+  // lack, and draws their ties. The vehicles in view show their ties inside
+  // the band whatever the reduced-motion preference, and the selected one
+  // at any zoom.
   decideMotion() {
     if (this.map === null) {
       return
@@ -1046,20 +1082,31 @@ export const VehicleMarkers = {
       bounds: boundsOf(this.map)
     })
 
-    this.tier = motionTier({
+    const tierFacts = {
       settings: this.motionSettings,
       zoom: this.map.getZoom(),
       vehicleCountInView: inView.length,
-      isReducedMotion: this.reducedMotion.matches,
-      isVisible: document.visibilityState === "visible",
-      previous: this.tier
-    })
+      isVisible: document.visibilityState === "visible"
+    }
+
+    this.tier = motionTier({...tierFacts, isReducedMotion: this.reducedMotion.matches, previous: this.tier})
+    this.bandTier = motionTier({...tierFacts, isReducedMotion: false, previous: this.bandTier})
+    const isBandShown = this.bandTier.kind === MotionTierKind.animating
+    this.tiedIds = tiedMarkerIds({inView, isBandShown, selectedId: this.viewMarkerId})
 
     if (this.tier.kind === MotionTierKind.still) {
       this.drawInSource()
-      return
+    } else {
+      this.moveOntoCanvas(inView)
     }
 
+    this.requestPaths(this.tiedIds)
+    this.showTies()
+  },
+
+  // Moves the vehicles of `inView` that move along their paths onto the
+  // canvas, at the tier's rate, and every other back to the source.
+  moveOntoCanvas(inView) {
     const animated = []
     const nowMs = performance.now()
     const positions = this.drawnPositions()
@@ -1086,7 +1133,40 @@ export const VehicleMarkers = {
       rateHz: this.tier.rateHz,
       positionAt: (canvasMarker) => this.canvasPosition(canvasMarker)
     })
-    this.requestPaths(inView)
+  },
+
+  // Draws the ties of the vehicles that show them on the canvas under the
+  // vehicles.
+  showTies() {
+    if (this.overlay === null) {
+      return
+    }
+
+    this.overlay.showTies({tiesAt: () => this.tiesAt(), intervalMs: this.tieIntervalMs})
+  },
+
+  // The ties of the vehicles that show them, as they are drawn: a vehicle
+  // on the canvas where the canvas last drew it, and any other at its
+  // prediction for its fetch.
+  tiesAt() {
+    const byId = markersById(this.markersByAgency)
+    const ties = []
+
+    for (const markerId of this.tiedIds) {
+      const marker = byId.get(markerId)
+      const tracked = this.tracked.get(markerId)
+      const isHeld = marker !== undefined && tracked !== undefined
+
+      if (isHeld) {
+        const tie = reportTie(tracked)
+
+        if (tie.kind === TieKind.tie) {
+          ties.push({color: marker.color, ring: tie.ring, line: tie.line})
+        }
+      }
+    }
+
+    return ties
   },
 
   // Asks the server for the paths of the trips the vehicles of `markerIds`
@@ -1123,7 +1203,8 @@ export const VehicleMarkers = {
   },
 
   // Keeps the paths of a `trip-paths:paths` event, anchors again each
-  // vehicle of their trips, and decides the tier again so they move.
+  // vehicle of their trips, places a vehicle the source draws at its new
+  // prediction, and decides the tier again so they move.
   pathsArrived(event) {
     const received = pathsReceived({requests: this.pathRequests, event, nowMs: performance.now()})
     this.pathRequests = received.requests
@@ -1135,6 +1216,7 @@ export const VehicleMarkers = {
     this.pathCache = withTripPaths(this.pathCache, received.paths)
     const byId = markersById(this.markersByAgency)
     const nowMs = performance.now()
+    let isPlacedInSource = false
 
     for (const [markerId, tracked] of this.tracked) {
       const marker = byId.get(markerId)
@@ -1149,11 +1231,24 @@ export const VehicleMarkers = {
 
       if (isNewPath) {
         const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
-        this.tracked.set(markerId, trackedVehicle({tracked, marker, path: lookup.path, atMs}))
+        let anchored = trackedVehicle({tracked, marker, path: lookup.path, atMs})
+
+        if (!this.onCanvas.has(markerId)) {
+          anchored = placedAtFetch({tracked: anchored, atMs})
+          isPlacedInSource = true
+        }
+
+        this.tracked.set(markerId, anchored)
       }
     }
 
+    if (isPlacedInSource) {
+      this.draw({isSnapped: false})
+    }
+
     this.decideMotion()
+    const held = Array.from(byId.values())
+    this.updateView(held)
   },
 
   // A page hidden moves every marker back to the source and updates
@@ -1180,9 +1275,10 @@ export const VehicleMarkers = {
   // map so the vehicle, at `lngLat`, stands beside the sheet.
   selectVehicle({properties, lngLat}) {
     this.viewMarkerId = properties.markerId
-    this.viewText = JSON.stringify(properties)
+    const position = this.positionOf(properties.markerId)
+    this.viewText = JSON.stringify({properties, position})
     this.viewLngLat = lngLat
-    const text = viewTextOf({properties, statusLabels: this.statusLabels})
+    const text = viewTextOf({properties, statusLabels: this.statusLabels, position})
     showDetail({
       kind: DetailKind.vehicle,
       id: properties.markerId,
@@ -1193,11 +1289,13 @@ export const VehicleMarkers = {
     if (this.map !== null) {
       revealOnMap({map: this.map, lngLat})
     }
+
+    this.decideMotion()
   },
 
   // Writes the view of the vehicle it shows from `markers`, one agency's
-  // latest fetch, where they hold that vehicle. A vehicle no fetch holds
-  // any more keeps the view it has.
+  // latest fetch or every marker held, where they hold that vehicle. A
+  // vehicle no fetch holds any more keeps the view it has.
   updateView(markers) {
     if (this.viewMarkerId === null) {
       return
@@ -1209,14 +1307,15 @@ export const VehicleMarkers = {
       return
     }
 
-    // A fetch that leaves the vehicle's texts as they were leaves the view,
-    // and the focus in it, as it is.
+    // A fetch that leaves the vehicle's texts and where its marker stands as
+    // they were leaves the view, and the focus in it, as it is.
     const properties = markerProperties(lookup.marker)
-    const viewText = JSON.stringify(properties)
+    const position = this.positionOf(properties.markerId)
+    const viewText = JSON.stringify({properties, position})
 
     if (viewText !== this.viewText) {
       this.viewText = viewText
-      const text = viewTextOf({properties, statusLabels: this.statusLabels})
+      const text = viewTextOf({properties, statusLabels: this.statusLabels, position})
 
       updateDetail({
         kind: DetailKind.vehicle,
