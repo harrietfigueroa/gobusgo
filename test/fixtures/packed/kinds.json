@@ -1,0 +1,8 @@
+[
+  {"number": 0, "name": "fixture", "prefix": "fixture"},
+  {"number": 1, "name": "trip path shard", "prefix": "trip-paths"},
+  {"number": 2, "name": "trip path index", "prefix": "trip-paths-index"},
+  {"number": 3, "name": "address shard", "prefix": "addresses"},
+  {"number": 4, "name": "address index", "prefix": "addresses-index"},
+  {"number": 5, "name": "places", "prefix": "places"}
+]

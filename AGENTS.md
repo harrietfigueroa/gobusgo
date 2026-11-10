@@ -225,6 +225,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo/AGENTS.md`: the application core, the settings, cadences and schedulers, the demand registry, usage records, the storage contracts and retention, the publisher, the filter contract, the basemap extraction, the start-memory check, and the data flow every dataset follows. Read it before changing a module under `lib/gobusgo/` that no other area file covers, or the path from a fetch to a view.
 - `lib/gobusgo/one_bus_away/AGENTS.md`: the OneBusAway integration, its requests, stored responses, processors, views, scheduled sources, rebuilds, and trip paths. Read it before changing anything under `lib/gobusgo/one_bus_away/`.
 - `lib/gobusgo/gbfs/AGENTS.md`: the GBFS client, vehicle types, the shared vehicle source, and its files published to the browser.
+- `lib/gobusgo/packed/AGENTS.md`: the packed container of published data files, its layout, kinds, storage, fixtures, and Mix task.
 - `lib/gobusgo/routing/AGENTS.md`: the routing snapshots and the browser's routing modules.
 - `lib/gobusgo/s3/AGENTS.md`: the S3 backends' requests, settings, and credentials.
 - `lib/gobusgo/vendor_assets/AGENTS.md`: the vendored front-end assets and their sources.
