@@ -14,7 +14,7 @@ import {AssertionError} from "../../assets/js/assert.js"
 import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
 import {preparePath} from "../../assets/js/vehicle_prediction.js"
 import {drawnVehicle, trackedVehicle} from "../../assets/js/vehicle_motion.js"
-import {TieKind, reportTie, tiedMarkerIds} from "../../assets/js/report_tie.js"
+import {TIE_ZOOM_MIN, TieKind, reportTie, tiedMarkerIds} from "../../assets/js/report_tie.js"
 import {isTieRedrawDue, markerCoverPixels, screenTie, tieStrokes, trimmedLine} from "../../assets/js/report_tie_layout.js"
 import {MarkerKind} from "../../assets/js/vehicle_overlay_layout.js"
 import {contrastRatio} from "../../assets/js/math/color_contrast.js"
@@ -114,14 +114,22 @@ for (const {name, input} of noneCases) {
   deepStrictEqual(reportTie(input).kind, TieKind.none, `${name} has no tie`)
 }
 
-// Which vehicles show their ties: those in view while the band shows them,
-// and the selected one wherever it is.
+// Which vehicles show their ties: from zoom 15 every one in view, and below
+// it none of them, with the selected one at any zoom, wherever it is.
+const DECIDED_TIE_ZOOM_MIN = 15
+deepStrictEqual(TIE_ZOOM_MIN, DECIDED_TIE_ZOOM_MIN, "every vehicle in view shows its tie from zoom 15")
+const ZOOM_BELOW = 14.5
+const ZOOM_ABOVE = 15.5
+const ZOOM_PAST_MOTION = 17
+
 const tiedCases = [
-  {name: "inside the band", given: {inView: ["a", "b"], isBandShown: true, selectedId: null}, ids: ["a", "b"]},
-  {name: "inside the band, with one selected in view", given: {inView: ["a", "b"], isBandShown: true, selectedId: "b"}, ids: ["a", "b"]},
-  {name: "inside the band, with one selected out of view", given: {inView: ["a"], isBandShown: true, selectedId: "c"}, ids: ["a", "c"]},
-  {name: "outside the band", given: {inView: ["a", "b"], isBandShown: false, selectedId: "b"}, ids: ["b"]},
-  {name: "outside the band, with none selected", given: {inView: ["a", "b"], isBandShown: false, selectedId: null}, ids: []}
+  {name: "at zoom 15", given: {inView: ["a", "b"], zoom: TIE_ZOOM_MIN, selectedId: null}, ids: ["a", "b"]},
+  {name: "above zoom 15, with none selected", given: {inView: ["a", "b"], zoom: ZOOM_ABOVE, selectedId: null}, ids: ["a", "b"]},
+  {name: "above zoom 15, with one selected in view", given: {inView: ["a", "b"], zoom: ZOOM_ABOVE, selectedId: "b"}, ids: ["a", "b"]},
+  {name: "above zoom 15, with one selected out of view", given: {inView: ["a"], zoom: ZOOM_ABOVE, selectedId: "c"}, ids: ["a", "c"]},
+  {name: "past the band of motion", given: {inView: ["a", "b"], zoom: ZOOM_PAST_MOTION, selectedId: null}, ids: ["a", "b"]},
+  {name: "below zoom 15, with one selected", given: {inView: ["a", "b"], zoom: ZOOM_BELOW, selectedId: "b"}, ids: ["b"]},
+  {name: "below zoom 15, with none selected", given: {inView: ["a", "b"], zoom: ZOOM_BELOW, selectedId: null}, ids: []}
 ]
 
 for (const {name, given, ids} of tiedCases) {
