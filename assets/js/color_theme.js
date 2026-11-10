@@ -1,14 +1,18 @@
 // Keeps the page in the theme the rider's setting resolves to. The setting
 // is kept by the stored settings module, and the
 // theme is the `data-theme` attribute of the document's root element, which
-// the root layout's head first sets before the page is drawn. A change of
-// the theme is announced on the window with the "gobusgo:theme-change"
-// event, whose detail holds the theme.
+// the root layout's head first sets before the page is drawn, with the
+// content of the document's one `theme-color` meta element, which the
+// browser draws its status bar and overscroll in. A change of the theme is
+// announced on the window with the "gobusgo:theme-change" event, whose
+// detail holds the theme.
 
-import {parseSetting, resolveTheme, settingStatusText, Theme} from "./theme"
+import {assertCondition} from "./assert"
+import {parseSetting, resolveTheme, settingStatusText, Theme, themeColor} from "./theme"
 import {storedSettings} from "./stored_settings"
 
 const DARK_QUERY = "(prefers-color-scheme: dark)"
+const THEME_COLOR_SELECTOR = "meta[name=\"theme-color\"]"
 
 export const CHANGE_EVENT_NAME = "gobusgo:theme-change"
 
@@ -29,12 +33,20 @@ export function currentTheme() {
   }
 }
 
+function writeThemeColor(theme) {
+  const metas = document.querySelectorAll(THEME_COLOR_SELECTOR)
+  assertCondition(metas.length === 1, `the document must hold one theme-color meta element, got: ${metas.length}`)
+  const color = themeColor(theme)
+  metas[0].setAttribute("content", color)
+}
+
 // Draws the page in the theme `setting` resolves to, and announces it when
 // it is another theme than the page had.
 function applySetting(setting) {
   const theme = resolveTheme({setting, systemDark: systemDark()})
   const isChanged = theme !== currentTheme()
   document.documentElement.dataset.theme = theme
+  writeThemeColor(theme)
 
   if (isChanged) {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {theme}}))
