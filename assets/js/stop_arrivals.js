@@ -109,6 +109,88 @@ export function arrivalLines(shown) {
   }
 }
 
+/** The kinds of what a stop's arrivals show as rows: the rows, or one note in their place. */
+export const ArrivalRowsKind = Object.freeze({rows: "rows", note: "note"})
+
+const ChipLookupKind = Object.freeze({found: "found", missing: "missing"})
+
+// The chip named `route` among `chips`, a stop's route chips, or missing
+// for a route the stop has no chip of.
+function chipLookup({route, chips}) {
+  const chip = chips.find((candidate) => candidate.name === route)
+
+  if (chip === undefined) {
+    return {kind: ChipLookupKind.missing}
+  }
+
+  return {kind: ChipLookupKind.found, color: chip.color}
+}
+
+function arrivalTimeText(minutes) {
+  if (minutes === 0) {
+    return ARRIVAL_NOW
+  }
+
+  return `${minutes} min`
+}
+
+function noteRows(text) {
+  return {kind: ArrivalRowsKind.note, text}
+}
+
+/**
+ * What `shown`, a stop's arrivals as the server sends them, shows as rows:
+ * each arrival's route, the color of its chip among `chips`, the stop's
+ * route chips, its headsign, how soon it comes, and whether that is a live
+ * prediction; or the note that stands in their place.
+ */
+export function arrivalRows({shown, chips}) {
+  const {status, arrivals} = shown
+
+  switch (status) {
+    case "waiting":
+      return noteRows(ARRIVALS_WAITING)
+    case "refused":
+      return noteRows(ARRIVALS_REFUSED)
+    case "busy":
+      return noteRows(ARRIVALS_BUSY)
+    case "arrivals":
+      if (arrivals.length === 0) {
+        return noteRows(ARRIVALS_NONE)
+      }
+
+      return {
+        kind: ArrivalRowsKind.rows,
+        rows: Array.from(arrivals, (arrival) => arrivalRow({arrival, chips}))
+      }
+    default:
+      return unreachable(status, "arrivals status")
+  }
+}
+
+function arrivalRow({arrival, chips}) {
+  const {route, headsign, minutes, predicted} = arrival
+  let routeName = null
+  let color = null
+
+  if (typeof route === "string") {
+    routeName = route
+    const lookup = chipLookup({route, chips})
+
+    if (lookup.kind === ChipLookupKind.found) {
+      color = lookup.color
+    }
+  }
+
+  let headsignText = null
+
+  if (typeof headsign === "string") {
+    headsignText = headsign
+  }
+
+  return {route: routeName, color, headsign: headsignText, time: arrivalTimeText(minutes), isLive: predicted === true}
+}
+
 function plainLine(text) {
   return {text, isLive: false}
 }
@@ -204,7 +286,7 @@ export function writeArrivals(element, shown) {
   }
 }
 
-/** Hides `note`, a popup's next arrival, while the page is offline, unless `shown` is the saved schedules'. */
+/** Hides `note`, a callout's arrivals, while the page is offline, unless `shown` is the saved schedules'. */
 export function markArrivalNote({note, shown}) {
   note.classList.toggle(NEEDS_CONNECTION_CLASS_NAME, !isScheduledShown(shown))
 }

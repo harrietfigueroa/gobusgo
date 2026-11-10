@@ -45,7 +45,7 @@ const RGB_PATTERN = /^rgb\((\d+) (\d+) (\d+)\)$/
 const PIXELS_PATTERN = /^(\d+(?:\.\d+)?)px$/
 // A rule draws a state when one of its selectors names an attribute,
 // pseudo-class, or class that a script or the rider sets.
-const STATE_PATTERN = /\[aria-(selected|pressed|checked|current)="true"\]|:has\(:checked\)|\.popup-selected/
+const STATE_PATTERN = /\[aria-(selected|pressed|checked|current)="true"\]|:has\(:checked\)/
 
 const PairKind = Object.freeze({text: "text", nonText: "nonText"})
 const MarkKind = Object.freeze({
@@ -75,15 +75,14 @@ const pairs = [
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-badge-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-badge-color", background: "--panel-sheet-alert-badge-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-filter-badge-color", background: "--surface-border-color"},
-  {kind: PairKind.text, foreground: "--popup-selected-text-color", background: "--surface-border-color"},
+  {kind: PairKind.text, foreground: "--map-callout-detail-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--route-chip-count-color", background: "--route-chip-count-fill"},
   {kind: PairKind.nonText, foreground: "--surface-border-color", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--surface-border-color", background: "--panel-detail-action-fill"},
   {kind: PairKind.nonText, foreground: "--panel-sheet-grip-color", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--close-button-fill", background: "--surface-fill"},
   {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--surface-fill"},
-  {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--panel-detail-action-fill"},
-  {kind: PairKind.nonText, foreground: "--popup-selected-focus-color", background: "--surface-border-color"}
+  {kind: PairKind.nonText, foreground: "--close-button-focus-color", background: "--panel-detail-action-fill"}
 ]
 
 // The target-size custom properties, each with the size it must reach.

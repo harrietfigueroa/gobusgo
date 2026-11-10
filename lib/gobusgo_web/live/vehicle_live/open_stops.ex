@@ -1,5 +1,5 @@
 defmodule GobusgoWeb.VehicleLive.OpenStops do
-  @auto_open_count_max 5
+  @selected_count_max 1
   @favorite_count_max 6
 
   @moduledoc """
@@ -7,13 +7,11 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
   registry, which is what has the arrival source fetch them, and the
   arrivals the page sends for each.
 
-  A page opens a stop for each popup that opens by itself, at most
-  #{@auto_open_count_max}, for each rider's favorite, at most
-  #{@favorite_count_max}, for each popup a rider opens, and for the stop
-  the panel sheet's details view shows.
+  A page opens a stop for each rider's favorite, at most
+  #{@favorite_count_max}, and for the selected stop, the one the panel
+  sheet's details view shows, at most #{@selected_count_max}.
   `open_count_max/0`, their sum, is the bound on the stops one page holds
-  open, so the favorites and the popups that open by themselves always have
-  room.
+  open, so the favorites and the selected stop always have room.
 
   A page keeps, per open stop, a hash of what it last sent for it and no
   arrival; `nil` stands for a stop it has sent nothing for.
@@ -34,17 +32,13 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
   @typedoc "The hash of what was last sent for each open stop, by stop identifier."
   @type t :: %{String.t() => non_neg_integer() | nil}
 
-  @doc "The most popups whose stops open by themselves on one page."
-  @spec auto_open_count_max() :: pos_integer()
-  def auto_open_count_max, do: @auto_open_count_max
-
   @doc "The most stops a rider keeps as favorites."
   @spec favorite_count_max() :: pos_integer()
   def favorite_count_max, do: @favorite_count_max
 
   @doc "The most stops one page has open in the demand registry."
   @spec open_count_max() :: pos_integer()
-  def open_count_max, do: @auto_open_count_max + @favorite_count_max
+  def open_count_max, do: @selected_count_max + @favorite_count_max
 
   @doc """
   Registers the stop as open for the calling process: `:refused` for a stop

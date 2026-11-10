@@ -1,20 +1,10 @@
-import {assertCondition} from "./assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {coveredBoxes, placePopups} from "./popup_placement"
-import {
-  announceRiderPopupChange,
-  riderPopupBoxes,
-  RIDER_POPUP_CHANGE_EVENT_NAME,
-  RIDER_POPUP_CLASS_NAME
-} from "./rider_popups"
-import {compactPopupContent, nameCloseButton, writeChipNote} from "./route_chips"
-import {NEEDS_CONNECTION_CLASS_NAME, markArrivalNote, nextArrivalTimeText, writeArrivals} from "./stop_arrivals"
+import {arrivalRows, markArrivalNote, writeArrivals} from "./stop_arrivals"
 import {shownAt} from "./arrival_countdown"
 import {startArrivalTicker} from "./arrival_ticker"
-import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
-import {holdStop, POPUP_HOLDER, releaseStop, VIEW_HOLDER} from "./stop_holds"
-import {AUTO_OPEN_ZOOM_MIN, autoOpenCountMax} from "./open_stop_budget"
+import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME} from "./favorite_stop"
+import {holdStop, releaseStop, VIEW_HOLDER} from "./stop_holds"
 import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
   DetailKind,
@@ -23,7 +13,7 @@ import {
 } from "./panel_detail"
 import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
 import {isPicking, pickStop} from "./trip_ends"
-import {revealOnMap, sheetInsets} from "./panel_sheet"
+import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {
   addSource,
@@ -39,13 +29,13 @@ import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
 import {mapColors} from "./theme"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
+import {closeCallout, closeCalloutOf, openCallout, stopCalloutContent, writeCalloutArrivals} from "./map_callout"
 
 // The layer a stop's marker is drawn in.
 export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
 export const ZOOM_MIN = 14
-const SHEET_ID = "panel-sheet"
 const MARKER_RADIUS_PIXELS = 7
 const MARKER_STROKE_WIDTH_PIXELS = 2
 const LABEL_LAYER_NAME = "stop-markers-label"
@@ -55,18 +45,8 @@ const labelTextOffsetEms = [0, 1]
 const LABEL_TEXT_WIDTH_EMS_MAX = 12
 const LABEL_HALO_WIDTH_PIXELS = 1.5
 const hasLabel = ["!=", ["get", "label"], ""]
-// The room between two popups, and between a popup and a rider's.
-const POPUP_GAP_PIXELS = 4
-// MapLibre names the edge of a popup that touches its point, which is the
-// edge across from the side of the point the popup stands on.
-const anchorBySide = {above: "bottom", below: "top", left: "right", right: "left"}
-// The side a popup stands on while it is only measured.
-const MEASURED_SIDE = "above"
-// A popup is measured with the longest next arrival it shows, so the room
-// its stop is given holds the arrival that comes later.
-const MEASURED_NOTE_TEXT = "99 min"
-// A compact stop popup shows as many route numbers as the stop's label does.
-const CHIP_COUNT_MAX = 4
+// A stop's callout shows its next two arrivals.
+const CALLOUT_ARRIVAL_COUNT_MAX = 2
 // The stop the details view shows is marked on the map at every zoom, from
 // a source of its own, since the archive holds stops from zoom 14 alone.
 const SELECTED_SOURCE_NAME = "stop-selected"
@@ -76,11 +56,9 @@ const SELECTED_COLOR = "#16a34a"
 const SELECTED_HALO_RADIUS_PIXELS = 12
 const SELECTED_HALO_OPACITY = 0.25
 const SELECTED_RING_STROKE_WIDTH_PIXELS = 3
-// The class of the popup of the stop the details view shows.
-const SELECTED_POPUP_CLASS_NAME = "popup-selected"
 
 // A stop as its feature in the tile archive holds it: its position, and the
-// texts its popup shows, the routes and the agencies each one text. A text
+// texts its view shows, the routes and the agencies each one text. A text
 // the source does not supply is absent from the feature. The feature holds
 // its routes' identifiers with a comma before, between, and after them.
 function stopFromFeature({geometry, properties}) {
@@ -130,19 +108,6 @@ function routeChip([name, color]) {
   return {name, color}
 }
 
-// The stops drawn in the view of `map`, by identifier. A stop near a tile's
-// edge is returned by each tile that holds it, and comes out once here.
-// https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#queryrenderedfeatures — checked 2026-10-14
-function renderedStops(map) {
-  const stopsById = new Map()
-
-  for (const feature of map.queryRenderedFeatures({layers: [MARKER_LAYER_NAME]})) {
-    stopsById.set(feature.properties.stopId, stopFromFeature(feature))
-  }
-
-  return stopsById
-}
-
 // The first marker layer of the vehicles in the style, which the stops go
 // under, or undefined while the vehicles have none.
 function firstVehicleLayerName(map) {
@@ -150,7 +115,7 @@ function firstVehicleLayerName(map) {
 }
 
 // Whether a vehicle stands at `point`, on the canvas over the map or in its
-// layers. The vehicle stands above the stop, and its click opens it.
+// layers. The vehicle stands above the stop, and its tap opens it.
 function isVehicleAt({map, point}) {
   const hit = overlayHitAt({map, point})
 
@@ -178,43 +143,6 @@ function labelFilter() {
   }
 }
 
-// The stops whose popups are open by themselves in a view at `zoom` that
-// shows the stops of `visibleStopIds`: all of them in a view zoomed in
-// close that shows at most `countMax`, and none in any other view.
-export function autoOpenStopIds({zoom, visibleStopIds, countMax}) {
-  const isZoomedIn = zoom >= AUTO_OPEN_ZOOM_MIN
-  const opensAll = isZoomedIn && visibleStopIds.length <= countMax
-
-  if (opensAll) {
-    return visibleStopIds
-  } else {
-    return []
-  }
-}
-
-// A popup's compact content: the stop's first route numbers and, in the
-// note beside them, its next arrival once the page has sent its arrivals.
-// A click on it hands the stop to `onSelect`. The next arrival is a live
-// one, so the stylesheet hides the note while the page is offline.
-function popupElements({stop, noteText, onSelect}) {
-  const elements = compactPopupContent({
-    chips: stop.routeChips,
-    countMax: CHIP_COUNT_MAX,
-    emptyText: suppliedName(stop),
-    noteText,
-    itemName: suppliedName(stop),
-    action: "show the stop",
-    onSelect
-  })
-
-  elements.note.classList.add(NEEDS_CONNECTION_CLASS_NAME)
-  return elements
-}
-
-function favoriteStopId(favorite) {
-  return favorite.stopId
-}
-
 // The collection the selected stop's source draws: the stop, or nothing.
 function selectedCollection(stop) {
   const features = []
@@ -226,66 +154,27 @@ function selectedCollection(stop) {
   return {type: "FeatureCollection", features}
 }
 
-// The options of a stop's popup. One that opens by itself stands on the
-// side it is given, stays through a click on the map, and leaves the
-// keyboard's focus where the rider has it. One the rider opens is placed by
-// MapLibre and closes on a click on the map.
-function popupOptions({auto, side}) {
-  if (auto) {
-    return {anchor: anchorBySide[side], closeOnClick: false, focusAfterOpen: false}
-  } else {
-    return {className: RIDER_POPUP_CLASS_NAME, closeOnClick: true, focusAfterOpen: true}
-  }
-}
-
-// The size of the box MapLibre draws around `content`, the content of a
-// popup that is on a map.
-function contentBoxSize(content) {
-  const {width, height} = content.parentElement.getBoundingClientRect()
-  return {width, height}
-}
-
-function largerSize(size, other) {
-  return {width: Math.max(size.width, other.width), height: Math.max(size.height, other.height)}
-}
-
 // The hook of the element beside the map. It draws the stops layer of the
 // route and stop tile archive on each map the basemap announces, so a map
 // drawn anew for another archive shows them too, draws them again in the
 // theme of a map whose style is set anew, and keeps the stops to those of
 // the routes the page's filter keeps. Its layers go under the vehicle
-// markers' layers.
+// markers' layers. A tap on a stop selects it: it opens the stop's callout
+// and shows the stop in the details view, which holds the stop open for its
+// arrivals while it shows it.
 export const StopMarkers = {
   mounted() {
-    // The stops drawn in the view as the map last came to rest.
-    this.stopsById = new Map()
     this.map = null
     this.maplibre = null
     this.attached = false
     this.clicksAttached = false
-    this.followTimer = null
-    // The popup that is open for each stop, with its content, the note its
-    // next arrival is written into, whether it opened by itself, and the
-    // side of its stop it then stands on.
-    this.openPopups = new Map()
-    // The stop the details view shows, with its favorite button and the
-    // element its arrivals are written into, or null while it shows none.
+    // The stop the details view shows, with its favorite button, the
+    // element its arrivals are written into, its callout with the element
+    // of the callout's arrivals, and the answer it last got, or null while
+    // the view shows none.
     this.view = null
-    // The stops on screen whose popup the rider closed after it opened by
-    // itself; such a popup stays closed until its stop leaves the screen.
-    this.dismissedStopIds = new Set()
-    // The largest size the popup of each stop on screen has had, which is
-    // the room its stop is given. A popup grows when its arrivals come, and
-    // a stop left closed for lack of that room stays closed while its popup
-    // would open small and close again.
-    this.popupSizes = new Map()
-    this.tipLength = null
-    this.zoom = null
     this.events = pageEvents(this)
     this.push = (name, payload) => { this.events.push({name, payload}) }
-    // The most stops on screen whose popups open by themselves, which the
-    // page's element carries.
-    this.autoOpenCountMax = Number(this.el.dataset.autoOpenCountMax)
     this.arrivalCountMax = Number(this.el.dataset.arrivalCountMax)
 
     this.onBasemapReady = (event) => {
@@ -294,20 +183,14 @@ export const StopMarkers = {
       this.maplibre = null
       this.attached = false
       this.clicksAttached = false
-      this.zoom = null
-      this.tipLength = null
-      this.stopsById.clear()
-      this.dismissedStopIds.clear()
-      this.popupSizes.clear()
 
-      // A popup belongs to the map it was opened on.
-      this.closePopups([...this.openPopups.keys()])
+      // A callout belongs to the map it was opened on.
+      closeCallout()
 
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => {
         this.map = map
         this.maplibre = maplibre
-        map.on("idle", () => { this.followView() })
         this.attach()
       })
     }
@@ -323,10 +206,8 @@ export const StopMarkers = {
       }
     }
 
-    this.onRiderPopupChange = () => { this.scheduleFollow() }
-
     // A style set anew holds none of the layers, nor the source. The
-    // popups stand over the map and stay open.
+    // callout stands over the map and stays open.
     this.onRestyled = (event) => {
       if (event.detail.map === this.map) {
         this.attached = false
@@ -343,7 +224,8 @@ export const StopMarkers = {
       }
     }
 
-    // The view moving to a vehicle, or closing, lets go of its stop.
+    // The view moving to a vehicle, or closing, lets go of its stop and
+    // closes the stop's callout.
     this.onDetailChange = () => {
       const isViewLeft = this.view !== null && showsDetail({kind: DetailKind.stop, id: this.view.stop.id}) === false
 
@@ -351,28 +233,18 @@ export const StopMarkers = {
         const stopId = this.view.stop.id
         this.view = null
         releaseStop({pushEvent: this.push, stopId, holder: VIEW_HOLDER})
+        closeCalloutOf({kind: DetailKind.stop, id: stopId})
         this.markSelected()
-        this.scheduleFollow()
       }
     }
 
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.addEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
-    window.addEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
-    // A sheet that expands or collapses covers another part of the map, so
-    // the popups are placed again beside it.
-    this.sheetObserver = new ResizeObserver(() => { this.scheduleFollow() })
-    const sheet = document.getElementById(SHEET_ID)
-
-    if (sheet !== null) {
-      this.sheetObserver.observe(sheet)
-    }
-
-    // The list of what is in view opens a stop as a click on its marker does.
+    // The list of what is in view opens a stop as a tap on its marker does.
     this.onItemOpen = (event) => {
       const {kind, feature} = event.detail
       const isStop = kind === MapItemKind.stop && this.map !== null
@@ -384,62 +256,37 @@ export const StopMarkers = {
 
     window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
-    // Arrivals of a stop with neither a popup nor the view are dropped.
+    // Arrivals of any stop but the one the view shows are dropped.
     this.events.handle("stop-arrivals:arrivals", (shown) => {
-      const open = this.openPopups.get(shown.stop_id)
       const isViewStop = this.view !== null && this.view.stop.id === shown.stop_id
-      const nowMs = Date.now()
-
-      if (open !== undefined) {
-        open.shown = shown
-        this.writePopupNote({open, nowMs})
-      }
 
       if (isViewStop) {
         this.view.shown = shown
-        this.writeViewArrivals(nowMs)
+        this.writeViewArrivals(Date.now())
       }
     })
 
     this.stopTicker = startArrivalTicker((nowMs) => { this.tickArrivals(nowMs) })
 
-    // The page that is live again knows nothing of the stops this hook has
-    // open, and is told them again.
-    this.events.whenLive(() => { this.sendOpenStops() })
+    // The page that is live again knows nothing of the stop this hook holds
+    // open, and is told it again.
+    this.events.whenLive(() => { this.sendOpenStop() })
   },
 
-  // Writes a popup's next arrival as of `nowMs`, from the answer it last got.
-  // A popup has another size with another next arrival, so the popups are
-  // placed again when its text changes.
-  writePopupNote({open, nowMs}) {
-    const next = shownAt({shown: open.shown, nowMs, countMax: 1})
-    const text = nextArrivalTimeText(next)
-    const isChanged = open.note.textContent !== text
-    writeChipNote(open.note, text)
-    markArrivalNote({note: open.note, shown: next})
-
-    if (isChanged) {
-      this.scheduleFollow()
-    }
-  },
-
-  // Writes the view's arrivals as of `nowMs`, from the answer it last got.
+  // Writes the view's arrivals, and its callout's next two, as of `nowMs`,
+  // from the answer the view last got.
   writeViewArrivals(nowMs) {
     const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
     writeArrivals(this.view.arrivalsElement, shown)
+
+    const next = shownAt({shown: this.view.shown, nowMs, countMax: CALLOUT_ARRIVAL_COUNT_MAX})
+    const rows = arrivalRows({shown: next, chips: this.view.stop.routeChips})
+    writeCalloutArrivals({element: this.view.calloutArrivalsElement, rows})
+    markArrivalNote({note: this.view.calloutArrivalsElement, shown: next})
   },
 
-  // Writes every popup's next arrival and the view's arrivals again as of
-  // `nowMs`, each that has had an answer.
+  // Writes the view's arrivals again as of `nowMs`, once it has had an answer.
   tickArrivals(nowMs) {
-    for (const open of this.openPopups.values()) {
-      const hasAnswer = open.shown !== null
-
-      if (hasAnswer) {
-        this.writePopupNote({open, nowMs})
-      }
-    }
-
     const isViewAnswered = this.view !== null && this.view.shown !== null
 
     if (isViewAnswered) {
@@ -447,15 +294,9 @@ export const StopMarkers = {
     }
   },
 
-  sendOpenStops() {
-    const stopIds = new Set(this.openPopups.keys())
-
+  sendOpenStop() {
     if (this.view !== null) {
-      stopIds.add(this.view.stop.id)
-    }
-
-    for (const stopId of stopIds) {
-      this.events.push({name: "stop-arrivals:open", payload: {stop_id: stopId}})
+      this.events.push({name: "stop-arrivals:open", payload: {stop_id: this.view.stop.id}})
     }
   },
 
@@ -474,8 +315,17 @@ export const StopMarkers = {
     }
 
     const {content, favoriteButton, arrivalsElement} = stopViewElements(stop)
+    const callout = stopCalloutContent({name: suppliedName(stop), onSelect: () => { this.selectStop(stop) }})
     const earlier = this.view
-    this.view = {stop, content, favoriteButton, arrivalsElement, shown: null}
+    this.view = {
+      stop,
+      content,
+      favoriteButton,
+      arrivalsElement,
+      callout: callout.content,
+      calloutArrivalsElement: callout.arrivalsElement,
+      shown: null
+    }
 
     if (earlier !== null) {
       releaseStop({pushEvent: this.push, stopId: earlier.stop.id, holder: VIEW_HOLDER})
@@ -494,18 +344,12 @@ export const StopMarkers = {
     }
   },
 
-  // Marks the stop the view shows on the map and its popup, and unmarks
-  // every other.
+  // Marks the stop the view shows on the map, and unmarks every other.
   markSelected() {
     let selected = null
 
     if (this.view !== null) {
       selected = this.view.stop
-    }
-
-    for (const [stopId, open] of this.openPopups) {
-      const isSelected = selected !== null && selected.id === stopId
-      open.popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
     }
 
     // The map takes the source once the page has an archive to draw the
@@ -517,283 +361,22 @@ export const StopMarkers = {
     }
   },
 
-  // Opens a stop's popup and tells the page, which answers with the stop's
-  // arrivals and sends them again whenever they change, until the popup
-  // closes and nothing else holds the stop.
-  // `auto` says the popup opens by itself, for a view that shows few stops,
-  // and `side` is then the side of its stop it stands on; a popup the rider
-  // opens has a null `side`.
-  openPopup({stop, auto, side}) {
-    const {content, note} = popupElements({stop, noteText: "", onSelect: () => { this.selectStop(stop) }})
-    const open = {popup: null, content, note, auto, side, closedByRider: true, shown: null}
+  // Opens the callout of the stop the view shows, in place of any callout.
+  openViewCallout() {
+    const {stop, callout} = this.view
 
-    this.openPopups.set(stop.id, open)
-    open.popup = this.showPopup({stop, open})
-    holdStop({pushEvent: this.push, stopId: stop.id, holder: POPUP_HOLDER})
-
-    if (auto === false) {
-      announceRiderPopupChange()
-    }
-  },
-
-  // Puts the popup of `open` on the map, on the side `open` names, and
-  // returns it to be the popup `open` holds.
-  showPopup({stop, open}) {
-    const stopId = stop.id
-    const popup = new this.maplibre.Popup(popupOptions(open))
-      .setLngLat([stop.lon, stop.lat])
-      .setDOMContent(open.content)
-
-    // A popup opened anew for a stop, or put on another side of it, takes
-    // the stop's place before the earlier one closes, and the earlier one's
-    // closing then changes nothing.
-    popup.on("close", () => {
-      const isCurrentOpen = this.openPopups.get(stopId) === open
-      const isCurrentPopup = isCurrentOpen && open.popup === popup
-
-      if (isCurrentPopup) {
-        this.openPopups.delete(stopId)
-        releaseStop({pushEvent: this.push, stopId, holder: POPUP_HOLDER})
-
-        if (open.auto) {
-          if (open.closedByRider) {
-            this.dismissedStopIds.add(stopId)
-          }
-        } else {
-          announceRiderPopupChange()
-        }
-      }
+    openCallout({
+      map: this.map,
+      maplibre: this.maplibre,
+      lngLat: [stop.lon, stop.lat],
+      content: callout,
+      item: {kind: DetailKind.stop, id: stop.id},
+      closeButton: false
     })
-
-    popup.addTo(this.map)
-    nameCloseButton({content: open.content, itemName: suppliedName(stop)})
-
-    const isSelected = this.view !== null && this.view.stop.id === stopId
-    popup.getElement().classList.toggle(SELECTED_POPUP_CLASS_NAME, isSelected)
-    return popup
-  },
-
-  // Puts the open popup of `stop` on another side of it. The stop stays
-  // open for the page, and the popup keeps its content.
-  movePopup({stop, side}) {
-    const open = this.openPopups.get(stop.id)
-    const earlier = open.popup
-    open.side = side
-    open.popup = this.showPopup({stop, open})
-    earlier.remove()
-  },
-
-  // The size of the content box of a stop's popup and the length of a
-  // popup's tip, read from a popup that is on the map only while it is
-  // measured and that the page is told nothing of.
-  measuredPopup(stop) {
-    const {content} = popupElements({stop, noteText: MEASURED_NOTE_TEXT, onSelect: () => { this.selectStop(stop) }})
-    const popup = new this.maplibre.Popup(popupOptions({auto: true, side: MEASURED_SIDE}))
-      .setLngLat([stop.lon, stop.lat])
-      .setDOMContent(content)
-      .addTo(this.map)
-    const size = contentBoxSize(content)
-    const tipLength = popup.getElement().getBoundingClientRect().height - size.height
-
-    popup.remove()
-    return {size, tipLength}
-  },
-
-  // The room a stop's popup is given: the largest size it has had since its
-  // stop came on screen.
-  popupSize(stop) {
-    const open = this.openPopups.get(stop.id)
-    const kept = this.popupSizes.get(stop.id)
-    let size
-
-    if (open === undefined) {
-      if (kept === undefined) {
-        const measured = this.measuredPopup(stop)
-        size = measured.size
-        this.tipLength = measured.tipLength
-      } else {
-        size = kept
-      }
-    } else {
-      const shown = contentBoxSize(open.content)
-
-      if (kept === undefined) {
-        size = shown
-      } else {
-        size = largerSize(shown, kept)
-      }
-    }
-
-    this.popupSizes.set(stop.id, size)
-    return size
-  },
-
-  // The side of its stop on which the popup of each stop of `stopIds`
-  // stands, so that no two of them cross and none crosses a rider's popup.
-  // A stop whose popup has no such side is left out.
-  popupSides(stopIds) {
-    if (stopIds.length === 0) {
-      return new Map()
-    }
-
-    const popups = Array.from(stopIds, (stopId) => {
-      const stop = this.stopsById.get(stopId)
-      const point = this.map.project([stop.lon, stop.lat])
-
-      // MapLibre draws a popup at a whole pixel.
-      return {id: stopId, point: {x: Math.round(point.x), y: Math.round(point.y)}, size: this.popupSize(stop)}
-    })
-    const container = this.map.getContainer()
-    const view = {width: container.clientWidth, height: container.clientHeight}
-    const obstacles = riderPopupBoxes(this.map)
-
-    // The map fills the viewport, so the sheet's insets are the map's.
-    for (const covered of coveredBoxes({insets: sheetInsets(), view})) {
-      obstacles.push(covered)
-    }
-
-    assertCondition(this.tipLength !== null, "a popup's size is known before the length of a popup's tip")
-
-    return placePopups({
-      popups,
-      obstacles,
-      view,
-      tipLength: this.tipLength,
-      gapPixels: POPUP_GAP_PIXELS
-    })
-  },
-
-  // Closes the popups of the stops of `stopIds` as the hook's own doing,
-  // which dismisses none of them.
-  closePopups(stopIds) {
-    for (const stopId of stopIds) {
-      const open = this.openPopups.get(stopId)
-
-      if (open !== undefined) {
-        open.closedByRider = false
-        open.popup.remove()
-      }
-    }
-  },
-
-  // Brings the open popups in line with the map's view: a view zoomed out
-  // from, to below the zoom where popups open by themselves, closes every
-  // popup, and the popups that opened by themselves are those of the stops
-  // the view opens now, less the ones the rider closed, the ones the rider
-  // opened, and the ones with no side of their stop to stand on.
-  followView() {
-    if (this.map === null) {
-      return
-    }
-
-    // A style set anew holds the stops again once it has loaded, and the
-    // popups stay as they are until then.
-    const isRestyling = this.attached && this.map.getLayer(MARKER_LAYER_NAME) === undefined
-
-    if (isRestyling) {
-      return
-    }
-
-    const zoom = this.map.getZoom()
-    const zoomedOut = this.zoom !== null && zoom < this.zoom
-    this.zoom = zoom
-
-    const isZoomedOutPastAutoOpen = zoomedOut && zoom < AUTO_OPEN_ZOOM_MIN
-
-    if (isZoomedOutPastAutoOpen) {
-      this.closePopups([...this.openPopups.keys()])
-    }
-
-    // Below the zoom that draws stops, none is on screen.
-    const drawsStops = this.attached && zoom >= ZOOM_MIN
-
-    if (drawsStops) {
-      this.stopsById = renderedStops(this.map)
-    } else {
-      this.stopsById = new Map()
-    }
-
-    const visibleStopIds = [...this.stopsById.keys()]
-    const visible = new Set(visibleStopIds)
-
-    for (const stopId of [...this.dismissedStopIds]) {
-      if (visible.has(stopId) === false) {
-        this.dismissedStopIds.delete(stopId)
-      }
-    }
-
-    for (const stopId of [...this.popupSizes.keys()]) {
-      if (visible.has(stopId) === false) {
-        this.popupSizes.delete(stopId)
-      }
-    }
-
-    const countMax = this.autoOpenCountMaxNow(visibleStopIds)
-    const opened = autoOpenStopIds({zoom, visibleStopIds, countMax})
-    const wanted = opened.filter((stopId) => this.opensByItself(stopId))
-    const sidesByStop = this.popupSides(wanted)
-
-    // The closings go first, so the page never holds more stops open than
-    // the server keeps for it.
-    const closing = []
-
-    for (const [stopId, open] of this.openPopups) {
-      const isUnplacedAuto = open.auto && sidesByStop.has(stopId) === false
-
-      if (isUnplacedAuto) {
-        closing.push(stopId)
-      }
-    }
-
-    this.closePopups(closing)
-
-    for (const [stopId, side] of sidesByStop) {
-      const stop = this.stopsById.get(stopId)
-      const open = this.openPopups.get(stopId)
-
-      if (open === undefined) {
-        this.openPopup({stop, auto: true, side})
-      } else if (open.side !== side) {
-        this.movePopup({stop, side})
-      }
-    }
-  },
-
-  // The most popups that open by themselves for a view that shows the
-  // stops of `visibleStopIds`, with the stop the details view holds.
-  autoOpenCountMaxNow(visibleStopIds) {
-    let detailStopId = null
-
-    if (this.view !== null) {
-      detailStopId = this.view.stop.id
-    }
-
-    const favoriteStopIds = Array.from(storedFavorites(), favoriteStopId)
-    return autoOpenCountMax({countMax: this.autoOpenCountMax, detailStopId, visibleStopIds, favoriteStopIds})
-  },
-
-  // Whether a stop the view opens gets a popup that opens by itself: one
-  // whose popup the rider neither closed nor opened.
-  opensByItself(stopId) {
-    const open = this.openPopups.get(stopId)
-    const openedByRider = open !== undefined && open.auto === false
-
-    return this.dismissedStopIds.has(stopId) === false && openedByRider === false
-  },
-
-  // Follows the view once the events that are being handled are done, so a
-  // popup that closes inside `followView` starts no second run inside it.
-  scheduleFollow() {
-    if (this.followTimer === null) {
-      this.followTimer = window.setTimeout(() => {
-        this.followTimer = null
-        this.followView()
-      }, 0)
-    }
   },
 
   // Adds the layers, once the page has an archive to draw them from, in the
-  // page's theme, and answers clicks on them, once for each map.
+  // page's theme, and answers taps on them, once for each map.
   attach() {
     const map = this.map
 
@@ -867,26 +450,17 @@ export const StopMarkers = {
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
   },
 
-  // Shows `stop` in the details view. A stop whose popup opened by itself
-  // keeps that popup as it is, and any other opens the rider's popup. While
-  // the Trip tab waits for a stop, `stop` is its end instead.
+  // Selects `stop`: shows it in the details view and opens its callout in
+  // place of any other. While the Trip tab waits for a stop, `stop` is its
+  // end instead.
   openStop(stop) {
-    const stopId = stop.id
-
     if (isPicking()) {
-      pickStop({stopId, name: suppliedName(stop)})
+      pickStop({stopId: stop.id, name: suppliedName(stop)})
       return
     }
 
-    const open = this.openPopups.get(stopId)
-    const isRiderOpenable = open === undefined || open.auto === false
-
-    if (isRiderOpenable) {
-      this.dismissedStopIds.delete(stopId)
-      this.openPopup({stop, auto: false, side: null})
-    }
-
     this.selectStop(stop)
+    this.openViewCallout()
   },
 
   // Adds the source and the layers that mark the stop the details view
@@ -930,12 +504,9 @@ export const StopMarkers = {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
-    window.removeEventListener(RIDER_POPUP_CHANGE_EVENT_NAME, this.onRiderPopupChange)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
-    window.clearTimeout(this.followTimer)
-    this.sheetObserver.disconnect()
     this.events.release()
   }
 }
