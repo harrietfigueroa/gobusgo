@@ -438,10 +438,8 @@ export const VehicleMarkers = {
     // The zoom from which a vehicle is a bus glyph, and below which a dot.
     this.glyphZoomMin = Number(this.el.dataset.glyphZoomMin)
     this.tier = STILL_TIER
-    // The tier motion would take with no reduced-motion preference, inside
-    // which the vehicles in view show their ties, still or moving, the
-    // vehicles that show them, and how often a moving tie is drawn again.
-    this.bandTier = STILL_TIER
+    // The vehicles that show their ties, still or moving, and how often a
+    // moving tie is drawn again.
     this.tiedIds = []
     this.tieIntervalMs = TIE_REDRAW_INTERVAL_MS
     this.tracked = new Map()
@@ -1073,9 +1071,8 @@ export const VehicleMarkers = {
   // reduced-motion preference, and whether the page is shown; then moves
   // the animated vehicles in view onto the canvas, or every vehicle back
   // to the source, asks for the paths the vehicles that show their ties
-  // lack, and draws their ties. The vehicles in view show their ties inside
-  // the band whatever the reduced-motion preference, and the selected one
-  // at any zoom.
+  // lack, and draws their ties. The vehicles in view show their ties from
+  // `TIE_ZOOM_MIN` whatever the tier, and the selected one at any zoom.
   decideMotion() {
     if (this.map === null) {
       return
@@ -1086,17 +1083,18 @@ export const VehicleMarkers = {
       bounds: boundsOf(this.map)
     })
 
-    const tierFacts = {
-      settings: this.motionSettings,
-      zoom: this.map.getZoom(),
-      vehicleCountInView: inView.length,
-      isVisible: document.visibilityState === "visible"
-    }
+    const zoom = this.map.getZoom()
 
-    this.tier = motionTier({...tierFacts, isReducedMotion: this.reducedMotion.matches, previous: this.tier})
-    this.bandTier = motionTier({...tierFacts, isReducedMotion: false, previous: this.bandTier})
-    const isBandShown = this.bandTier.kind === MotionTierKind.animating
-    this.tiedIds = tiedMarkerIds({inView, isBandShown, selectedId: this.viewMarkerId})
+    this.tier = motionTier({
+      settings: this.motionSettings,
+      zoom,
+      vehicleCountInView: inView.length,
+      isReducedMotion: this.reducedMotion.matches,
+      isVisible: document.visibilityState === "visible",
+      previous: this.tier
+    })
+
+    this.tiedIds = tiedMarkerIds({inView, zoom, selectedId: this.viewMarkerId})
 
     if (this.tier.kind === MotionTierKind.still) {
       this.drawInSource()

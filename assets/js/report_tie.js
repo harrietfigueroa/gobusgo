@@ -21,10 +21,10 @@ const LINE_POINT_COUNT_MIN = 3
 // order, whichever is farther along.
 function stretchOf({path, fromMeters, toMeters}) {
   if (toMeters >= fromMeters) {
-    return pointsBetween({points: path.points, cumulative: path.cumulativeMeters, from: fromMeters, to: toMeters})
+    return pointsBetween({coordinates: path.coordinates, cumulative: path.cumulativeMeters, from: fromMeters, to: toMeters})
   }
 
-  const backward = pointsBetween({points: path.points, cumulative: path.cumulativeMeters, from: toMeters, to: fromMeters})
+  const backward = pointsBetween({coordinates: path.coordinates, cumulative: path.cumulativeMeters, from: toMeters, to: fromMeters})
   return backward.toReversed()
 }
 
@@ -58,15 +58,22 @@ export function reportTie(tracked) {
 }
 
 /**
- * The identifiers of the vehicles whose ties are drawn: every one of
- * `inView` while `isBandShown`, the band of zoom inside which the vehicles
- * in view show them, and the selected one, `selectedId` or null, wherever
- * it is. Each is named once, in view order with the selected one last.
+ * The zoom from which every vehicle in view shows its tie; below it only
+ * the selected one does.
  */
-export function tiedMarkerIds({inView, isBandShown, selectedId}) {
+export const TIE_ZOOM_MIN = 15
+
+/**
+ * The identifiers of the vehicles whose ties are drawn at `zoom`: every one
+ * of `inView` from `TIE_ZOOM_MIN`, and the selected one, `selectedId` or
+ * null, at any zoom and wherever it is. Each is named once, in view order
+ * with the selected one last.
+ */
+export function tiedMarkerIds({inView, zoom, selectedId}) {
+  assertCondition(Number.isFinite(zoom), `a zoom is a number, got: ${zoom}`)
   const ids = []
 
-  if (isBandShown) {
+  if (zoom >= TIE_ZOOM_MIN) {
     for (const markerId of inView) {
       ids.push(markerId)
     }
