@@ -70,7 +70,7 @@ No test runs the JavaScript. A change to a hook or to any module that touches th
 
 A check of the connection state drops the socket by stopping the server, and takes the browser offline with the DevTools protocol's `Network.emulateNetworkConditions`, which leaves an open WebSocket joined. Headless Chrome's `--virtual-time-budget` leaves the map without tiles, so a check waits in real time. A check of the location button grants the permission with `Browser.grantPermissions` and gives the position with `Emulation.setGeolocationOverride`.
 
-The pure modules have node checks under `test/scripts/`, each run with `node`. CI runs none of them except the accessibility job's (root file):
+The pure modules have node checks under `test/scripts/`, each run with `node`. CI runs none of them except the accessibility job's (root file) and the `agents-md` job's:
 
 - `routing_snapshot.js`: `routing_snapshot_reader.mjs`, which decodes the shared fixtures; `routing_names.js`: `routing_names_reader.mjs`.
 - `routing_journeys.js` and `routing_walk.js`: `routing_journeys_check.mjs`; `routing_engine.js`: that check and `node test/fixtures.mjs` run from `experiments/routing/`.
@@ -91,5 +91,6 @@ The pure modules have node checks under `test/scripts/`, each run with `node`. C
 - `route_chip_color.js`: `route_chip_color_check.mjs`, over `test/fixtures/route_colors/route_colors.json` and a sweep of the color cube; it fails on chip text under 4.5:1 and on black text where slate or white reaches it (GOB-302).
 - `assets/css/app.css`: `css_accessibility_check.mjs`, which fails on text under 4.5:1, a boundary, state, or focus pair under 3:1, a transition or animation with no reduced-motion rule, a target size under 24 px or a finger's under 44 px, and a mark that forced colors removes with no `forced-colors: active` rule (GOB-298).
 - `a11y_source_check.mjs` scans `assets/js/` for a positive `tabindex`, an `aria-haspopup` with no popup of that role, and a click handler on a tag no keyboard reaches.
+- Every `AGENTS.md`: `agents_md_check.mjs`, which fails on a repository path that is not tracked and on an area file the root's map leaves out or names wrongly (GOB-349). CI runs it in its `agents-md` job.
 
 Each accessibility check lists the failures not yet fixed under the issue that fixes them, and fails on an entry that passes, so a fix removes its entry.

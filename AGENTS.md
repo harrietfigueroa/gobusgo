@@ -220,6 +220,8 @@ Gobusgo is an Elixir application that reads Puget Sound transit data from the On
 
 Read this file whole, then the area file of the code a change touches before changing that code. Each area file starts with what the area is and the files in it. A change to an area's behavior updates its area file in the same commit.
 
+`node test/scripts/agents_md_check.mjs` fails when a repository path an `AGENTS.md` names in a code span is not tracked, when an `AGENTS.md` is missing from this map, and when the map names an area file that does not exist, with the file and line of each (GOB-349). Its rule for what a path is, and its exceptions with their reasons, are at the top of the check. CI runs it in its `agents-md` job.
+
 - `lib/gobusgo/AGENTS.md`: the application core, the settings, cadences and schedulers, the demand registry, usage records, the storage contracts and retention, the publisher, the filter contract, the basemap extraction, the start-memory check, and the data flow every dataset follows. Read it before changing a module under `lib/gobusgo/` that no other area file covers, or the path from a fetch to a view.
 - `lib/gobusgo/one_bus_away/AGENTS.md`: the OneBusAway integration, its requests, stored responses, processors, views, scheduled sources, rebuilds, and trip paths. Read it before changing anything under `lib/gobusgo/one_bus_away/`.
 - `lib/gobusgo/gbfs/AGENTS.md`: the GBFS client, vehicle types, the shared vehicle source, and its files published to the browser.
