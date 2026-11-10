@@ -7,6 +7,7 @@
 // keeps, and each function returns another.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {LAT, LON} from "./math/geodesy.js"
 import {
   CorrectionKind,
   DrawnKind,
@@ -147,8 +148,8 @@ export function placedAtFetch({tracked, atMs}) {
 }
 
 function isSamePosition(source, target) {
-  const isSameLon = source[0] === target[0]
-  const isSameLat = source[1] === target[1]
+  const isSameLon = source[LON] === target[LON]
+  const isSameLat = source[LAT] === target[LAT]
   const isSame = isSameLon && isSameLat
   return isSame
 }
