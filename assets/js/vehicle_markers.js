@@ -25,8 +25,10 @@ import {PathTripKind, drawnVehicle, isAnimated, pathTrip, placedAtFetch, resumed
 import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
 import {tripPathKey, withTripPaths} from "./trip_path"
 import {preparePath} from "./vehicle_prediction"
+import {registerImageResolver} from "./style_images"
 
 const SOURCE_NAME = "vehicle-markers"
+const IMAGE_RESOLVER_KEY = "vehicle-markers"
 const ROUND_LAYER_NAME = "vehicle-markers-round"
 const POINTED_LAYER_NAME = "vehicle-markers-pointed"
 
@@ -564,7 +566,7 @@ export const VehicleMarkers = {
     // (maplibre-gl 6.12.0, ImageManager._getImagesForIds).
     // A badge's image names its theme, so a style set anew in the other
     // theme asks for images of its own.
-    map.setMissingStyleImageResolver((id) => {
+    registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => {
       const named = parseImageName(id)
 
       if (id.startsWith(POINTED_IMAGE_PREFIX)) {
@@ -576,7 +578,7 @@ export const VehicleMarkers = {
         const image = badgeImage({badge: named.badge, theme: named.theme})
         map.addImage(id, image, {pixelRatio: BADGE_IMAGE_PIXEL_RATIO})
       }
-    })
+    }})
 
     this.addLayers(map)
     const canvas = map.getCanvas()

@@ -99,7 +99,6 @@ defmodule GobusgoWeb.RouteStopTiles.FeaturesTest do
                "routes" => "10, 11",
                "agencies" => "Metro",
                "routeIds" => ",1_100,1_110,",
-               "label" => "10 11\nN · Metro",
                "routeChips" => ~s([["10","#FDB71A"],["11","#9C182F"]])
              }
     end
@@ -109,25 +108,6 @@ defmodule GobusgoWeb.RouteStopTiles.FeaturesTest do
 
       assert Map.has_key?(properties, "code") == false
       assert Map.has_key?(properties, "direction") == false
-    end
-  end
-
-  describe "label/1" do
-    for {description, marker, label} <- [
-          {"routes, direction, and agencies",
-           %{routes: ["10"], direction: "N", agencies: ["Metro"]}, "10\nN · Metro"},
-          {"more routes than one line names",
-           %{routes: ~w(1 2 3 4 5 6), direction: nil, agencies: []}, "1 2 3 4 +2"},
-          {"four routes", %{routes: ~w(1 2 3 4), direction: nil, agencies: []}, "1 2 3 4"},
-          {"two agencies and no direction",
-           %{routes: [], direction: nil, agencies: ["Metro", "Sound Transit"]},
-           "Metro, Sound Transit"},
-          {"an empty direction", %{routes: ["10"], direction: "", agencies: []}, "10"},
-          {"nothing", %{routes: [], direction: nil, agencies: []}, ""}
-        ] do
-      test "names #{description}" do
-        assert Features.label(unquote(Macro.escape(marker))) == unquote(label)
-      end
     end
   end
 end

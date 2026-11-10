@@ -30,21 +30,49 @@ import {HitKind, overlayHitAt} from "./vehicle_overlay"
 import {mapColors} from "./theme"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {closeCallout, closeCalloutOf, openCallout, stopCalloutContent, writeCalloutArrivals} from "./map_callout"
+import {registerImageResolver} from "./style_images"
+import {
+  ARROW_SIZE_PIXELS,
+  CHIPS_IMAGE_PREFIX,
+  ChipsImageKind,
+  SIGN_SIZE_PIXELS,
+  chipFont,
+  chipsImageSize,
+  directionAngleCases,
+  drawChips,
+  drawStopArrow,
+  drawStopSign,
+  parseChipsImageName,
+  shownChips,
+  southwardDirections
+} from "./stop_marker_shapes"
 
 // The layer a stop's marker is drawn in.
 export const MARKER_LAYER_NAME = "stop-markers"
 // The zoom from which a street's stops stand apart; below it the stops of a
 // region cover its routes.
 export const ZOOM_MIN = 14
-const MARKER_RADIUS_PIXELS = 7
-const MARKER_STROKE_WIDTH_PIXELS = 2
+const ARROW_LAYER_NAME = "stop-markers-arrow"
 const LABEL_LAYER_NAME = "stop-markers-label"
-const labelFont = ["Noto Sans Medium"]
-const LABEL_TEXT_SIZE_PIXELS = 11
-const labelTextOffsetEms = [0, 1]
-const LABEL_TEXT_WIDTH_EMS_MAX = 12
-const LABEL_HALO_WIDTH_PIXELS = 1.5
-const hasLabel = ["!=", ["get", "label"], ""]
+const IMAGE_RESOLVER_KEY = "stop-markers"
+const SIGN_IMAGE_PREFIX = "stop-sign-"
+const ARROW_IMAGE_PREFIX = "stop-arrow-"
+const IMAGE_PIXEL_RATIO = 2
+const themes = ["light", "dark"]
+// The sign, its arrow, and its chips are drawn smaller at zoom 14, where a
+// street's stops first stand apart, and whole from zoom 16.
+const ICON_SIZE_AT_ZOOM_MIN = 0.75
+const ICON_WHOLE_ZOOM = 16
+const iconSize = ["interpolate", ["linear"], ["zoom"], ZOOM_MIN, ICON_SIZE_AT_ZOOM_MIN, ICON_WHOLE_ZOOM, 1]
+// The arrow's center stands this far from the sign's, before it turns.
+const ARROW_OFFSET_PIXELS = 17
+const arrowOffsetPixels = [0, -ARROW_OFFSET_PIXELS]
+// The chips stand clear of the sign, and of an arrow on the same side.
+const CHIPS_OFFSET_PIXELS = 13
+const chipsBelowOffsetPixels = [0, CHIPS_OFFSET_PIXELS]
+const chipsAboveOffsetPixels = [0, -CHIPS_OFFSET_PIXELS]
+const hasChips = ["all", ["has", "routeChips"], ["!=", ["get", "routeChips"], "[]"]]
+const hasCompassDirection = ["match", ["get", "direction"], ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], true, false]
 // A stop's callout shows its next two arrivals.
 const CALLOUT_ARRIVAL_COUNT_MAX = 2
 // The stop the details view shows is marked on the map at every zoom, from
@@ -53,8 +81,9 @@ const SELECTED_SOURCE_NAME = "stop-selected"
 const SELECTED_HALO_LAYER_NAME = "stop-selected-halo"
 const SELECTED_RING_LAYER_NAME = "stop-selected-ring"
 const SELECTED_COLOR = "#16a34a"
-const SELECTED_HALO_RADIUS_PIXELS = 12
+const SELECTED_HALO_RADIUS_PIXELS = 19
 const SELECTED_HALO_OPACITY = 0.25
+const SELECTED_RING_RADIUS_PIXELS = 15
 const SELECTED_RING_STROKE_WIDTH_PIXELS = 3
 
 // A stop as its feature in the tile archive holds it: its position, and the
@@ -132,15 +161,61 @@ function isVehicleAt({map, point}) {
   return map.queryRenderedFeatures(point, {layers}).length > 0
 }
 
-// The filter of the label layer: a stop with a label, of the kept routes.
-function labelFilter() {
+// The filter of a layer that draws the stops of the kept routes that meet
+// `condition`.
+function keptFilter(condition) {
   const kept = stopFilter()
 
   if (kept.kind === FilterKind.none) {
-    return hasLabel
+    return condition
   } else {
-    return ["all", hasLabel, kept.filter]
+    return ["all", condition, kept.filter]
   }
+}
+
+// Draws the image named `id` for `map` where it is a stop's sign, arrow, or
+// chips, and leaves any other name alone.
+function addStopImage({map, id}) {
+  const chips = parseChipsImageName(id)
+
+  if (chips.kind === ChipsImageKind.chips) {
+    const colors = mapColors(chips.theme)
+    const shown = shownChips({chips: chips.chips, count: {fill: colors.chipCountFill, ink: colors.chipCountInk}})
+    addDrawnImage({map, id, draw: (canvas) => { drawChips(canvas, {shown}) }, size: chipsSize(shown)})
+    return
+  }
+
+  for (const theme of themes) {
+    const colors = mapColors(theme)
+
+    if (id === SIGN_IMAGE_PREFIX + theme) {
+      const draw = (canvas) => { drawStopSign(canvas, {fill: colors.stopSignFill, ink: colors.stopSignInk}) }
+      addDrawnImage({map, id, draw, size: {width: SIGN_SIZE_PIXELS, height: SIGN_SIZE_PIXELS}})
+    } else if (id === ARROW_IMAGE_PREFIX + theme) {
+      const draw = (canvas) => { drawStopArrow(canvas, {fill: colors.stopSignFill, halo: colors.stopSignInk}) }
+      addDrawnImage({map, id, draw, size: {width: ARROW_SIZE_PIXELS, height: ARROW_SIZE_PIXELS}})
+    }
+  }
+}
+
+// The size of the image of the chips `shown`, measured in the chips' font.
+function chipsSize(shown) {
+  const context = document.createElement("canvas").getContext("2d")
+  context.font = chipFont()
+  return chipsImageSize({shown, measure: (text) => context.measureText(text).width})
+}
+
+// Adds to `map` the image `id` of `size`, in CSS pixels, that `draw` draws
+// onto a canvas scaled to the image's pixel ratio.
+function addDrawnImage({map, id, draw, size}) {
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.ceil(size.width * IMAGE_PIXEL_RATIO)
+  canvas.height = Math.ceil(size.height * IMAGE_PIXEL_RATIO)
+  const context = canvas.getContext("2d")
+  context.scale(IMAGE_PIXEL_RATIO, IMAGE_PIXEL_RATIO)
+  draw(canvas)
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  map.addImage(id, image, {pixelRatio: IMAGE_PIXEL_RATIO})
 }
 
 // The collection the selected stop's source draws: the stop, or nothing.
@@ -200,7 +275,8 @@ export const StopMarkers = {
         return
       } else if (this.attached) {
         setLayerFilter({map: this.map, layerName: MARKER_LAYER_NAME, layerFilter: stopFilter()})
-        this.map.setFilter(LABEL_LAYER_NAME, labelFilter())
+        this.map.setFilter(ARROW_LAYER_NAME, keptFilter(hasCompassDirection))
+        this.map.setFilter(LABEL_LAYER_NAME, keptFilter(hasChips))
       } else {
         this.attach()
       }
@@ -385,45 +461,60 @@ export const StopMarkers = {
       return
     }
 
-    const colors = mapColors(currentTheme())
+    const theme = currentTheme()
+    registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => { addStopImage({map, id}) }})
 
+    // Every sign is drawn, however crowded the street.
     map.addLayer({
       id: MARKER_LAYER_NAME,
-      type: "circle",
+      type: "symbol",
       source: SOURCE_NAME,
       "source-layer": STOP_LAYER_NAME,
       minzoom: ZOOM_MIN,
       ...filterProperties(stopFilter()),
-      paint: {
-        "circle-radius": MARKER_RADIUS_PIXELS,
-        "circle-color": colors.stopFill,
-        "circle-stroke-color": colors.stopStroke,
-        "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS
+      layout: {
+        "icon-image": SIGN_IMAGE_PREFIX + theme,
+        "icon-size": iconSize,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
       }
     }, firstVehicleLayerName(map))
 
-    // A label is left out where it would cover another label, so a crowded
-    // street shows the labels of some of its stops.
+    // The arrow stands beside the sign on the side the stop faces, and turns
+    // with the map.
+    map.addLayer({
+      id: ARROW_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      "source-layer": STOP_LAYER_NAME,
+      minzoom: ZOOM_MIN,
+      filter: keptFilter(hasCompassDirection),
+      layout: {
+        "icon-image": ARROW_IMAGE_PREFIX + theme,
+        "icon-size": iconSize,
+        "icon-rotate": ["match", ["get", "direction"], ...directionAngleCases(), 0],
+        "icon-rotation-alignment": "map",
+        "icon-offset": arrowOffsetPixels,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    }, firstVehicleLayerName(map))
+
+    // The chips are left out where they would cover other chips, so a
+    // crowded street shows the chips of some of its stops.
     map.addLayer({
       id: LABEL_LAYER_NAME,
       type: "symbol",
       source: SOURCE_NAME,
       "source-layer": STOP_LAYER_NAME,
       minzoom: ZOOM_MIN,
-      filter: labelFilter(),
+      filter: keptFilter(hasChips),
       layout: {
-        "text-field": ["get", "label"],
-        "text-font": labelFont,
-        "text-size": LABEL_TEXT_SIZE_PIXELS,
-        "text-anchor": "top",
-        "text-offset": labelTextOffsetEms,
-        "text-max-width": LABEL_TEXT_WIDTH_EMS_MAX,
-        "text-allow-overlap": false
-      },
-      paint: {
-        "text-color": colors.stopLabel,
-        "text-halo-color": colors.stopHalo,
-        "text-halo-width": LABEL_HALO_WIDTH_PIXELS
+        "icon-image": ["concat", CHIPS_IMAGE_PREFIX, theme, ":", ["get", "routeChips"]],
+        "icon-size": iconSize,
+        "icon-anchor": ["match", ["get", "direction"], southwardDirections(), "bottom", "top"],
+        "icon-offset": ["match", ["get", "direction"], southwardDirections(), ["literal", chipsAboveOffsetPixels], ["literal", chipsBelowOffsetPixels]],
+        "icon-allow-overlap": false
       }
     }, firstVehicleLayerName(map))
 
@@ -465,7 +556,8 @@ export const StopMarkers = {
   },
 
   // Adds the source and the layers that mark the stop the details view
-  // shows, over the stops and under the vehicles.
+  // shows: a halo under the signs, and a ring over them and under the
+  // vehicles.
   attachSelected() {
     const map = this.map
     let selected = null
@@ -485,15 +577,15 @@ export const StopMarkers = {
         "circle-color": SELECTED_COLOR,
         "circle-opacity": SELECTED_HALO_OPACITY
       }
-    }, firstVehicleLayerName(map))
+    }, MARKER_LAYER_NAME)
 
     map.addLayer({
       id: SELECTED_RING_LAYER_NAME,
       type: "circle",
       source: SELECTED_SOURCE_NAME,
       paint: {
-        "circle-radius": MARKER_RADIUS_PIXELS,
-        "circle-color": mapColors(currentTheme()).stopFill,
+        "circle-radius": SELECTED_RING_RADIUS_PIXELS,
+        "circle-opacity": 0,
         "circle-stroke-color": SELECTED_COLOR,
         "circle-stroke-width": SELECTED_RING_STROKE_WIDTH_PIXELS
       }
