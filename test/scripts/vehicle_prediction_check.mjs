@@ -25,6 +25,7 @@ import {
   anchorReport,
   beginCorrection,
   drawCorrected,
+  pathBearingDegrees,
   predictPosition,
   preparePath,
   reportBefore
@@ -316,6 +317,35 @@ const reportBeforeCases = [
 
 for (const {name, input, expected} of reportBeforeCases) {
   deepStrictEqual(reportBefore(input), expected, name)
+}
+
+// The path's bearing at a distance along it, clockwise from north: the
+// straight-line path runs east, then turns north at 1,000 m; the loop runs
+// east, north, west, then south back to its start. A point drawn twice
+// leaves a segment of no length, which points the way the path goes on.
+const repeatedPointPath = pathOfStops({
+  points: [{east: 0}, {east: 500}, {east: 500}, {east: 500, north: 500}],
+  stops: [
+    {distanceMeters: 0, arrivalSeconds: 0, departureSeconds: 0},
+    {distanceMeters: 1000, arrivalSeconds: 200, departureSeconds: 200}
+  ]
+})
+const BEARING_TOLERANCE_DEGREES = 0.1
+const bearingCases = [
+  {name: "a straight stretch points along it", path: straightPath, meters: 500, degrees: 90},
+  {name: "past a curve the bearing follows the path's turn", path: straightPath, meters: 1500, degrees: 0},
+  {name: "the vertex of a curve points along the segment that leaves it", path: straightPath, meters: 1000, degrees: 0},
+  {name: "a loop's way back points the other way", path: loopPath, meters: 2000, degrees: 270},
+  {name: "a loop's last stretch points to its start", path: loopPath, meters: 2900, degrees: 180},
+  {name: "a path's end points along its last segment", path: loopPath, meters: 2995, degrees: 180},
+  {name: "a distance past the end points along the last segment", path: straightPath, meters: 2500, degrees: 0},
+  {name: "a distance before the start points along the first segment", path: straightPath, meters: -10, degrees: 90},
+  {name: "a segment of no length points the way the path goes on", path: repeatedPointPath, meters: 500, degrees: 0}
+]
+
+for (const {name, path, meters, degrees} of bearingCases) {
+  const bearing = pathBearingDegrees({path, meters})
+  ok(Math.abs(bearing - degrees) <= BEARING_TOLERANCE_DEGREES, `${name}: ${bearing} is not ${degrees}`)
 }
 
 const movingPrediction = predictionOf({...MOVING, atSeconds: 190})

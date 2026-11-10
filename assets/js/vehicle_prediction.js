@@ -11,7 +11,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {glidePosition, glides} from "./marker_glide.js"
-import {LAT, LON, METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, tangentPlane} from "./math/geodesy.js"
+import {LAT, LON, METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, initialBearingDegrees, tangentPlane} from "./math/geodesy.js"
 import {clamp, lerp} from "./math/interpolation.js"
 import {COORDINATES_PER_POINT, POINT_X, POINT_Y, nearestAlong, segmentIndexAt} from "./math/polyline.js"
 
@@ -239,6 +239,34 @@ function positionAt({path, meters}) {
   const lon = lerp({from: path.coordinates[source + POINT_X], to: path.coordinates[target + POINT_X], fraction})
   const lat = lerp({from: path.coordinates[source + POINT_Y], to: path.coordinates[target + POINT_Y], fraction})
   return [lon, lat]
+}
+
+/**
+ * The bearing of `path`, a prepared path, at `meters` along it, in degrees
+ * clockwise from true north: that of the segment holding the distance,
+ * brought inside the path's ends, or of the nearest segment after it, then
+ * before it, where that segment has no length.
+ */
+export function pathBearingDegrees({path, meters}) {
+  assertCondition(Number.isFinite(meters), `a distance along a path is a number, got: ${meters}`)
+  const along = clamp({value: meters, min: 0, max: path.lengthMeters})
+  const segmentIndex = segmentIndexAt({cumulative: path.cumulativeMeters, along})
+  const segmentCount = path.points.length - 1
+
+  for (let index = segmentIndex; index < segmentCount; index++) {
+    if (path.cumulativeMeters[index + 1] > path.cumulativeMeters[index]) {
+      return initialBearingDegrees(path.points[index], path.points[index + 1])
+    }
+  }
+
+  for (let index = segmentIndex - 1; index >= 0; index--) {
+    if (path.cumulativeMeters[index + 1] > path.cumulativeMeters[index]) {
+      return initialBearingDegrees(path.points[index], path.points[index + 1])
+    }
+  }
+
+  assertCondition(path.lengthMeters > 0, `a path of ${path.lengthMeters} m has a bearing`)
+  return unreachable(path.lengthMeters, "a path with length and no segment of length")
 }
 
 function atReport({kind, report}) {
