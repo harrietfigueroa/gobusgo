@@ -321,7 +321,7 @@ export const FollowLocation = {
         this.follow()
         break
       case EffectKind.notice:
-        showNotice(effect.text)
+        showNotice(effect.message)
         break
       default:
         unreachable(effect.kind, "follow location: an effect of unknown kind")

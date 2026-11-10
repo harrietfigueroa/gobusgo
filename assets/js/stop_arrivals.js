@@ -6,13 +6,14 @@
 import {unreachable} from "./assert.js"
 import {appendSpaced, chipElements} from "./route_chips.js"
 import {arrivalsKey} from "./stop_text.js"
+import {appendMessage} from "./message.js"
 
 const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
 const ARRIVALS_NONE = "No arrivals soon"
 const ARRIVALS_REFUSED = "No arrivals for this stop"
 const ARRIVALS_BUSY = "Too many stops open; close one to see this stop's arrivals"
 const ARRIVAL_NOW = "now"
-const ARRIVALS_NEED_CONNECTION = "Live arrivals need a connection"
+const ARRIVALS_NEED_CONNECTION = Object.freeze({headline: "Live arrivals need a connection", caption: "They come back when you're online."})
 const LIVE_LABEL = "live time"
 const ROWS_CLASS_NAME = "arrival-rows"
 const ROW_CLASS_NAME = "arrival-row"
@@ -271,7 +272,8 @@ export function writeArrivals({element, shown, withKey}) {
   }
 
   if (!isScheduled) {
-    const note = classedParagraph({text: ARRIVALS_NEED_CONNECTION, className: OFFLINE_NOTE_CLASS_NAME})
+    const note = classedParagraph({text: "", className: OFFLINE_NOTE_CLASS_NAME})
+    appendMessage({element: note, message: ARRIVALS_NEED_CONNECTION})
     element.append(note)
   }
 }

@@ -1,10 +1,11 @@
 // What the offline signal says. Everything here is pure: the saved index of
 // the offline schedules, the time, and the connection states are given as
-// values, so the signal's lines and its announcements are functions of them.
+// values, so the signal's message and its announcements are functions of them.
 //
-// The signal's first line says what the map shows offline, and its second
-// how old the saved schedules are: by their newest build while a saved date
-// is current, and by when they were saved once every date has ended.
+// The signal's headline says the page is offline, and its caption what the
+// map shows and how old the saved schedules are: by their newest build while
+// a saved date is current, and by when they were saved once every date has
+// ended.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {ConnectionKind} from "./connection_rules.js"
@@ -17,12 +18,17 @@ const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** The first line of the signal. */
-export const SignalTitle = Object.freeze({
-  scheduledPositions: "Offline · scheduled positions",
-  noSavedSchedules: "Offline · no saved schedules",
-  savedSchedulesEnded: "Offline · saved schedules ended"
+/** The headline of the signal, which the server renders. */
+export const SIGNAL_HEADLINE = "Offline"
+
+/** The start of the signal's caption, which says what the map shows. */
+export const SignalCaption = Object.freeze({
+  scheduledPositions: "Showing scheduled positions",
+  noSavedSchedules: "No saved schedules",
+  savedSchedulesEnded: "Saved schedules ended"
 })
+
+const CAPTION_SEPARATOR = " · "
 
 /** What the page's polite live region says when the connection changes. */
 export const AnnouncementText = Object.freeze({offline: "You are offline.", online: "Back online."})
@@ -62,12 +68,12 @@ function newestBuildMs(dates) {
   return newestMs
 }
 
-/** The signal's lines at `nowMs` for `savedIndex`, a read of the offline schedules' saved index. */
-export function signalLines({savedIndex, nowMs}) {
+/** The signal's headline and caption at `nowMs` for `savedIndex`, a read of the offline schedules' saved index. */
+export function signalMessage({savedIndex, nowMs}) {
   assertCondition(Number.isFinite(nowMs), `the time is a number: ${nowMs}`)
 
   if (savedIndex.kind === IndexKind.none) {
-    return [SignalTitle.noSavedSchedules]
+    return {headline: SIGNAL_HEADLINE, caption: SignalCaption.noSavedSchedules}
   }
 
   assertCondition(savedIndex.kind === IndexKind.found, `a saved index is found or none: ${savedIndex.kind}`)
@@ -81,11 +87,13 @@ export function signalLines({savedIndex, nowMs}) {
   }
 
   if (currentDates.length === 0) {
-    return [SignalTitle.savedSchedulesEnded, `Saved ${ageText(nowMs - index.savedAtMs)}`]
+    const savedAge = ageText(nowMs - index.savedAtMs)
+    return {headline: SIGNAL_HEADLINE, caption: `${SignalCaption.savedSchedulesEnded}${CAPTION_SEPARATOR}saved ${savedAge}`}
   }
 
   const builtMs = newestBuildMs(currentDates)
-  return [SignalTitle.scheduledPositions, `Schedules updated ${ageText(nowMs - builtMs)}`]
+  const builtAge = ageText(nowMs - builtMs)
+  return {headline: SIGNAL_HEADLINE, caption: `${SignalCaption.scheduledPositions}${CAPTION_SEPARATOR}updated ${builtAge}`}
 }
 
 /** What the live region says when the connection moves from `previous` to `next`: going offline and coming back, and nothing else. */

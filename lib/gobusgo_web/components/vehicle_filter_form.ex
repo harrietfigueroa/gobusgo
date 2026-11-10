@@ -27,6 +27,7 @@ defmodule GobusgoWeb.VehicleFilterForm do
   use Phoenix.Component
 
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.Message
   alias GobusgoWeb.RouteOptions
 
   @field_labels %{"agency" => "Agency", "route" => "Route"}
@@ -143,7 +144,9 @@ defmodule GobusgoWeb.VehicleFilterForm do
         >
           {@rest_count} more; type more to narrow them
         </p>
-        <p class="offline-note mt-1 px-2">{AppInfo.needs_connection(:suggestions)}</p>
+        <p class="offline-note mt-1 px-2">
+          <Message.message {AppInfo.needs_connection(:suggestions)} />
+        </p>
       </div>
     </form>
     """

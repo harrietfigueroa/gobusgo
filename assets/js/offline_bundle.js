@@ -198,6 +198,60 @@ export function persistenceText(kind) {
   }
 }
 
+/**
+ * The kinds of the setting the status line speaks of: off, on, or in a
+ * browser that cannot save.
+ */
+export const SettingKind = Object.freeze({off: "off", on: "on", unsupported: "unsupported"})
+
+const OFF_MESSAGE = Object.freeze({headline: "Schedules not saved", caption: "Turn this on to plan trips offline."})
+const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save schedules", caption: "This browser can't save them for offline use."})
+
+function fileCountText(count) {
+  if (count === 1) {
+    return "1 file"
+  }
+
+  return `${count} files`
+}
+
+/**
+ * The status line's headline and caption for `setting`. A setting that is
+ * on carries its bundle's `status`, the browser's `persistence`, and the
+ * texts of the status's dates, `datesText`, of their newest build,
+ * `updatedText`, and of the stored size, `sizeText`.
+ */
+export function statusMessage(setting) {
+  switch (setting.kind) {
+    case SettingKind.off:
+      return OFF_MESSAGE
+    case SettingKind.unsupported:
+      return UNSUPPORTED_MESSAGE
+    case SettingKind.on:
+      return onMessage(setting)
+    default:
+      return unreachable(setting.kind, "offline schedules setting kind")
+  }
+}
+
+function onMessage({status, persistence, datesText, updatedText, sizeText}) {
+  const kept = persistenceText(persistence)
+
+  switch (status.kind) {
+    case StatusKind.saved:
+      return {headline: "Schedules saved for offline use", caption: `For ${datesText}, updated ${updatedText}, ${sizeText}. ${kept}`}
+    case StatusKind.incomplete:
+      return {
+        headline: "Schedules partly saved",
+        caption: `Your browser removed ${fileCountText(status.missingCount)} of ${datesText}. They're saved again while you're online. ${kept}`
+      }
+    case StatusKind.notSaved:
+      return {headline: "No schedules saved yet", caption: `They're saved while you're online. ${kept}`}
+    default:
+      return unreachable(status.kind, "offline schedules status kind")
+  }
+}
+
 /** The paths a store holds that `index` no longer names, which can go. */
 export function stalePaths({index, storedPaths}) {
   const kept = new Set(index.paths)

@@ -12,8 +12,6 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias GobusgoWeb.AppInfo
-
   @moduletag :tmp_dir
 
   @endpoint GobusgoWeb.Endpoint
@@ -88,14 +86,14 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(view, @signal <> " svg[aria-hidden=true]")
-      assert text(view, @signal <> " [data-signal-title]") =~ "Offline"
+      assert text(view, @signal <> " [data-signal-headline]") == "Offline"
     end
 
-    test "holds an age line that starts hidden", %{tmp_dir: tmp_dir} do
+    test "holds a caption that starts hidden", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @signal <> " [data-signal-age][hidden]")
+      assert has_element?(view, @signal <> " [data-signal-caption][hidden]")
     end
 
     test "names a polite live region that starts empty", %{tmp_dir: tmp_dir} do
@@ -142,7 +140,9 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert text(view, "#service-alerts .offline-note") == AppInfo.needs_connection(:alerts)
+      assert text(view, "#service-alerts .offline-note") ==
+               "Service alerts need a connection. They come back when you're online."
+
       assert has_element?(view, "#service-alerts .needs-connection #service-alerts-current")
     end
 
@@ -153,7 +153,7 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert text(view, "#vehicle-filter-bar .offline-note") ==
-               AppInfo.needs_connection(:suggestions)
+               "Suggestions need a connection. They come back when you're online."
 
       assert has_element?(view, "#vehicle-filter-suggestions.needs-connection")
     end
@@ -163,7 +163,7 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert text(view, "#shared-vehicles .offline-note") ==
-               AppInfo.needs_connection(:shared_vehicles)
+               "Scooters and bikes need a connection. They come back when you're online."
     end
   end
 end

@@ -64,6 +64,8 @@ const pairs = [
   {kind: PairKind.text, foreground: "--panel-sheet-text-color", background: "--theme-option-checked-fill"},
   {kind: PairKind.text, foreground: "--panel-sheet-text-color", background: "--panel-sheet-chip-fill"},
   {kind: PairKind.text, foreground: "--connection-signal-age-color", background: "--surface-fill"},
+  {kind: PairKind.text, foreground: "--message-caption-color", background: "--surface-fill"},
+  {kind: PairKind.text, foreground: "--message-caption-color", background: "--filter-bar-fill"},
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--surface-fill"},
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--panel-detail-action-fill"},
   {kind: PairKind.text, foreground: "--filter-kind-color", background: "--panel-sheet-chip-fill"},

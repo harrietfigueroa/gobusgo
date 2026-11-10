@@ -14,7 +14,7 @@ import {
   drawnArchiveUrl,
   savedBasemapOf,
   stalePaths,
-  statusText
+  statusMessage
 } from "../../assets/js/offline_basemap.js"
 
 const ARCHIVE_URL = "/basemap/basemap-20261004-01.pmtiles"
@@ -73,37 +73,37 @@ const statusCases = [
   {
     name: "off",
     setting: {kind: SettingKind.off},
-    text: "The map is not saved for offline use."
+    expected: {headline: "Map not saved", caption: "Turn this on to keep streets and places offline."}
   },
   {
     name: "on, saved, kept by the browser",
     setting: {kind: SettingKind.on, saved: SAVED, bytes: BYTES, persistence: PersistenceKind.granted},
-    text: "Saved for offline use, 34.4 MB. Your browser keeps it until you remove it."
+    expected: {headline: "Map saved for offline use", caption: "It takes 34.4 MB. Your browser keeps it until you remove it."}
   },
   {
     name: "on, saved, open to eviction",
     setting: {kind: SettingKind.on, saved: SAVED, bytes: MEGABYTE_BYTES, persistence: PersistenceKind.notGranted},
-    text: "Saved for offline use, 1.0 MB. Your browser can remove it when the device runs short of space."
+    expected: {headline: "Map saved for offline use", caption: "It takes 1.0 MB. Your browser can remove it when the device runs short of space."}
   },
   {
     name: "on, saved, with no answer from the browser",
     setting: {kind: SettingKind.on, saved: SAVED, bytes: MEGABYTE_BYTES, persistence: PersistenceKind.unknown},
-    text: "Saved for offline use, 1.0 MB. Your browser does not say whether it keeps it."
+    expected: {headline: "Map saved for offline use", caption: "It takes 1.0 MB. Your browser does not say whether it keeps it."}
   },
   {
     name: "on, not saved yet",
     setting: {kind: SettingKind.on, saved: NOT_SAVED, bytes: 0, persistence: PersistenceKind.unknown},
-    text: "The map is not saved yet. It is saved while you are online."
+    expected: {headline: "Map not saved yet", caption: "It's saved while you're online."}
   },
   {
     name: "unsupported",
     setting: {kind: SettingKind.unsupported},
-    text: "This browser cannot save the map for offline use."
+    expected: {headline: "Can't save the map", caption: "This browser can't save it for offline use."}
   }
 ]
 
 for (const statusCase of statusCases) {
-  deepStrictEqual(statusText(statusCase.setting), statusCase.text, `status: ${statusCase.name}`)
+  deepStrictEqual(statusMessage(statusCase.setting), statusCase.expected, `status: ${statusCase.name}`)
 }
 
 console.log("offline basemap check passed")

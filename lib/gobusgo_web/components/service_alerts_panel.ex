@@ -20,6 +20,7 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
   use Phoenix.Component
 
   alias GobusgoWeb.AppInfo
+  alias GobusgoWeb.Message
   alias GobusgoWeb.ServiceAlerts
   alias Phoenix.LiveView.JS
 
@@ -50,7 +51,7 @@ defmodule GobusgoWeb.ServiceAlertsPanel do
 
     <div id={@panel_id} class="flex flex-col gap-5">
       <h2 class="text-base font-semibold">Service alerts</h2>
-      <p class="offline-note">{AppInfo.needs_connection(:alerts)}</p>
+      <p class="offline-note"><Message.message {AppInfo.needs_connection(:alerts)} /></p>
       <div class="needs-connection flex flex-col gap-5">
         <p>
           The agencies' alerts for the trips running now and for the stops open on the map, for

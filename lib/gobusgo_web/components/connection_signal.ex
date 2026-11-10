@@ -47,8 +47,8 @@ defmodule GobusgoWeb.ConnectionSignal do
         <path d="M3 3 L21 21" />
       </svg>
       <span class="connection-signal-text">
-        <span data-signal-title>Offline</span>
-        <span data-signal-age class="connection-signal-age" hidden></span>
+        <span data-signal-headline class="message-headline">Offline</span>
+        <span data-signal-caption class="connection-signal-caption" hidden></span>
       </span>
     </button>
     <p id={@announcer_id} class="sr-only" role="status" aria-live="polite" phx-update="ignore"></p>

@@ -49,18 +49,23 @@ const ARROW = " → "
 const LINE_POINT_COUNT_MIN = 2
 const TOMORROW_PREFIX = "Tomorrow "
 
-const stateTexts = Object.freeze({
-  [StateKind.loading]: "Finding journeys…",
-  [StateKind.noServiceDate]: "No schedule covers this time yet.",
-  [StateKind.locationDenied]: "Location permission was denied, so the trip cannot start from your location.",
-  [StateKind.locationUnavailable]: "Your location could not be found.",
-  [StateKind.sameStop]: "From and To are the same stop.",
-  [StateKind.notSaved]: "The schedules for this trip are not saved for offline use.",
-  [JourneysKind.none]: "No journey found between these two today or tomorrow.",
-  [JourneysKind.unknownStop]: "This stop is not in the schedules.",
-  [JourneysKind.noStartStop]: "No stop with service is within a walk of your location.",
-  [JourneysKind.failed]: "Journeys could not be loaded.",
+const stateMessages = Object.freeze({
+  [StateKind.loading]: {headline: "Finding journeys…", caption: "Searching today's and tomorrow's schedules."},
+  [StateKind.noServiceDate]: {headline: "No schedule for this time yet", caption: "Try again later."},
+  [StateKind.locationDenied]: {headline: "Location is off", caption: "Start from a stop instead, or allow location in your browser's settings."},
+  [StateKind.locationUnavailable]: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."},
+  [StateKind.sameStop]: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."},
+  [StateKind.notSaved]: {headline: "Not saved for offline", caption: "Connect to plan this trip."},
+  [JourneysKind.none]: {headline: "No journeys found", caption: "Nothing runs between these two today or tomorrow."},
+  [JourneysKind.unknownStop]: {headline: "Stop not in the schedules", caption: "Choose another stop nearby."},
+  [JourneysKind.noStartStop]: {headline: "No stop within a walk", caption: "Start from a stop instead."},
+  [JourneysKind.failed]: {headline: "Journeys didn't load", caption: "Check your connection and try again."},
 })
+
+/** The message the Trip tab shows while the rider picks the stop of `fieldLabel` on the map. */
+export function pickingMessage(fieldLabel) {
+  return {headline: `Pick a stop for ${fieldLabel}`, caption: "Tap a stop on the map. Stops show once the map is zoomed in."}
+}
 
 /** The end of the stop `stopId`, named `name` until the page names it. */
 export function stopEnd({stopId, name}) {
@@ -105,11 +110,11 @@ export function queryOf({from, to}) {
   return {kind: QueryKind.ready, from, toStopId: to.stopId}
 }
 
-/** The sentence the Trip tab shows for `kind`, a state of its own or a router outcome. */
-export function stateText(kind) {
-  const isKnown = Object.hasOwn(stateTexts, kind)
-  assertCondition(isKnown, "trip plan: no text for the state " + kind)
-  return stateTexts[kind]
+/** The message the Trip tab shows for `kind`, a state of its own or a router outcome. */
+export function stateMessage(kind) {
+  const isKnown = Object.hasOwn(stateMessages, kind)
+  assertCondition(isKnown, "trip plan: no message for the state " + kind)
+  return stateMessages[kind]
 }
 
 /** Whether a failure is worth trying again: every failure but a format the page cannot read. */

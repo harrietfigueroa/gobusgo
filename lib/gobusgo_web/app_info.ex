@@ -122,11 +122,13 @@ defmodule GobusgoWeb.AppInfo do
 
   @megabyte_bytes 1_000_000
 
+  @back_online "They come back when you're online."
+
   @needs_connection %{
-    arrivals: "Live arrivals need a connection",
-    alerts: "Service alerts need a connection",
-    suggestions: "Suggestions need a connection",
-    shared_vehicles: "Scooters and bikes need a connection"
+    arrivals: %{headline: "Live arrivals need a connection", caption: @back_online},
+    alerts: %{headline: "Service alerts need a connection", caption: @back_online},
+    suggestions: %{headline: "Suggestions need a connection", caption: @back_online},
+    shared_vehicles: %{headline: "Scooters and bikes need a connection", caption: @back_online}
   }
 
   # The parts of the page that need a connection, in the order the offline
@@ -383,12 +385,19 @@ defmodule GobusgoWeb.AppInfo do
   def offline do
     %{
       works: @offline_works,
-      needs_connection: for(part <- @needs_connection_order, do: needs_connection(part) <> ".")
+      needs_connection:
+        for(part <- @needs_connection_order, do: needs_connection(part).headline <> ".")
     }
   end
 
-  @doc "The text a part of a map page says in place while the page is offline."
-  @spec needs_connection(:arrivals | :alerts | :suggestions | :shared_vehicles) :: String.t()
+  @doc """
+  The message a part of a map page says in place while the page is
+  offline: a headline that names what needs a connection, and a caption.
+  """
+  @spec needs_connection(:arrivals | :alerts | :suggestions | :shared_vehicles) :: %{
+          headline: String.t(),
+          caption: String.t()
+        }
   def needs_connection(part), do: Map.fetch!(@needs_connection, part)
 
   @doc "The statement of how a map page keeps a rider's theme setting."
