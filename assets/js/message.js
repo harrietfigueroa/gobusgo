@@ -12,8 +12,8 @@ const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 // read apart wherever whitespace between elements is dropped.
 const HEADLINE_STOP = ". "
 
-/** The nodes of `message`, built as text nodes, which an element holds in place of its children. */
-export function messageNodes({headline, caption}) {
+// The nodes of `message`, built as text nodes.
+function messageNodes({headline, caption}) {
   assertCondition(headline !== "", "a message has a headline")
   assertCondition(caption !== "", "a message has a caption")
   const headlineElement = document.createElement("span")
@@ -29,8 +29,17 @@ export function messageNodes({headline, caption}) {
   return [headlineElement, captionElement]
 }
 
+/** Appends `message` to what `element` holds. */
+export function appendMessage({element, message}) {
+  const nodes = messageNodes(message)
+
+  for (const node of nodes) {
+    element.append(node)
+  }
+}
+
 /** Writes `message` into `element` in place of what it held. */
 export function writeMessage({element, message}) {
-  const nodes = messageNodes(message)
-  element.replaceChildren(...nodes)
+  element.replaceChildren()
+  appendMessage({element, message})
 }

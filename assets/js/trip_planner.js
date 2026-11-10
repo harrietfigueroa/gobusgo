@@ -40,7 +40,7 @@ import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
 import {isNotSaved} from "./offline_bundle"
-import {messageNodes} from "./message"
+import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
 import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
@@ -438,8 +438,7 @@ export const TripPlanner = {
 
     const note = element({tag: "p", className: "trip-note", text: ""})
     const picking = pickingMessage(FIELD_LABELS[end])
-    const pickingNodes = messageNodes(picking)
-    note.append(...pickingNodes)
+    appendMessage({element: note, message: picking})
     const cancel = button({className: "panel-detail-action", text: "Cancel"})
     cancel.addEventListener("click", () => {
       stopPicking()
@@ -497,8 +496,7 @@ export const TripPlanner = {
   showState({kind, retry}) {
     const note = element({tag: "p", className: "trip-note", text: ""})
     const message = stateMessage(kind)
-    const nodes = messageNodes(message)
-    note.append(...nodes)
+    appendMessage({element: note, message})
     this.status.replaceChildren(note)
 
     if (retry) {

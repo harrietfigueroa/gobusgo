@@ -2,7 +2,7 @@
 // "stop-arrivals:arrivals" event.
 
 import {unreachable} from "./assert.js"
-import {messageNodes} from "./message.js"
+import {appendMessage} from "./message.js"
 
 const ARRIVALS_HEADING = "Arrivals"
 const SCHEDULED_ARRIVALS_HEADING = "Scheduled arrivals"
@@ -201,8 +201,7 @@ export function writeArrivals(element, shown) {
 
   if (!isScheduled) {
     const note = classedParagraph({text: "", className: OFFLINE_NOTE_CLASS_NAME})
-    const noteNodes = messageNodes(ARRIVALS_NEED_CONNECTION)
-    note.append(...noteNodes)
+    appendMessage({element: note, message: ARRIVALS_NEED_CONNECTION})
     element.append(note)
   }
 }

@@ -8,7 +8,7 @@ import {FIT_EVENT_DATA, READY_EVENT_NAME} from "./basemap"
 import {COLLAPSE_EVENT_NAME, sheetInsets} from "./panel_sheet"
 import {AUTO_OPEN_ZOOM_MIN} from "./open_stop_budget"
 import {EMPTY_MESSAGE, dropIndex, favoriteCamera, moveButtonsOf, moveText} from "./favorite_list"
-import {messageNodes} from "./message"
+import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 
 // The rider's favorite stops, which the stored settings module keeps as
@@ -263,8 +263,7 @@ export const FavoriteStop = {
 
     if (entries.size === 0) {
       const empty = document.createElement("p")
-      const emptyNodes = messageNodes(EMPTY_MESSAGE)
-      empty.append(...emptyNodes)
+      appendMessage({element: empty, message: EMPTY_MESSAGE})
       elements.append(empty)
     }
 
