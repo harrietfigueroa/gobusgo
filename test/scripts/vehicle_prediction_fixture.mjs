@@ -15,7 +15,9 @@ import {readFileSync, readdirSync, writeFileSync} from "node:fs"
 import {join} from "node:path"
 import {gunzipSync, gzipSync} from "node:zlib"
 import {assertCondition} from "../../assets/js/assert.js"
-import {distanceMeters} from "../../assets/js/marker_glide.js"
+import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
+import {clamp, lerp} from "../../assets/js/math/interpolation.js"
+import {segmentIndexAt} from "../../assets/js/math/polyline.js"
 
 // The sample: this many vehicles, shuffled by this seed.
 const SAMPLE_VEHICLE_COUNT = 60
@@ -38,10 +40,7 @@ const PROJECTION_SLACK_METERS = 1
 
 // The builder measures on a plane tangent at Seattle's latitude.
 const PLANE_LATITUDE = 47.6
-const EARTH_RADIUS_METERS = 6371008.8
-const DEGREES_PER_HALF_TURN = 180
-const METERS_PER_DEGREE = Math.PI * EARTH_RADIUS_METERS / DEGREES_PER_HALF_TURN
-const METERS_PER_DEGREE_LON = Math.cos(PLANE_LATITUDE * Math.PI / DEGREES_PER_HALF_TURN) * METERS_PER_DEGREE
+const METERS_PER_DEGREE_LON = metersPerDegreeLongitude(PLANE_LATITUDE)
 
 // A service date is the local midnight its trips count from; noon after it
 // is on the service date in UTC as in Seattle.
@@ -153,7 +152,10 @@ function lineOf(points) {
 }
 
 // The nearest point of `line` to `position` at or after `alongMin`, as its
-// distance from the position and its distance along the line.
+// distance from the position and its distance along the line. A point's
+// distance along its segment is the square root of the segment's squared
+// length, the measure the fixture is cut with, which differs in the last
+// bit from a share of the cumulative distances.
 function projectOnLine({line, position, alongMin}) {
   const [x, y] = planeOf(position)
   const floor = alongMin - PROJECTION_SLACK_METERS
@@ -169,7 +171,7 @@ function projectOnLine({line, position, alongMin}) {
     let fraction = 0
     if (squared > 0) {
       const dot = (x - sourceX) * deltaX + (y - sourceY) * deltaY
-      fraction = Math.max(0, Math.min(1, dot / squared))
+      fraction = clamp({value: dot / squared, min: 0, max: 1})
     }
     const along = line.cumulative[index] + fraction * Math.sqrt(squared)
     const offset = Math.hypot(sourceX + fraction * deltaX - x, sourceY + fraction * deltaY - y)
@@ -183,24 +185,9 @@ function projectOnLine({line, position, alongMin}) {
   return best
 }
 
-// The index of the segment that holds `along`.
-function segmentIndexOf({cumulative, along}) {
-  let low = 0
-  let high = cumulative.length - 1
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / HALF)
-    if (cumulative[middle] <= along) {
-      low = middle
-    } else {
-      high = middle
-    }
-  }
-  return low
-}
-
 function pointAt({line, along}) {
-  const clamped = Math.max(0, Math.min(line.length, along))
-  const index = segmentIndexOf({cumulative: line.cumulative, along: clamped})
+  const clamped = clamp({value: along, min: 0, max: line.length})
+  const index = segmentIndexAt({cumulative: line.cumulative, along: clamped})
   const span = line.cumulative[index + 1] - line.cumulative[index]
   let fraction = 0
   if (span > 0) {
@@ -208,7 +195,7 @@ function pointAt({line, along}) {
   }
   const [sourceX, sourceY] = line.points[index]
   const [targetX, targetY] = line.points[index + 1]
-  return latLonOf([sourceX + fraction * (targetX - sourceX), sourceY + fraction * (targetY - sourceY)])
+  return latLonOf([lerp({from: sourceX, to: targetX, fraction}), lerp({from: sourceY, to: targetY, fraction})])
 }
 
 // The stretch of `line` from `start` to `end` along it, as [lat, lon] points.
@@ -402,13 +389,13 @@ function pathEntryOf({line, stopAlongs, stopTimes}) {
   for (let index = 0; index < stopAlongs.length; index++) {
     const along = stopAlongs[index]
     const segmentLast = line.cumulative.length - LAST_SEGMENT_OFFSET
-    const segment = Math.min(segmentLast, segmentIndexOf({cumulative: line.cumulative, along}))
+    const segment = Math.min(segmentLast, segmentIndexAt({cumulative: line.cumulative, along}))
     const span = line.cumulative[segment + 1] - line.cumulative[segment]
     let fraction = 0
     if (span > 0) {
-      fraction = Math.max(0, Math.min(1, (along - line.cumulative[segment]) / span))
+      fraction = clamp({value: (along - line.cumulative[segment]) / span, min: 0, max: 1})
     }
-    const meters = cumulative[segment] + fraction * (cumulative[segment + 1] - cumulative[segment])
+    const meters = lerp({from: cumulative[segment], to: cumulative[segment + 1], fraction})
     floor = Math.max(floor, meters)
     const {arrivalTime, departureTime} = stopTimes[index]
     stops.push([rounded({value: floor, decimals: DISTANCE_DECIMALS}), arrivalTime, departureTime])

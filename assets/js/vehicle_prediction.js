@@ -9,7 +9,10 @@
 // service date as the source's schedule gives them.
 
 import {assertCondition, unreachable} from "./assert.js"
-import {distanceMeters, glidePosition, glides} from "./marker_glide.js"
+import {glidePosition, glides} from "./marker_glide.js"
+import {METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, tangentPlane} from "./math/geodesy.js"
+import {clamp, lerp} from "./math/interpolation.js"
+import {nearestAlong, segmentIndexAt} from "./math/polyline.js"
 
 /** The most points a path holds. */
 export const PATH_POINT_COUNT_MAX = 20000
@@ -46,11 +49,6 @@ const CATCH_UP_DURATION_MS = 2000
 const SETTLED_METERS_MAX = 0.5
 
 const MS_PER_SECOND = 1000
-const LONGITUDE_MAX = 180
-const LATITUDE_MAX = 90
-const DEGREES_PER_HALF_TURN = 180
-const EARTH_RADIUS_METERS = 6371008.8
-const METERS_PER_DEGREE = Math.PI * EARTH_RADIUS_METERS / DEGREES_PER_HALF_TURN
 const HALF = 2
 
 /** Where a prediction puts a vehicle: along its path, or at its report and why. */
@@ -64,20 +62,6 @@ export const DrawnKind = Object.freeze({alongPath: "alongPath", atPoint: "atPoin
 
 const SETTLED = Object.freeze({kind: CorrectionKind.settled})
 const SNAP = Object.freeze({kind: CorrectionKind.snap})
-
-function radians(degrees) {
-  return degrees * Math.PI / DEGREES_PER_HALF_TURN
-}
-
-function assertPosition(position, message) {
-  assertCondition(Array.isArray(position), `${message}: a position is [lon, lat]`)
-  assertCondition(position.length === HALF, `${message}: a position has two coordinates, not ${position.length}`)
-  const [lon, lat] = position
-  assertCondition(Number.isFinite(lon), `${message}: longitude ${lon} is not a number`)
-  assertCondition(Number.isFinite(lat), `${message}: latitude ${lat} is not a number`)
-  assertCondition(Math.abs(lon) <= LONGITUDE_MAX, `${message}: longitude ${lon} is out of range`)
-  assertCondition(Math.abs(lat) <= LATITUDE_MAX, `${message}: latitude ${lat} is out of range`)
-}
 
 function assertTimeMs(timeMs, message) {
   assertCondition(Number.isFinite(timeMs), `${message}: ${timeMs} is not a time`)
@@ -123,26 +107,32 @@ export function preparePath({tripId, serviceDateMs, points, stops}) {
   assertCondition(points.length >= HALF, `a path has at least two points, not ${points.length}`)
   assertCondition(points.length <= PATH_POINT_COUNT_MAX, `a path has at most ${PATH_POINT_COUNT_MAX} points, not ${points.length}`)
 
-  // Projection works in meters on a plane tangent at the first point, which
-  // is within a fraction of a percent across a city; distances along the
-  // path are great-circle distances, the measure its stops are given in.
+  // Projection works in meters on a plane tangent at the first point, whose
+  // scale is asserted over the path's latitudes; distances along the path
+  // are great-circle distances, the measure its stops are given in.
   const [, latOrigin] = points[0]
-  const metersPerDegreeLon = METERS_PER_DEGREE * Math.cos(radians(latOrigin))
+  const plane = tangentPlane({referenceLatitudeDegrees: latOrigin})
+  const {metersPerDegreeLon} = plane
   const xs = new Float64Array(points.length)
   const ys = new Float64Array(points.length)
   const cumulativeMeters = new Float64Array(points.length)
+  let latitudeDegreesMin = latOrigin
+  let latitudeDegreesMax = latOrigin
 
   for (let index = 0; index < points.length; index++) {
     const point = points[index]
     assertPosition(point, `path point ${index}`)
     xs[index] = point[0] * metersPerDegreeLon
     ys[index] = point[1] * METERS_PER_DEGREE
+    latitudeDegreesMin = Math.min(latitudeDegreesMin, point[1])
+    latitudeDegreesMax = Math.max(latitudeDegreesMax, point[1])
     if (index > 0) {
       cumulativeMeters[index] = cumulativeMeters[index - 1] + distanceMeters(points[index - 1], point)
     }
   }
 
   const lengthMeters = cumulativeMeters[points.length - 1]
+  assertPlaneCovers({plane, latitudeDegreesMin, latitudeDegreesMax})
   assertStops({stops, lengthMeters})
 
   return Object.freeze({tripId, serviceDateMs, points, stops, xs, ys, cumulativeMeters, lengthMeters, metersPerDegreeLon})
@@ -153,36 +143,9 @@ export function preparePath({tripId, serviceDateMs, points, stops}) {
 function project({path, position, distanceMetersMin}) {
   const x = position[0] * path.metersPerDegreeLon
   const y = position[1] * METERS_PER_DEGREE
-  const floorMeters = distanceMetersMin - PROJECTION_SLACK_METERS
-  let best = {offsetMeters: Infinity, distanceMeters: distanceMetersMin}
-
-  for (let index = 0; index + 1 < path.xs.length; index++) {
-    const segmentStartMeters = path.cumulativeMeters[index]
-    const segmentEndMeters = path.cumulativeMeters[index + 1]
-    if (segmentEndMeters < floorMeters) {
-      continue
-    }
-
-    const deltaX = path.xs[index + 1] - path.xs[index]
-    const deltaY = path.ys[index + 1] - path.ys[index]
-    const squaredLength = deltaX * deltaX + deltaY * deltaY
-    let fraction = 0
-    if (squaredLength > 0) {
-      const dot = (x - path.xs[index]) * deltaX + (y - path.ys[index]) * deltaY
-      fraction = Math.min(1, Math.max(0, dot / squaredLength))
-    }
-
-    const along = segmentStartMeters + fraction * (segmentEndMeters - segmentStartMeters)
-    const offsetMeters = Math.hypot(path.xs[index] + fraction * deltaX - x, path.ys[index] + fraction * deltaY - y)
-    const isAfterFloor = along >= floorMeters
-    const isNearer = offsetMeters < best.offsetMeters
-    const isBetter = isAfterFloor && isNearer
-    if (isBetter) {
-      best = {offsetMeters, distanceMeters: along}
-    }
-  }
-
-  return best
+  const alongMin = distanceMetersMin - PROJECTION_SLACK_METERS
+  const nearest = nearestAlong({xs: path.xs, ys: path.ys, cumulative: path.cumulativeMeters, x, y, alongMin})
+  return {offsetMeters: nearest.offset, distanceMeters: nearest.along}
 }
 
 // The schedule's time, in seconds after the service date, at which the
@@ -202,7 +165,7 @@ function scheduledSeconds({stops, meters}) {
       if (spanMeters > 0) {
         fraction = (meters - source.distanceMeters) / spanMeters
       }
-      return source.departureSeconds + fraction * (target.arrivalSeconds - source.departureSeconds)
+      return lerp({from: source.departureSeconds, to: target.arrivalSeconds, fraction})
     }
   }
 
@@ -231,7 +194,7 @@ function scheduledMeters({stops, seconds}) {
       }
       const spanSeconds = target.arrivalSeconds - source.departureSeconds
       const fraction = (seconds - source.departureSeconds) / spanSeconds
-      return source.distanceMeters + fraction * (target.distanceMeters - source.distanceMeters)
+      return lerp({from: source.distanceMeters, to: target.distanceMeters, fraction})
     }
     if (seconds <= target.departureSeconds) {
       return target.distanceMeters
@@ -244,18 +207,9 @@ function scheduledMeters({stops, seconds}) {
 // The [lon, lat] position `meters` along the path, found by halving the
 // points, so a frame's cost grows with the logarithm of the path's length.
 function positionAt({path, meters}) {
-  const along = Math.min(path.lengthMeters, Math.max(0, meters))
-  let low = 0
-  let high = path.cumulativeMeters.length - 1
-
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / HALF)
-    if (path.cumulativeMeters[middle] <= along) {
-      low = middle
-    } else {
-      high = middle
-    }
-  }
+  const along = clamp({value: meters, min: 0, max: path.lengthMeters})
+  const low = segmentIndexAt({cumulative: path.cumulativeMeters, along})
+  const high = low + 1
 
   const segmentMeters = path.cumulativeMeters[high] - path.cumulativeMeters[low]
   let fraction = 0
@@ -264,7 +218,7 @@ function positionAt({path, meters}) {
   }
   const [sourceLon, sourceLat] = path.points[low]
   const [targetLon, targetLat] = path.points[high]
-  return [sourceLon + (targetLon - sourceLon) * fraction, sourceLat + (targetLat - sourceLat) * fraction]
+  return [lerp({from: sourceLon, to: targetLon, fraction}), lerp({from: sourceLat, to: targetLat, fraction})]
 }
 
 function atReport({kind, report}) {

@@ -59,6 +59,7 @@ defmodule Gobusgo.Gbfs.VehicleTileSet do
   alias Gobusgo.Gbfs.VehicleForms
   alias Gobusgo.Gbfs.VehicleStatusBatch.Records
   alias Gobusgo.Gbfs.VehicleTileFormat
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.RequestId
 
   @bin_extension ".bin" <> Compression.suffix()
@@ -188,7 +189,7 @@ defmodule Gobusgo.Gbfs.VehicleTileSet do
   @spec tile_of(%{lat: number(), lon: number()}) :: tile()
   def tile_of(%{lat: lat, lon: lon}) when is_number(lat) and is_number(lon) do
     tile_count = Integer.pow(2, @tile_zoom)
-    lat_radians = lat * :math.pi() / 180
+    lat_radians = Geodesy.radians(lat)
     mercator = :math.log(:math.tan(lat_radians) + 1 / :math.cos(lat_radians))
     x = floor((lon + 180) / 360 * tile_count)
     y = floor((1 - mercator / :math.pi()) / 2 * tile_count)
@@ -209,7 +210,7 @@ defmodule Gobusgo.Gbfs.VehicleTileSet do
   end
 
   defp tile_lat(y, tile_count) do
-    :math.atan(:math.sinh(:math.pi() * (1 - 2 * y / tile_count))) * 180 / :math.pi()
+    Geodesy.degrees(:math.atan(:math.sinh(:math.pi() * (1 - 2 * y / tile_count))))
   end
 
   defp clamp_tile(index, _tile_count) when index < 0, do: 0

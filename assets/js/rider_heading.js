@@ -7,6 +7,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {FollowKind} from "./follow_state.js"
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees, turnDegrees} from "./math/angles.js"
 import {MeasureKind} from "./position_watch.js"
 
 /** The width of the cone, centered on the heading. */
@@ -48,15 +49,8 @@ export const CompassSource = Object.freeze({absolute: "absolute", webkit: "webki
 /** No heading. */
 export const NO_READING = Object.freeze({kind: ReadingKind.none})
 
-const DEGREES_PER_TURN = 360
-const DEGREES_PER_HALF_TURN = 180
 const compassSources = Object.values(CompassSource)
 const followKinds = Object.values(FollowKind)
-
-function normalizedDegrees(degrees) {
-  const remainder = degrees % DEGREES_PER_TURN
-  return (remainder + DEGREES_PER_TURN) % DEGREES_PER_TURN
-}
 
 function isFiniteNumber(value) {
   const isNumber = typeof value === "number"
@@ -204,11 +198,6 @@ export function coneHeading({gps, compass, isShown, nowMs}) {
   }
 
   return NO_READING
-}
-
-function turnDegrees({from, to}) {
-  const clockwise = normalizedDegrees(to - from)
-  return Math.min(clockwise, DEGREES_PER_TURN - clockwise)
 }
 
 /**

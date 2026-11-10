@@ -60,6 +60,7 @@ defmodule Gobusgo.StartMemory.Fixture do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.OneBusAway.RawResponse
   alias Gobusgo.OneBusAway.RawRoutePathResponse
   alias Gobusgo.OneBusAway.RawRouteResponse
@@ -450,7 +451,7 @@ defmodule Gobusgo.StartMemory.Fixture do
     column = rem(cell, @grid_side_count) - div(@grid_side_count, 2)
     row = div(cell, @grid_side_count) - div(@grid_side_count, 2)
     latitude = @center_latitude + row * @grid_spacing_m / @meters_per_degree_latitude
-    longitude_scale = @meters_per_degree_latitude * :math.cos(@center_latitude * :math.pi() / 180)
+    longitude_scale = @meters_per_degree_latitude * :math.cos(Geodesy.radians(@center_latitude))
     longitude = @center_longitude + column * @grid_spacing_m / longitude_scale
     [Float.round(longitude, 6), Float.round(latitude, 6)]
   end

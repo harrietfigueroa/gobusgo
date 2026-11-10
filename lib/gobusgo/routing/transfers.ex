@@ -2,7 +2,6 @@ defmodule Gobusgo.Routing.Transfers do
   @minimum_transfer_s 120
   @walk_radius_m 400
   @walk_speed_mm_per_s 1_200
-  @earth_radius_m 6_371_008.8
   @degree_m 111_195
   @link_count_per_stop_max 64
 
@@ -24,6 +23,7 @@ defmodule Gobusgo.Routing.Transfers do
   the stops, where a degree of longitude is shortest.
   """
 
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.Routing.SnapshotFormat
 
   @type position :: %{lat: number(), lon: number()}
@@ -73,7 +73,7 @@ defmodule Gobusgo.Routing.Transfers do
           column_step <- -1..1,
           neighbor <- Map.get(cells, {row + row_step, column + column_step}, []),
           neighbor.index != stop.index,
-          distance_m = distance_m(stop, neighbor),
+          distance_m = Geodesy.distance_meters(stop, neighbor),
           distance_m <= @walk_radius_m,
           do: {distance_m, neighbor.index}
 
@@ -95,23 +95,8 @@ defmodule Gobusgo.Routing.Transfers do
 
   defp lon_m(located) do
     lat_max = located |> Enum.map(&abs(&1.lat)) |> Enum.max()
-    @degree_m * max(:math.cos(radians(lat_max)), 0.01)
+    @degree_m * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
   end
 
   defp duration_s(distance_m), do: ceil(distance_m * 1_000 / @walk_speed_mm_per_s)
-
-  defp distance_m(from, to) do
-    lat_from = radians(from.lat)
-    lat_to = radians(to.lat)
-    half_lat = (lat_to - lat_from) / 2
-    half_lon = radians(to.lon - from.lon) / 2
-
-    a =
-      :math.pow(:math.sin(half_lat), 2) +
-        :math.cos(lat_from) * :math.cos(lat_to) * :math.pow(:math.sin(half_lon), 2)
-
-    2 * @earth_radius_m * :math.asin(min(1.0, :math.sqrt(a)))
-  end
-
-  defp radians(degrees), do: degrees * :math.pi() / 180
 end
