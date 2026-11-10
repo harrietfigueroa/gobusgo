@@ -16,7 +16,7 @@ export const OFFLINE_SCREEN = `<!DOCTYPE html>
 <title>Gobusgo is offline</title>
 <script>
 try {
-  var setting = localStorage.getItem(${JSON.stringify(StorageKey.theme)});
+  const setting = localStorage.getItem(${JSON.stringify(StorageKey.theme)});
   if (${storedThemesList}.indexOf(setting) !== -1) {
     document.documentElement.dataset.theme = setting;
   }
