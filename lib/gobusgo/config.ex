@@ -9,6 +9,8 @@ defmodule Gobusgo.Config do
   @type basemap_error :: {:missing, :dir}
   @type tiles :: %{dir: String.t()}
   @type tiles_error :: {:missing, :dir}
+  @type places :: %{dir: String.t()}
+  @type places_error :: {:missing, :dir}
   @type routing :: %{dir: String.t()}
   @type routing_error :: {:missing, :dir}
   @type shared_vehicle_tiles :: %{dir: String.t()}
@@ -509,6 +511,20 @@ defmodule Gobusgo.Config do
   @spec tiles() :: {:ok, tiles()} | {:error, tiles_error()}
   def tiles do
     :gobusgo |> Application.get_env(:tiles, []) |> fetch_tiles()
+  end
+
+  @doc """
+  Returns the places settings from `env`: `:dir`, the directory the locally
+  stored places files are served from. A nil or blank value counts as
+  missing.
+  """
+  @spec fetch_places(Keyword.t()) :: {:ok, places()} | {:error, places_error()}
+  def fetch_places(env) when is_list(env), do: fetch_dir(env)
+
+  @doc "Reads the places settings configured for the running application."
+  @spec places() :: {:ok, places()} | {:error, places_error()}
+  def places do
+    :gobusgo |> Application.get_env(:places, []) |> fetch_places()
   end
 
   defp fetch_dir(env) do

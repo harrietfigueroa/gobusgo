@@ -38,7 +38,8 @@ const NOT_REPOSITORY_PATHS = Object.freeze({
   "application-deploy.yml": "a workflow of the infrastructure repository",
   "gbfs.json": "a file a GBFS feed publishes",
   "gbfs_versions.json": "a file a GBFS feed publishes",
-  "manifest.json": "the manifest of the basemap directory under GOBUSGO_DATA_DIR, outside the repository"
+  "manifest.json": "the manifest of the basemap directory under GOBUSGO_DATA_DIR, outside the repository",
+  "places/manifest.json": "the manifest of the places file under GOBUSGO_DATA_DIR, outside the repository"
 })
 
 const SpanKind = Object.freeze({

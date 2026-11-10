@@ -55,6 +55,10 @@ config :gobusgo, :one_bus_away,
   base_url: System.get_env("ONEBUSAWAY_BASE_URL"),
   api_key: System.get_env("ONEBUSAWAY_API_KEY")
 
+# The places files the local writer stores under `places/` are served from
+# there.
+config :gobusgo, :places, dir: Path.join(base_dir, "places")
+
 # The host name pages are served on, which the socket's origin check needs.
 config :gobusgo, :public,
   host: System.get_env("GOBUSGO_PUBLIC_HOST"),
