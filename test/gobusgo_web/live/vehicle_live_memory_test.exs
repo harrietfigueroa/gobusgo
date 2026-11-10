@@ -9,8 +9,10 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
   # and applies further cycles while the page is open. It reads the page
   # process, the view process, and the view's table after the first draw and
   # after the last cycle, each as found and again after a forced collection,
-  # so the difference is the garbage a process was still holding. The view
-  # and the basemap setting are global state, hence the non-async case.
+  # so the difference is the garbage a process was still holding. It also
+  # prints the JSON size of the marker events a page with no filter is sent
+  # for every agency's current fetch. The view and the basemap setting are
+  # global state, hence the non-async case.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -19,6 +21,8 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Test.VehiclePageMemory
+  alias GobusgoWeb.VehicleLive.AgencyMarkers
+  alias GobusgoWeb.VehicleLive.Filter
 
   @moduletag :memory
   @moduletag :tmp_dir
@@ -107,6 +111,22 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
     IO.puts(Enum.join([title | rows] ++ [table_row], "\n"))
   end
 
+  # The marker events of every agency, as a page with no filter is sent them,
+  # encoded as the socket encodes a payload.
+  defp marker_event_sizes do
+    %{events: events} =
+      AgencyMarkers.updates(%{
+        filter: Filter.normalize(%{}),
+        agency_ids: AgencyMarkers.every_agency_id(%{}),
+        shown_request_ids: %{}
+      })
+
+    %{
+      marker_count: Enum.sum_by(events, &length(&1.markers)),
+      event_bytes: Enum.sum_by(events, &byte_size(JSON.encode!(&1)))
+    }
+  end
+
   defp kibibytes(bytes) do
     kibibyte_count = div(bytes, @bytes_per_kibibyte)
     String.pad_leading("#{kibibyte_count} KiB", 11)
@@ -144,6 +164,13 @@ defmodule GobusgoWeb.VehicleLiveMemoryTest do
 
     print("After the first draw", first_draw)
     print("After #{@cycle_count} more fetch cycles", last_cycle)
+
+    %{marker_count: marker_count, event_bytes: event_bytes} = marker_event_sizes()
+
+    IO.puts(
+      "Marker events: #{event_bytes} bytes for #{marker_count} markers," <>
+        " #{div(event_bytes, marker_count)} bytes a marker"
+    )
 
     IO.puts(
       "Stop view: table #{kibibytes(VehiclePageMemory.table_memory_bytes(StopView))}," <>

@@ -4,6 +4,8 @@ defmodule GobusgoWeb.VehicleMarkersTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.Assert.AssertionError
+  alias Gobusgo.OneBusAway.VehicleBatch.Records
+  alias Gobusgo.OneBusAway.Vehicles
   alias GobusgoWeb.RouteLines
   alias GobusgoWeb.VehicleMarkers
 
@@ -30,7 +32,8 @@ defmodule GobusgoWeb.VehicleMarkersTest do
         "predicted" => true,
         "scheduleDeviationSeconds" => nil,
         "nextStopId" => nil,
-        "nextStopTimeOffsetSeconds" => nil
+        "nextStopTimeOffsetSeconds" => nil,
+        "serviceDateMs" => nil
       },
       fields
     )
@@ -387,6 +390,7 @@ defmodule GobusgoWeb.VehicleMarkersTest do
     test "returns no markers and a zero count for a fetch with no vehicles" do
       assert VehicleMarkers.agency_markers(fetch([]), @no_lookups) == %{
                agency_id: "1",
+               fetched_at_ms: @fetched_at_ms,
                markers: [],
                position_missing_count: 0
              }
@@ -396,6 +400,113 @@ defmodule GobusgoWeb.VehicleMarkersTest do
       fetch = %{fetch([]) | vehicle_ids: ["1_100"]}
 
       assert_raise AssertionError, fn -> VehicleMarkers.agency_markers(fetch, @no_lookups) end
+    end
+
+    test "carries the fetch time in milliseconds since the Unix epoch" do
+      vehicles = [vehicle(%{"id" => "1_100"})]
+
+      assert %{fetched_at_ms: @fetched_at_ms} =
+               VehicleMarkers.agency_markers(fetch(vehicles), @no_lookups)
+    end
+  end
+
+  describe "agency_markers/2 last report" do
+    @report_location %{"lat" => 47.65, "lon" => -122.33}
+
+    test "is the last reported location and its time" do
+      report_time_ms = @fetched_at_ms - 64_000
+
+      fields = %{
+        "lastKnownLocation" => @report_location,
+        "lastLocationUpdateTimeMs" => report_time_ms
+      }
+
+      assert marker(fields).report == %{lat: 47.65, lon: -122.33, time_ms: report_time_ms}
+    end
+
+    test "is kept for a stale vehicle" do
+      fields = %{
+        "lastKnownLocation" => @report_location,
+        "lastLocationUpdateTimeMs" => @fetched_at_ms - 600_000
+      }
+
+      assert %{status: :stale, report: %{lat: 47.65, lon: -122.33}} = marker(fields)
+    end
+
+    for {name, fields} <- [
+          {"with no location supplied", %{"lastKnownLocation" => nil}},
+          {"that has never reported a location",
+           %{"lastKnownLocation" => @report_location, "lastLocationUpdateTimeMs" => 0}},
+          {"with no report time supplied",
+           %{"lastKnownLocation" => @report_location, "lastLocationUpdateTimeMs" => nil}}
+        ] do
+      test "is absent for a vehicle #{name}" do
+        assert marker(unquote(Macro.escape(fields))).report == nil
+      end
+    end
+  end
+
+  describe "agency_markers/2 trip" do
+    test "is the trip the vehicle serves and the start of its service date" do
+      fields = %{"activeTripId" => "1_15436438", "serviceDateMs" => 1_790_924_400_000}
+
+      assert %{trip_id: "1_15436438", service_date_ms: 1_790_924_400_000} = marker(fields)
+    end
+
+    test "is absent for a vehicle that serves no trip" do
+      assert %{trip_id: nil, service_date_ms: nil} = marker(%{})
+    end
+  end
+
+  describe "agency_markers/2 over a stored fetch" do
+    # The fixture is cut from a stored `vehicles-for-agency` response of
+    # agency 40. It goes through the requester's parse, the published
+    # records, and their decoding, as the vehicle view receives it.
+    @fixture_path Path.expand("../fixtures/one_bus_away/vehicles_for_agency.json", __DIR__)
+    @stored_fetched_at DateTime.from_unix!(1_790_985_910)
+
+    defp stored_markers do
+      data = @fixture_path |> File.read!() |> JSON.decode!() |> Map.fetch!("data")
+      {:ok, parsed} = Vehicles.parse(data)
+
+      %{vehicles: records} =
+        Records.build(%{
+          agency_id: "40",
+          destination: "raw/oba/vehicles-for-agency/agency=40/file.json",
+          fetched_at: @stored_fetched_at,
+          data_sha256: String.duplicate("ab", 32),
+          request_id: "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10",
+          vehicles: parsed
+        })
+
+      vehicles =
+        for record <- records do
+          {:ok, {:vehicle, %{vehicle: vehicle}}} = Records.decode(record.value)
+          vehicle
+        end
+
+      fetch = %{fetch(vehicles) | agency_id: "40", fetched_at: @stored_fetched_at}
+      %{markers: markers} = VehicleMarkers.agency_markers(fetch, @no_lookups)
+      Map.new(markers, &{&1.vehicle_id, &1})
+    end
+
+    test "gives a reported vehicle its last report, trip, and service date" do
+      assert %{
+               report: %{
+                 lat: 47.3177375793457,
+                 lon: -122.2967300415039,
+                 time_ms: 1_790_985_895_000
+               },
+               trip_id: "40_1655020",
+               service_date_ms: 1_790_924_400_000
+             } = Map.fetch!(stored_markers(), "40_41605")
+    end
+
+    test "gives a vehicle that has never reported a location no report" do
+      vehicle_id = "40_H:121:0:Weekday:1:26SEP:52043:12345"
+
+      assert %{report: nil, trip_id: "40_16687274__H:121:0:Weekday:1:26SEP:52043:12345"} =
+               Map.fetch!(stored_markers(), vehicle_id)
     end
   end
 

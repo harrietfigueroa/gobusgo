@@ -75,7 +75,8 @@ defmodule GobusgoWeb.VehicleLive do
   whose vehicles the filter keeps. It keeps the request each agency's
   markers came from, and no vehicle. The
   markers reach the browser as
-  `vehicle-markers:agency` events, each holding every marker of one agency:
+  `vehicle-markers:agency` events, each holding every marker of one agency
+  and the time of the fetch they come from:
   all agencies when the browser sends `vehicle-markers:ready`, and
   afterwards the agencies whose fetch changed, so a vehicle that leaves an
   agency's fetch leaves the map. A change of the filter sends every agency
