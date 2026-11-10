@@ -9,8 +9,6 @@ defmodule Gobusgo.Math.GeodesyTest do
   @tolerance_meters 1.0e-6
   @browser_geodesy_path "assets/js/math/geodesy.js"
 
-  defp meters_per_degree, do: :math.pi() * Geodesy.earth_radius_meters() / 180
-
   describe "distance_meters/2" do
     for {name, from, to, meters} <- [
           {"one position", %{lat: 47.6062, lon: -122.3321}, %{lat: 47.6062, lon: -122.3321},
@@ -26,7 +24,7 @@ defmodule Gobusgo.Math.GeodesyTest do
         expected =
           case unquote(meters) do
             :zero -> 0.0
-            :degree -> meters_per_degree()
+            :degree -> Geodesy.meters_per_degree()
             :quarter -> :math.pi() * Geodesy.earth_radius_meters() / 2
             :half -> :math.pi() * Geodesy.earth_radius_meters()
           end
@@ -50,6 +48,11 @@ defmodule Gobusgo.Math.GeodesyTest do
       tacoma = %{lat: 47.2529, lon: -122.4443}
       assert Geodesy.distance_meters(seattle, tacoma) == Geodesy.distance_meters(tacoma, seattle)
     end
+  end
+
+  test "a degree is pi times the mean radius over 180 meters" do
+    assert Geodesy.meters_per_degree() == :math.pi() * Geodesy.earth_radius_meters() / 180
+    assert_in_delta Geodesy.meters_per_degree(), 111_195.08, 0.01
   end
 
   describe "radians/1 and degrees/1" do

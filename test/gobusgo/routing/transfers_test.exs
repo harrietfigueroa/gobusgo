@@ -1,16 +1,16 @@
 defmodule Gobusgo.Routing.TransfersTest do
   # Verifies the walking links as a pure function of stop positions placed
-  # by hand at known distances near Seattle, where a degree of latitude is
-  # about 111,195 m.
+  # by hand at known distances near Seattle, a degree of latitude being the
+  # meters Gobusgo.Math.Geodesy gives it.
   use ExUnit.Case, async: true
 
+  alias Gobusgo.Math.Geodesy
   alias Gobusgo.Routing.Transfers
 
   @lat 47.6
   @lon -122.33
-  @degree_m 111_195
 
-  defp north(meters), do: %{lat: @lat + meters / @degree_m, lon: @lon}
+  defp north(meters), do: %{lat: @lat + meters / Geodesy.meters_per_degree(), lon: @lon}
 
   test "joins two stops 299 m apart in both directions, at the walking speed rounded up" do
     links = Transfers.walking_links(["a", "b"], %{"a" => north(0), "b" => north(299)})
@@ -32,7 +32,8 @@ defmodule Gobusgo.Routing.TransfersTest do
   test "finds a stop in the next cell over" do
     # The two stops straddle a cell edge: 10 m apart, on either side of a
     # multiple of the radius in latitude.
-    edge_m = Float.ceil(@lat * @degree_m / 400) * 400 - @lat * @degree_m
+    degree_m = Geodesy.meters_per_degree()
+    edge_m = Float.ceil(@lat * degree_m / 400) * 400 - @lat * degree_m
 
     links =
       Transfers.walking_links(["a", "b"], %{"a" => north(edge_m - 5), "b" => north(edge_m + 5)})
