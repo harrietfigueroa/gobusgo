@@ -1,0 +1,160 @@
+# The vehicle page
+
+`GET /vehicles` is a map of the vehicles of every agency's current fetch, with the route lines and stops, under a filter by agency and by route, and a panel sheet of tabs over it. This file holds what the page shows, the contract between the page process and the browser, and the decisions behind both. The hooks and modules that run in the browser are mapped in `assets/AGENTS.md`, and the server, the layout, and the shared web modules in `lib/gobusgo_web/AGENTS.md`.
+
+## Files
+
+- `vehicle_live.ex` holds the callbacks, the page's state, and every event it sends the browser.
+- `vehicle_live/` holds what the page computes them from, one module per concern, none of which takes a socket: `Filter`, the page's filter or `:refused`, pure; `AgencyMarkers`, the vehicle marker events and the request shown per agency; `Routes`, the routes the filter keeps and the positions of their stops; `OpenStops`, the registrations and the arrival events of the stops a rider has open; `Trip`, the names of a journey's stops and routes and the filter of a trip, pure; `MapDescription`, the sentence of the map's description that says what the filter keeps, pure; `SharedVehicles`, what the shared vehicle layer hands the browser; and `TripPaths`, what the page reads from a request for trip paths and sends back, pure.
+- `lib/gobusgo_web/components/` renders the page's parts: `PanelSheet`, `VehicleFilterForm` (the filter bar), `ServiceAlertsPanel`, `AppInfoPanel`, `SharedVehicleToggle`, `ConnectionSignal`, and `DonationButton`.
+
+## Layout
+
+- The page is the map over the whole viewport, the panel sheet over it, the map's controls in its top right corner, and the donation button in its top left, beside the side panel from the `md` breakpoint up. It has no visible heading; a visually hidden `<h1>`, "Vehicle map", names the page (GOB-306).
+- The sheet holds five tabs, Trip, Favorites, Filter, Alerts, and Settings. Below Tailwind's `md` breakpoint it lies along the bottom, collapsed to a handle, a summary line that names the filter, and the tab buttons with their badges, and expands over part of the viewport. From `md` up it is a panel along the left side, always expanded, with no handle.
+- The `PanelSheet` hook holds the open tab and whether the sheet is expanded in the browser: the server renders the first tab open and the sheet collapsed, the tabs and the handle send it no event, and a patch leaves the attributes that carry that state as the browser has them. The hook writes the height the sheet covers to `--panel-sheet-inset-bottom`, and fits and reveals keep their target beside the sheet.
+- A pinch that starts on the sheet, a box in the surface style, a map control, or a popup does nothing: `assets/css/app.css` gives each of them and every element inside them `touch-action: pan-x pan-y`, so a panel still scrolls, a pinch on the map zooms the map, and the viewport meta tag still lets the rider zoom the page (GOB-343). WebKit prevents its pinch-to-zoom for a touch whose touch-action lacks `pinch-zoom` from iOS 13 on, so the page needs no `gesturestart` handler.
+- The tabs follow the WAI-ARIA tabs pattern with manual activation, and Escape collapses the sheet. Every panel is rendered whatever tab is open, so the hooks inside mount with the page.
+- An element inside a panel opens its tab with the bubbling `gobusgo:panel-open` DOM event; when that hides the control that had focus, focus moves to the opened tab, and an alert line moves it on to its alert (GOB-299).
+- On a page with a basemap the sheet holds a details view, `#panel-detail`, rendered hidden and left to the browser: `assets/js/panel_detail.js` is the one owner of the stop, vehicle, or shared vehicle it shows, and announces each change with `gobusgo:panel-detail-change` on the window. The view stands in place of the tabs and expands the sheet, and its back button returns to the open tab. Showing an item moves the map so the item stands beside the sheet, by `revealOffset` in `assets/js/reveal_offset.js`.
+- A page with no basemap says so and shows the sheet with its Settings tab alone, open.
+
+## Filter
+
+- The `agency` and `route` query parameters hold the filter, each a list separated by commas; an address with neither shows every vehicle and line. `Gobusgo.OneBusAway.VehicleFilter` judges it through the filter contract: agencies combine with routes as AND, and values of one kind as OR.
+- A vehicle with no route is shown under no filter that names a route, and a route that no agency lists is a valid filter that draws nothing.
+- A filter the contract refuses shows no vehicle, no line, and a notice in the summary line that links to the page without a filter, and never falls back to every vehicle.
+- The control is one text bar, from `GobusgoWeb.FilterBar` (GOB-245): a token per agency and per route the filter names, each with a remove button, and a text box. A value the views do not hold is a token under its identifier.
+- The suggestions are the agencies whose name holds the text, those that start with it first, then the routes of `GobusgoWeb.RouteOptions`, bounded, with the count of the rest. The routes offered are those of the agencies the filter names, or of every agency; a value the filter names is never offered. A route with a short name is found by it alone.
+- The server narrows the list: the text reaches the page as `vehicle-filter:query`, debounced, and neither the text nor the suggestions go into the address or the stored filter. A suggestion sends `vehicle-filter:add` and a token's button `vehicle-filter:remove`, each with the value's `field` and `id`.
+- A change that leaves agencies keeps only the routes one of those agencies lists in the route view, and no route field when it lists none; a change that leaves no agency keeps every route; a change that leaves the filter as it is patches and stores nothing.
+- The bar follows the WAI-ARIA combobox pattern: the `FilterBar` hook marks the active suggestion with `aria-activedescendant` and `aria-selected`, which no render carries.
+- An accepted change goes into the address with a patch, and the page has the browser store it with `vehicle-filter:store`. The `VehicleFilter` hook offers the stored filter with `vehicle-filter:restore` when the page mounts at an address that supplies none; the page puts an accepted one into the address, and the hook removes one the page turns down. A filter in an address wins over the stored one and is never stored.
+- The sheet stands before the map's elements in the page, so the stored filter is offered before the map asks for markers.
+- The usage record names each accepted filter the page shows, the rider's and never a trip's.
+
+## Map
+
+- The map draws the basemap of the basemap directory's manifest, read at mount, in the page's theme: the vendored `@protomaps/basemaps` flavor and sprites `light` or `dark`.
+- The theme setting offers Light, Dark, and Match system, by default Match system, which follows `prefers-color-scheme`. A change of the theme sets the map's style anew with `setStyle`, which drops every added source and layer; the `Basemap` hook announces the new style with `basemap:restyled`, on which the other map hooks add their sources and layers again, and the selected item's mark with them.
+- MapLibre sets the style a map had when its WebGL context was lost again on restore, so the `Basemap` hook sets the style the page wants on a restore when it differs (GOB-293).
+- Route lines are drawn over a casing, and vehicle markers, shared vehicle markers, and the rider's dot are outlined, in a color that stands apart from the land in each theme (GOB-310, GOB-247).
+- A filter that names routes fits the view to the box around their stops, from `GobusgoWeb.MapExtent`, inside the archive, and a later fetch leaves the view where it is. A filter that names no route, or routes with no stop, fits the coverage of the one agency it names, and any other fits the whole archive. The server moves the view with the `basemap:fit` event.
+- The map element holds only what `GobusgoWeb.BasemapSources` gives it, with `data-style-validated` outside production, and carries `phx-update="ignore"`.
+
+## Map accessibility
+
+- The canvas is named "Vehicle map", carries `role="application"` with `aria-roledescription="map"`, and is described by `#map-description`. The role is on the canvas alone (GOB-290): MapLibre's keyboard handler moves the map from the focused canvas, a screen reader in reading mode keeps those keys unless the focused element is an application, and the controls and popups beside it keep reading mode.
+- `#map-description` holds three paragraphs: what the filter keeps, from `GobusgoWeb.VehicleLive.MapDescription`; what is in view, which the `MapDescription` hook writes each time the map is idle; and the keys that move the map. After a camera move the rider makes, or a fit, the hook announces what is in view through the map's live region, rate-limited by `announcerStep` in `assets/js/map_view_text.js`; other moves announce nothing.
+- `#map-items` is the list of the vehicles, stops, and shared vehicles in view, after the map in the tab order (GOB-291): a WAI-ARIA listbox that stays visually hidden until it takes focus, written by the `MapItemList` hook each time the map is idle, by `itemsInView` in `assets/js/map_items.js`, nearest the middle first, a vehicle before a stop and a stop before a shared vehicle as near. Enter or a click opens its item as a click on its marker does, through `gobusgo:map-item-open` on the window.
+- `#map-live-region` is the map's one polite live region, written only through `assets/js/map_live_region.js`. It carries `phx-update="ignore"` and shows a notice by a class, because LiveView resets an ignored element's data attributes on each patch.
+
+## Location
+
+- The location button, under the zoom buttons, is the `FollowLocation` hook's, in place of MapLibre's geolocate control (GOB-263). It cycles Off, Following, and Located over the page's position watch, by the pure rules of `assets/js/follow_state.js`. Any camera move the button did not make ends following, except a zoom; fits and the move to a favorite carry `FIT_EVENT_DATA` to tell them from a zoom.
+- The browser stores whether the rider left the button on, a flag and no position. A page load starts following only where the flag is stored and the Permissions API reads the permission as granted, so a page load never raises a prompt.
+- A fix outside the archive's bounds leaves the map where it is. A denied permission disables the button. The button's accessible name says what a press does, and `aria-pressed` is true in Following only.
+- `assets/js/rider_position.js` holds the page's one `watchPosition` (GOB-262): parts of the page hold it by name, it stops while the page is hidden and when the last holder lets go, and each holder is handed every outcome as a frozen value keyed by `kind`. The rules are `assets/js/position_watch.js`, which is pure.
+- With Show my direction on, a cone on the rider's dot points along the GPS heading at walking speed and up, and the compass otherwise, corrected to true north by Seattle's declination (GOB-264), by the pure rules of `assets/js/rider_heading.js`. Safari's motion permission is asked in a click, and a denial is stored and never asked again.
+- The position and the heading never leave the browser: the hooks send the server no event and store neither.
+
+## Vehicle markers
+
+- Each marker has a status from `GobusgoWeb.VehicleMarkers`: live, stale, schedule only, or no report time. A marker is drawn in its route's color from the route view, or gray (GOB-230).
+- Below the glyph zoom, `GobusgoWeb.VehicleMarkers.glyph_zoom_min/0`, a vehicle is a dot; from it, a bus glyph with a route badge and, where the source supplies `orientation`, a heading chevron (GOB-331). The glyph is always drawn, and the badge and chevron are left out where they would cover another. A schedule-only vehicle has no chevron; `lastKnownOrientation` is not read. The pure rules are in `assets/js/vehicle_marker_shapes.js`.
+- A dot whose status a recent report lacks carries that status's badge, so a status is told by a shape as well as a color (GOB-300). Every badge is drawn, with symbol collision off: measured downtown at zoom 14 in four runs, collision dropped 22 to 26 of the 38 to 41 badges in view, which left those vehicles' status told by color alone, and a badge at three quarters of its size overlapped a neighbor as often.
+- A tap on a marker selects the vehicle, as "Selection and the stop view" below says. The selection's halo and ring are two circle layers over the markers' source filtered to the vehicle, so the mark moves with the marker, and the canvas draws them while it draws the vehicle (GOB-335). The view's texts are `vehicleViewText` in `assets/js/vehicle_view_text.js`; the view reads as labels (GOB-329), with a Position row and a note that a predicted marker is an estimate (GOB-320).
+- The `VehicleMarkers` hook asks for the markers with `vehicle-markers:ready` and receives one `vehicle-markers:agency` event per agency, holding all of that agency's markers and the fetch's time, then and whenever that agency's fetch changes. Each marker carries the vehicle's last report, its trip, and its trip's service date (GOB-315, decided in GOB-238).
+- The page process keeps the request identifier each agency's markers came from and no vehicle: on an announcement it reads the fetch of each agency whose request changed and that the filter keeps, one agency at a time. A change of the filter sends every agency's markers again. Until the map asks, the page takes it to show what the address's filter keeps.
+
+## Vehicle motion
+
+- A marker already drawn glides to its new position, and snaps for a tiny or a long move, off-screen, and under reduced motion (GOB-231).
+- The hook follows each vehicle between fetches (GOB-319): a reported vehicle on a trip is predicted along its trip's path by `assets/js/vehicle_prediction.js` (GOB-317); a stale one, or one on no trip, stands at its last report; a schedule-only one and one with no report stand where the fetch puts them. `assets/js/vehicle_motion.js` holds each vehicle's state and is pure.
+- Inside a band of zoom, below a count of vehicles in view, without reduced motion, and on a shown page, the markers in view move continuously on a 2D canvas over the map's canvas, `assets/js/vehicle_overlay.js` (GOB-318), at rates set per zoom. The tier is decided by `assets/js/motion_tier.js` at camera rest and on the page's events, never during a camera move. Any other marker stands in the source at its prediction.
+- The canvas draws the same glyph as the map's layers, from `assets/js/vehicle_marker_shapes.js` and `assets/js/vehicle_sprites.js`, never asks the map for a frame or changes a source, so the map's `idle` still means the map has come to rest, and takes no part in MapLibre's collision. A click near a drawn vehicle opens it, and the map's description and list name the vehicles at the positions last drawn.
+- The settings are `Gobusgo.Config.vehicle_motion/0`, carried as `data-motion`, from `GOBUSGO_VEHICLE_MOTION_ZOOM_MIN`, `GOBUSGO_VEHICLE_MOTION_ZOOM_MAX`, `GOBUSGO_VEHICLE_MOTION_HYSTERESIS`, `GOBUSGO_VEHICLE_MOTION_VEHICLE_COUNT_MAX`, and `GOBUSGO_VEHICLE_MOTION_RATES` (`zoom:hertz` steps separated by commas). A value that is not valid stops the application at start.
+- A vehicle predicted along its trip's path shows its tie (GOB-320): a ring at its last report and a dashed line from it along the path to the marker, by `assets/js/report_tie.js` and `assets/js/report_tie_layout.js`, which are pure. The vehicles in view show their ties from `TIE_ZOOM_MIN`, and the selected vehicle at any zoom (GOB-344). The overlay draws the ties on a second canvas at most once a second while the vehicles move: drawing them at every tick of the vehicles cost 1.2 to 1.9 ms a second of the main thread against 0.2 to 0.5 ms at once a second. The ties announce nothing.
+- The hook asks for the paths of the trips whose vehicles show their ties with `trip-paths:request`, one request at a time and at most 100 trips, by the pure rules of `assets/js/trip_path_requests.js`, and the page answers with `trip-paths:paths`; the contract and its decision are in `lib/gobusgo/one_bus_away/AGENTS.md` ("Trip paths", GOB-316).
+
+## Route lines and stops
+
+- The lines and stops come from the current route and stop tile archive (`lib/gobusgo_web/AGENTS.md`, GOB-219). `#route-stop-tiles`, whose hook is in `assets/js/route_stop_tiles.js`, carries the archive's address and the routes the filter keeps, from `GobusgoWeb.VehicleLive.Routes`: none under a refused filter, and no attribute under a filter that names nothing. The browser applies the kept routes as layer filters; the page sends no line and no stop and keeps nothing of either.
+- A line is a route's top-level polylines in its color, so both directions are one line. Hovering lines opens the list of the routes under the pointer, `assets/js/route_hover.js`, and an entry emphasizes its route's line; hover does all of it, no click does, a marker wins over a line, and a device whose primary pointer cannot hover gets no list.
+- The stops are every stop a route of the archive serves, drawn from zoom 14 by the `StopMarkers` hook as a sign with a heading arrow and route chips (GOB-332), by `assets/js/stop_marker_shapes.js`. A parent station is never drawn. The chips are left out where they would cover other chips; the sign and the arrow never are.
+- Moving the lines and stops to the tile archive cut the browser's memory: with synthetic data in the counts of a day, at the view of the whole archive, the page's heap and worker held about 19 MB with no filter, 18 MB under the agency with the most routes, and 12 MB under one route, against 88 MB, 45 MB, and 12 MB when the page sent them as events (GOB-219).
+
+## Selection and the stop view
+
+- No popup opens by itself (GOB-333), and a tap opens none (GOB-335): a tap on a stop's, a vehicle's, or a shared vehicle's marker selects it, shows it in the details view, and marks it on the map with a green halo and ring, by `assets/js/selection_mark.js`. The details view is where an item's information shows.
+- Opening an item while the view is hidden moves focus to the view's back button and keeps the element that had focus. A tap on the map that hits no stop, vehicle, or shared vehicle while the view shows an item deselects it, by `tapOutcome` in `assets/js/map_selection.js`, from `assets/js/map_taps.js`: the mark goes, the view closes and returns to its tab, and focus goes back to the element that had it where that element is still shown. MapLibre fires a click only for a press and release within its click tolerance, so ending a pan, a zoom, or a rotation deselects nothing. The back button closes the view and moves focus that was in it to the open tab.
+- The stop view (GOB-246) shows the stop's name, pills of its code and direction, a favorite button, its routes' chips with their agencies, "From here" and "To here", its alert lines, and its arrivals. While it shows a stop the map marks the stop with a ring.
+
+## Arrivals
+
+- The arrivals come from `GobusgoWeb.StopArrivals`. On `stop-arrivals:open` with a `stop_id`, the page registers the stop's arrivals key in `Gobusgo.Demand`, which makes the arrival source fetch it, and answers with `stop-arrivals:arrivals`: `waiting` for a stop with no fetch, `refused` for a stop the stop view does not hold, `busy` beyond `GobusgoWeb.VehicleLive.OpenStops.open_count_max/0` open stops or for a registry that does not answer, or `arrivals` with the fetch's age and a bounded list, the soonest first. `stop-arrivals:close` and the page going away end the registration, and a page registers its open stops again with a registry that restarts.
+- An arrival's time is the fetch's prediction moved by the change in its vehicle's schedule deviation since the fetch, read from the vehicle view, or the schedule where the fetch holds no prediction. A passed arrival is left out, and so is the later of a trip the source lists twice. A headsign that starts with the route's short name is shown without it.
+- The page sends an open stop again when the arrivals view or the vehicle view switches and what it shows has changed, and keeps a hash of what it last sent and no arrival.
+- The arrival rows are in the glanceable style (GOB-326): a route chip, the headsign, and the time, a predicted time bold with a live dot (GOB-295), with a key under them; the texts are `arrivalRows` in `assets/js/stop_arrivals.js` and `arrivalsKey` in `assets/js/stop_text.js`. Between events they count down every 15 seconds while the page is visible, by `assets/js/arrival_countdown.js`, and the hook asks the server for nothing on a timer.
+
+## Favorites
+
+- A rider keeps at most six favorite stops, `OpenStops.favorite_count_max/0`, in the browser's local storage as each stop's identifier and name, in the rider's order (GOB-267). The server learns only the stops the page opens and which favorite the rider goes to.
+- The Favorites tab lists each favorite with a drag handle, move buttons, a remove button, its first arrivals, and "From here" and "To here". Dragging uses pointer events; the handle is hidden from assistive technology since the buttons do the same, and a polite live region announces each move. The rules are `assets/js/favorite_list.js`, which is pure.
+- Choosing a favorite asks for its position with `stop:position`, which the page answers from the stop view with `lat` and `lon`, or `refused`; the answer to the latest request centers the map on the stop beside the sheet. It opens no stop view.
+- The page opens each favorite's stop as it opens the selected stop, and `open_count_max/0` makes room for every favorite and the selected stop; a stop both hold is closed for the server only when neither holds it (GOB-227, GOB-333). `assets/js/stop_holds.js` holds each open stop for the stop view, a favorite, or both.
+- The Favorites badge names the next arrival at the first favorite.
+
+## Trip tab
+
+- Trip plans a journey between two ends, leaving now, in the browser (GOB-241), in the `TripPlanner` hook with the pure rules of `assets/js/trip_plan.js`. From starts as My location only where the Permissions API reads the permission as granted, so opening the page never raises a prompt.
+- A field's list offers My location (From only), the favorites, and "Pick a stop on the map"; it is a WAI-ARIA disclosure with `aria-expanded` and no `aria-haspopup` (GOB-297). "From here" and "To here" fill a field and open the tab.
+- With both ends set, the hook reads `/api/routing/manifest`, picks the service date, and routes with `routeJourneys`, fetching the files under `/routing/` as the browser caches them. A start from My location reads the position from the page's watch, held under the name `trip`, and the position never leaves the browser.
+- The tab shows the frontier journeys, fewest changes first, the earliest marked, and the selected one's steps. Each state without journeys is a message (GOB-327), and a polite status element announces the journeys shown (GOB-308).
+- After a query the hook sends `trip:names` with the stop and route identifiers of the journeys shown, bounded by `GobusgoWeb.VehicleLive.Trip.name_count_max/0` and never the position; the page answers names and colors from the stop and route views.
+- The selected journey is drawn on the map by `assets/js/trip_map.js` with no request, and its routes are sent with `trip:filter`, bounded by `Trip.route_count_max/0`. The page shows that filter in place of the rider's without putting it in the address or storing it. Clear trip sends `trip:clear`. An edit to the filter while a trip is open ends the trip's filter, which the page tells the hook with `trip:filter-ended`.
+- Measured on 2026-11-08 in headless Chrome against a local server with the snapshots of 135 stored schedules, a query that fetched its files fetched 8, about 2.1 MB, and showed its journeys 48 to 70 ms after the destination was chosen, and 44 to 56 ms from the browser's cache.
+
+## Alerts tab
+
+- The Alerts tab holds the service alerts of the routes the filter keeps, from `GobusgoWeb.ServiceAlertsPanel` over `GobusgoWeb.ServiceAlerts`: the current alerts, the newest first, then those whose next window starts within a week, the soonest first, with that start in a `<time>` element the `LocalTime` hook writes in the browser's time zone. The page reads them again when either situation view, the filter, or the route view changes (GOB-224).
+- Each alert's summary names its article and describes its disclosure and its link (GOB-305).
+- `#service-alert-routes` carries the current alerts of each kept route as JSON, each with the stops it names, and the page patches it; no event carries alerts. The vehicle and stop views show a bounded number of alert lines, and a line opens the Alerts tab at its alert without an event to the server.
+- The alerts held are those of the running trips and the open stops, never an agency's whole set (GOB-223); whether to read the agencies' own feeds is an open decision (GOB-225).
+
+## Settings tab
+
+- The Settings tab holds the info panel of `GobusgoWeb.AppInfoPanel`, with or without a basemap, in two groups (GOB-261). Each setting and fact is a headline over a caption from `GobusgoWeb.AppInfo.summary/1` and the other summaries of `GobusgoWeb.AppInfo`, with the full sentences behind a closed `<details>` disclosure (GOB-328). The panel sends the server no event.
+- `#app-info-settings` holds: the install offer, where the browser can install and the page is not installed (GOB-249); the theme; the Offline section, `#app-info-offline`, from `GobusgoWeb.AppInfo.offline/0`; the offline schedules setting; the offline map setting, `#app-info-offline-basemap`, where the basemap has an offline extract (GOB-271); and Show my direction.
+- `#app-info-about` holds what the application is and that no agency endorses it; the donation section, where the address is set, which names no agency and promises nothing for a donation; the marker statuses with their glyphs (GOB-329) and the tie of a last report (GOB-320); how OneBusAway data is used, with the cadences read from `Gobusgo.OneBusAway.Sources` and `Gobusgo.OneBusAway.RouteSchedule`; how shared vehicle data is used, from the facts `GobusgoWeb.AppInfoPanel.shared_vehicle_facts/0` reads, with the credit and terms each operator of `Gobusgo.Gbfs.Systems` names (GOB-258); how the rider's location and a favorite are kept; one sentence per field of `Gobusgo.Usage.Records`, what it never holds, and its retention from `Gobusgo.RetentionPolicy`; the credits, which name the agencies of the agency view and link Sound Transit's Transit Data Terms of Use; and the licenses of the application and of every package in `assets/vendor.lock.json`, with the build's commit.
+
+## Shared vehicles layer
+
+- `GobusgoWeb.SharedVehicleToggle`, under the filter form, offers the shared scooter and bike layer (GOB-258). Its hook sends `shared-vehicles:show` and `shared-vehicles:hide` and keeps the choice under `gobusgo:shared-vehicles` through `assets/js/stored_settings.js`, sending `shared-vehicles:show` again on mount and on a reconnect while the choice is on.
+- Showing the layer holds `Gobusgo.Gbfs.DemandKey.shared_vehicles/0` in `Gobusgo.Demand`, which has the shared vehicle source fetch; hiding it, or the page going away, releases it.
+- While the layer is on, `GobusgoWeb.VehicleLive.SharedVehicles` hands the browser the address of each system's current index whose fetch is at most three minutes old, the oldest fetch GOB-259 settled on planning from, through `#shared-vehicles-layer`. The `SharedVehicles` hook reads the index and the tiles in view from `/shared-vehicles` alone; the view never reaches the server.
+- The layer draws from a neighborhood's zoom, colors by form factor, fades a vehicle with low range, and draws nothing with no current index.
+- A tap on a shared vehicle where no stop or vehicle stands over it selects it, as a tap on a stop or a vehicle does (GOB-335): the details view shows its kind as the title, rows of its range and its operator, and a note that its position and range come from the operator's public feed with the fetch's age, by `sharedVehicleViewText` in `assets/js/shared_vehicle_view_text.js`, and the map marks it at the point it was chosen at, from a GeoJSON source of its own. The server side is in `lib/gobusgo/gbfs/AGENTS.md`.
+- Measured against live Lime on 2026-11-08 at map zoom 15.5, a phone's view of Capitol Hill, the densest neighborhood, downloaded 23 KB a minute, and a desktop view of Ballard 5.8 KB, of which the index is about 2.1 KB.
+
+## Offline
+
+- The page's connection state is `connecting`, `live`, or `offline` with a reason (GOB-235), owned by `assets/js/connection_state.js`. On a page with a basemap the offline signal of `GobusgoWeb.ConnectionSignal.signal/1` shows while offline, with a headline and a caption that says what the map shows and its age (GOB-327); a click opens the Settings tab at its offline section. `#connection-announcement` announces going offline and coming back.
+- What needs a connection says so in place while offline, by the stylesheet over the `needs-connection` and `offline-note` classes, with the messages of `GobusgoWeb.AppInfo.needs_connection/1`: an open stop's live arrivals, the Favorites tab's arrivals, service alerts, filter suggestions, and the shared vehicle layer. The filter is read-only offline.
+- While offline the page answers its own events from the saved offline bundle (GOB-272), draws the vehicles and the open stops' arrivals from the saved schedules (GOB-234), and plans trips from the saved files; a copy opened with no network mounts its hooks itself (GOB-273). The modules are in `assets/AGENTS.md` ("Offline").
+
+## Events
+
+The LiveView events between the hooks and the page, each pushed through `assets/js/page_events.js`:
+
+- Vehicles: `vehicle-markers:ready`, `vehicle-markers:agency`, `trip-paths:request`, `trip-paths:paths`.
+- Filter: `vehicle-filter:query`, `vehicle-filter:add`, `vehicle-filter:remove`, `vehicle-filter:store`, `vehicle-filter:restore`, and `basemap:fit`.
+- Stops: `stop-arrivals:open`, `stop-arrivals:close`, `stop-arrivals:arrivals`, `stop:position`.
+- Trip: `trip:names`, `trip:filter`, `trip:clear`, `trip:filter-ended`.
+- Shared vehicles: `shared-vehicles:show`, `shared-vehicles:hide`.
+
+The DOM events on the window or bubbling from an element, which no server sees: `basemap:ready`, `basemap:restyled`, `gobusgo:panel-open`, `gobusgo:panel-detail-change`, `gobusgo:map-item-open`, `gobusgo:connection-change`, `gobusgo:show-direction-change`, and `gobusgo:offline-basemap-change`.
+
+## Memory checks
+
+`mix test --only memory` prints the memory the vehicle page holds on the server, and `MIX_ENV=test GOBUSGO_DATA_DIR=<base directory with a basemap> mix run --no-start test/scripts/vehicle_page_browser_memory.exs <path of the Chrome executable>` prints what it holds in a headless Chrome, after `mix assets.build`. `test/support/` holds the synthetic fetches and memory readings these measurements drive. Run both before and after a change meant to move those numbers; CI runs neither.
