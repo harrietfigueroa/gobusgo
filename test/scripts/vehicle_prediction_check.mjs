@@ -4,11 +4,11 @@
 // its path, a path of straight lines, each correction, and invalid inputs. A
 // replay of real King County Metro fetches stored on 2026-11-08 then
 // measures the error at the time of each later report and fails when its
-// median or its 90th percentile is more than 10 m from the 128 m and 420 m
-// the design measured over the whole store, and replays the corrections a
-// marker makes as each report arrives. Run it with
-// `node test/scripts/vehicle_prediction_check.mjs`, or name another cut of
-// the same shape as its argument; it exits non-zero on the first case that
+// median or its 90th percentile moves more than 10 m from what was measured
+// on the same cut, and replays the corrections a marker makes as each
+// report arrives. Run it with
+// `node test/scripts/vehicle_prediction_check.mjs`, or name the whole
+// store's cut as its argument; it exits non-zero on the first case that
 // differs.
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
@@ -332,16 +332,20 @@ console.log("vehicle prediction: hand-written cases hold")
 const FIXTURE_URL = new URL("../fixtures/vehicle_prediction/kcm_2026-11-08.json.gz", import.meta.url)
 const REPORT_TRIP_FIELD = 3
 const REPORT_AGE_FIELD = 4
-const DESIGN_P50_METERS = 128
-const DESIGN_P90_METERS = 420
 const DESIGN_TOLERANCE_METERS = 10
-// The design measured 0 m p50 standing still and 21 m p90 at a trip's end.
+
+// What this module measured on the committed fixture, the 60 vehicles
+// `vehicle_prediction_fixture.mjs` samples with its seed 317, and on the
+// whole store's cut of every vehicle of the day (13,461 pairs), the cut an
+// argument names. The whole store's 128 m and 416 m are within 10 m of the
+// 128 m and 420 m the prototype measured on the same fetches.
+const SAMPLE_EXPECTED = Object.freeze({p50Meters: 136, p90Meters: 435, tripEndP90Meters: 65})
+const WHOLE_STORE_EXPECTED = Object.freeze({p50Meters: 128, p90Meters: 416, tripEndP90Meters: 21})
+
 // A vehicle that has just stopped is driven on until its next report shows
 // it still, so the 90th percentile of standing still varies with how many
 // stops a sample holds, and its median is what is asserted.
 const STILL_P50_METERS_MAX = DESIGN_TOLERANCE_METERS
-const DESIGN_TRIP_END_P90_METERS = 21
-const TRIP_END_P90_METERS_MAX = DESIGN_TRIP_END_P90_METERS + DESIGN_TOLERANCE_METERS
 const MOVED_METERS_MIN = 15
 const TRIP_END_METERS = 150
 const MEDIAN = 0.5
@@ -393,9 +397,11 @@ function byNumber(left, right) {
 }
 
 let fixtureUrl = FIXTURE_URL
+let expected = SAMPLE_EXPECTED
 const [, , fixtureArgument] = process.argv
 if (fixtureArgument !== undefined) {
   fixtureUrl = new URL(fixtureArgument, `file://${process.cwd()}/`)
+  expected = WHOLE_STORE_EXPECTED
 }
 const fixtureBytes = readFileSync(fixtureUrl)
 const fixtureText = gunzipSync(fixtureBytes).toString("utf8")
@@ -506,10 +512,11 @@ const headlineP90 = percentile(errors.headline, NINETIETH)
 console.log(`replay: ${summary(errors.headline)}; today's marker ${summary(errors.today)}`)
 console.log(`replay: standing still ${summary(errors.still)}; moving ${summary(errors.moving)}`)
 console.log(`replay: within ${TRIP_END_METERS} m of the trip's end ${summary(errors.tripEnd)}; onto the next trip ${summary(errors.layover)}`)
-ok(Math.abs(headlineP50 - DESIGN_P50_METERS) <= DESIGN_TOLERANCE_METERS, `the median error ${headlineP50} m is the design's ${DESIGN_P50_METERS} m`)
-ok(Math.abs(headlineP90 - DESIGN_P90_METERS) <= DESIGN_TOLERANCE_METERS, `the 90th percentile ${headlineP90} m is the design's ${DESIGN_P90_METERS} m`)
+const tripEndP90 = percentile(errors.tripEnd, NINETIETH)
+ok(Math.abs(headlineP50 - expected.p50Meters) <= DESIGN_TOLERANCE_METERS, `the median error ${headlineP50} m is the measured ${expected.p50Meters} m`)
+ok(Math.abs(headlineP90 - expected.p90Meters) <= DESIGN_TOLERANCE_METERS, `the 90th percentile ${headlineP90} m is the measured ${expected.p90Meters} m`)
 ok(percentile(errors.still, MEDIAN) <= STILL_P50_METERS_MAX, "a vehicle standing still is drawn where it stands")
-ok(percentile(errors.tripEnd, NINETIETH) <= TRIP_END_P90_METERS_MAX, "a vehicle at its trip's end is drawn at the end")
+ok(tripEndP90 <= expected.tripEndP90Meters + DESIGN_TOLERANCE_METERS, `the trip's end's 90th percentile ${tripEndP90} m is within the measured ${expected.tripEndP90Meters} m`)
 ok(headlineP90 < percentile(errors.today, NINETIETH), "the prediction is nearer than today's marker")
 
 // The corrections, replayed: each vehicle's reports arrive at the first
