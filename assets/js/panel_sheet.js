@@ -8,6 +8,7 @@
 import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
   closeDetail,
+  DESELECT_EVENT_NAME,
   DetailKind
 } from "./panel_detail"
 import {revealOffset} from "./reveal_offset"
@@ -19,14 +20,13 @@ const INSET_BOTTOM_PROPERTY = "--panel-sheet-inset-bottom"
 const EXPAND_LABEL = "Expand the panels"
 const COLLAPSE_LABEL = "Collapse the panels"
 const BACK_LABEL_PREFIX = "Back to "
-const POPUP_SELECTOR = ".maplibregl-popup"
 // A drag of the handle shorter than this is a tap, which the click toggles.
 const DRAG_DISTANCE_PIXELS_MIN = 24
 // While it is dragged the sheet follows the pointer up to this share of the
 // viewport's height.
 const DRAG_HEIGHT_FRACTION_MAX = 0.9
 // The room kept between an item the map shows for the details view and the
-// sheet's edge, which holds the item's callout beside it.
+// sheet's edge, which keeps the item and its mark clear of the sheet.
 const REVEAL_MARGIN_PIXELS = 96
 
 // An element inside a panel dispatches this bubbling DOM event to have the
@@ -164,12 +164,17 @@ export const PanelSheet = {
     this.el.addEventListener(COLLAPSE_EVENT_NAME, () => { this.collapseCallback() })
 
     this.detail = this.el.querySelector("#panel-detail")
+    // The element that had focus when the view last opened from hidden,
+    // which a deselecting tap on the map gives focus back to, or null.
+    this.focusOrigin = null
     this.onDetailChange = (event) => { this.followDetail(event.detail.shown) }
+    this.onDeselect = () => { this.deselectCallback() }
 
     if (this.detail !== null) {
       this.back = this.detail.querySelector("#panel-detail-back")
       this.back.addEventListener("click", () => { this.backCallback() })
       window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+      window.addEventListener(DESELECT_EVENT_NAME, this.onDeselect)
     }
 
     this.resizeObserver = new ResizeObserver(() => { this.writeInset() })
@@ -227,27 +232,46 @@ export const PanelSheet = {
   },
 
   // Shows the details view for an item, its back button named for the tab
-  // it returns to, or hides it for none. Focus that is in a popup on the
-  // map, as after a key opened the item, moves to the back button.
+  // it returns to, or hides it for none. Focus that is outside the view, on
+  // the map, in the list of what is in view, or in a panel the view stands
+  // in place of, moves to the back button, and the element that had it when
+  // the view opened is kept for a deselecting tap to give it back to.
   followDetail(shown) {
     if (shown.kind === DetailKind.none) {
       this.detail.hidden = true
       return
     }
 
+    const focused = document.activeElement
+
     if (this.detail.hidden) {
       const label = this.openTab().querySelector("[data-tab-label]").textContent
       this.back.setAttribute("aria-label", BACK_LABEL_PREFIX + label)
+      this.focusOrigin = focused
     }
 
     this.detail.hidden = false
     this.setExpanded(true)
 
-    const focused = document.activeElement
-    const isFocusInPopup = focused !== null && focused.closest(POPUP_SELECTOR) !== null
+    const isFocusInDetail = focused !== null && this.detail.contains(focused)
 
-    if (isFocusInPopup) {
+    if (!isFocusInDetail) {
       this.back.focus({preventScroll: true})
+    }
+  },
+
+  // A tap on the empty map closes the view, which returns to the open tab,
+  // and gives focus back to the element that had it when the view opened,
+  // where that element is still in the page and shown.
+  deselectCallback() {
+    const origin = this.focusOrigin
+    this.focusOrigin = null
+    closeDetail()
+
+    const isOriginShown = origin !== null && !isGone(origin)
+
+    if (isOriginShown) {
+      origin.focus({preventScroll: true})
     }
   },
 
@@ -259,6 +283,7 @@ export const PanelSheet = {
   // shows it; focus that was in the view moves to that tab.
   backCallback() {
     const hasFocusInDetail = this.detail.contains(document.activeElement)
+    this.focusOrigin = null
     closeDetail()
 
     if (hasFocusInDetail) {
@@ -367,6 +392,7 @@ export const PanelSheet = {
     this.resizeObserver.disconnect()
     window.removeEventListener("resize", this.onResize)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(DESELECT_EVENT_NAME, this.onDeselect)
     document.documentElement.style.removeProperty(INSET_BOTTOM_PROPERTY)
   }
 }

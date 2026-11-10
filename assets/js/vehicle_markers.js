@@ -2,9 +2,8 @@ import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {assertCondition, unreachable} from "./assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
-import {closeCalloutOf, openCallout, updateCalloutOf, vehicleCalloutContent} from "./map_callout"
-import {vehicleCalloutText} from "./callout_text"
-import {shortStatusLabel, vehicleViewText} from "./vehicle_view_text"
+import {vehicleViewText} from "./vehicle_view_text"
+import {selectionHaloPaint, selectionRingPaint} from "./selection_mark"
 import {alertLines} from "./service_alerts"
 import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
 import {mapColors} from "./theme"
@@ -29,6 +28,7 @@ import {
   GLYPH_IMAGE_PREFIX,
   GLYPH_IMAGE_SIZE_PIXELS,
   GlyphImageKind,
+  GLYPH_RADIUS_PIXELS,
   MARKER_RADIUS_PIXELS,
   MARKER_STROKE_WIDTH_PIXELS,
   badgeWidth,
@@ -66,6 +66,13 @@ const GLYPH_LAYER_NAME = "vehicle-markers-glyph"
 // The layers a vehicle's marker is drawn in: a dot at regional zoom, and a
 // bus glyph closer in.
 export const markerLayerNames = [DOT_LAYER_NAME, GLYPH_LAYER_NAME]
+// The selected vehicle's mark, a halo and a ring under its marker, drawn
+// from the markers' source so it moves with the marker.
+const SELECTED_HALO_LAYER_NAME = "vehicle-selected-halo"
+const SELECTED_RING_LAYER_NAME = "vehicle-selected-ring"
+// The vehicles' layers from the lowest up, which another hook's layers go
+// under.
+export const stackedLayerNames = [SELECTED_HALO_LAYER_NAME, SELECTED_RING_LAYER_NAME, ...markerLayerNames]
 const CHEVRON_LAYER_NAME = "vehicle-markers-chevron"
 const ROUTE_BADGE_LAYER_NAME = "vehicle-markers-route-badge"
 const BADGE_LAYER_NAME = "vehicle-markers-badge"
@@ -98,7 +105,7 @@ function point(coordinates) {
 
 // Every agency's markers but those of `onCanvas`, which the canvas over the
 // map draws, as one GeoJSON collection, a point per marker at `targetOf`
-// its marker, with the texts its label and its callout show, and the glides
+// its marker, with the texts its label and its view show, and the glides
 // that bring markers already drawn to their new positions. A marker in
 // `drawn`, the positions drawn now, that glides is placed where it is drawn
 // and glides from there; any other stands at its new position. A glide
@@ -199,7 +206,7 @@ function fetchedPosition({marker}) {
   return [marker.lon, marker.lat]
 }
 
-// The texts a marker's label, callout, and view show, as its feature holds
+// The texts a marker's label and view show, as its feature holds
 // them.
 function markerProperties(marker) {
   return {
@@ -383,30 +390,16 @@ function vehicleViewContent(text, properties) {
   return content
 }
 
-// The status of a vehicle whose marker carries a badge, which its callout
-// shows by the badge alone, or an empty text for any other.
-function badgedStatusName({properties, badgedLabels}) {
-  const statusLabel = badgedLabels.get(properties.status)
+// The filter of the selected vehicle's mark: the marker of `markerId`, or
+// none while no vehicle is selected.
+function selectedMarkFilter(markerId) {
+  let selectedId = ""
 
-  if (statusLabel === undefined) {
-    return ""
+  if (markerId !== null) {
+    selectedId = markerId
   }
 
-  return shortStatusLabel(statusLabel)
-}
-
-// A vehicle's callout: its route and headsign, and under them its lateness
-// and its next stop. A tap on it hands the vehicle to `onSelect`.
-function vehicleCallout({properties, badgedLabels, statusLabels, position, onSelect}) {
-  const {title, detail} = vehicleCalloutText({
-    route: properties.route,
-    headsign: properties.headsign,
-    schedule: properties.schedule,
-    nextStop: properties.nextStop,
-    fallbackName: viewTextOf({properties, statusLabels, position}).title
-  })
-
-  return vehicleCalloutContent({title, detail, detailName: badgedStatusName({properties, badgedLabels}), onSelect})
+  return ["==", ["get", "markerId"], selectedId]
 }
 
 function statusLabelEntry({status, label}) {
@@ -423,12 +416,8 @@ export const VehicleMarkers = {
     this.statuses = statuses
     const labelEntries = Array.from(statuses, statusLabelEntry)
     this.statusLabels = new Map(labelEntries)
-    const badged = statuses.filter(hasBadge)
-    const badgedEntries = Array.from(badged, statusLabelEntry)
-    this.badgedLabels = new Map(badgedEntries)
     this.markersByAgency = new Map()
     this.map = null
-    this.maplibre = null
     this.drawn = new Map()
     this.gliding = new Map()
     this.frame = null
@@ -441,9 +430,6 @@ export const VehicleMarkers = {
     // the texts it was last written from.
     this.viewMarkerId = null
     this.viewText = ""
-    // Where the vehicle the view shows was when it was chosen, where its
-    // callout stands.
-    this.viewLngLat = null
     // When the markers move between fetches, the tier decided last, and
     // each vehicle's state between fetches, by marker. Each agency's clock
     // is its fetch time and the page's monotonic time the fetch arrived at,
@@ -470,14 +456,13 @@ export const VehicleMarkers = {
     document.addEventListener("visibilitychange", this.onVisibilityChange)
     this.reducedMotion.addEventListener("change", this.onReducedMotionChange)
 
-    // The view moving to a stop, or closing, closes the vehicle's callout.
+    // The view moving to another item, or closing, unmarks the vehicle.
     this.onDetailChange = () => {
       const isViewLeft = this.viewMarkerId !== null && showsDetail({kind: DetailKind.vehicle, id: this.viewMarkerId}) === false
 
       if (isViewLeft) {
-        const markerId = this.viewMarkerId
         this.viewMarkerId = null
-        closeCalloutOf({kind: DetailKind.vehicle, id: markerId})
+        this.markSelected()
         this.decideMotion()
       }
     }
@@ -497,7 +482,7 @@ export const VehicleMarkers = {
     window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     this.onBasemapReady = (event) => {
-      const {map, maplibre} = event.detail
+      const {map} = event.detail
       this.map = null
       this.overlay = null
       this.onCanvas = new Set()
@@ -505,7 +490,7 @@ export const VehicleMarkers = {
       this.tier = STILL_TIER
       this.stopGliding()
       // The map takes sources and layers once its style has loaded.
-      map.once("load", () => { this.attach(map, maplibre) })
+      map.once("load", () => { this.attach(map) })
     }
 
     // A style set anew holds none of the layers, nor the source, nor the
@@ -570,8 +555,7 @@ export const VehicleMarkers = {
     this.events.push({name: "vehicle-markers:ready", payload: {}})
   },
 
-  attach(map, maplibre) {
-    this.maplibre = maplibre
+  attach(map) {
     // A glyph's images are made the first time a vehicle of their status,
     // color, and route is drawn, since the colors and the routes are the
     // agencies' and not known in advance.
@@ -598,8 +582,8 @@ export const VehicleMarkers = {
 
     // A map keeps the listeners of a layer while the layer is added again.
     for (const layerName of markerLayerNames) {
-      // A tap on a vehicle opens its callout and shows the vehicle in the
-      // details view. A vehicle the canvas draws stands above the layers,
+      // A tap on a vehicle selects it and shows it in the details view. A
+      // vehicle the canvas draws stands above the layers,
       // so a tap it takes opens that vehicle alone.
       map.on("click", layerName, (event) => {
         const hit = overlayHitAt({map, point: event.point})
@@ -626,6 +610,7 @@ export const VehicleMarkers = {
   attachOverlay(map) {
     const canvas = map.getCanvas()
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
+    this.overlay.markSelected(this.viewMarkerId)
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -757,31 +742,30 @@ export const VehicleMarkers = {
     }
   },
 
-  // Selects the vehicle of `feature`, a feature of a marker layer: opens
-  // its callout in place of any other and shows it in the details view.
+  // Selects the vehicle of `feature`, a feature of a marker layer, and
+  // shows it in the details view.
   openVehicle(feature) {
-    const {properties} = feature
-    const lngLat = feature.geometry.coordinates
-    const content = this.calloutOf({properties, lngLat})
-
-    openCallout({
-      map: this.map,
-      maplibre: this.maplibre,
-      lngLat,
-      content,
-      item: {kind: DetailKind.vehicle, id: properties.markerId},
-      closeButton: false
-    })
-
-    this.selectVehicle({properties, lngLat})
+    this.selectVehicle({properties: feature.properties, lngLat: feature.geometry.coordinates})
   },
 
-  // The callout of the vehicle of `properties`, at `lngLat`, which a tap
-  // shows in the details view again.
-  calloutOf({properties, lngLat}) {
-    const onSelect = () => { this.selectVehicle({properties, lngLat}) }
-    const position = this.positionOf(properties.markerId)
-    return vehicleCallout({properties, badgedLabels: this.badgedLabels, statusLabels: this.statusLabels, position, onSelect})
+  // Marks the vehicle the view shows, in the layers and on the canvas,
+  // and unmarks every other.
+  markSelected() {
+    if (this.map === null) {
+      return
+    }
+
+    // A map whose style is being set anew has no layer, and adds the mark
+    // with the vehicle the view shows then.
+    for (const layerName of [SELECTED_HALO_LAYER_NAME, SELECTED_RING_LAYER_NAME]) {
+      if (this.map.getLayer(layerName) !== undefined) {
+        this.map.setFilter(layerName, selectedMarkFilter(this.viewMarkerId))
+      }
+    }
+
+    if (this.overlay !== null) {
+      this.overlay.markSelected(this.viewMarkerId)
+    }
   },
 
   // Where the marker of `markerId` stands, as its view names it.
@@ -817,6 +801,26 @@ export const VehicleMarkers = {
     const colors = mapColors(currentTheme())
     const opacity = statusOpacity(this.statuses)
     const theme = currentTheme()
+
+    // The selected vehicle's halo and ring stand under every marker, round
+    // a dot at regional zoom and round a glyph closer in.
+    const markerRadius = ["step", ["zoom"], MARKER_RADIUS_PIXELS, this.glyphZoomMin, GLYPH_RADIUS_PIXELS]
+
+    map.addLayer({
+      id: SELECTED_HALO_LAYER_NAME,
+      type: "circle",
+      source: SOURCE_NAME,
+      filter: selectedMarkFilter(this.viewMarkerId),
+      paint: selectionHaloPaint(markerRadius)
+    })
+
+    map.addLayer({
+      id: SELECTED_RING_LAYER_NAME,
+      type: "circle",
+      source: SOURCE_NAME,
+      filter: selectedMarkFilter(this.viewMarkerId),
+      paint: selectionRingPaint(markerRadius)
+    })
 
     // At regional zoom every vehicle is a dot in its route's color.
     map.addLayer({
@@ -1275,7 +1279,6 @@ export const VehicleMarkers = {
     this.viewMarkerId = properties.markerId
     const position = this.positionOf(properties.markerId)
     this.viewText = JSON.stringify({properties, position})
-    this.viewLngLat = lngLat
     const text = viewTextOf({properties, statusLabels: this.statusLabels, position})
     showDetail({
       kind: DetailKind.vehicle,
@@ -1283,6 +1286,8 @@ export const VehicleMarkers = {
       title: text.title,
       content: vehicleViewContent(text, properties)
     })
+
+    this.markSelected()
 
     if (this.map !== null) {
       revealOnMap({map: this.map, lngLat})
@@ -1320,12 +1325,6 @@ export const VehicleMarkers = {
         id: properties.markerId,
         title: text.title,
         content: vehicleViewContent(text, properties)
-      })
-
-      updateCalloutOf({
-        kind: DetailKind.vehicle,
-        id: properties.markerId,
-        content: this.calloutOf({properties, lngLat: this.viewLngLat})
       })
     }
   },

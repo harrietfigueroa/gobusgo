@@ -11,6 +11,7 @@ import {FollowLocation} from "./follow_location"
 import {InstallApp} from "./install_app"
 import {MapDescription} from "./map_description"
 import {MapItemList} from "./map_item_list"
+import {watchMapTaps} from "./map_taps"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
 import {OfflineBasemap} from "./offline_basemap_setting"
@@ -83,6 +84,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
 followSystemTheme()
 // The state is read before the socket connects, so every hook reads it.
 watchConnection()
+// Taps on each map are answered before any hook announces one.
+watchMapTaps()
 liveSocket.connect()
 startOfflineHost({hookDefinitions: hooks, socket: liveSocket})
 registerServiceWorker()

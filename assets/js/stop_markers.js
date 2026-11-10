@@ -1,6 +1,6 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {arrivalRows, markArrivalNote, writeArrivals} from "./stop_arrivals"
+import {writeArrivals} from "./stop_arrivals"
 import {shownAt} from "./arrival_countdown"
 import {startArrivalTicker} from "./arrival_ticker"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME} from "./favorite_stop"
@@ -25,11 +25,11 @@ import {
   stopFilter,
   STOP_LAYER_NAME
 } from "./route_stop_tiles"
-import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
+import {markerLayerNames as vehicleMarkerLayerNames, stackedLayerNames as vehicleStackedLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
 import {mapColors} from "./theme"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
-import {closeCallout, closeCalloutOf, openCallout, stopCalloutContent, writeCalloutArrivals} from "./map_callout"
+import {selectionHaloPaint, selectionRingPaint} from "./selection_mark"
 import {registerImageResolver} from "./style_images"
 import {
   ARROW_SIZE_PIXELS,
@@ -73,18 +73,14 @@ const chipsBelowOffsetPixels = [0, CHIPS_OFFSET_PIXELS]
 const chipsAboveOffsetPixels = [0, -CHIPS_OFFSET_PIXELS]
 const hasChips = ["all", ["has", "routeChips"], ["!=", ["get", "routeChips"], "[]"]]
 const hasCompassDirection = ["match", ["get", "direction"], ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], true, false]
-// A stop's callout shows its next two arrivals.
-const CALLOUT_ARRIVAL_COUNT_MAX = 2
 // The stop the details view shows is marked on the map at every zoom, from
 // a source of its own, since the archive holds stops from zoom 14 alone.
 const SELECTED_SOURCE_NAME = "stop-selected"
 const SELECTED_HALO_LAYER_NAME = "stop-selected-halo"
 const SELECTED_RING_LAYER_NAME = "stop-selected-ring"
-const SELECTED_COLOR = "#16a34a"
-const SELECTED_HALO_RADIUS_PIXELS = 19
-const SELECTED_HALO_OPACITY = 0.25
-const SELECTED_RING_RADIUS_PIXELS = 15
-const SELECTED_RING_STROKE_WIDTH_PIXELS = 3
+// The radius of a stop's sign, which the mark stands around.
+const HALVING_DIVISOR = 2
+const SIGN_RADIUS_PIXELS = SIGN_SIZE_PIXELS / HALVING_DIVISOR
 
 // A stop as its feature in the tile archive holds it: its position, and the
 // texts its view shows, the routes and the agencies each one text. A text
@@ -137,10 +133,11 @@ function routeChip([name, color]) {
   return {name, color}
 }
 
-// The first marker layer of the vehicles in the style, which the stops go
-// under, or undefined while the vehicles have none.
+// The lowest layer of the vehicles in the style, the selected vehicle's
+// mark or its marker, which the stops go under, or undefined while the
+// vehicles have none.
 function firstVehicleLayerName(map) {
-  return vehicleMarkerLayerNames.find((layerName) => map.getLayer(layerName) !== undefined)
+  return vehicleStackedLayerNames.find((layerName) => map.getLayer(layerName) !== undefined)
 }
 
 // Whether a vehicle stands at `point`, on the canvas over the map or in its
@@ -234,38 +231,31 @@ function selectedCollection(stop) {
 // drawn anew for another archive shows them too, draws them again in the
 // theme of a map whose style is set anew, and keeps the stops to those of
 // the routes the page's filter keeps. Its layers go under the vehicle
-// markers' layers. A tap on a stop selects it: it opens the stop's callout
-// and shows the stop in the details view, which holds the stop open for its
-// arrivals while it shows it.
+// markers' layers. A tap on a stop selects it: it shows the stop in the
+// details view, which holds the stop open for its arrivals while it shows
+// it, and marks it on the map.
 export const StopMarkers = {
   mounted() {
     this.map = null
-    this.maplibre = null
     this.attached = false
     this.clicksAttached = false
     // The stop the details view shows, with its favorite button, the
-    // element its arrivals are written into, its callout with the element
-    // of the callout's arrivals, and the answer it last got, or null while
-    // the view shows none.
+    // element its arrivals are written into, and the answer it last got,
+    // or null while the view shows none.
     this.view = null
     this.events = pageEvents(this)
     this.push = (name, payload) => { this.events.push({name, payload}) }
     this.arrivalCountMax = Number(this.el.dataset.arrivalCountMax)
 
     this.onBasemapReady = (event) => {
-      const {map, maplibre} = event.detail
+      const {map} = event.detail
       this.map = null
-      this.maplibre = null
       this.attached = false
       this.clicksAttached = false
-
-      // A callout belongs to the map it was opened on.
-      closeCallout()
 
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => {
         this.map = map
-        this.maplibre = maplibre
         this.attach()
       })
     }
@@ -282,8 +272,7 @@ export const StopMarkers = {
       }
     }
 
-    // A style set anew holds none of the layers, nor the source. The
-    // callout stands over the map and stays open.
+    // A style set anew holds none of the layers, nor the source.
     this.onRestyled = (event) => {
       if (event.detail.map === this.map) {
         this.attached = false
@@ -300,8 +289,8 @@ export const StopMarkers = {
       }
     }
 
-    // The view moving to a vehicle, or closing, lets go of its stop and
-    // closes the stop's callout.
+    // The view moving to another item, or closing, lets go of its stop and
+    // unmarks it.
     this.onDetailChange = () => {
       const isViewLeft = this.view !== null && showsDetail({kind: DetailKind.stop, id: this.view.stop.id}) === false
 
@@ -309,7 +298,6 @@ export const StopMarkers = {
         const stopId = this.view.stop.id
         this.view = null
         releaseStop({pushEvent: this.push, stopId, holder: VIEW_HOLDER})
-        closeCalloutOf({kind: DetailKind.stop, id: stopId})
         this.markSelected()
       }
     }
@@ -349,16 +337,10 @@ export const StopMarkers = {
     this.events.whenLive(() => { this.sendOpenStop() })
   },
 
-  // Writes the view's arrivals, and its callout's next two, as of `nowMs`,
-  // from the answer the view last got.
+  // Writes the view's arrivals as of `nowMs`, from the answer the view last got.
   writeViewArrivals(nowMs) {
     const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
     writeArrivals({element: this.view.arrivalsElement, shown, withKey: true})
-
-    const next = shownAt({shown: this.view.shown, nowMs, countMax: CALLOUT_ARRIVAL_COUNT_MAX})
-    const rows = arrivalRows(next)
-    writeCalloutArrivals({element: this.view.calloutArrivalsElement, rows})
-    markArrivalNote({note: this.view.calloutArrivalsElement, shown: next})
   },
 
   // Writes the view's arrivals again as of `nowMs`, once it has had an answer.
@@ -391,18 +373,8 @@ export const StopMarkers = {
     }
 
     const {content, favoriteButton, note, arrivalsElement} = stopViewElements(stop)
-    const callout = stopCalloutContent({name: suppliedName(stop), onSelect: () => { this.selectStop(stop) }})
     const earlier = this.view
-    this.view = {
-      stop,
-      content,
-      favoriteButton,
-      note,
-      arrivalsElement,
-      callout: callout.content,
-      calloutArrivalsElement: callout.arrivalsElement,
-      shown: null
-    }
+    this.view = {stop, content, favoriteButton, note, arrivalsElement, shown: null}
 
     if (earlier !== null) {
       releaseStop({pushEvent: this.push, stopId: earlier.stop.id, holder: VIEW_HOLDER})
@@ -436,20 +408,6 @@ export const StopMarkers = {
     if (hasSource) {
       this.map.getSource(SELECTED_SOURCE_NAME).setData(selectedCollection(selected))
     }
-  },
-
-  // Opens the callout of the stop the view shows, in place of any callout.
-  openViewCallout() {
-    const {stop, callout} = this.view
-
-    openCallout({
-      map: this.map,
-      maplibre: this.maplibre,
-      lngLat: [stop.lon, stop.lat],
-      content: callout,
-      item: {kind: DetailKind.stop, id: stop.id},
-      closeButton: false
-    })
   },
 
   // Adds the layers, once the page has an archive to draw them from, in the
@@ -542,9 +500,8 @@ export const StopMarkers = {
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
   },
 
-  // Selects `stop`: shows it in the details view and opens its callout in
-  // place of any other. While the Trip tab waits for a stop, `stop` is its
-  // end instead.
+  // Selects `stop` and shows it in the details view. While the Trip tab
+  // waits for a stop, `stop` is its end instead.
   openStop(stop) {
     if (isPicking()) {
       pickStop({stopId: stop.id, name: suppliedName(stop)})
@@ -552,7 +509,6 @@ export const StopMarkers = {
     }
 
     this.selectStop(stop)
-    this.openViewCallout()
   },
 
   // Adds the source and the layers that mark the stop the details view
@@ -572,23 +528,14 @@ export const StopMarkers = {
       id: SELECTED_HALO_LAYER_NAME,
       type: "circle",
       source: SELECTED_SOURCE_NAME,
-      paint: {
-        "circle-radius": SELECTED_HALO_RADIUS_PIXELS,
-        "circle-color": SELECTED_COLOR,
-        "circle-opacity": SELECTED_HALO_OPACITY
-      }
+      paint: selectionHaloPaint(SIGN_RADIUS_PIXELS)
     }, MARKER_LAYER_NAME)
 
     map.addLayer({
       id: SELECTED_RING_LAYER_NAME,
       type: "circle",
       source: SELECTED_SOURCE_NAME,
-      paint: {
-        "circle-radius": SELECTED_RING_RADIUS_PIXELS,
-        "circle-opacity": 0,
-        "circle-stroke-color": SELECTED_COLOR,
-        "circle-stroke-width": SELECTED_RING_STROKE_WIDTH_PIXELS
-      }
+      paint: selectionRingPaint(SIGN_RADIUS_PIXELS)
     }, firstVehicleLayerName(map))
   },
 

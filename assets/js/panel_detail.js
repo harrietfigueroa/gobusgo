@@ -1,5 +1,5 @@
-// The details view of the panel sheet, which shows one stop or one vehicle
-// in place of the sheet's tabs. This module is the one owner of what the
+// The details view of the panel sheet, which shows one stop, vehicle, or
+// shared vehicle in place of the sheet's tabs. This module is the one owner of what the
 // view shows: a hook writes its item into the view with `showDetail`, and
 // every listener of the change event learns when the view moves to another
 // item or closes, so the hook whose item it was lets go of it.
@@ -12,7 +12,12 @@ const TITLE_CLASS_NAME = "panel-sheet-detail-title"
 // with the item shown before and the item shown now in its detail.
 export const CHANGE_EVENT_NAME = "gobusgo:panel-detail-change"
 
-export const DetailKind = Object.freeze({none: "none", stop: "stop", vehicle: "vehicle"})
+export const DetailKind = Object.freeze({none: "none", stop: "stop", vehicle: "vehicle", sharedVehicle: "sharedVehicle"})
+
+// The DOM event the window gets when a tap on the map has deselected the
+// item the view showed, so the sheet gives focus back where it was before
+// the item was opened.
+export const DESELECT_EVENT_NAME = "gobusgo:map-deselect"
 
 const noDetail = Object.freeze({kind: DetailKind.none, id: null})
 
