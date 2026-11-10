@@ -18,6 +18,12 @@ export const EARTH_RADIUS_METERS = 6371008.8
 /** The meters of a degree of latitude, and of a degree of longitude at the equator. */
 export const METERS_PER_DEGREE = Math.PI * EARTH_RADIUS_METERS / DEGREES_PER_HALF_TURN
 
+/** The index of a position's longitude. */
+export const LON = 0
+
+/** The index of a position's latitude. */
+export const LAT = 1
+
 const LONGITUDE_DEGREES_MAX = 180
 const LATITUDE_DEGREES_MAX = 90
 const COORDINATE_COUNT = 2

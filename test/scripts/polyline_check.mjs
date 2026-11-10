@@ -79,12 +79,8 @@ function pairOf({x, y}) {
   return [x, y]
 }
 
-function linePair(x, index) {
-  return [x, LINE.ys[index]]
-}
-
-// The L-shaped line's points, as a caller that keeps [x, y] pairs holds them.
-const L_POINTS = Array.from(LINE.xs, linePair)
+// The L-shaped line's points, their coordinates interleaved.
+const L_COORDINATES = Float64Array.of(0, 0, 100, 0, 100, 100)
 
 const betweenCases = [
   {name: "inside one segment", from: 20, to: 60, points: [{x: 20, y: 0}, {x: 60, y: 0}]},
@@ -97,13 +93,18 @@ const betweenCases = [
 
 for (const {name, from, to, points} of betweenCases) {
   const expected = Array.from(points, pairOf)
-  deepStrictEqual(pointsBetween({points: L_POINTS, cumulative: LINE.cumulative, from, to}), expected, name)
+  deepStrictEqual(pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from, to}), expected, name)
 }
 
 throws(reversedDistances, AssertionError, "a start past the end")
+throws(halfPoint, AssertionError, "coordinates that end inside a point")
 
 function reversedDistances() {
-  pointsBetween({points: L_POINTS, cumulative: LINE.cumulative, from: 150, to: 50})
+  pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from: 150, to: 50})
+}
+
+function halfPoint() {
+  pointsBetween({coordinates: Float64Array.of(0, 0, 100, 0, 100), cumulative: LINE.cumulative, from: 0, to: 50})
 }
 
 console.log("polyline: every case holds")
