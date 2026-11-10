@@ -1,6 +1,7 @@
 defmodule Gobusgo.Math.Geodesy do
   @earth_radius_meters 6_371_008.8
   @degrees_per_half_turn 180
+  @meters_per_degree :math.pi() * @earth_radius_meters / @degrees_per_half_turn
 
   @moduledoc """
   Distances and angles on the Earth, taken as a sphere of the mean radius,
@@ -25,6 +26,13 @@ defmodule Gobusgo.Math.Geodesy do
   # https://en.wikipedia.org/wiki/Earth_radius#Arithmetic_mean_radius — checked 2026-11-09
   @spec earth_radius_meters() :: float()
   def earth_radius_meters, do: @earth_radius_meters
+
+  @doc """
+  The meters of a degree of latitude, and of a degree of longitude at the
+  equator: π times the mean radius over 180, about #{round(@meters_per_degree)} m.
+  """
+  @spec meters_per_degree() :: float()
+  def meters_per_degree, do: @meters_per_degree
 
   @doc "`degrees` in radians."
   @spec radians(number()) :: float()

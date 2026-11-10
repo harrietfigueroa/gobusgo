@@ -2,7 +2,6 @@ defmodule Gobusgo.Routing.Transfers do
   @minimum_transfer_s 120
   @walk_radius_m 400
   @walk_speed_mm_per_s 1_200
-  @degree_m 111_195
   @link_count_per_stop_max 64
 
   @moduledoc """
@@ -86,16 +85,17 @@ defmodule Gobusgo.Routing.Transfers do
   end
 
   defp cell(%{lat: lat, lon: lon}, lon_m) do
-    {floor(lat * @degree_m / @walk_radius_m), floor(lon * lon_m / @walk_radius_m)}
+    {floor(lat * Geodesy.meters_per_degree() / @walk_radius_m),
+     floor(lon * lon_m / @walk_radius_m)}
   end
 
   # The meters of a degree of longitude at the highest latitude among the
   # stops, the shortest that any of them has.
-  defp lon_m([]), do: @degree_m
+  defp lon_m([]), do: Geodesy.meters_per_degree()
 
   defp lon_m(located) do
     lat_max = located |> Enum.map(&abs(&1.lat)) |> Enum.max()
-    @degree_m * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
+    Geodesy.meters_per_degree() * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
   end
 
   defp duration_s(distance_m), do: ceil(distance_m * 1_000 / @walk_speed_mm_per_s)

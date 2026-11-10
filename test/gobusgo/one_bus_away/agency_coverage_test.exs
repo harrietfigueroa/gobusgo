@@ -7,9 +7,9 @@ defmodule Gobusgo.OneBusAway.AgencyCoverageTest do
 
   alias Gobusgo.Assert.AssertionError
   alias Gobusgo.OneBusAway.AgencyCoverage
+  alias Gobusgo.Math.Geodesy
 
   @delta_degrees 1.0e-9
-  @meters_per_latitude_degree 111_320
 
   # The `data.list` of the agencies-with-coverage response fetched on
   # 2026-10-03, as {agency id, lat, lon, latSpan, lonSpan}.
@@ -148,7 +148,7 @@ defmodule Gobusgo.OneBusAway.AgencyCoverageTest do
       [%{bounds: bounds}] =
         AgencyCoverage.extract_regions([agency("a", coverage(47.5, -122.0, 1.0, 0.5))], 5_000).regions
 
-      latitude_degrees = 5_000 / @meters_per_latitude_degree
+      latitude_degrees = 5_000 / Geodesy.meters_per_degree()
       north = 48.0 + latitude_degrees
       longitude_degrees = latitude_degrees / :math.cos(north * :math.pi() / 180)
 
