@@ -5,6 +5,7 @@ defmodule Mix.Tasks.Gobusgo.Places.BuildTest do
   # run concurrently with others.
   use ExUnit.Case, async: false
 
+  alias Gobusgo.Test.AppEnv
   alias Mix.Tasks.Gobusgo.Places.Build
 
   @moduletag :tmp_dir
@@ -68,6 +69,7 @@ defmodule Mix.Tasks.Gobusgo.Places.BuildTest do
       on_exit(fn -> Application.put_env(:gobusgo, backend, configured) end)
     end
 
+    AppEnv.put(:basemap, dir: Path.join(tmp_dir, "basemap"))
     Mix.shell(Mix.Shell.Process)
     on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
     %{extract_path: extract_path}

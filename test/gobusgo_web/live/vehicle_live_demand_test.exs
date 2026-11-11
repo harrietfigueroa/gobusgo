@@ -11,7 +11,9 @@ defmodule GobusgoWeb.VehicleLiveDemandTest do
 
   alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.DemandKey
+  alias Gobusgo.Test.AppEnv
 
+  @moduletag :tmp_dir
   @moduletag capture_log: true
 
   @endpoint GobusgoWeb.Endpoint
@@ -20,7 +22,8 @@ defmodule GobusgoWeb.VehicleLiveDemandTest do
   @count_check_count_max 250
   @registry_down_ms 1_000
 
-  setup do
+  setup %{tmp_dir: tmp_dir} do
+    AppEnv.isolate_data(tmp_dir)
     restart_registry()
     on_exit(&restart_registry/0)
   end
