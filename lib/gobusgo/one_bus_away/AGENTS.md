@@ -599,7 +599,7 @@ A stop holds `id`, `name`, `lat`, `lon`, `code`, `direction`, `locationType`, `p
 - A fetch replaces its route's current one by the rules of `FetchView.State`. A stop is held for as long as the current fetch of some route lists it, as a stop or as a parent stop, so a stop every route drops is removed and no tombstone exists.
 - A stop that several routes list has the values of the latest fetch that supplied it, with that fetch's `request_id` and `fetched_at`. When the route that supplied them drops the stop, the values stay until another route's fetch supplies it again.
 - The view takes `:route_count_max` and `:stop_count_max`. The fetch of a route beyond the first is ignored, and a fetch that would hold more stops than the second is refused whole and logged.
-- `current/1` returns every stop in identifier order, `stop/2` one stop, `stop_ids/1` the identifiers alone, and `stop_count/1` their number. All four read the table and return nothing while the view is not running.
+- `current/1` returns every stop in identifier order, `stop/2` one stop, `stop_ids/1` the identifiers alone, `stop_count/1` their number, and `request_ids/1` the request of every fetch whose stops it holds, once each and sorted, which changes when a route's fetch switches (GOB-389). All five read the table and return nothing while the view is not running.
 - A call that holds or removes at least one stop announces `{:stop_view_switched, view, change}` once to the processes that called `subscribe/1`. `change` holds `held_ids` and `removed_ids`, each identifier in one of them, so a subscriber reads the stops that changed and no others.
 
 `RoutePathBatch.process/2` publishes the stops record after the route path record, in the one publisher call, and returns the `stop_count` of the stops and parent stops together. A call that fails at `:publish_route_path` can leave either record published; the next fetch of the route publishes both again.
@@ -644,6 +644,7 @@ The rules of the registry:
   | 60 | 300 s |
   | Over 60 | 300 s, and each stop is refreshed less often than that |
 
+- `Sources.arrival_interval_ms/0` and `Sources.vehicle_hold_ms/0` expose the arrival source's interval and the vehicle viewer hold, which the MCP `arrivals` tool derives its waits and its hold from (`lib/gobusgo_web/AGENTS.md`, "MCP endpoint").
 - The spacing of that policy is the source's interval divided by the requests one run makes, computed in `Sources` from the constants that set the source's pace, so a change to the pace changes the spacing with it. `arrival_refresh_policy/0` asserts that the division is exact.
 - The source's own interval is a fixed policy, five seconds whatever the count of open stops.
 - A cycle reads at most 2,000 open stops.
