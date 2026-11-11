@@ -20,6 +20,10 @@ defmodule GobusgoWeb.PanelSheet do
   content of; its back button hides it again and so returns to the tab that
   was open. Whether it is shown and what it holds are the browser's, across
   patches as well.
+
+  With `strip`, the sheet holds an empty element above the tabs, rendered
+  hidden, whose content and visibility a hook in a panel owns and a patch
+  leaves as the browser has it.
   """
 
   use Phoenix.Component
@@ -34,9 +38,10 @@ defmodule GobusgoWeb.PanelSheet do
   text. `badge`, where given, is a text the tab shows beside its label, and
   `browser_badge_id`, where given, the identifier of an empty badge whose
   content a patch leaves to the browser. `summary` is the line above the
-  tabs. `detail` adds the details view.
+  tabs. `detail` adds the details view, and `strip` the strip element.
   """
   attr :detail, :boolean, default: false
+  attr :strip, :boolean, default: false
 
   slot :summary
 
@@ -76,6 +81,8 @@ defmodule GobusgoWeb.PanelSheet do
       <div :if={@summary != []} id="panel-sheet-summary" class="panel-sheet-summary">
         {render_slot(@summary)}
       </div>
+
+      <div :if={@strip} id="trip-strip" class="trip-strip" phx-update="ignore" hidden></div>
 
       <div role="tablist" aria-label="Panels" class="panel-sheet-tabs">
         <button

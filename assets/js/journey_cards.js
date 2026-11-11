@@ -119,8 +119,8 @@ export function firstRideLive({journey, shownByStop, serviceDayStartsMs}) {
   return {kind: LiveKind.live, latenessS, routeId: leg.routeId}
 }
 
-// The text of a lateness in whole minutes: on time, late, or early.
-function latenessText(latenessS) {
+/** The text of a lateness in whole minutes: on time, late, or early. */
+export function latenessText(latenessS) {
   const minutes = Math.round(latenessS / MINUTE_S)
 
   if (minutes === 0) {
@@ -132,7 +132,11 @@ function latenessText(latenessS) {
   return `${-minutes} min early`
 }
 
-function statusText({live, names}) {
+/**
+ * The text of a journey's first bus: its route and its lateness, or that it
+ * is scheduled, or that the journey only walks.
+ */
+export function firstBusText({live, names}) {
   switch (live.kind) {
     case LiveKind.live:
       return `${routeChip({names, routeId: live.routeId}).name} ${latenessText(live.latenessS)}`
@@ -199,7 +203,7 @@ export function journeyCard({row, order, live, nowMs, serviceDayStartsMs, names,
     leadText: leadText({leaveMs, nowMs, dayPhrase: row.dayPhrase, timeZone}),
     arriveText: `arrive ${clockText({ms: arrivalMs, timeZone})}`,
     isLive: live.kind === LiveKind.live,
-    detailText: statusText({live, names}) + SEPARATOR + row.changesText,
+    detailText: firstBusText({live, names}) + SEPARATOR + row.changesText,
     segments: barSegments({journey, names}),
     leaveMs,
     arrivalMs,

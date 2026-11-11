@@ -50,7 +50,10 @@ import {
 } from "./trip_plan"
 import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys"
 import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
-import {SORT_LABELS, SegmentKind, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
+import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
+import {barElement} from "./journey_bar"
+import {tripStrip} from "./trip_strip"
+import {createStripView} from "./trip_strip_view"
 import {TimelineRowKind, timelineRows} from "./journey_timeline"
 import {TRIP_HOLDER as TRIP_STOP_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {liveDot} from "./stop_arrivals"
@@ -67,6 +70,8 @@ import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
 import {SEARCH_HOLDER, TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
 import {storedSettings} from "./stored_settings"
 
+const STRIP_ID = "trip-strip"
+const TRIP_TAB_ID = "panel-tab-trip"
 const NAMES_EVENT_NAME = "trip:names"
 const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
@@ -315,29 +320,6 @@ function endOfStored(stored) {
   }
 }
 
-// The bar of a card: a segment per walk, wait, and ride, each as wide as it
-// takes, a ride in its route's color with its name. It is drawn for the
-// eye alone; the text beside it says the same.
-function barElement(segments) {
-  const bar = element({tag: "span", className: "trip-bar"})
-  bar.setAttribute("aria-hidden", "true")
-
-  for (const segment of segments) {
-    const part = element({tag: "span", className: `trip-bar-segment trip-bar-${segment.kind}`})
-    part.style.flexGrow = String(segment.durationS)
-
-    if (segment.kind === SegmentKind.ride) {
-      part.textContent = segment.name
-      part.style.backgroundColor = segment.color
-      part.style.color = chipTextColor(segment.color)
-    }
-
-    bar.append(part)
-  }
-
-  return bar
-}
-
 // What the bar shows, as text: each ride's route and each walk, in order.
 function summaryText(row) {
   const parts = []
@@ -535,6 +517,11 @@ export const TripPlanner = {
     this.expandedRides = new Set()
     this.selectedIndex = 0
     this.isFilterSent = false
+    // Whether an edit of the rider's filter ended the trip's filter, which
+    // takes the strip away until a journey is selected again.
+    this.isStripEnded = false
+    // The strip's view, or null on a page with no strip element.
+    this.stripView = this.buildStrip()
     // The end the search box searches for, the text typed since it took
     // focus, the options the list shows, and the search whose results the
     // list shows; a later search's results replace an earlier one's.
@@ -568,7 +555,7 @@ export const TripPlanner = {
     this.onFavoriteChange = () => { this.refreshList() }
     window.addEventListener(END_EVENT_NAME, this.onEnd)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
-    this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
+    this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.endFilter() })
     this.events.handle(ARRIVALS_EVENT_NAME, (shown) => { this.liveArrivals(shown) })
     // A page that is live again holds no trip's filter and none of the
     // stops held for the live times, and is sent both again.
@@ -697,6 +684,61 @@ export const TripPlanner = {
     this.el.replaceChildren(search, this.buildWhen(), this.status, this.windowLine, this.buildSorts(), this.journeysElement, this.clearButton)
     this.writeEnds()
     this.writeWhen()
+  },
+
+  // The strip above the sheet's tabs: pressing it opens this tab, and its
+  // End trip does what Clear trip does.
+  buildStrip() {
+    const host = document.getElementById(STRIP_ID)
+
+    if (host === null) {
+      return null
+    }
+
+    const onOpen = () => { this.el.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true})) }
+    return createStripView({host, onOpen, onEnd: () => { this.endTrip() }})
+  },
+
+  // The rider's edit of the filter ended the trip's filter, and the strip
+  // with it.
+  endFilter() {
+    this.isFilterSent = false
+    this.isStripEnded = true
+
+    if (this.stripView !== null) {
+      this.stripView.hide()
+    }
+  },
+
+  // End trip leaves the strip that held focus, so focus moves to the Trip
+  // tab, which stays on the page.
+  endTrip() {
+    const wasFocusInStrip = this.stripView.contains(document.activeElement)
+    this.clear()
+
+    if (wasFocusInStrip) {
+      document.getElementById(TRIP_TAB_ID).focus()
+    }
+  },
+
+  // Writes the strip of the selected journey, or takes it away where the
+  // trip's filter ended or no journey is selected.
+  writeStrip({cards, lives}) {
+    if (this.stripView === null) {
+      return
+    }
+
+    const card = cards.find((candidate) => candidate.order === this.selectedIndex)
+
+    if (this.isStripEnded || card === undefined) {
+      this.stripView.hide()
+      return
+    }
+
+    const {serviceDayStartsMs} = this.shown
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const live = lives[card.order]
+    this.stripView.write(tripStrip({card, live, names: this.names, serviceDayStartsMs, timeZone}))
   },
 
   // The sorts of the journey list, as a group of toggle buttons shown with
@@ -1206,6 +1248,10 @@ export const TripPlanner = {
     this.releaseLiveStops()
     this.tripMap.clear()
 
+    if (this.stripView !== null) {
+      this.stripView.hide()
+    }
+
     if (this.isFilterSent) {
       this.events.push({name: CLEAR_EVENT_NAME, payload: {}})
       this.isFilterSent = false
@@ -1441,12 +1487,15 @@ export const TripPlanner = {
     this.windowLine.textContent = windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone})
     const focused = focusedKey(this.journeysElement)
     const cards = []
+    const lives = {}
 
     for (const [order, row] of rows.entries()) {
       const live = firstRideLive({journey: row.journey, shownByStop: this.shownByStop, serviceDayStartsMs})
+      lives[order] = live
       cards.push(journeyCard({row, order, live, nowMs: Date.now(), serviceDayStartsMs, names: this.names, timeZone}))
     }
 
+    this.writeStrip({cards, lives})
     const items = []
 
     for (const card of sortedCards({cards, sort: this.sort})) {
@@ -1586,12 +1635,9 @@ export const TripPlanner = {
   // Selects the journey at `index`: its steps in the list, its drawing on
   // the map, and its routes as the map's filter.
   selectJourney({index, rows}) {
-    const isChanged = index !== this.selectedIndex
     this.selectedIndex = index
-
-    if (isChanged) {
-      this.writeJourneys(rows)
-    }
+    this.isStripEnded = false
+    this.writeJourneys(rows)
 
     const drawn = this.draw(rows[index])
     this.tripMap.fit(drawn.bounds)
@@ -1630,6 +1676,11 @@ export const TripPlanner = {
     this.tripMap.destroy()
     this.stopTicker()
     this.releaseLiveStops()
+
+    if (this.stripView !== null) {
+      this.stripView.hide()
+    }
+
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})
     releasePosition({holder: SEARCH_HOLDER})
