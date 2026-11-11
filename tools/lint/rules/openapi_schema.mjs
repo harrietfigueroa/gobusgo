@@ -29,12 +29,22 @@ function pointerTokens(instancePath) {
 function childOf({node, token}) {
   if (node.type === "Object") {
     const member = node.members.find((candidate) => candidate.name.value === token)
-    return member === undefined ? undefined : member.value
+
+    if (member === undefined) {
+      return undefined
+    }
+
+    return member.value
   }
 
   if (node.type === "Array") {
     const element = node.elements[Number(token)]
-    return element === undefined ? undefined : element.value
+
+    if (element === undefined) {
+      return undefined
+    }
+
+    return element.value
   }
 
   return undefined
@@ -59,9 +69,25 @@ function nodeAt({root, instancePath}) {
   return node
 }
 
+function locationOf(error) {
+  if (error.instancePath === "") {
+    return "Root"
+  }
+
+  return error.instancePath
+}
+
+function detailOf(error) {
+  if (Object.keys(error.params).length === 0) {
+    return ""
+  }
+
+  return ` ${JSON.stringify(error.params)}`
+}
+
 function messageOf(error) {
-  const location = error.instancePath === "" ? "Root" : error.instancePath
-  const detail = Object.keys(error.params).length === 0 ? "" : ` ${JSON.stringify(error.params)}`
+  const location = locationOf(error)
+  const detail = detailOf(error)
   return `${location} ${error.message}${detail}`
 }
 
@@ -73,7 +99,8 @@ const JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 // each Schema Object back to the root schema, which rejects every keyword
 // of a Schema Object. The anchor is the hook where a dialect states what a
 // Schema Object is; the OpenAPI dialect is JSON Schema 2020-12, which Ajv
-// ships, so each such reference is rewritten to point at it. The copy is
+// ships, so each such reference is replaced, from its parent, by one that
+// points at it. Each such node holds the `$dynamicRef` alone. The copy is
 // walked with an explicit stack, bounded by the size of the schema.
 function withDialectForDynamicRefs(schema) {
   const copy = structuredClone(schema)
@@ -82,13 +109,16 @@ function withDialectForDynamicRefs(schema) {
   while (pending.length > 0) {
     const node = pending.pop()
 
-    if (node.$dynamicRef === DYNAMIC_REF_META) {
-      delete node.$dynamicRef
-      node.$ref = JSON_SCHEMA_DIALECT
-    }
+    for (const [key, child] of Object.entries(node)) {
+      const isObject = typeof child === "object" && child !== null
 
-    for (const child of Object.values(node)) {
-      if (typeof child === "object" && child !== null) {
+      if (!isObject) {
+        continue
+      }
+
+      if (child.$dynamicRef === DYNAMIC_REF_META) {
+        node[key] = {$ref: JSON_SCHEMA_DIALECT}
+      } else {
         pending.push(child)
       }
     }
