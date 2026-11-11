@@ -137,6 +137,11 @@ defmodule GobusgoWeb.AppInfo do
       "https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use"
   }
 
+  @provision %{
+    lead: ~s(Transit data is provided on an "as is" basis by ),
+    trail: "of Sound Transit's Open Transit Data program, and served by OneBusAway."
+  }
+
   # King County permits copying, distributing, and using the information,
   # permits no sale of it without a written agreement, and provides it as is
   # and states no attribution requirement.
@@ -291,7 +296,10 @@ defmodule GobusgoWeb.AppInfo do
   @recorded [
     %{field: "connectedAt", text: "When the page connected."},
     %{field: "durationMs", text: "How long the page stayed connected."},
-    %{field: "page", text: "Which page it was."},
+    %{
+      field: "page",
+      text: "Which page it was, or mcp for a request to the endpoint AI assistants read from."
+    },
     %{field: "reconnect", text: "Whether it was a page already open that connected again."},
     %{field: "filter", text: "The agencies and routes of the filter the page showed last."},
     %{
@@ -734,6 +742,22 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()
   def terms, do: @terms
+
+  @doc """
+  The sentence that credits the transit data, in the two parts around the
+  link to `terms/0`: `lead` ends where the agencies are named, `agencies_credit/1`,
+  and `trail` follows the terms' name.
+  """
+  @spec provision() :: %{lead: String.t(), trail: String.t()}
+  def provision, do: @provision
+
+  @doc "How the sentence of `provision/0` names `agencies`, each a map with a `name`."
+  @spec agencies_credit([%{name: String.t()}]) :: String.t()
+  def agencies_credit([]), do: "the transit agencies of the Puget Sound region"
+
+  def agencies_credit(agencies) when is_list(agencies) do
+    "the following transit agencies: " <> Enum.map_join(agencies, ", ", & &1.name)
+  end
 
   @doc """
   The counties whose address points the street address search reads, each

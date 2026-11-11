@@ -232,7 +232,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo/intersections/AGENTS.md`: the street intersections of OpenStreetMap's named roads, their selection and merge rules, the intersection shard and index kinds of the packed container, the lookup, the license they are published under, the build, and the manifest.
 - `lib/gobusgo/s3/AGENTS.md`: the S3 backends' requests, settings, and credentials.
 - `lib/gobusgo/vendor_assets/AGENTS.md`: the vendored front-end assets and their sources.
-- `lib/gobusgo_web/AGENTS.md`: the HTTP server, its routes, static files, error bodies, session, the browser pages' layout, the route and stop tile archive, and the pure modules that turn views into what a page shows.
+- `lib/gobusgo_web/AGENTS.md`: the HTTP server, its routes, the MCP endpoint, static files, error bodies, session, the browser pages' layout, the route and stop tile archive, and the pure modules that turn views into what a page shows.
 - `lib/gobusgo_web/live/AGENTS.md`: the vehicle page, what it shows, its filter, panel sheet, tabs, map layers, and the events between the page and the browser.
 - `assets/AGENTS.md`: the front end, the JavaScript modules and hooks, the stylesheet and themes, the build, the service worker, offline use, and the check each JavaScript file runs.
 

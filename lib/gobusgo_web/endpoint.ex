@@ -5,7 +5,8 @@ defmodule GobusgoWeb.Endpoint do
   address it connected with, which `GobusgoWeb.UsageHook` reads. `Gobusgo.Application` starts it with the
   listener address and the secret that signs the session.
 
-  A JSON response with an error status leaves as `application/problem+json`.
+  A JSON response with an error status leaves as `application/problem+json`,
+  unless the controller called `keep_json_content_type/1`.
   A request for `/health` or `/ready` is not logged. Built assets are served
   from `priv/static`. The socket offers per-message compression.
 
@@ -69,6 +70,7 @@ defmodule GobusgoWeb.Endpoint do
   # https://www.rfc-editor.org/rfc/rfc9457#section-3 — checked 2026-10-02
   @problem_content_type "application/problem+json"
   @error_status_min 400
+  @json_body_key :gobusgo_json_body
   @health_path "/health"
   @readiness_path "/ready"
   @static_paths ["assets", "favicon.ico", "icons", "manifest.webmanifest", "robots.txt"]
@@ -219,6 +221,13 @@ defmodule GobusgoWeb.Endpoint do
   plug Plug.Session, @session_options
   plug GobusgoWeb.Router
 
+  @doc """
+  Keeps the JSON media type of the response under an error status, for a
+  body that is a JSON-RPC error and not problem details.
+  """
+  @spec keep_json_content_type(Plug.Conn.t()) :: Plug.Conn.t()
+  def keep_json_content_type(conn), do: Plug.Conn.put_private(conn, @json_body_key, true)
+
   @doc "The directory the basemap files are served from."
   @spec basemap_dir() :: String.t()
   def basemap_dir do
@@ -276,7 +285,10 @@ defmodule GobusgoWeb.Endpoint do
 
   defp problem_content_type(conn, _options) do
     Plug.Conn.register_before_send(conn, fn conn ->
-      if conn.status >= @error_status_min do
+      is_error = conn.status >= @error_status_min
+      is_problem = is_error and not is_map_key(conn.private, @json_body_key)
+
+      if is_problem do
         mark_problem(conn)
       else
         conn

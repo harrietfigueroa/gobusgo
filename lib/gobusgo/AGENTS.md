@@ -9,7 +9,7 @@
 - `cadence.ex` decides how often a poller polls, and is pure; see "Cadences and schedulers" below.
 - `scheduler.ex` runs one source at its cadence, and `scheduler/state.ex` holds its cadence and backoff rules and is pure.
 - `demand.ex` is the registry of what the node's processes want kept fresh, and `demand/state.ex` holds its rules and bounds and is pure.
-- `usage.ex` records page connections; `usage/state.ex`, `usage/records.ex`, and `usage/user_agent.ex` are pure.
+- `usage.ex` records page connections and counts MCP requests; `usage/state.ex`, `usage/records.ex`, and `usage/user_agent.ex` are pure.
 - `writer.ex`, `reader.ex`, and `deleter.ex` are the backend-neutral storage contracts, with local file backends under `writer/`, `reader/`, and `deleter/`, and S3 backends described in `s3/AGENTS.md`. `local_file/` holds what the local file backends share.
 - `destination.ex` owns the logical destination and prefix rules that the writer and the reader share.
 - `compression.ex` names the destinations that hold compressed content, those ending in `.gz`, and encodes and decodes gzip with a bound on the expanded size; it is pure.
@@ -53,7 +53,7 @@ A process that holds keys monitors the registry and registers again when the reg
 
 ## Usage records
 
-`Gobusgo.Usage` records page connections. A page registers its connection, the registration ends when the page's process exits, and the recorder writes the ended connections through the writer, at most once a minute and when it shuts down, as one compressed file under `usage/page-connections/dt=<date>/`. It logs `Usage records written` at `info` per file with the counts written and dropped, and `Usage records not written` at `error` for a write that fails, whose records it keeps.
+`Gobusgo.Usage` records page connections and MCP requests. A page registers its connection, the registration ends when the page's process exits, and `count/2` records a request that has no connection to keep as a connection that ended as it began, with a duration of 0, which the MCP endpoint does for each request under the page name `mcp` (GOB-393). The recorder writes the ended connections through the writer, at most once a minute and when it shuts down, as one compressed file under `usage/page-connections/dt=<date>/`. It logs `Usage records written` at `info` per file with the counts written and dropped, and `Usage records not written` at `error` for a write that fails, whose records it keeps.
 
 A record names no visitor: it has no field for an address, a user agent, or an identifier. `usage/user_agent.ex` reduces a user agent to a device class and a browser family. A field added to a record needs its sentence in `GobusgoWeb.AppInfo.recorded/0`, which a test enforces. The page side, `GobusgoWeb.UsageHook` and `GobusgoWeb.ConnectionFacts`, is in `lib/gobusgo_web/AGENTS.md`.
 

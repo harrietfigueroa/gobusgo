@@ -237,6 +237,22 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "provision/0 and agencies_credit/1" do
+    test "credit the data as provided on an as-is basis, by the region's agencies when none is named" do
+      %{lead: lead, trail: trail} = AppInfo.provision()
+
+      assert lead <> AppInfo.agencies_credit([]) <> trail =~
+               ~s("as is" basis by the transit agencies)
+    end
+
+    test "name the agencies given" do
+      agencies = [%{name: "Community Transit"}, %{name: "Intercity Transit"}]
+
+      assert AppInfo.agencies_credit(agencies) ==
+               "the following transit agencies: Community Transit, Intercity Transit"
+    end
+  end
+
   describe "recorded/0" do
     test "has one entry for every field of a usage record, and for nothing else" do
       fields = for %{field: field} <- AppInfo.recorded(), do: field

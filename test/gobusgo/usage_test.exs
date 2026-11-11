@@ -321,6 +321,48 @@ defmodule Gobusgo.UsageTest do
     end
   end
 
+  describe "count/2" do
+    test "records a request as a connection that ended the moment it began", context do
+      recorder = start(context)
+      advance(context, 5_000)
+
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) == :ok
+      advance(context, 5_000)
+
+      assert Usage.write(recorder) == {:ok, 1}
+      assert [%{"records" => [%{"page" => "mcp", "durationMs" => 0}]}] = files(context)
+    end
+
+    test "records each request of one process, which register/2 would keep as one", context do
+      recorder = start(context)
+
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) == :ok
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) == :ok
+
+      assert Usage.write(recorder) == {:ok, 2}
+    end
+
+    test "leaves no connection open, so the open bound still has room", context do
+      recorder = start(context, open_count_max: 1)
+
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) == :ok
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) == :ok
+      assert {_pid, :ok} = connect(recorder)
+    end
+
+    test "refuses a request while the open connections are at their bound", context do
+      recorder = start(context, open_count_max: 1)
+      {_pid, :ok} = connect(recorder)
+
+      assert Usage.count(recorder, %{@connection | page: "mcp"}) ==
+               {:error, :open_count_exceeded}
+    end
+
+    test "answers that a recorder that is not running is unavailable" do
+      assert Usage.count(Gobusgo.UsageTest.NoRecorder, @connection) == {:error, :unavailable}
+    end
+  end
+
   describe "put_filter/2" do
     test "changes nothing for a recorder that is not running" do
       assert Usage.put_filter(Gobusgo.UsageTest.NoRecorder, %{"agency" => ["1"]}) == :ok
