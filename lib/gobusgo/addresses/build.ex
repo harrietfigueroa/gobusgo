@@ -98,6 +98,21 @@ defmodule Gobusgo.Addresses.Build do
   @spec shard_bytes_max() :: pos_integer()
   def shard_bytes_max, do: @shard_bytes_max
 
+  @doc """
+  The `max_heap_size` of the build's process for a cap of `heap_words_max`
+  words. The cap counts the off-heap binaries the process references, so a
+  large binary held by a reference is within it.
+  """
+  @spec heap_cap(pos_integer()) :: %{
+          size: pos_integer(),
+          kill: true,
+          error_logger: true,
+          include_shared_binaries: true
+        }
+  def heap_cap(heap_words_max) when is_integer(heap_words_max) and heap_words_max > 0 do
+    %{size: heap_words_max, kill: true, error_logger: true, include_shared_binaries: true}
+  end
+
   @doc "Runs one build and logs its outcome."
   @spec run(keyword()) :: {:ok, map()} | {:error, term()}
   def run(options) when is_list(options) do
@@ -217,7 +232,7 @@ defmodule Gobusgo.Addresses.Build do
         :link,
         :monitor,
         fullsweep_after: 0,
-        max_heap_size: %{size: heap_words_max, kill: true, error_logger: true}
+        max_heap_size: heap_cap(heap_words_max)
       ])
 
     {result, heap_words_peak} = await(%{tag: tag, pid: pid, monitor: monitor, peak: 0})

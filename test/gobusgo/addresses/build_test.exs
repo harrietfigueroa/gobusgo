@@ -254,6 +254,23 @@ defmodule Gobusgo.Addresses.BuildTest do
     assert stored_files(context.tmp_dir) == []
   end
 
+  test "the heap cap counts the binaries a process references" do
+    bytes_over_cap = 4_000_000
+
+    {pid, monitor} =
+      :erlang.spawn_opt(
+        fn ->
+          held = :binary.copy(<<0>>, bytes_over_cap)
+          :erlang.garbage_collect()
+          # Keeps the binary referenced until the collection above has judged it.
+          Process.sleep(byte_size(held))
+        end,
+        [:monitor, max_heap_size: Build.heap_cap(100_000)]
+      )
+
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
+  end
+
   test "deletes the export when the run ends", context do
     run(context)
     refute File.exists?(Path.join(context.tmp_dir, "work"))
