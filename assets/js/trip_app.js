@@ -18,7 +18,7 @@ import {firstRideLive, journeyCard} from "./journey_cards"
 import {appendMessage} from "./message"
 import {HostMethod, OutcomeKind, ThemeKind, createHost, isLocationGranted, sendMessage, themeOf, updateModelContext} from "./mcp_host"
 import {ResolutionKind, resolution} from "./mcp_trip_ends"
-import {InputKind, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
+import {InputKind, StartKind, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
 import {chosenMessage, journeyContext} from "./mcp_trip_journey"
 import {PlanKind, planTrip} from "./mcp_trip_plan"
 import {SEARCH_CENTER_DEFAULT} from "./where_to"
@@ -31,15 +31,17 @@ const LOCATION_TIMEOUT_MS = 10 * 1000
 const LOCATION_AGE_MS_MAX = 60 * 1000
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const LOCATION_TEXT = "My location"
+const ASKING_TEXT = "Where are you? Type a street, a stop, or a place"
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const PROTOCOL_PREFIX = /^https?:\/\//
 // The focus key of no element: every element's key is non-empty.
 const NO_FOCUS_KEY = ""
 
 // The kinds of what an end of the trip is while the app resolves it.
-const EndStateKind = Object.freeze({waiting: "waiting", loading: "loading", resolved: "resolved", choices: "choices", none: "none", locating: "locating"})
+const EndStateKind = Object.freeze({waiting: "waiting", loading: "loading", resolved: "resolved", choices: "choices", none: "none", locating: "locating", asking: "asking"})
 
 const WAITING = Object.freeze({kind: EndStateKind.waiting, isEditing: false, text: ""})
+const ASKING = Object.freeze({kind: EndStateKind.asking, isEditing: false, text: ""})
 
 function endTextOf(end) {
   switch (end.kind) {
@@ -205,11 +207,15 @@ function endElement({end, state, isLocationOffered, handlers}) {
     case EndStateKind.none:
       section.append(element({tag: "p", className: "trip-note", text: `Nothing matches “${state.text}”. Try other words.`}))
       break
+    case EndStateKind.asking:
+      section.append(element({tag: "p", className: "trip-note", text: ASKING_TEXT}))
+      break
     default:
       unreachable(state.kind, "trip app: an end state of unknown kind")
   }
 
-  const isUnsettled = state.kind === EndStateKind.choices || state.kind === EndStateKind.none
+  const isUnanswered = state.kind === EndStateKind.choices || state.kind === EndStateKind.none
+  const isUnsettled = isUnanswered || state.kind === EndStateKind.asking
   const isSearching = state.isEditing || isUnsettled
 
   if (isSearching) {
@@ -363,19 +369,39 @@ export function startTripApp({root, origin, host}) {
       planWhenReady()
     },
     onEdit: (end) => { setEnd({end, state: {...app.ends[end], isEditing: true}}) },
-    onLocate: async () => {
-      setEnd({end: TripEnd.from, state: {kind: EndStateKind.locating, isEditing: false, text: LOCATION_TEXT}})
-      const located = await currentPosition()
+    onLocate: () => { locate() },
+  }
 
-      if (located.isFound) {
-        app.position = located.position
-        setEnd({end: TripEnd.from, state: {kind: EndStateKind.resolved, isEditing: false, text: LOCATION_TEXT, end: LOCATION_END}})
-      } else {
-        setEnd({end: TripEnd.from, state: {kind: EndStateKind.none, isEditing: false, text: LOCATION_TEXT}})
-      }
+  async function locate() {
+    setEnd({end: TripEnd.from, state: {kind: EndStateKind.locating, isEditing: false, text: LOCATION_TEXT}})
+    const located = await currentPosition()
 
-      await planWhenReady()
-    },
+    if (located.isFound) {
+      app.position = located.position
+      setEnd({end: TripEnd.from, state: {kind: EndStateKind.resolved, isEditing: false, text: LOCATION_TEXT, end: LOCATION_END}})
+    } else {
+      setEnd({end: TripEnd.from, state: ASKING})
+    }
+
+    await planWhenReady()
+  }
+
+  function startFrom(from) {
+    switch (from.kind) {
+      case StartKind.words:
+        resolveEnd({end: TripEnd.from, text: from.text})
+        break
+      case StartKind.position:
+        if (app.isLocationOffered) {
+          locate()
+        } else {
+          setEnd({end: TripEnd.from, state: ASKING})
+        }
+
+        break
+      default:
+        unreachable(from.kind, "trip app: a start of unknown kind")
+    }
   }
 
   // The journeys the plan found, as the Trip tab's rows, or none.
@@ -464,19 +490,23 @@ export function startTripApp({root, origin, host}) {
   }
 
   return Object.freeze({
-    // Starts the trip `input` asks for: both ends are searched at once.
+    // Starts the trip `input` asks for: the ends are resolved at once.
     start(input) {
       app.input = input
       app.planCount += 1
       app.ends = {[TripEnd.from]: WAITING, [TripEnd.to]: WAITING}
       render()
-      resolveEnd({end: TripEnd.from, text: input.from})
+      startFrom(input.from)
       resolveEnd({end: TripEnd.to, text: input.to})
     },
 
     // Offers the rider's location as a start, once the host has said it grants it.
     offerLocation() {
       app.isLocationOffered = true
+
+      if (app.ends[TripEnd.from].kind === EndStateKind.asking) {
+        locate()
+      }
     },
 
     refuse(field) {
@@ -558,6 +588,8 @@ async function main() {
   }
 
   applyTheme(connected.result.hostContext)
+
+  console.debug("Host capabilities read", {hostCapabilities: connected.result.hostCapabilities})
 
   const isGranted = isLocationGranted(connected.result.hostCapabilities)
   const isLocatable = isGranted && "geolocation" in navigator

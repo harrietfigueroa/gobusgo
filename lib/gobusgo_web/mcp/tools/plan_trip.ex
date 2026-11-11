@@ -1,8 +1,9 @@
 defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
   @moduledoc """
-  The `plan_trip` tool: the rider's words for the two ends of a trip and
-  when it is for, which the trip planner app (`GobusgoWeb.Mcp.Resources.TripApp`)
-  reads, resolves, and routes on the rider's device.
+  The `plan_trip` tool: the rider's words for the destination of a trip, for
+  its start when the rider names one, and when it is for, which the trip
+  planner app (`GobusgoWeb.Mcp.Resources.TripApp`) reads, resolves, and
+  routes on the rider's device.
 
   The tool checks its arguments and returns them unchanged as
   `structuredContent`, with one line of text. It resolves no place, reads no
@@ -54,14 +55,18 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
           "names, as they said them: a stop, a place, a street address, or an intersection " <>
           "such as \"Pine and 3rd\". The rider's device finds the places and the journeys " <>
           "and shows them to the rider, who chooses one; the chosen journey comes back as " <>
-          "context. Pass the rider's words for each end unchanged.",
+          "context. Pass the rider's words for each end unchanged. When the rider names no " <>
+          ~s(start or says only "here", leave from out or pass "here": the app uses the ) <>
+          "device's location where the host allows it and otherwise asks the rider where they are.",
       "inputSchema" => %{
         "type" => "object",
         "properties" => %{
           "from" => %{
             "type" => "string",
             "maxLength" => @text_length_max,
-            "description" => "Where the trip starts, in the rider's words."
+            "description" =>
+              "Where the trip starts, in the rider's words for where they are: a street, a " <>
+                "stop, or a place. Leave it out or pass \"here\" when the rider names no start."
           },
           "to" => %{
             "type" => "string",
@@ -75,7 +80,7 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
             "description" => "When the trip is for. Leaving now when absent."
           }
         },
-        "required" => ["from", "to"]
+        "required" => ["to"]
       },
       "_meta" => %{"ui" => %{"resourceUri" => TripApp.uri()}}
     }
@@ -85,7 +90,7 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
   def arguments_schema do
     {:map,
      %{
-       "from" => :string,
+       "from" => {:optional, :string},
        "to" => :string,
        "when" =>
          {:optional,
@@ -95,15 +100,36 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
   end
 
   @impl GobusgoWeb.Mcp.Tool
-  def call(%{"from" => from, "to" => to} = arguments) do
-    with :ok <- check_end("from", from),
+  def call(%{"to" => to} = arguments) do
+    from = Map.get(arguments, "from")
+
+    with :ok <- check_start(from),
          :ok <- check_end("to", to),
          :ok <- check_when(Map.get(arguments, "when")) do
       {:ok,
        %{
-         "content" => [%{"type" => "text", "text" => "Planning a trip from #{from} to #{to}."}],
+         "content" => [%{"type" => "text", "text" => summary(from, to)}],
          "structuredContent" => Map.take(arguments, ["from", "to", "when"])
        }}
+    end
+  end
+
+  defp summary(from, to) do
+    case blank?(from) do
+      true -> "Planning a trip to #{to}."
+      false -> "Planning a trip from #{from} to #{to}."
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(text), do: String.trim(text) == ""
+
+  defp check_start(nil), do: :ok
+
+  defp check_start(text) do
+    case String.length(text) > @text_length_max do
+      true -> {:error, "from is longer than #{@text_length_max} characters."}
+      false -> :ok
     end
   end
 
