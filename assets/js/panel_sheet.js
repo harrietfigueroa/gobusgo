@@ -124,6 +124,16 @@ function movedIndex({key, index, count}) {
   }
 }
 
+// Whether `value` is neither null nor undefined, as `window.visualViewport`
+// is in a browser without a visual viewport.
+function isPresent(value) {
+  if (value === null) {
+    return false
+  }
+
+  return value !== undefined
+}
+
 function isSelectedTab(tab) {
   return tab.getAttribute("aria-selected") === "true"
 }
@@ -187,9 +197,10 @@ export const PanelSheet = {
     // The visual viewport is absent from an old browser, which keeps the
     // sheet where it is.
     this.visualViewport = window.visualViewport
+    this.hasVisualViewport = isPresent(this.visualViewport)
     this.onKeyboard = () => { this.writeKeyboardInset() }
 
-    if (this.visualViewport !== null && this.visualViewport !== undefined) {
+    if (this.hasVisualViewport) {
       this.visualViewport.addEventListener("resize", this.onKeyboard)
       this.visualViewport.addEventListener("scroll", this.onKeyboard)
     }
@@ -407,7 +418,7 @@ export const PanelSheet = {
   // position changes with the property, which no resize of the sheet
   // reports, so the inset is written again after it.
   writeKeyboardInset() {
-    if (this.visualViewport === null || this.visualViewport === undefined) {
+    if (!this.hasVisualViewport) {
       return
     }
 
@@ -420,7 +431,7 @@ export const PanelSheet = {
     this.resizeObserver.disconnect()
     window.removeEventListener("resize", this.onResize)
 
-    if (this.visualViewport !== null && this.visualViewport !== undefined) {
+    if (this.hasVisualViewport) {
       this.visualViewport.removeEventListener("resize", this.onKeyboard)
       this.visualViewport.removeEventListener("scroll", this.onKeyboard)
     }
