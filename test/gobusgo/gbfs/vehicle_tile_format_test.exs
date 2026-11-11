@@ -17,6 +17,12 @@ defmodule Gobusgo.Gbfs.VehicleTileFormatTest do
   # range and one past the largest range stored.
   @fixture_json @fixture_json_path |> File.read!() |> JSON.decode!()
 
+  # The format's own form factors keyed by the names the fixture spells them
+  # with; `Map.fetch!/2` fails on a name the format does not know.
+  @form_factors_by_name Map.new(Map.keys(VehicleTileFormat.form_codes()), fn form_factor ->
+                          {Atom.to_string(form_factor), form_factor}
+                        end)
+
   @bounds %{
     south_microdegrees: @fixture_json["bounds"]["south"],
     west_microdegrees: @fixture_json["bounds"]["west"],
@@ -32,7 +38,7 @@ defmodule Gobusgo.Gbfs.VehicleTileFormatTest do
           lat: vehicle["lat"],
           lon: vehicle["lon"],
           current_range_meters: vehicle["currentRangeMeters"],
-          form_factor: String.to_existing_atom(vehicle["formFactor"])
+          form_factor: Map.fetch!(@form_factors_by_name, vehicle["formFactor"])
         }
       end
   }
