@@ -15,8 +15,13 @@ defmodule Gobusgo.Routing.Snapshots do
   the same day. A build on a later day writes the files again under that
   day, which keeps every file the manifest names inside its retention.
 
+  A date whose trip path build failed is recorded without its trip paths
+  and with the state of `Gobusgo.Routing.TripPathRetry`, which the build
+  reads to build only the trip paths again once the backoff has passed.
+
   The manifest is what this node built: it starts empty on every start, and
-  the first build after a start builds every date.
+  the first build after a start builds every date, trip paths included, so
+  a start retries a failed trip path build at once.
 
   `spec/1` is the spec of the scheduler that checks every
   #{@check_interval_ms} ms whether to build, with #{@run_deadline_ms} ms for
@@ -31,7 +36,12 @@ defmodule Gobusgo.Routing.Snapshots do
 
   @type server :: GenServer.server()
 
-  @type built :: %{inputs_sha256: binary(), built_on: Date.t()}
+  @type built :: %{
+          inputs_sha256: binary(),
+          built_on: Date.t(),
+          entry: map(),
+          trip_path_failure: :none | Gobusgo.Routing.TripPathRetry.state()
+        }
 
   @doc "Starts the process. `:name` registers it."
   @spec start_link(Keyword.t()) :: GenServer.on_start()
@@ -59,31 +69,45 @@ defmodule Gobusgo.Routing.Snapshots do
     }
   end
 
-  @doc "What each service date's current snapshot was built from and on."
+  @doc """
+  What each service date's current snapshot was built from and on, its
+  entry, and the state of its failed trip path builds, `:none` where the
+  last one succeeded or none was made.
+  """
   @spec built(server()) :: %{Date.t() => built()}
   def built(server) do
     server
     |> GenServer.call(:entries)
-    |> Map.new(fn {date, entry} -> {date, Map.take(entry, [:inputs_sha256, :built_on])} end)
+    |> Map.new(fn {date, entry} ->
+      {date, Map.take(entry, [:inputs_sha256, :built_on, :entry, :trip_path_failure])}
+    end)
   end
 
   @doc """
   Makes `snapshot.entry` the manifest entry of `snapshot.service_date`,
   built on `snapshot.built_on` from inputs whose SHA-256 is
-  `snapshot.inputs_sha256`.
+  `snapshot.inputs_sha256`, with `snapshot.trip_path_failure`, the state of
+  its failed trip path builds or `:none`. A later `record/2` of the date
+  replaces all of it, so the failure state ends with the inputs it is of.
   """
   @spec record(server(), %{
           service_date: Date.t(),
           entry: map(),
           inputs_sha256: binary(),
-          built_on: Date.t()
+          built_on: Date.t(),
+          trip_path_failure: :none | Gobusgo.Routing.TripPathRetry.state()
         }) :: :ok
   def record(
         server,
-        %{service_date: %Date{}, entry: entry, inputs_sha256: sha256, built_on: %Date{}} =
-          snapshot
+        %{
+          service_date: %Date{},
+          entry: entry,
+          inputs_sha256: sha256,
+          built_on: %Date{},
+          trip_path_failure: failure
+        } = snapshot
       )
-      when is_map(entry) and byte_size(sha256) == 32 do
+      when is_map(entry) and byte_size(sha256) == 32 and (failure == :none or is_map(failure)) do
     GenServer.call(server, {:record, snapshot})
   end
 
