@@ -537,6 +537,7 @@ defmodule GobusgoWeb.VehicleLive do
             data-manifest-url={routing_manifest_url()}
             data-name-count-max={Trip.name_count_max()}
             data-route-count-max={Trip.route_count_max()}
+            data-open-count-max={OpenStops.open_count_max()}
             class="trip-planner"
           >
           </section>

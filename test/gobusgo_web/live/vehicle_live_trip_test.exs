@@ -225,6 +225,14 @@ defmodule GobusgoWeb.VehicleLiveTripTest do
       assert html =~ ~s(data-name-count-max="#{Trip.name_count_max()}")
       assert html =~ ~s(data-route-count-max="#{Trip.route_count_max()}")
     end
+
+    test "carries the most stops a page has open, which the live times of the journeys' first rides share" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      html = view |> element(@planner) |> render()
+
+      assert html =~
+               ~s(data-open-count-max="#{GobusgoWeb.VehicleLive.OpenStops.open_count_max()}")
+    end
   end
 
   describe "the names of a journey" do
