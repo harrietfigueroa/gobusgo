@@ -12,6 +12,8 @@ import {
   BUNDLE_MANIFEST_PATH,
   INDEX_PATH,
   IndexKind,
+  NO_PLACES_FILE,
+  PlacesFileKind,
   PersistenceKind,
   PlanKind,
   SettingKind,
@@ -21,7 +23,9 @@ import {
   TRIP_PATH_SHARD_COUNT_MAX,
   bundleStatus,
   bundleWithTripPaths,
+  keptPlacesFile,
   persistenceText,
+  placesFileOf,
   planBundle,
   savedIndex as indexOf,
   stalePaths,
@@ -71,7 +75,7 @@ const manifest = {formatVersion: 2, snapshots: [thirdDate, firstDate, secondDate
 const pastEveryDateMs = DAY_START_MS + DAYS_PAST_EVERY_DATE * DAY_MS
 
 // The two earliest dates that have not ended, with the tile archive last.
-const morning = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH})
+const morning = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH, placesFile: NO_PLACES_FILE})
 deepStrictEqual(morning.kind, PlanKind.bundle)
 deepStrictEqual(datesOf(morning), [SERVICE_DATES[0], SERVICE_DATES[1]])
 deepStrictEqual(morning.paths.length, BUNDLE_DATE_COUNT * FILES_PER_DATE + 1)
@@ -94,7 +98,8 @@ deepStrictEqual(indexOf({plan: morning, savedAtMs}), {
   dates: morning.dates,
   paths: morning.paths,
   manifestPath: BUNDLE_MANIFEST_PATH,
-  tileArchivePath: TILE_ARCHIVE_PATH
+  tileArchivePath: TILE_ARCHIVE_PATH,
+  placesPath: ""
 })
 deepStrictEqual(BUNDLE_MANIFEST_PATH === INDEX_PATH, false)
 // Each date's names file is saved with its other files.
@@ -103,14 +108,36 @@ deepStrictEqual(morning.paths.includes(secondDate.files.names.path), true)
 
 // A date ends at its last departure, two hours past the next midnight here.
 const afterLastDepartureMs = DAY_START_MS + (LAST_DEPARTURE_HOUR + 1) * HOUR_MS
-const afterLastDeparture = planBundle({manifest, nowMs: afterLastDepartureMs, tileArchivePath: ""})
+const afterLastDeparture = planBundle({manifest, nowMs: afterLastDepartureMs, tileArchivePath: "", placesFile: NO_PLACES_FILE})
 deepStrictEqual(datesOf(afterLastDeparture), [secondDate.serviceDate, thirdDate.serviceDate])
 deepStrictEqual(afterLastDeparture.paths.includes(TILE_ARCHIVE_PATH), false)
 deepStrictEqual(afterLastDeparture.tileArchivePath, "")
 deepStrictEqual(afterLastDeparture.manifest.snapshots, [secondDate, thirdDate])
 
 // Nothing to save once every date has ended.
-deepStrictEqual(planBundle({manifest, nowMs: pastEveryDateMs, tileArchivePath: ""}), {kind: PlanKind.nothingToSave})
+deepStrictEqual(planBundle({manifest, nowMs: pastEveryDateMs, tileArchivePath: "", placesFile: NO_PLACES_FILE}), {kind: PlanKind.nothingToSave})
+
+// The places file, where the page names one, is saved last, at the size its
+// manifest gives, and the index names it; with none the index names none.
+{
+  const placesFile = {kind: PlacesFileKind.file, path: "/places/places-abcd.bin.gz", byteSize: 1092528}
+  const withPlaces = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH, placesFile})
+  deepStrictEqual(withPlaces.paths[withPlaces.paths.length - 1], placesFile.path)
+  deepStrictEqual(withPlaces.sizedFiles, [{path: placesFile.path, byteSize: placesFile.byteSize}])
+  deepStrictEqual(indexOf({plan: withPlaces, savedAtMs}).placesPath, placesFile.path)
+  deepStrictEqual(indexOf({plan: morning, savedAtMs}).placesPath, "")
+  deepStrictEqual(placesFileOf({path: "places/places-abcd.bin.gz", byteSize: 1092528}), placesFile)
+  deepStrictEqual(placesFileOf({path: "/routing/x.bin", byteSize: 1}), NO_PLACES_FILE)
+  deepStrictEqual(placesFileOf({path: "/places/x.bin.gz", byteSize: -1}), NO_PLACES_FILE)
+
+  // A save that cannot read the places manifest, as offline, keeps the
+  // places file the saved bundle holds, with no size to check it by.
+  const kept = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH, placesFile: keptPlacesFile(placesFile.path)})
+  deepStrictEqual(kept.paths[kept.paths.length - 1], placesFile.path)
+  deepStrictEqual(kept.sizedFiles, [])
+  deepStrictEqual(kept.placesPath, placesFile.path)
+  deepStrictEqual(keptPlacesFile(""), NO_PLACES_FILE)
+}
 
 const savedIndex = {kind: IndexKind.found, index: {dates: morning.dates, paths: morning.paths}}
 const nowMs = DAY_START_MS + HOUR_MS
@@ -208,7 +235,7 @@ function shardPlanOf(serviceDate, shardCount) {
 const pathsFirst = withTripPaths(firstDate)
 const pathsSecond = withTripPaths(secondDate)
 const pathsManifest = {formatVersion: 2, snapshots: [pathsFirst, pathsSecond]}
-const pathsPlan = planBundle({manifest: pathsManifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH})
+const pathsPlan = planBundle({manifest: pathsManifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH, placesFile: NO_PLACES_FILE})
 const SHARDS_PER_DATE = 3
 const SHARD_BYTE_SIZE = 1000
 const SHARED_PLAN_FILE_COUNT = 2
@@ -265,7 +292,7 @@ deepStrictEqual(sharedPlan.files.length, SHARED_PLAN_FILE_COUNT)
 
 // A date with no files.tripPaths, a killed path build, saves without them
 // and is complete.
-const noPathsPlan = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH})
+const noPathsPlan = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH, placesFile: NO_PLACES_FILE})
 deepStrictEqual(noPathsPlan.tripPathIndexes, [])
 const noPathsBundle = bundleWithTripPaths({plan: noPathsPlan, shardPlans: []})
 deepStrictEqual(noPathsBundle.paths, noPathsPlan.paths)

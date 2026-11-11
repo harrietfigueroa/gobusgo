@@ -10,7 +10,9 @@
 // holds the stops and route shapes a snapshot leaves out. A shard's path is
 // known only once its date's index is read, so a bundle is planned in two
 // steps: `planBundle` names the files the manifest names, and
-// `bundleWithTripPaths` adds the shards. A service date ends at its last
+// `bundleWithTripPaths` adds the shards. A bundle also holds the places
+// file the Trip tab's search reads, where the page names one; the address
+// and intersection shards stay out of it. A service date ends at its last
 // departure, which can be past midnight. A bundle also holds a manifest of
 // its own, which names its dates alone, so that a page reading it offline
 // asks for no file the bundle lacks.
@@ -57,6 +59,52 @@ export const ShardRefusal = Object.freeze({tooManyShards: "tooManyShards", badPa
 
 /** The kinds of a bundle plan. */
 export const PlanKind = Object.freeze({bundle: "bundle", nothingToSave: "nothingToSave"})
+
+/**
+ * The kinds of the places file a bundle saves: a file the places manifest
+ * names, the file a saved bundle holds already, kept while no manifest can
+ * be read, or none.
+ */
+export const PlacesFileKind = Object.freeze({file: "file", kept: "kept", none: "none"})
+
+/** The places file of a bundle that keeps `path`, the places file its saved index names, or none for the empty path. */
+export function keptPlacesFile(path) {
+  if (path.startsWith(PLACES_PATH_PREFIX)) {
+    return {kind: PlacesFileKind.kept, path}
+  }
+
+  return NO_PLACES_FILE
+}
+
+/** The places file of a bundle that saves none. */
+export const NO_PLACES_FILE = Object.freeze({kind: PlacesFileKind.none})
+
+/** The prefix of every path the places file is served under. */
+export const PLACES_PATH_PREFIX = "/places/"
+
+/**
+ * The places file a bundle saves from the places manifest's `file` entry,
+ * `{path, byteSize}`, its path as stored, with no leading slash, or as an
+ * address: the file at its address under PLACES_PATH_PREFIX, or none for
+ * a path outside it or a size that is not a positive whole number.
+ */
+export function placesFileOf({path, byteSize}) {
+  let address = path
+
+  if (!path.startsWith("/")) {
+    address = "/" + path
+  }
+
+  const isPlaces = address.startsWith(PLACES_PATH_PREFIX)
+  const isSized = Number.isSafeInteger(byteSize) && byteSize > 0
+  const isSaved = isPlaces && isSized
+
+  if (isSaved) {
+    return {kind: PlacesFileKind.file, path: address, byteSize}
+  }
+
+  return NO_PLACES_FILE
+}
 
 /** The kinds of a read of the saved index. */
 export const IndexKind = Object.freeze({found: "found", none: "none"})
@@ -114,11 +162,14 @@ function summaryOf(entry) {
 /**
  * The bundle to save at `nowMs` from `manifest`, with `tileArchivePath`, the
  * address of the current tile archive, or the empty string where the page
- * names none: the summaries of its service dates, every file it holds, the
- * tile archive's address, and its own manifest, `manifest` with the chosen
- * snapshots alone.
+ * names none, and `placesFile`, the places file to save from `placesFileOf`
+ * or `keptPlacesFile`, or NO_PLACES_FILE: the summaries of its service dates, every file it
+ * holds, `sizedFiles`, the files it holds whose size it knows apart from
+ * the trip path indexes, the tile archive's and the places file's
+ * addresses, and its own manifest, `manifest` with the chosen snapshots
+ * alone.
  */
-export function planBundle({manifest, nowMs, tileArchivePath}) {
+export function planBundle({manifest, nowMs, tileArchivePath, placesFile}) {
   const current = []
 
   for (const entry of manifest.snapshots) {
@@ -152,9 +203,28 @@ export function planBundle({manifest, nowMs, tileArchivePath}) {
     paths.push(tileArchivePath)
   }
 
+  const sizedFiles = []
+  let placesPath = ""
+
+  switch (placesFile.kind) {
+    case PlacesFileKind.file:
+      paths.push(placesFile.path)
+      sizedFiles.push({path: placesFile.path, byteSize: placesFile.byteSize})
+      placesPath = placesFile.path
+      break
+    case PlacesFileKind.kept:
+      paths.push(placesFile.path)
+      placesPath = placesFile.path
+      break
+    case PlacesFileKind.none:
+      break
+    default:
+      unreachable(placesFile.kind, "offline bundle: a places file of unknown kind")
+  }
+
   const bundleManifest = {...manifest, snapshots: chosen}
   const dates = Array.from(chosen, summaryOf)
-  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates, paths, tripPathIndexes, tileArchivePath, manifest: bundleManifest}
+  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates, paths, tripPathIndexes, sizedFiles, tileArchivePath, placesPath, manifest: bundleManifest}
 }
 
 /**
@@ -263,8 +333,8 @@ export function bundleWithTripPaths({plan, shardPlans}) {
 
 /**
  * The index saved with the bundle `plan` at `savedAtMs`: what the bundle
- * holds, and where its manifest and its tile archive are stored, the
- * archive's address being the empty string where it holds none.
+ * holds, and where its manifest, its tile archive, and its places file are
+ * stored, an address being the empty string where it holds none.
  */
 export function savedIndex({plan, savedAtMs}) {
   return {
@@ -273,7 +343,8 @@ export function savedIndex({plan, savedAtMs}) {
     dates: plan.dates,
     paths: plan.paths,
     manifestPath: BUNDLE_MANIFEST_PATH,
-    tileArchivePath: plan.tileArchivePath
+    tileArchivePath: plan.tileArchivePath,
+    placesPath: plan.placesPath
   }
 }
 

@@ -15,7 +15,9 @@ import {BUNDLE_MANIFEST_PATH} from "./offline_bundle.js"
 const RELEASE_CACHE_PREFIX = "gobusgo-release-"
 const BASEMAP_ASSETS_CACHE_PREFIX = "gobusgo-basemap-assets-"
 const BASEMAP_ASSETS_PATH_PREFIX = "/vendor/basemaps-assets/"
-const SAVED_FILE_PATH_PREFIXES = Object.freeze(["/tiles/", "/routing/"])
+// The places file is named by its content, as these are, and its manifest
+// and notice beside it are not, so they are left to the network.
+const SAVED_FILE_PATH_PREFIXES = Object.freeze(["/tiles/", "/routing/", "/places/places-"])
 // A basemap offline extract, which the saved map holds. The full archives
 // beside it match no pattern here and are left to the network.
 const OFFLINE_BASEMAP_PATH_PATTERN = /^\/basemap\/basemap-[0-9]{8}-[0-9]{2}-z[0-9]{1,2}\.pmtiles$/

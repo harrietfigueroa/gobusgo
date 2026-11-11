@@ -23,6 +23,19 @@
 //   No key, text that is not JSON, and a value that is not a list read as
 //   no favorite. Losing it loses every favorite, the one value the rider
 //   wrote by hand.
+// - `gobusgo:recent-trips`: the trips the rider planned last, as a JSON
+//   list, the most recent first, at most the count each read and write
+//   names, eight on the vehicle page, for example
+//   `[{"from":{"kind":"location"},"to":{"kind":"point","name":"Pike Place Market","lat":47.6094,"lon":-122.3422}}]`.
+//   Each trip holds its `from` and `to` ends, each `{"kind":"location"}`
+//   (a From end alone), `{"kind":"stop","stopId","name"}` with a non-empty
+//   string `stopId` and a string `name`, or `{"kind":"point","name","lat",
+//   "lon"}` with a string `name` and a position in degrees on the globe;
+//   the rider's own position is never stored, only that the trip started
+//   from it. A trip planned again moves to the front. An entry of another
+//   shape, a trip listed again, and the entries past the limit are left
+//   out; no key, text that is not JSON, and a value that is not a list read
+//   as no trip. Losing it empties the Recent group of the Trip tab's search.
 // - `gobusgo:vehicle-filter`: the vehicle page's last accepted filter as
 //   JSON, for example `{"agency":["1"],"route":["1_100479"]}`. Any JSON
 //   value but null is offered to the page, which judges it again and has a
@@ -51,8 +64,9 @@
 //   asks once more on the next click that starts following.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
 //   above, as decimal text, now "1". A key added whose absence reads as its
-//   default, as the last four are, leaves version 1's stored values as they
-//   are and needs no migration, so it keeps the version.
+//   default, as the recent trips and the last four are, leaves version 1's
+//   stored values as they are and needs no migration, so it keeps the
+//   version.
 //
 // The migration rule: on its first use in a page, the module reads the
 // version, runs the migration from each earlier version to the next in
@@ -92,8 +106,15 @@ const MOTION_PERMISSION_DENIED = "denied"
 const SHARED_VEHICLES_SHOWN = "on"
 const UNVERSIONED = 0
 
-// The kinds of a stored entry read back as a favorite.
-const EntryKind = Object.freeze({favorite: "favorite", malformed: "malformed"})
+// The kinds of a stored entry read back as a favorite, a recent trip, or an
+// end of one.
+const EntryKind = Object.freeze({favorite: "favorite", trip: "trip", end: "end", malformed: "malformed"})
+
+// The kinds of a stored end of a recent trip, as the Trip tab's ends name
+// them.
+const StoredEndKind = Object.freeze({location: "location", stop: "stop", point: "point"})
+const LATITUDE_DEGREES_MAX = 90
+const LONGITUDE_DEGREES_MAX = 180
 
 const themes = Object.values(Theme)
 assertCondition(Number.isSafeInteger(SCHEMA_VERSION), "the schema version must be an integer, got: " + String(SCHEMA_VERSION))
@@ -175,6 +196,14 @@ export function openStoredSettings({storage, warn}) {
       description: "Stored favorite stops not readable",
       fallback: [],
       operation: (reached) => listFavoritesFrom({reached, countMax})
+    })
+  }
+
+  function listRecentTrips(countMax) {
+    return guarded({
+      description: "Stored recent trips not readable",
+      fallback: [],
+      operation: (reached) => recentTripsTextOf({text: reached.getItem(StorageKey.recentTrips), countMax})
     })
   }
 
@@ -307,6 +336,31 @@ export function openStoredSettings({storage, warn}) {
 
     /** The stored favorites, each once, at most `countMax` of them. */
     listFavorites,
+
+    /** The stored recent trips, most recent first, each once, at most `countMax` of them. */
+    listRecentTrips,
+
+    /**
+     * Stores `trip`, its `from` and `to` ends, as the most recent trip, in
+     * front of an earlier copy of it, which leaves, and of the others, at
+     * most `countMax` kept, and returns the trips stored.
+     */
+    addRecentTrip({trip, countMax}) {
+      const read = tripOf(trip)
+      assertCondition(read.kind === EntryKind.trip, "a recent trip must have two ends of a stored shape")
+      const recents = listRecentTrips(countMax)
+      const key = tripKey(read.trip)
+      const others = recents.filter((kept) => tripKey(kept) !== key)
+      const changed = [read.trip, ...others].slice(0, countMax)
+
+      guarded({
+        description: "Recent trips not stored",
+        fallback: undefined,
+        operation: (reached) => { reached.setItem(StorageKey.recentTrips, JSON.stringify(changed)) }
+      })
+
+      return changed
+    },
 
     /**
      * Adds `favorite`, a stop's `stopId` and `name`, after the other
@@ -569,6 +623,119 @@ function favoriteOf(value) {
     return {kind: EntryKind.favorite, favorite: {stopId: value.stopId, name: value.name}}
   } else {
     return {kind: EntryKind.malformed}
+  }
+}
+
+function recentTripsTextOf({text, countMax}) {
+  if (text === null) {
+    return []
+  }
+
+  const value = JSON.parse(text)
+  const trips = []
+
+  if (Array.isArray(value) === false) {
+    return trips
+  }
+
+  for (const entry of value) {
+    const read = tripOf(entry)
+    const isTrip = read.kind === EntryKind.trip
+    const isNew = isTrip && trips.every((kept) => tripKey(kept) !== tripKey(read.trip))
+    const isKept = isNew && trips.length < countMax
+
+    if (isKept) {
+      trips.push(read.trip)
+    }
+  }
+
+  return trips
+}
+
+// A stored trip read back with only the fields of its two ends, or
+// malformed: its To end a stop or a point, and its From end any end.
+function tripOf(value) {
+  const isObject = typeof value === "object" && value !== null
+
+  if (!isObject) {
+    return {kind: EntryKind.malformed}
+  }
+
+  const from = endOf(value.from)
+  const to = endOf(value.to)
+  const isPair = from.kind === EntryKind.end && to.kind === EntryKind.end
+  const isToPlaced = isPair && to.end.kind !== StoredEndKind.location
+
+  if (isToPlaced) {
+    return {kind: EntryKind.trip, trip: {from: from.end, to: to.end}}
+  }
+
+  return {kind: EntryKind.malformed}
+}
+
+function endOf(value) {
+  const isObject = typeof value === "object" && value !== null
+
+  if (!isObject) {
+    return {kind: EntryKind.malformed}
+  }
+
+  switch (value.kind) {
+    case StoredEndKind.location:
+      return {kind: EntryKind.end, end: {kind: StoredEndKind.location}}
+    case StoredEndKind.stop:
+      return stopEndOf(value)
+    case StoredEndKind.point:
+      return pointEndOf(value)
+    default:
+      return {kind: EntryKind.malformed}
+  }
+}
+
+function stopEndOf(value) {
+  const read = favoriteOf(value)
+
+  if (read.kind === EntryKind.favorite) {
+    return {kind: EntryKind.end, end: {kind: StoredEndKind.stop, stopId: read.favorite.stopId, name: read.favorite.name}}
+  }
+
+  return {kind: EntryKind.malformed}
+}
+
+function isCoordinate({value, max}) {
+  return Number.isFinite(value) && Math.abs(value) <= max
+}
+
+function pointEndOf(value) {
+  const isNamed = typeof value.name === "string"
+  const isLatitude = isCoordinate({value: value.lat, max: LATITUDE_DEGREES_MAX})
+  const isLongitude = isCoordinate({value: value.lon, max: LONGITUDE_DEGREES_MAX})
+  const isPlaced = isLatitude && isLongitude
+  const isPoint = isNamed && isPlaced
+
+  if (isPoint) {
+    return {kind: EntryKind.end, end: {kind: StoredEndKind.point, name: value.name, lat: value.lat, lon: value.lon}}
+  }
+
+  return {kind: EntryKind.malformed}
+}
+
+// The text that tells one trip from another: each end's stop, its
+// position, or the rider's location, and never a name.
+function tripKey(trip) {
+  return `${endKey(trip.from)}>${endKey(trip.to)}`
+}
+
+function endKey(end) {
+  switch (end.kind) {
+    case StoredEndKind.location:
+      return StoredEndKind.location
+    case StoredEndKind.stop:
+      return `${StoredEndKind.stop}:${end.stopId}`
+    case StoredEndKind.point:
+      return `${StoredEndKind.point}:${end.lat},${end.lon}`
+    default:
+      return assertCondition(false, "a stored end of unknown kind: " + end.kind)
   }
 }
 

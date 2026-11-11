@@ -6,17 +6,19 @@
 // the time zone, the names, and the positions arrive as arguments.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {assertPosition} from "./math/geodesy.js"
 import {LegKind} from "./routing_engine.js"
 import {FailureReason, JourneysKind, ServiceDateKind, WINDOW_SECONDS, serviceDateAt} from "./routing_journeys.js"
+import {LEG_KIND_TO_POINT} from "./point_journeys.js"
 
 /** The two ends of a trip. */
 export const TripEnd = Object.freeze({from: "from", to: "to"})
 
-/** The kinds of an end: none chosen, the rider's location, or a stop. */
-export const EndKind = Object.freeze({none: "none", location: "location", stop: "stop"})
+/** The kinds of an end: none chosen, the rider's location, a stop, or a point such as a place, an address, or an intersection. */
+export const EndKind = Object.freeze({none: "none", location: "location", stop: "stop", point: "point"})
 
 /** The kinds of what two ends make. */
-export const QueryKind = Object.freeze({ready: "ready", incomplete: "incomplete", sameStop: "sameStop"})
+export const QueryKind = Object.freeze({ready: "ready", incomplete: "incomplete", sameStop: "sameStop", samePoint: "samePoint"})
 
 /** The outcomes the Trip tab states in place of journeys, beside the router's own. */
 export const StateKind = Object.freeze({
@@ -25,6 +27,8 @@ export const StateKind = Object.freeze({
   locationDenied: "locationDenied",
   locationUnavailable: "locationUnavailable",
   sameStop: "sameStop",
+  samePoint: "samePoint",
+  noEndStop: "noEndStop",
   notSaved: "notSaved",
   outsideSchedules: "outsideSchedules",
   chooseTime: "chooseTime",
@@ -76,6 +80,8 @@ const stateMessages = Object.freeze({
   [StateKind.locationDenied]: {headline: "Location is off", caption: "Start from a stop instead, or allow location in your browser's settings."},
   [StateKind.locationUnavailable]: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."},
   [StateKind.sameStop]: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."},
+  [StateKind.samePoint]: {headline: "From and To are the same place", caption: "Choose another place for one of them."},
+  [StateKind.noEndStop]: {headline: "No stop within a walk of there", caption: "Choose a place nearer a stop."},
   [StateKind.notSaved]: {headline: "Not saved for offline", caption: "Connect to plan this trip."},
   [StateKind.outsideSchedules]: {headline: "No schedule for that time", caption: "Schedules cover today and tomorrow. Choose another time."},
   [StateKind.chooseTime]: {headline: "Choose a time", caption: "Set the time to plan this trip."},
@@ -99,6 +105,17 @@ export function stopEnd({stopId, name}) {
 }
 
 /**
+ * The end at the point `lat`, `lon` in degrees, named `name`: a place, an
+ * address, or an intersection, which a journey walks to or from the stops
+ * near it.
+ */
+export function pointEnd({name, lat, lon}) {
+  assertCondition(typeof name === "string", "trip plan: a point end's name is not text: " + name)
+  assertPosition([lon, lat], "trip plan: a point end")
+  return {kind: EndKind.point, name, lat, lon}
+}
+
+/**
  * The ends with From and To swapped. The rider's location is a From end
  * alone, so a location that would become the To end leaves it empty.
  */
@@ -112,26 +129,31 @@ export function swappedEnds({from, to}) {
 
 /**
  * What the ends `from` and `to` make: a query from the From end to the To
- * end's stop, nothing while an end is missing, or a refusal for one stop
- * at both ends.
+ * end, a stop or a point, nothing while an end is missing, or a refusal
+ * for one stop or one point at both ends.
  */
 export function queryOf({from, to}) {
   const isFromSet = from.kind !== EndKind.none
-  const isToStop = to.kind === EndKind.stop
-  const isComplete = isFromSet && isToStop
+  const isToPlaced = to.kind === EndKind.stop || to.kind === EndKind.point
+  const isComplete = isFromSet && isToPlaced
 
   if (!isComplete) {
     return {kind: QueryKind.incomplete}
   }
 
-  const isFromStop = from.kind === EndKind.stop
-  const isSameStop = isFromStop && from.stopId === to.stopId
+  const isBothStops = from.kind === EndKind.stop && to.kind === EndKind.stop
+  const isSameStop = isBothStops && from.stopId === to.stopId
+  const isBothPoints = from.kind === EndKind.point && to.kind === EndKind.point
+  const isSamePosition = isBothPoints && from.lat === to.lat
+  const isSamePoint = isSamePosition && from.lon === to.lon
 
   if (isSameStop) {
     return {kind: QueryKind.sameStop}
+  } else if (isSamePoint) {
+    return {kind: QueryKind.samePoint}
   }
 
-  return {kind: QueryKind.ready, from, toStopId: to.stopId}
+  return {kind: QueryKind.ready, from, to}
 }
 
 /** The message the Trip tab shows for `kind`, a state of its own or a router outcome. */
@@ -396,10 +418,15 @@ export function routeChip({names, routeId}) {
   }
 }
 
-// The stop a journey ends at.
-function targetStopId(journey) {
+// The name of where a journey ends: the point a journey to a point walks
+// to, or else the stop it ends at.
+function destinationName({journey, names}) {
+  if (journey.destination !== undefined) {
+    return journey.destination.name
+  }
+
   const last = journey.legs[journey.legs.length - 1]
-  return last.toStopId
+  return stopName({names, stopId: last.toStopId})
 }
 
 // The parts of the line that sums up a journey: a chip per ride and a text
@@ -414,6 +441,7 @@ function summaryParts({journey, names}) {
         break
       case LegKind.walk:
       case LegKind.walkFromPosition:
+      case LEG_KIND_TO_POINT:
         parts.push({kind: LegKind.walk, text: `walk ${walkMinutes(leg.durationS)} min`})
         break
       default:
@@ -446,12 +474,15 @@ function steps({journey, names, clockOf}) {
       case LegKind.walkFromPosition:
         result.push(`walk ${walkMinutes(leg.durationS)} min to ${stopName({names, stopId: leg.toStopId})}`)
         break
+      case LEG_KIND_TO_POINT:
+        result.push(`walk ${walkMinutes(leg.durationS)} min to ${journey.destination.name}`)
+        break
       default:
         unreachable(leg.kind, "trip plan: a leg of unknown kind")
     }
   }
 
-  result.push(`${clockOf(journey.arrivalS)} arrive at ${stopName({names, stopId: targetStopId(journey)})}`)
+  result.push(`${clockOf(journey.arrivalS)} arrive at ${destinationName({journey, names})}`)
   return result
 }
 
@@ -630,6 +661,11 @@ export function nameRequest({journeys, countMax}) {
 
   for (const journey of journeys) {
     for (const leg of journey.legs) {
+      if (leg.kind === LEG_KIND_TO_POINT) {
+        addBounded({values: stopIds, value: leg.fromStopId, countMax})
+        continue
+      }
+
       if (leg.kind === LegKind.ride) {
         addBounded({values: routeIds, value: leg.routeId, countMax})
         addBounded({values: stopIds, value: leg.fromStopId, countMax})
@@ -701,6 +737,8 @@ function legCoordinates({journey, leg, origin}) {
       return [...coordinatesOf({journey, stopId: leg.fromStopId}), ...coordinatesOf({journey, stopId: leg.toStopId})]
     case LegKind.walkFromPosition:
       return [...origin, ...coordinatesOf({journey, stopId: leg.toStopId})]
+    case LEG_KIND_TO_POINT:
+      return [...coordinatesOf({journey, stopId: leg.fromStopId}), [journey.destination.lon, journey.destination.lat]]
     default:
       return unreachable(leg.kind, "trip plan: a leg of unknown kind")
   }

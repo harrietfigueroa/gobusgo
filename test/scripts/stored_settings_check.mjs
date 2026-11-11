@@ -2,7 +2,7 @@
 // by hand: each key's valid values, a value of the wrong shape, and a
 // missing key; the schema version and its migration; the favorites' limit
 // and their order, moved to each index and read again by a page loaded
-// anew; and storage that throws. It also runs the theme script of the service
+// anew; the recent trips' shapes, order, and limit; and storage that throws. It also runs the theme script of the service
 // worker's offline screen against the same double, so the screen reads the
 // key and accepts the values the module does, and sets the theme color of
 // the theme each setting resolves to on a light and on a dark system. Run it with
@@ -27,8 +27,8 @@ const COUNT_MAX = 6
 const COUNT_PAST_MAX = COUNT_MAX + 1
 const VERSION_TEXT = String(SCHEMA_VERSION)
 // Under storage that throws: one warning for the migration, one per read
-// and per write, and the add and the remove each read before they write.
-const THROWING_WARNING_COUNT = 20
+// and per write, and the adds and the remove each read before they write.
+const THROWING_WARNING_COUNT = 23
 
 // Every key the module reads, each held as null until it is written, since
 // Storage's getItem answers null for a key it does not hold.
@@ -514,6 +514,58 @@ deepStrictEqual(SCHEMA_VERSION, 1, "schema version")
   deepStrictEqual(storage.entries()[StorageKey.schemaVersion], VERSION_TEXT, "an unreadable version migrates as unversioned")
 }
 
+// The recent trips: each trip's two ends as the Trip tab holds them, most
+// recent first, the newest added in front with an earlier copy of it
+// dropped, at most the limit, and an entry of another shape left out.
+const RECENT_COUNT_MAX = 3
+const locationEnd = {kind: "location"}
+const stopEndA = {kind: "stop", stopId: "1_100", name: "Westlake Station"}
+const pointEndA = {kind: "point", name: "Pike Place Market", lat: 47.6094, lon: -122.3422}
+const tripA = {from: locationEnd, to: pointEndA}
+const tripB = {from: pointEndA, to: stopEndA}
+const tripC = {from: stopEndA, to: pointEndA}
+const malformedTrips = [
+  {from: locationEnd},
+  {from: locationEnd, to: {kind: "point", name: "Off the globe", lat: 91, lon: 0}},
+  {from: locationEnd, to: {kind: "stop", stopId: "", name: "x"}},
+  {from: {kind: "none"}, to: stopEndA},
+  {from: locationEnd, to: locationEnd},
+  null,
+  tripB
+]
+
+const recentListCases = [
+  {name: "two trips in order", text: JSON.stringify([tripA, tripB]), trips: [tripA, tripB]},
+  {name: "a missing key", text: undefined, trips: []},
+  {name: "text that is not JSON", text: "[{", trips: []},
+  {name: "an object, not a list", text: JSON.stringify(tripA), trips: []},
+  {name: "entries of the wrong shape", text: JSON.stringify(malformedTrips), trips: [tripB]},
+  {name: "extra fields", text: JSON.stringify([{...tripA, at: 1, to: {...pointEndA, source: "osm"}}]), trips: [tripA]},
+  {name: "a trip twice", text: JSON.stringify([tripA, tripA]), trips: [tripA]},
+  {name: "more than the limit", text: JSON.stringify([tripA, tripB, tripC, {from: locationEnd, to: stopEndA}]), trips: [tripA, tripB, tripC]}
+]
+
+for (const listCase of recentListCases) {
+  const entries = {}
+
+  if (listCase.text !== undefined) {
+    entries[StorageKey.recentTrips] = listCase.text
+  }
+
+  const {settings} = settingsOver(new MemoryStorage(entries))
+  deepStrictEqual(settings.listRecentTrips(RECENT_COUNT_MAX), listCase.trips, `recent trips list: ${listCase.name}`)
+}
+
+{
+  const storage = new MemoryStorage({[StorageKey.recentTrips]: JSON.stringify([tripA, tripB, tripC])})
+  const {settings} = settingsOver(storage)
+  deepStrictEqual(settings.addRecentTrip({trip: tripB, countMax: RECENT_COUNT_MAX}), [tripB, tripA, tripC], "recent trips: a trip again moves to the front")
+  const tripD = {from: locationEnd, to: stopEndA}
+  deepStrictEqual(settings.addRecentTrip({trip: tripD, countMax: RECENT_COUNT_MAX}), [tripD, tripB, tripA], "recent trips: the oldest leaves past the limit")
+  deepStrictEqual(JSON.parse(storage.entries()[StorageKey.recentTrips]), [tripD, tripB, tripA], "recent trips: stored")
+  throws(() => settings.addRecentTrip({trip: {from: locationEnd, to: {kind: "none"}}, countMax: RECENT_COUNT_MAX}), AssertionError, "recent trips: a trip with no To asserts")
+}
+
 const throwingCases = [
   {name: "storage whose calls throw", storage: () => new ThrowingStorage()},
   {name: "storage that cannot be reached", storage: unreachableStorage}
@@ -540,7 +592,11 @@ for (const throwingCase of throwingCases) {
   settings.writeOfflineBasemapEnabled(true)
   const added = settings.addFavorite({favorite: favoriteA, countMax: COUNT_MAX})
   const removed = settings.removeFavorite({stopId: favoriteA.stopId, countMax: COUNT_MAX})
+  const recents = settings.listRecentTrips(COUNT_MAX)
+  const recentAdded = settings.addRecentTrip({trip: tripA, countMax: COUNT_MAX})
 
+  deepStrictEqual(recents, [], `${throwingCase.name}: recent trips`)
+  deepStrictEqual(recentAdded, [tripA], `${throwingCase.name}: recent trip added`)
   deepStrictEqual(theme, ThemeSetting.system, `${throwingCase.name}: theme`)
   deepStrictEqual(read, {kind: FilterKind.none}, `${throwingCase.name}: filter`)
   deepStrictEqual(followed, false, `${throwingCase.name}: location button`)
