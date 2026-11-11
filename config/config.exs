@@ -129,14 +129,17 @@ config :gobusgo, GobusgoWeb.Endpoint,
 # The modules the MCP endpoint serves, implementing GobusgoWeb.Mcp.Tool and
 # GobusgoWeb.Mcp.Resource.
 config :gobusgo, GobusgoWeb.Mcp,
-  tools: [GobusgoWeb.Mcp.Tools.PlanTrip],
-  resources: [GobusgoWeb.Mcp.Resources.TripApp]
-
-# The endpoint's own tests run against a registry that holds none, and the
-# tests of a tool or a resource configure the one they read.
-if config_env() == :test do
-  config :gobusgo, GobusgoWeb.Mcp, tools: [], resources: []
-end
+  tools: [
+    GobusgoWeb.Mcp.Tools.Arrivals,
+    GobusgoWeb.Mcp.Tools.Find,
+    GobusgoWeb.Mcp.Tools.PlanTrip,
+    GobusgoWeb.Mcp.Tools.Vehicles
+  ],
+  resources: [
+    GobusgoWeb.Mcp.Resources.Agencies,
+    GobusgoWeb.Mcp.Resources.RoutingManifest,
+    GobusgoWeb.Mcp.Resources.TripApp
+  ]
 
 # The sources run on their schedule everywhere except under test, where no
 # request may leave the machine.

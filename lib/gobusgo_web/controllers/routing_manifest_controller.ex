@@ -1,6 +1,7 @@
 defmodule GobusgoWeb.RoutingManifestController do
   @moduledoc """
-  Serves the manifest of the routing snapshots from `Gobusgo.Routing.Snapshots`.
+  Serves the manifest of the routing snapshots, the body of
+  `GobusgoWeb.TransitQuery.routing_manifest/0`.
 
   The manifest names the snapshot files by addresses that never change
   content, so it is the one thing a reader revalidates: it is answered with
@@ -11,12 +12,12 @@ defmodule GobusgoWeb.RoutingManifestController do
 
   use Phoenix.Controller, formats: [:json]
 
-  alias Gobusgo.Routing.Snapshots
+  alias GobusgoWeb.TransitQuery
 
   @doc "Answers `200` with the manifest, or `304` when the client holds it already."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
-    body = Gobusgo.CanonicalJson.encode(Snapshots.manifest(Snapshots))
+    body = TransitQuery.routing_manifest()
     etag = ~s(") <> Base.encode16(:crypto.hash(:sha256, body), case: :lower) <> ~s(")
     conn = conn |> put_resp_header("cache-control", "no-cache") |> put_resp_header("etag", etag)
 
