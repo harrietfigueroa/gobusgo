@@ -141,17 +141,21 @@ function mergeCompoundDirections(tokens) {
   return merged
 }
 
-// The tokens of a numbered highway that open the name tokens from `first` to
-// `last`: "HIGHWAY 99" and "SR 99" are two, "STATE ROUTE 99" is three, and a
-// name that opens with neither is none. The number is the last of them.
-function highwayPrefixLength(tokens, first, last) {
-  const count = last - first + 1
-  const hasDesignatorPrefix = count >= DESIGNATOR_PREFIX_LENGTH && HIGHWAY_DESIGNATORS.has(tokens[first])
-  if (hasDesignatorPrefix && ROUTE_NUMBER_PATTERN.test(tokens[first + 1])) {
+// The tokens of a numbered highway that open the name tokens: "HIGHWAY 99" and
+// "SR 99" are two, "STATE ROUTE 99" is three, and a name that opens with
+// neither is none. The number is the last of them.
+function highwayPrefixLength(nameTokens) {
+  const hasDesignatorRoom = nameTokens.length >= DESIGNATOR_PREFIX_LENGTH
+  const isDesignator = hasDesignatorRoom && HIGHWAY_DESIGNATORS.has(nameTokens[0])
+  const isDesignatorRoute = isDesignator && ROUTE_NUMBER_PATTERN.test(nameTokens[1])
+  if (isDesignatorRoute) {
     return DESIGNATOR_PREFIX_LENGTH
   }
-  const hasStatePrefix = count >= STATE_ROUTE_PREFIX_LENGTH && tokens[first] === "STATE"
-  if (hasStatePrefix && STATE_ROUTE_WORDS.has(tokens[first + 1]) && ROUTE_NUMBER_PATTERN.test(tokens[first + 2])) {
+  const hasStateRoom = nameTokens.length >= STATE_ROUTE_PREFIX_LENGTH
+  const isState = hasStateRoom && nameTokens[0] === "STATE"
+  const isStateWord = isState && STATE_ROUTE_WORDS.has(nameTokens[1])
+  const isStateRoute = isStateWord && ROUTE_NUMBER_PATTERN.test(nameTokens[STATE_ROUTE_PREFIX_LENGTH - 1])
+  if (isStateRoute) {
     return STATE_ROUTE_PREFIX_LENGTH
   }
   return 0
@@ -206,7 +210,7 @@ export function parseStreet(rawTokens) {
   }
 
   const nameTokens = []
-  const highwayLength = highwayPrefixLength(tokens, first, last)
+  const highwayLength = highwayPrefixLength(tokens.slice(first, last + 1))
   if (highwayLength > 0) {
     nameTokens.push(HIGHWAY_KEY, tokens[first + highwayLength - 1])
     first += highwayLength
