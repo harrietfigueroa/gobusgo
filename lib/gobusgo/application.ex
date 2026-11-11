@@ -34,7 +34,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
-  @ingestion_task_count_max 12
+  @ingestion_task_count_max 13
   @restart_count_max 3
   @restart_window_seconds 5
 
