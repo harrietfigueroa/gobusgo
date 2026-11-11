@@ -273,8 +273,9 @@ function responseOutcome(incoming) {
   return {kind: OutcomeKind.answered, result: incoming.result}
 }
 
-// A result with `isError` true is the host reporting that it did not take
-// the request, which the specification gives the message result.
+// A result with `isError` true is the host saying it did not take the
+// request: the SDK's types give the field on the message result, and the app
+// reads it on both requests.
 function takenOutcome(outcome) {
   const isErrorResult = outcome.kind === OutcomeKind.answered && outcome.result.isError === true
 
