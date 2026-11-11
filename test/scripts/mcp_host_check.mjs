@@ -198,7 +198,8 @@ function setup() {
   const {parent, host, answer} = setup()
   const messaging = sendMessage({host, text: "I chose it."})
   answer(parent.posted[0].message.id, {isError: false})
-  deepStrictEqual(await messaging, {kind: OutcomeKind.answered, result: {isError: false}}, "a message answered with isError false")
+  const messageOutcome = await messaging
+  deepStrictEqual(messageOutcome, {kind: OutcomeKind.answered, result: {isError: false}}, "a message answered with isError false")
 }
 
 // An answer after the timeout, or to no request, is dropped.
