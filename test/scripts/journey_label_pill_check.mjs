@@ -1,12 +1,11 @@
-// Checks the pure rules of the marks behind the chosen journey's map
-// labels: the geometry of the arrival label's pill image, whose corners
-// stay round as it stretches to the text, and whether the layer that keeps
-// the labels clear of the stops' signs is drawn. Run it with
-// `node test/scripts/journey_label_marks_check.mjs`; it exits non-zero on
+// Checks the pure rules of the arrival label's pill image on the map: its
+// geometry, whose corners stay round as it stretches to the text, its
+// padding, and the contrast of its text. Run it with
+// `node test/scripts/journey_label_pill_check.mjs`; it exits non-zero on
 // the first case that differs.
 
 import {deepStrictEqual, ok} from "node:assert/strict"
-import {BlockerVisibility, PILL_IMAGE_SIZE_PIXELS, pillImageSpec, stopBlockerVisibility} from "../../assets/js/journey_label_marks.js"
+import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "../../assets/js/journey_label_pill.js"
 import {contrastRatio} from "../../assets/js/math/color_contrast.js"
 import {Theme, mapColors} from "../../assets/js/theme.js"
 
@@ -51,9 +50,6 @@ ok(spec.textFitPaddingPixels[1] >= PADDING_SIDEWAYS_MIN_PIXELS, "the pill pads t
 const unscaled = pillImageSpec({pixelRatio: RATIO_ONE})
 deepStrictEqual(spec.textFitPaddingPixels, unscaled.textFitPaddingPixels, "the padding does not move with the ratio")
 
-deepStrictEqual(stopBlockerVisibility(true), BlockerVisibility.visible, "the stops' signs block a label while a journey is chosen")
-deepStrictEqual(stopBlockerVisibility(false), BlockerVisibility.none, "the stops' signs block nothing without a journey")
-
 // The pill is drawn in the label ink with the label paper for its text.
 for (const theme of [Theme.light, Theme.dark]) {
   const colors = mapColors(theme)
@@ -61,4 +57,4 @@ for (const theme of [Theme.light, Theme.dark]) {
   ok(ratio >= TEXT_CONTRAST_MIN, `the pill's text reaches ${TEXT_CONTRAST_MIN}:1 in the ${theme} theme, got ${ratio}`)
 }
 
-console.log("journey label marks check passed")
+console.log("journey label pill check passed")

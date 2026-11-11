@@ -12,8 +12,8 @@ import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME, ChosenKind, chosenJourney
 import {currentTheme} from "./color_theme"
 import {LabelKind, journeyLabels} from "./journey_labels"
 import {sheetInsets} from "./panel_sheet"
-import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "./journey_label_marks"
-import {SIGN_BLOCKER_LAYER_NAME as STOP_BLOCKER_LAYER_NAME, MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
+import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "./journey_label_pill"
+import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
 import {registerImageResolver} from "./style_images"
 import {mapColors} from "./theme"
 import {BoundsKind, FeatureKind} from "./trip_plan"
@@ -98,12 +98,10 @@ function labelCollectionNow() {
   return {type: "FeatureCollection", features}
 }
 
-// The first layer the journey goes under: the stops' blocker, which the
-// labels stand under so they give way to the signs, or else a stop's or a
-// vehicle's, or none on a map that holds none yet, which adds them over it
-// later.
+// The first layer the journey goes under: a stop's, or else a vehicle's,
+// or none on a map that holds neither yet, which adds them over it later.
 function beforeLayerName(map) {
-  const layerNames = [STOP_BLOCKER_LAYER_NAME, STOP_MARKER_LAYER_NAME, ...vehicleMarkerLayerNames]
+  const layerNames = [STOP_MARKER_LAYER_NAME, ...vehicleMarkerLayerNames]
   return layerNames.find((layerName) => map.getLayer(layerName) !== undefined)
 }
 
