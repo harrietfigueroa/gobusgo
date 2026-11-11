@@ -87,7 +87,12 @@ defmodule Gobusgo.Addresses.Http do
       redirect: false,
       retry: false,
       receive_timeout: @receive_timeout_ms,
-      connect_options: [timeout: @connect_timeout_ms]
+      connect_options: [timeout: @connect_timeout_ms],
+      # A host with no IPv4 route connects over IPv6. Mint tries IPv6
+      # first and connects over IPv4 when that attempt fails, each attempt
+      # with the connect timeout of its own.
+      # https://hexdocs.pm/mint/Mint.HTTP.html#connect/4 — checked 2026-11-11
+      inet6: true
     ] ++ extra ++ plug_option(Keyword.get(options, :plug))
   end
 
