@@ -1,5 +1,5 @@
 defmodule Gobusgo.Addresses.ArcGis do
-  @poll_count_max 18
+  @poll_count_max 30
   @poll_delay_ms 10_000
   @json_bytes_max 1_048_576
   @hub_host "hub.arcgis.com"
@@ -93,6 +93,10 @@ defmodule Gobusgo.Addresses.ArcGis do
   The address of the finished export of layer `export.layer` of the item
   `export.item_id`, in `export.format`, which the Hub's download API at
   `https://#{@hub_host}/api/download/v1/items/<item>/<format>` has made.
+  An optional `export.spatial_ref_id` has the Hub write the export's
+  coordinates in that coordinate system (`spatialRefId`); the Hub makes and
+  caches a separate export for each, and a layer in another projection than
+  the one asked for is reprojected by the Hub.
 
   The API answers `200` with a JSON object whose `status` is `"Completed"`
   and whose `resultUrl` names the file once it is ready, another `status`
@@ -102,18 +106,29 @@ defmodule Gobusgo.Addresses.ArcGis do
   published it.
   """
   @spec export_url(
-          %{item_id: String.t(), layer: non_neg_integer(), format: String.t()},
+          %{
+            required(:item_id) => String.t(),
+            required(:layer) => non_neg_integer(),
+            required(:format) => String.t(),
+            optional(:spatial_ref_id) => pos_integer()
+          },
           keyword()
         ) :: {:ok, String.t()} | {:error, error()}
-  def export_url(%{item_id: item_id, layer: layer, format: format}, options)
+  def export_url(%{item_id: item_id, layer: layer, format: format} = export, options)
       when is_binary(item_id) and is_integer(layer) and layer >= 0 and is_binary(format) and
              is_list(options) do
     url =
-      "https://#{@hub_host}/api/download/v1/items/#{item_id}/#{format}?layers=#{layer}&redirect=false"
+      "https://#{@hub_host}/api/download/v1/items/#{item_id}/#{format}?layers=#{layer}&redirect=false" <>
+        spatial_ref(export)
 
     poll_delay_ms = Keyword.get(options, :poll_delay_ms, @poll_delay_ms)
     poll(%{url: url, polls_left: @poll_count_max, poll_delay_ms: poll_delay_ms, options: options})
   end
+
+  defp spatial_ref(%{spatial_ref_id: spatial_ref_id}) when is_integer(spatial_ref_id),
+    do: "&spatialRefId=#{spatial_ref_id}"
+
+  defp spatial_ref(_export), do: ""
 
   defp poll(%{polls_left: 0}), do: {:error, :export_not_ready}
 

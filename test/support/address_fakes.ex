@@ -23,7 +23,7 @@ defmodule Gobusgo.Test.AddressSource do
         {:ok,
          %{
            path: path,
-           last_edit_at: ~U[2026-11-09 12:00:00Z],
+           last_edit_at: Keyword.get(options, :last_edit_at, ~U[2026-11-09 12:00:00Z]),
            record_count: Keyword.get(options, :record_count, length(records)),
            byte_count: byte_size(content)
          }}
@@ -35,4 +35,22 @@ defmodule Gobusgo.Test.AddressSource do
 
   @impl Gobusgo.Addresses.Source
   def records(path), do: path |> File.read!() |> :erlang.binary_to_term() |> List.wrap()
+end
+
+defmodule Gobusgo.Test.AddressSourceTwo do
+  @moduledoc """
+  A second `Gobusgo.Test.AddressSource` under another name, so a test of the
+  build can give it two counties.
+  """
+
+  @behaviour Gobusgo.Addresses.Source
+
+  @impl Gobusgo.Addresses.Source
+  def name, do: :test_two
+
+  @impl Gobusgo.Addresses.Source
+  defdelegate fetch(request, options), to: Gobusgo.Test.AddressSource
+
+  @impl Gobusgo.Addresses.Source
+  defdelegate records(path), to: Gobusgo.Test.AddressSource
 end

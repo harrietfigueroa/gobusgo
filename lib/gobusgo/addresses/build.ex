@@ -5,16 +5,22 @@ defmodule Gobusgo.Addresses.Build do
   @sample_interval_ms 100
 
   @moduledoc """
-  One run of the address build: fetches a county's whole address layer into
-  a file, reads it into the streets the shards hold, and, when what it read
-  is not what the current build holds or the current build is not from
-  today, cuts the streets into shards, writes every file through
-  `Gobusgo.Writer`, and hands the manifest to `Gobusgo.Addresses`.
+  One run of the address build: fetches each county's whole address layer
+  into a file of its own, reads them one after another into the streets the
+  shards hold, and, when what it read is not what the current build holds or
+  the current build is not from today, cuts the streets into shards, writes
+  every file through `Gobusgo.Writer`, and hands the manifest to
+  `Gobusgo.Addresses`. One run publishes every county's addresses in one set
+  of files.
 
-  The export is checked against the layer before any of it is written to
-  disk (`Gobusgo.Addresses.Source`): one that is older than the layer is a
-  stale export, which leaves the current files in place. The file is
-  deleted when the run ends.
+  Every county is fetched before any is read, in the order of `:sources`,
+  and the run ends at the first county whose fetch does not give a file. An
+  export that is older than its layer is a stale export
+  (`Gobusgo.Addresses.Source`), a known outcome that leaves the current
+  files in place, as does a failed fetch of any county: a build is the
+  addresses of every county or nothing, so no build ever lacks a county the
+  one before it held. A county's file is deleted once it is read, and the
+  rest when the run ends.
 
   The streets are cut into shards by `Gobusgo.Addresses.Shards`, each at
   most #{@shard_bytes_max} bytes as `Gobusgo.Addresses.Format` writes it,
@@ -41,11 +47,11 @@ defmodule Gobusgo.Addresses.Build do
       and shards, the bytes written, the sizes of the export and the
       times each step took, and the peak heap of the build in words.
     * `Address shards unchanged` at `info`, with the counts and times.
-    * `Address export stale` at `warning`, with why, when the export is
-      older than the layer; the current files stay.
+    * `Address export stale` at `warning`, with the `source` and why, when
+      its export is older than its layer; the current files stay.
     * `Address shards not built` at `error`, with the `reason`, when a
-      request or a write failed or the records read differ in count from
-      the layer's.
+      request or a write failed or the records read of a county differ in
+      count from its layer's.
     * `Address shard build killed` at `error` when the build outgrows its
       heap cap.
 
@@ -58,10 +64,11 @@ defmodule Gobusgo.Addresses.Build do
   ## Options
 
     * `:server` (required): the `Gobusgo.Addresses` process.
-    * `:source`: the `Gobusgo.Addresses.Source` module. Defaults to
-      `Gobusgo.Addresses.Source.King`.
-    * `:source_options`: options for the source's `fetch/2`.
-    * `:work_directory`: where the export is written. Defaults to a
+    * `:sources`: a list of `{module, options}`, each a
+      `Gobusgo.Addresses.Source` module with the options of its `fetch/2`.
+      Defaults to King, Pierce, and Snohomish counties' with no options.
+    * `:work_directory`: where the exports are written, a directory of its
+      own for each source. Defaults to a
       directory of the system's temporary directory.
     * `:bounds`: `{:bounds, bounds}` to keep the positions inside `bounds`
       or `:none` for every position. Defaults to the bounds of the basemap's
@@ -70,7 +77,7 @@ defmodule Gobusgo.Addresses.Build do
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
     * `:shard_bytes_max`: the most bytes of a shard's content, before
       compression. Defaults to #{@shard_bytes_max}.
-    * `:download_bytes_max`: the most bytes of the export. Defaults to
+    * `:download_bytes_max`: the most bytes of each export. Defaults to
       #{@download_bytes_max}.
     * `:heap_words_max`: the heap cap of the build, in words. Defaults to
       #{@heap_words_max}.
@@ -104,8 +111,7 @@ defmodule Gobusgo.Addresses.Build do
     options =
       Keyword.validate!(options, [
         :server,
-        source: Gobusgo.Addresses.Source.King,
-        source_options: [],
+        sources: default_sources(),
         work_directory: nil,
         bounds: nil,
         clock: &DateTime.utc_now/0,
@@ -138,35 +144,69 @@ defmodule Gobusgo.Addresses.Build do
     end
   end
 
+  defp default_sources do
+    [
+      {Gobusgo.Addresses.Source.King, []},
+      {Gobusgo.Addresses.Source.Pierce, []},
+      {Gobusgo.Addresses.Source.Snohomish, []}
+    ]
+  end
+
   defp fetch_and_build(options, %{now: now, work_directory: work_directory}) do
-    source = Keyword.fetch!(options, :source)
-    fetch_started_ms = System.monotonic_time(:millisecond)
+    sources = Keyword.fetch!(options, :sources)
+    bytes_max = Keyword.fetch!(options, :download_bytes_max)
 
-    request = %{
-      directory: work_directory,
-      bytes_max: Keyword.fetch!(options, :download_bytes_max)
-    }
-
-    case source.fetch(request, Keyword.fetch!(options, :source_options)) do
-      {:ok, export} ->
-        fetch_ms = System.monotonic_time(:millisecond) - fetch_started_ms
-
+    case fetch_all(sources, %{work_directory: work_directory, bytes_max: bytes_max}) do
+      {:ok, fetched} ->
         build_in_process(%{
           options: options,
           now: now,
-          export: export,
+          fetched: fetched,
           bounds: bounds(options),
-          current: Addresses.built(Keyword.fetch!(options, :server)),
-          fetch_ms: fetch_ms
+          current: Addresses.built(Keyword.fetch!(options, :server))
         })
 
-      {:stale, details} ->
-        {:stale, details}
+      {:stale, _details} = stale ->
+        stale
 
-      {:error, reason} ->
-        {:failed, {:fetch, reason}}
+      {:failed, _reason} = failed ->
+        failed
     end
   end
+
+  # Each source writes into a directory of its own, so two sources that name
+  # their file alike cannot overwrite one another.
+  defp fetch_all(sources, %{work_directory: work_directory, bytes_max: bytes_max}) do
+    sources
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {{source, source_options}, index}, {:ok, fetched} ->
+      directory = Path.join(work_directory, "source-#{index}")
+      File.mkdir_p!(directory)
+      started_ms = System.monotonic_time(:millisecond)
+
+      case source.fetch(%{directory: directory, bytes_max: bytes_max}, source_options) do
+        {:ok, export} ->
+          entry = %{
+            module: source,
+            name: source.name(),
+            export: export,
+            fetch_ms: System.monotonic_time(:millisecond) - started_ms
+          }
+
+          {:cont, {:ok, [entry | fetched]}}
+
+        {:stale, details} ->
+          {:halt, {:stale, Map.put(details, :source, source.name())}}
+
+        {:error, reason} ->
+          {:halt, {:failed, {:fetch, source.name(), reason}}}
+      end
+    end)
+    |> reversed()
+  end
+
+  defp reversed({:ok, fetched}), do: {:ok, Enum.reverse(fetched)}
+  defp reversed(other), do: other
 
   defp bounds(options) do
     case Keyword.fetch!(options, :bounds) do
@@ -259,39 +299,84 @@ defmodule Gobusgo.Addresses.Build do
   defp annotate(other, _extra), do: other
 
   defp build(input) do
-    %{options: options, export: export, bounds: bounds, current: current} = input
-    source = Keyword.fetch!(options, :source)
+    %{fetched: fetched, bounds: bounds, current: current} = input
     build_started_ms = System.monotonic_time(:millisecond)
+
+    case read_all(fetched, Accumulator.new(bounds_value(bounds))) do
+      {:ok, accumulator, sources} ->
+        result = Accumulator.finish(accumulator)
+        read_ms = System.monotonic_time(:millisecond) - build_started_ms
+        today = DateTime.to_date(input.now)
+
+        summary = %{
+          counts: result.counts,
+          street_count: length(result.streets),
+          address_count: result.address_count,
+          sources: sources,
+          export_byte_count: sources |> Enum.map(& &1.export_byte_count) |> Enum.sum(),
+          fetch_ms: sources |> Enum.map(& &1.fetch_ms) |> Enum.sum(),
+          read_ms: read_ms
+        }
+
+        if unchanged?(current, %{sha256: result.sha256, today: today}) do
+          {:unchanged, summary}
+        else
+          write_files(
+            Map.merge(input, %{
+              result: result,
+              summary: summary,
+              build_started_ms: build_started_ms
+            })
+          )
+        end
+
+      {:failed, _reason} = failed ->
+        failed
+    end
+  end
+
+  # The sources are read one after another into one accumulator, and a
+  # source's file is deleted once it is read, so the disk holds at most the
+  # files not yet read.
+  defp read_all(fetched, accumulator) do
+    Enum.reduce_while(fetched, {:ok, accumulator, []}, fn entry, {:ok, accumulator, sources} ->
+      case read_source(entry, accumulator) do
+        {:ok, accumulator, summary} -> {:cont, {:ok, accumulator, sources ++ [summary]}}
+        {:failed, _reason} = failed -> {:halt, failed}
+      end
+    end)
+  end
+
+  defp read_source(%{module: source, name: name, export: export} = entry, accumulator) do
+    started_ms = System.monotonic_time(:millisecond)
+    counts_before = Accumulator.counts(accumulator)
 
     accumulator =
       export.path
       |> source.records()
-      |> Enum.reduce(Accumulator.new(bounds_value(bounds)), &Accumulator.add(&2, &1))
+      |> Enum.reduce(accumulator, &Accumulator.add(&2, &1))
 
-    result = Accumulator.finish(accumulator)
-    read_ms = System.monotonic_time(:millisecond) - build_started_ms
-    today = DateTime.to_date(input.now)
+    File.rm!(export.path)
 
-    summary = %{
-      counts: result.counts,
-      street_count: length(result.streets),
-      address_count: result.address_count,
-      export_byte_count: export.byte_count,
-      fetch_ms: input.fetch_ms,
-      read_ms: read_ms
-    }
+    counts =
+      Map.new(Accumulator.counts(accumulator), fn {cause, count} ->
+        {cause, count - Map.fetch!(counts_before, cause)}
+      end)
 
-    cond do
-      result.counts.read != export.record_count ->
-        {:failed, {:record_count_differs, result.counts.read, export.record_count}}
+    if counts.read == export.record_count do
+      summary = %{
+        name: name,
+        counts: counts,
+        last_edit_at: export.last_edit_at,
+        record_count: export.record_count,
+        export_byte_count: export.byte_count,
+        fetch_ms: entry.fetch_ms,
+        read_ms: System.monotonic_time(:millisecond) - started_ms
+      }
 
-      unchanged?(current, %{sha256: result.sha256, today: today}) ->
-        {:unchanged, summary}
-
-      true ->
-        write_files(
-          Map.merge(input, %{result: result, summary: summary, build_started_ms: build_started_ms})
-        )
+      {:ok, accumulator, summary}
+    else
+      {:failed, {:record_count_differs, name, counts.read, export.record_count}}
     end
   end
 
@@ -401,10 +486,11 @@ defmodule Gobusgo.Addresses.Build do
 
     body = %{
       "builtAt" => DateTime.to_iso8601(built_at),
-      "sourceLastEditAt" => DateTime.to_iso8601(input.export.last_edit_at),
+      "sourceLastEditAt" => DateTime.to_iso8601(newest_last_edit_at(input.summary.sources)),
       "inputsSha256" => Base.encode16(inputs_sha256, case: :lower),
       "addressCount" => input.result.address_count,
       "streetCount" => length(input.result.streets),
+      "sources" => Enum.map(input.summary.sources, &source_entry/1),
       "index" => file_entry(index_file),
       "shards" => Enum.map(shard_files, &Map.put(file_entry(&1), "prefix", &1.entry.prefix))
     }
@@ -412,6 +498,18 @@ defmodule Gobusgo.Addresses.Build do
     %{
       body: body,
       record: %{manifest: body, inputs_sha256: inputs_sha256, built_at: built_at}
+    }
+  end
+
+  defp newest_last_edit_at(sources) do
+    sources |> Enum.map(& &1.last_edit_at) |> Enum.max(DateTime)
+  end
+
+  defp source_entry(source) do
+    %{
+      "name" => Atom.to_string(source.name),
+      "lastEditAt" => DateTime.to_iso8601(source.last_edit_at),
+      "recordCount" => source.record_count
     }
   end
 
@@ -454,6 +552,7 @@ defmodule Gobusgo.Addresses.Build do
     Logger.warning(
       "Address export stale",
       reason: details.reason,
+      source: details.source,
       layer_last_edit_at: DateTime.to_iso8601(details.layer_last_edit_at),
       layer_record_count: details.layer_record_count,
       elapsed_ms: System.monotonic_time(:millisecond) - started_ms
@@ -485,6 +584,7 @@ defmodule Gobusgo.Addresses.Build do
       invalid_count: counts.invalid,
       suffix_unsupported_count: counts.suffix_unsupported,
       outside_bounds_count: counts.outside_bounds,
+      inactive_count: counts.inactive,
       street_count: details.street_count,
       address_count: details.address_count,
       shard_count: Map.get(details, :shard_count, 0),
@@ -495,6 +595,21 @@ defmodule Gobusgo.Addresses.Build do
       write_ms: Map.get(details, :write_ms, 0),
       heap_words_peak: details.heap_words_peak,
       elapsed_ms: System.monotonic_time(:millisecond) - started_ms
+    ] ++ Enum.flat_map(details.sources, &source_properties/1)
+  end
+
+  # One set of properties for each source, named by the source, so the line
+  # says how many records each county read and accepted and how long each
+  # step of it took.
+  defp source_properties(source) do
+    name = source.name
+
+    [
+      {:"#{name}_read_count", source.counts.read},
+      {:"#{name}_accepted_count", source.counts.accepted},
+      {:"#{name}_fetch_ms", source.fetch_ms},
+      {:"#{name}_read_ms", source.read_ms},
+      {:"#{name}_export_byte_count", source.export_byte_count}
     ]
   end
 end

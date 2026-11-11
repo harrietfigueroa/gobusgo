@@ -86,20 +86,22 @@ defmodule Gobusgo.AddressesTest do
     defp options(context, now) do
       [
         server: context.server,
-        source: AddressSource,
-        source_options: [
-          records: [
-            %{
-              house_number: "1",
-              pre_direction: "",
-              name: "MAIN",
-              type: "ST",
-              suf_direction: "",
-              city: "KENT",
-              lat: 47.3,
-              lon: -122.2
-            }
-          ]
+        sources: [
+          {AddressSource,
+           [
+             records: [
+               %{
+                 house_number: "1",
+                 pre_direction: "",
+                 name: "MAIN",
+                 type: "ST",
+                 suf_direction: "",
+                 city: "KENT",
+                 lat: 47.3,
+                 lon: -122.2
+               }
+             ]
+           ]}
         ],
         bounds: :none,
         clock: fn -> now end,

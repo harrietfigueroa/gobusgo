@@ -2,7 +2,7 @@ defmodule Gobusgo.Addresses do
   @prefix "addresses"
   @manifest_name_prefix "manifest-"
   @check_interval_ms 3_600_000
-  @run_deadline_ms 2_700_000
+  @run_deadline_ms 3_300_000
   @slot_hour_utc 10
   @reader_keep_seconds 31_536_000
   @discovery_page_count_max 20

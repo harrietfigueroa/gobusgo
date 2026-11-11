@@ -32,10 +32,17 @@ defmodule Gobusgo.Addresses.Http do
 
   @doc """
   Requests `request.url` and returns the status, the `location` header or
-  `nil`, and a body of at most `request.bytes_max` bytes.
+  `nil`, the `retry-after` header or `nil`, and a body of at most
+  `request.bytes_max` bytes.
   """
   @spec get_json(%{url: String.t(), bytes_max: pos_integer()}, keyword()) ::
-          {:ok, %{status: pos_integer(), location: String.t() | nil, body: binary()}}
+          {:ok,
+           %{
+             status: pos_integer(),
+             location: String.t() | nil,
+             retry_after: String.t() | nil,
+             body: binary()
+           }}
           | {:error, error()}
   def get_json(%{url: url, bytes_max: bytes_max}, options)
       when is_binary(url) and is_integer(bytes_max) and bytes_max > 0 and is_list(options) do
@@ -47,7 +54,13 @@ defmodule Gobusgo.Addresses.Http do
           {:error, :body_too_large}
 
         {:ok, %Req.Response{status: status, body: body} = response} ->
-          {:ok, %{status: status, location: location(response), body: body}}
+          {:ok,
+           %{
+             status: status,
+             location: location(response),
+             retry_after: retry_after(response),
+             body: body
+           }}
 
         {:error, exception} ->
           transport_error(exception)
@@ -158,6 +171,13 @@ defmodule Gobusgo.Addresses.Http do
   defp location(response) do
     case Req.Response.get_header(response, "location") do
       [location | _rest] -> location
+      [] -> nil
+    end
+  end
+
+  defp retry_after(response) do
+    case Req.Response.get_header(response, "retry-after") do
+      [retry_after | _rest] -> retry_after
       [] -> nil
     end
   end
