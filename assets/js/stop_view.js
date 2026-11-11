@@ -17,6 +17,10 @@ import {
   storedFavorites
 } from "./favorite_stop"
 import {tripEndButtons} from "./trip_ends"
+import {assertCondition} from "./assert"
+import {OPEN_EVENT_NAME} from "./panel_sheet"
+import {ChosenKind, chosenJourney} from "./chosen_journey"
+import {NO_YOUR_BUS, StopMarkKind, stopMark} from "./journey_stop_marks"
 
 const HEADER_CLASS_NAME = "panel-detail-header"
 const PILLS_CLASS_NAME = "panel-detail-pills"
@@ -32,6 +36,8 @@ const ACTIONS_CLASS_NAME = "panel-detail-actions"
 const ACTION_CLASS_NAME = "panel-detail-action"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
 const ARRIVALS_CLASS_NAME = "panel-detail-arrivals"
+const TRIP_LINE_CLASS_NAME = "panel-detail-trip"
+const TRIP_PLANNER_ID = "trip-planner"
 const FAVORITE_MARK = "★"
 const NOT_FAVORITE_MARK = "☆"
 const FAVORITE_LABEL = "Your favorite stop"
@@ -147,6 +153,53 @@ function pillsElement(stop) {
   return pills
 }
 
+// What the chosen journey does at the stop `stopId`, as `stopMark` says;
+// none while no journey is chosen.
+export function chosenStopMark(stopId) {
+  const chosen = chosenJourney()
+
+  if (chosen.kind === ChosenKind.none) {
+    return {kind: StopMarkKind.none}
+  }
+
+  return stopMark({chosen, stopId})
+}
+
+// Writes into `line`, the control at the top of a stop's view, what the
+// chosen journey does at `stopId`, or hides it where the journey does
+// nothing there.
+export function writeTripLine({line, stopId}) {
+  const mark = chosenStopMark(stopId)
+  const isShown = mark.kind !== StopMarkKind.none
+  line.toggleAttribute("hidden", !isShown)
+
+  if (isShown) {
+    line.textContent = mark.text
+  } else {
+    line.textContent = ""
+  }
+}
+
+// Opens the Trip tab by the page's open event, sent from the Trip tab's
+// panel as the trip strip sends it; the panel takes the view's place.
+function openTripTab() {
+  const planner = document.getElementById(TRIP_PLANNER_ID)
+  assertCondition(planner !== null, "stop view: the page has no Trip tab's panel")
+  planner.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true}))
+}
+
+// The line at the top of a stop's view that says what the chosen journey
+// does at the stop; pressing it opens the Trip tab.
+function tripLineElement() {
+  const line = document.createElement("button")
+  line.type = "button"
+  line.className = TRIP_LINE_CLASS_NAME
+  line.hidden = true
+  line.addEventListener("click", openTripTab)
+
+  return line
+}
+
 // The view of `stop`, with its favorite button, the note under its header,
 // and the element its arrivals are written into, which says that it is
 // waiting for them. The
@@ -201,8 +254,11 @@ export function stopViewElements(stop) {
 
   const arrivalsElement = document.createElement("div")
   arrivalsElement.className = ARRIVALS_CLASS_NAME
-  writeArrivals({element: arrivalsElement, shown: {status: "waiting"}, withKey: true})
+  writeArrivals({element: arrivalsElement, shown: {status: "waiting"}, withKey: true, yourBus: NO_YOUR_BUS})
 
-  content.append(header, note, routes, actions, alerts, arrivalsElement)
-  return {content, favoriteButton, note, arrivalsElement}
+  const tripLine = tripLineElement()
+  writeTripLine({line: tripLine, stopId: stop.id})
+
+  content.append(tripLine, header, note, routes, actions, alerts, arrivalsElement)
+  return {content, favoriteButton, note, arrivalsElement, tripLine}
 }
