@@ -3,6 +3,9 @@ import {assertCondition, unreachable} from "./assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {vehicleViewText} from "./vehicle_view_text"
+import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME, chosenJourney} from "./chosen_journey"
+import {tripLineElement, writeTripLineText} from "./trip_line"
+import {YourBusLineKind, vehicleYourBusLine} from "./vehicle_your_bus"
 import {selectionHaloPaint, selectionRingPaint} from "./selection_mark"
 import {alertLines} from "./service_alerts"
 import {ImageNameKind, MARK_SIZE_PIXELS, badgeImageName, drawStatusBadge, parseImageName} from "./status_badges"
@@ -444,10 +447,26 @@ function textParagraph({className, text}) {
   return paragraph
 }
 
+// Writes into `line`, the control at the top of a vehicle's view, what the
+// chosen journey says of the vehicle of `tripId` on the service day
+// starting at `serviceDateMs`, or hides it where it says nothing.
+function writeYourBusLine({line, tripId, serviceDateMs}) {
+  const chosen = chosenJourney()
+  const answer = vehicleYourBusLine({chosen, tripId, serviceDateMs})
+  let lineText = ""
+
+  if (answer.kind === YourBusLineKind.line) {
+    lineText = answer.text
+  }
+
+  writeTripLineText({line, text: lineText})
+}
+
 // A vehicle's view is built as text nodes: the vehicle identifier comes
-// from outside the application and is never parsed as HTML. A muted line
-// of where it goes stands under the title, the current alerts of its route
-// under that, then its rows and the note on its position.
+// from outside the application and is never parsed as HTML. The line that
+// names the chosen journey's first bus stands first, then a muted line of
+// where the vehicle goes, the current alerts of its route under that, then
+// its rows and the note on its position. Returns the view and its line.
 function vehicleViewContent(text, properties) {
   const routeIds = []
 
@@ -456,7 +475,9 @@ function vehicleViewContent(text, properties) {
   }
 
   const content = document.createElement("div")
-  const parts = []
+  const tripLine = tripLineElement()
+  writeYourBusLine({line: tripLine, tripId: properties.tripId, serviceDateMs: properties.serviceDateMs})
+  const parts = [tripLine]
 
   if (text.meta !== "") {
     parts.push(textParagraph({className: CAPTION_CLASS_NAME, text: text.meta}))
@@ -488,7 +509,7 @@ function vehicleViewContent(text, properties) {
     content.append(part)
   }
 
-  return content
+  return {content, tripLine}
 }
 
 // The filter of the selected vehicle's mark: the marker of `markerId`, or
@@ -536,6 +557,10 @@ export const VehicleMarkers = {
     // the texts it was last written from.
     this.viewMarkerId = null
     this.viewText = ""
+    // The line of the details view that names the chosen journey's first
+    // bus, and the trip and service date of the vehicle the view shows.
+    this.tripLine = null
+    this.viewTrip = null
     // When the markers move between fetches, the tier decided last, and
     // each vehicle's state between fetches, by marker. Each agency's clock
     // is its fetch time and the page's monotonic time the fetch arrived at,
@@ -574,6 +599,8 @@ export const VehicleMarkers = {
 
       if (isViewLeft) {
         this.viewMarkerId = null
+        this.tripLine = null
+        this.viewTrip = null
         this.markSelected()
         this.decideMotion()
       }
@@ -581,6 +608,16 @@ export const VehicleMarkers = {
 
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
 
+    // A journey chosen, changed, or cleared rewrites the line of the view
+    // that is open.
+    this.onChosenChange = () => {
+      const isLineShown = this.tripLine !== null && this.viewTrip !== null
+
+      if (isLineShown) {
+        writeYourBusLine({line: this.tripLine, tripId: this.viewTrip.tripId, serviceDateMs: this.viewTrip.serviceDateMs})
+      }
+    }
+    window.addEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
     // The list of what is in view opens a vehicle as a click on its marker does.
     this.onItemOpen = (event) => {
       const {kind, feature} = event.detail
@@ -1585,11 +1622,14 @@ export const VehicleMarkers = {
     const position = this.positionOf(properties.markerId)
     this.viewText = JSON.stringify({properties, position})
     const text = viewTextOf({properties, statusLabels: this.statusLabels, position})
+    const view = vehicleViewContent(text, properties)
+    this.tripLine = view.tripLine
+    this.viewTrip = {tripId: properties.tripId, serviceDateMs: properties.serviceDateMs}
     showDetail({
       kind: DetailKind.vehicle,
       id: properties.markerId,
       title: text.title,
-      content: vehicleViewContent(text, properties)
+      content: view.content
     })
 
     this.markSelected()
@@ -1624,12 +1664,15 @@ export const VehicleMarkers = {
     if (viewText !== this.viewText) {
       this.viewText = viewText
       const text = viewTextOf({properties, statusLabels: this.statusLabels, position})
+      const view = vehicleViewContent(text, properties)
+      this.tripLine = view.tripLine
+      this.viewTrip = {tripId: properties.tripId, serviceDateMs: properties.serviceDateMs}
 
       updateDetail({
         kind: DetailKind.vehicle,
         id: properties.markerId,
         title: text.title,
-        content: vehicleViewContent(text, properties)
+        content: view.content
       })
     }
   },
@@ -1710,6 +1753,7 @@ export const VehicleMarkers = {
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
     this.yourBus.destroy()
     this.events.release()
   }
