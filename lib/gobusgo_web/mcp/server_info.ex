@@ -31,19 +31,25 @@ defmodule GobusgoWeb.Mcp.ServerInfo do
   @spec capabilities() :: %{String.t() => map()}
   def capabilities, do: @capabilities
 
-  @doc "The instructions a client reads on connecting."
-  @spec instructions() :: String.t()
-  def instructions do
+  @doc """
+  The sentence that credits the transit data as provided "as is" and links
+  the data terms, in the wording of the info panel.
+  """
+  @spec credit() :: String.t()
+  def credit do
     %{lead: lead, trail: trail} = AppInfo.provision()
     %{name: terms_name, url: terms_url} = AppInfo.terms()
 
-    credit =
-      lead <>
-        AppInfo.agencies_credit([]) <>
-        ", under the #{terms_name} (#{terms_url}) " <> trail
+    lead <>
+      AppInfo.agencies_credit([]) <>
+      ", under the #{terms_name} (#{terms_url}) " <> trail
+  end
 
+  @doc "The instructions a client reads on connecting."
+  @spec instructions() :: String.t()
+  def instructions do
     Enum.join(
-      ["Gobusgo serves transit data for the Puget Sound region.", credit, @pass_on],
+      ["Gobusgo serves transit data for the Puget Sound region.", credit(), @pass_on],
       " "
     )
   end

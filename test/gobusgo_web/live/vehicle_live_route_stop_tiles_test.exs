@@ -13,6 +13,7 @@ defmodule GobusgoWeb.VehicleLiveRouteStopTilesTest do
 
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteBatch
+  alias Gobusgo.Test.AppEnv
   alias GobusgoWeb.RouteStopTiles
 
   @moduletag :tmp_dir
@@ -35,13 +36,11 @@ defmodule GobusgoWeb.VehicleLiveRouteStopTilesTest do
   }
 
   setup %{tmp_dir: tmp_dir} do
-    configured = Application.fetch_env!(:gobusgo, :basemap)
-    Application.put_env(:gobusgo, :basemap, dir: tmp_dir)
+    AppEnv.isolate_data(tmp_dir)
     File.write!(Path.join(tmp_dir, "manifest.json"), JSON.encode!(@manifest))
     restart_children()
 
     on_exit(fn ->
-      Application.put_env(:gobusgo, :basemap, configured)
       restart_children()
     end)
   end

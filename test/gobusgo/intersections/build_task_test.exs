@@ -5,6 +5,7 @@ defmodule Mix.Tasks.Gobusgo.Intersections.BuildTest do
   # concurrently with others.
   use ExUnit.Case, async: false
 
+  alias Gobusgo.Test.AppEnv
   alias Gobusgo.Test.IntersectionOpl
   alias Mix.Tasks.Gobusgo.Intersections.Build
 
@@ -58,6 +59,7 @@ defmodule Mix.Tasks.Gobusgo.Intersections.BuildTest do
       on_exit(fn -> Application.put_env(:gobusgo, backend, configured) end)
     end
 
+    AppEnv.put(:basemap, dir: Path.join(tmp_dir, "basemap"))
     Mix.shell(Mix.Shell.Process)
     on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
     %{extract_path: extract_path}
