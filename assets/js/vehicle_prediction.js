@@ -447,6 +447,27 @@ export function anchorReport({path, lastReport, previousReport}) {
 }
 
 /**
+ * The anchor of a vehicle of the saved schedule at `atMs`: the schedule's
+ * distance along `path`, a prepared path of its trip, at that time, with no
+ * lateness, so the prediction from it follows the schedule along the path.
+ * The saved schedule has no report, so the anchor stands for the placement.
+ */
+export function scheduledAnchor({path, atMs}) {
+  assertTimeMs(atMs, "the time of a scheduled anchor")
+  const seconds = (atMs - path.serviceDateMs) / MS_PER_SECOND
+  const meters = Math.min(scheduledMeters({stops: path.stops, seconds}), path.lengthMeters)
+  return Object.freeze({
+    kind: PredictionKind.alongPath,
+    position: positionAt({path, meters}),
+    reportedAtMs: atMs,
+    tripId: path.tripId,
+    serviceDateMs: path.serviceDateMs,
+    distanceMeters: meters,
+    deviationSeconds: 0
+  })
+}
+
+/**
  * Where an anchored vehicle is at `atMs`. Along the path, the schedule's
  * position at that time less the anchor's lateness, never behind the
  * anchor, never past the last stop, and no further than the schedule
