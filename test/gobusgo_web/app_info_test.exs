@@ -596,6 +596,23 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "intersection_source/0" do
+    test "credits OpenStreetMap and links the ODbL at an https address" do
+      assert %{
+               credit: "OpenStreetMap contributors",
+               license: %{
+                 name: "Open Database License 1.0",
+                 url: "https://opendatacommons.org/licenses/odbl/1-0/"
+               },
+               path: "/intersections/",
+               summary: summary
+             } = AppInfo.intersection_source()
+
+      assert summary =~ "derivative database"
+      assert summary =~ "same license"
+    end
+  end
+
   describe "app_license/0" do
     test "states the license and the copyright line of the repository's license" do
       %{name: name, copyright: copyright} = AppInfo.app_license()
