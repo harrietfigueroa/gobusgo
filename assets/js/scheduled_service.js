@@ -351,7 +351,6 @@ function markerOf({snapshot, trip, runKey, runStart, point, placement, timeS, co
     headsign = savedHeadsign.headsign
   }
 
-  // The server's marker holds null for a vehicle on no saved date.
   let serviceDateMs = null
 
   if (runStart.kind === TableKind.found) {
