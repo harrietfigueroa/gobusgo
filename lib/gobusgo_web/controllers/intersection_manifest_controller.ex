@@ -9,12 +9,10 @@ defmodule GobusgoWeb.IntersectionManifestController do
   serves whichever backend the application stores through.
 
   The manifest names the files by hashes that never change content, so it is
-  the one thing a reader revalidates: it is answered with
-  `cache-control: no-cache` and a strong `etag`, the SHA-256 of the body, and
-  a request whose `if-none-match` names that tag gets `304` with no body.
-  While no build is stored, or the stored manifest cannot be read or is not
-  the JSON object a build writes, it answers `503` problem details with
-  `Retry-After: #{@retry_after_seconds}`.
+  the one thing a reader revalidates. The statuses, headers, and body are
+  described in `priv/openapi.json`; while no build is stored, or the stored
+  manifest cannot be read or is not the JSON object a build writes, the
+  answer asks the reader to retry after #{@retry_after_seconds} seconds.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -32,7 +30,7 @@ defmodule GobusgoWeb.IntersectionManifestController do
                       "shards" => {:list, {:map, %{"path" => :string}}}
                     }}
 
-  @doc "Answers `200` with the manifest, `304` when the client holds it already, or `503` while there is none."
+  @doc "Answers the manifest, that the client holds it already, or that there is none."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     case read() do
