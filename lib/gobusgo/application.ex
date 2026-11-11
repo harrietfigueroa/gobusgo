@@ -26,6 +26,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.TripPathCache
+  alias Gobusgo.OneBusAway.TripPathsServed
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.RetentionPolicy
@@ -94,6 +95,9 @@ defmodule Gobusgo.Application do
          {:ok, _shared_vehicle_tiles} <- Config.shared_vehicle_tiles(),
          {:ok, _revision} <- Config.revision(),
          {:ok, _donation_url} <- Config.donation_url() do
+      # The count of served path requests starts before any page can serve one.
+      :ok = TripPathsServed.init()
+
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.
@@ -175,7 +179,8 @@ defmodule Gobusgo.Application do
               source_specs(scheduled) ++
                 gbfs_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
-                routing_specs(scheduled) ++ cleanup_specs(scheduled, storage)
+                routing_specs(scheduled) ++
+                trip_paths_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
           ]
 
@@ -237,6 +242,11 @@ defmodule Gobusgo.Application do
     do: [Gobusgo.Routing.Snapshots.spec(server: Gobusgo.Routing.Snapshots)]
 
   defp routing_specs(false), do: []
+
+  # The count of served path requests is logged wherever the sources are
+  # scheduled, which is where a node serves pages.
+  defp trip_paths_specs(true), do: [TripPathsServed.log_spec()]
+  defp trip_paths_specs(false), do: []
 
   # The GBFS feeds are public, so their sources need no settings and run
   # wherever the sources are scheduled. The retention source deletes the
