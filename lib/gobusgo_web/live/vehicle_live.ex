@@ -181,7 +181,6 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.BasemapSources
   alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.DonationButton
-  alias GobusgoWeb.FilterBar
   alias GobusgoWeb.FilterParams
   alias GobusgoWeb.MapExtent
   alias GobusgoWeb.PanelSheet
@@ -191,6 +190,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias GobusgoWeb.ServiceAlertsPanel
   alias GobusgoWeb.SharedVehicleToggle
   alias GobusgoWeb.StopArrivals
+  alias GobusgoWeb.TransitQuery
   alias GobusgoWeb.VehicleFilterForm
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
@@ -230,7 +230,7 @@ defmodule GobusgoWeb.VehicleLive do
         rider_filter: nil,
         trip: nil,
         filter_supplied: false,
-        agencies: agencies(),
+        agencies: TransitQuery.agencies(),
         filter_query: "",
         filter_bar: %{tokens: [], suggestions: [], rest_count: 0},
         shown_request_ids: %{},
@@ -307,7 +307,7 @@ defmodule GobusgoWeb.VehicleLive do
   def handle_info({:agency_view_switched, AgencyView}, socket) do
     {:noreply,
      socket
-     |> assign(agencies: agencies())
+     |> assign(agencies: TransitQuery.agencies())
      |> assign_filter_bar(FetchView.current(@route_view))}
   end
 
@@ -1002,19 +1002,6 @@ defmodule GobusgoWeb.VehicleLive do
     end
   end
 
-  defp agencies do
-    case AgencyView.current(AgencyView) do
-      nil ->
-        []
-
-      %{agency_ids: agency_ids, agencies: agencies} ->
-        for agency_id <- agency_ids do
-          %{"id" => id, "name" => name} = Map.fetch!(agencies, agency_id)
-          %{id: id, name: name}
-        end
-    end
-  end
-
   # A change of the filter bar that leaves another accepted filter than the
   # page shows goes into the address, and the browser stores it. It ends a
   # trip's filter, so the address's filter is the one shown after it.
@@ -1092,11 +1079,10 @@ defmodule GobusgoWeb.VehicleLive do
 
     assign(socket,
       filter_bar:
-        FilterBar.options(%{
+        TransitQuery.filter_bar(%{
+          filter: filter,
           agencies: agencies,
           route_fetches: route_fetches,
-          agency_ids: Filter.agency_ids(filter),
-          route_ids: Filter.route_ids(filter),
           query: filter_query
         })
     )

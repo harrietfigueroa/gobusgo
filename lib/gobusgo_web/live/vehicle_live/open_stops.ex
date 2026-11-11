@@ -22,14 +22,9 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
 
   alias Gobusgo.Demand
   alias Gobusgo.OneBusAway.DemandKey
-  alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.StopView
-  alias Gobusgo.OneBusAway.VehicleView
-  alias GobusgoWeb.RouteLines
   alias GobusgoWeb.StopArrivals
-
-  @arrival_view Gobusgo.OneBusAway.ArrivalView
-  @route_view Gobusgo.OneBusAway.RouteView
+  alias GobusgoWeb.TransitQuery
 
   @typedoc "The hash of what was last sent for each open stop, by stop identifier."
   @type t :: %{String.t() => non_neg_integer() | nil}
@@ -106,7 +101,7 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
       when is_map(open_stops) and is_list(stop_ids) do
     updates =
       Enum.reduce(stop_ids, %{events: [], open_stops: open_stops}, fn stop_id, updates ->
-        shown = stop_arrivals(stop_id)
+        shown = TransitQuery.stop_arrivals(stop_id)
         version = :erlang.phash2(shown)
 
         case updates.open_stops do
@@ -129,45 +124,5 @@ defmodule GobusgoWeb.VehicleLive.OpenStops do
     Demand.register(Demand, DemandKey.arrivals(stop_id))
   catch
     :exit, _reason -> :registry_unavailable
-  end
-
-  defp stop_arrivals(stop_id) do
-    case FetchView.current_fetch(@arrival_view, stop_id) do
-      nil ->
-        StopArrivals.waiting(stop_id)
-
-      fetch ->
-        vehicles =
-          for vehicle_id <- StopArrivals.vehicle_ids(fetch),
-              vehicle = VehicleView.vehicle(VehicleView, vehicle_id),
-              into: %{} do
-            {vehicle_id, vehicle}
-          end
-
-        StopArrivals.arrivals(%{
-          fetch: fetch,
-          vehicles: vehicles,
-          route_colors: route_colors(fetch),
-          now: DateTime.utc_now()
-        })
-    end
-  end
-
-  # The CSS color of each route the route view holds for the agencies of
-  # the routes `fetch` names. OneBusAway names a route by its agency's
-  # identifier, an underscore, and the agency's own identifier for it.
-  # https://developer.onebusaway.org/api/where/elements/agency-and-id — checked 2026-11-09
-  defp route_colors(%{arrivals: arrivals}) do
-    agency_ids =
-      for %{"routeId" => route_id} <- arrivals, is_binary(route_id), uniq: true do
-        route_id |> String.split("_", parts: 2) |> hd()
-      end
-
-    for agency_id <- agency_ids,
-        %{routes: routes} <- [FetchView.current_fetch(@route_view, agency_id)],
-        {route_id, route} <- routes,
-        into: %{} do
-      {route_id, RouteLines.css_color(route["color"])}
-    end
   end
 end

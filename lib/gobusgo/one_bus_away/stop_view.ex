@@ -144,6 +144,25 @@ defmodule Gobusgo.OneBusAway.StopView do
     end
   end
 
+  @doc """
+  Returns the request identifier of every fetch whose stops `view` holds,
+  once each and sorted, without reading the stops. The list changes when a
+  route's fetch switches. Returns `[]` while the view is not running.
+  """
+  @spec request_ids(atom()) :: [String.t()]
+  def request_ids(view) when is_atom(view) do
+    case :ets.whereis(view) do
+      :undefined ->
+        []
+
+      table ->
+        table
+        |> :ets.select([{{:_, %{request_id: :"$1"}}, [], [:"$1"]}])
+        |> Enum.uniq()
+        |> Enum.sort()
+    end
+  end
+
   @doc "Returns the number of stops `view` holds, `0` while the view is not running."
   @spec stop_count(atom()) :: non_neg_integer()
   def stop_count(view) when is_atom(view) do

@@ -4,7 +4,8 @@ defmodule GobusgoWeb.McpControllerTest do
   # reader. A recorder runs under the name the controller records with,
   # writing under the test's temporary directory; the name is global, hence
   # the non-async case. Under test the application starts no recorder, and
-  # the registry configured for the application holds no tool.
+  # each test starts from a registry that holds no tool, since the
+  # application's own tools are tested in their own files.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -24,6 +25,13 @@ defmodule GobusgoWeb.McpControllerTest do
   @prefix "usage/page-connections/"
   @json_content_type "application/json; charset=utf-8"
   @request_bytes_max 1_048_576
+
+  setup do
+    configured = Application.fetch_env!(:gobusgo, GobusgoWeb.Mcp)
+    Application.put_env(:gobusgo, GobusgoWeb.Mcp, tools: [], resources: [])
+    on_exit(fn -> Application.put_env(:gobusgo, GobusgoWeb.Mcp, configured) end)
+    :ok
+  end
 
   defp start_recorder(%{tmp_dir: tmp_dir}) do
     start_supervised!({Usage, name: Usage, write_options: [base_dir: tmp_dir]})

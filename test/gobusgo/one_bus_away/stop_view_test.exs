@@ -132,6 +132,24 @@ defmodule Gobusgo.OneBusAway.StopViewTest do
       assert StopView.stop_ids(NoSuchStopView) == []
     end
 
+    test "return the request of every fetch the view holds, once and sorted", %{view: view} do
+      :ok =
+        StopView.apply_records(view, [
+          newer(%{route_id: "40_2", stops: [stop("c")]}),
+          value(%{stops: [stop("b"), stop("a")]})
+        ])
+
+      assert StopView.request_ids(view) == [@first_request_id, @second_request_id]
+      assert StopView.request_ids(NoSuchStopView) == []
+    end
+
+    test "return a request that is no longer held no more", %{view: view} do
+      :ok = StopView.apply_records(view, [value(%{stops: [stop("a")]})])
+      :ok = StopView.apply_records(view, [newer(%{stops: [stop("a")]})])
+
+      assert StopView.request_ids(view) == [@second_request_id]
+    end
+
     test "return a parent stop like any stop", %{view: view} do
       fetch = %{stops: [stop("a", %{parent: "station"})], parent_stops: [stop("station")]}
 
