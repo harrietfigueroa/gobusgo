@@ -1,8 +1,9 @@
 // Checks what the Trip tab decides as pure functions of journeys written
 // out by hand in the router's shape: the journey list's order and texts,
-// the "Tomorrow" label of a journey on the next service date, whether two
-// ends make a query, the names the page is asked for, the routes of a
-// trip's filter, and what the map draws of a journey. Run it with
+// the "Tomorrow" label of a journey that leaves on the next day, whether two
+// ends make a query, the time a query leaves at or arrives by and its
+// window line, the names the page is asked for, the routes of a trip's
+// filter, and what the map draws of a journey. Run it with
 // `node test/scripts/trip_plan_check.mjs`; it exits non-zero on the first
 // case that differs.
 
@@ -12,13 +13,18 @@ import {LegKind} from "../../assets/js/routing_engine.js"
 import {FailureReason, JourneysKind} from "../../assets/js/routing_journeys.js"
 import {
   BoundsKind,
+  ClockKind,
   EndKind,
   FeatureKind,
   LOCATION_END,
   NO_END,
   QueryKind,
   ROUTE_COLOR_DEFAULT,
+  DayChoice,
+  PlannedKind,
   StateKind,
+  TimeMode,
+  defaultClock,
   failureState,
   journeyFeatures,
   journeyRows,
@@ -26,10 +32,12 @@ import {
   nameRequest,
   queryOf,
   pickingMessage,
+  plannedTime,
   stateMessage,
   stopEnd,
   swappedEnds,
   tripRouteIds,
+  wallClockMs,
   windowText,
 } from "../../assets/js/trip_plan.js"
 
@@ -42,7 +50,8 @@ const HOUR_SECONDS = 60 * 60
 const MINUTE_SECONDS = 60
 const TOMORROW_START_MS = TODAY_START_MS + DAY_MS
 const serviceDayStartsMs = {"2026-11-08": TODAY_START_MS, "2026-11-09": TOMORROW_START_MS}
-const departure = {serviceDate: "2026-11-08", departureS: seconds("08:38")}
+const SECOND_MS = 1000
+const NOW_MS = TODAY_START_MS + seconds("08:38") * SECOND_MS
 const ROUTE_COUNT_MAX = 6
 const ROUTE_COUNT_MAX_ONE = 1
 const NAME_COUNT_MAX = 10
@@ -120,7 +129,7 @@ const names = {
 }
 
 // The list: fewest changes first, whatever order the router gives.
-const rows = journeyRows({journeys: [earliest, direct], departure, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+const rows = journeyRows({journeys: [earliest, direct], nowMs: NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
 const ordered = Array.from(rows, journeyOf)
 deepStrictEqual(ordered, [direct, earliest], "the order: fewest changes first")
 deepStrictEqual(rows[1].timesText, "8:42 am → 9:02 am", "the earliest's times")
@@ -145,19 +154,45 @@ deepStrictEqual(rows[1].steps, [
 
 // A route and a stop the page has not named read as their identifiers.
 deepStrictEqual(rows[0].summary, [{kind: LegKind.ride, chip: {name: "1_100275", color: ROUTE_COLOR_DEFAULT}}], "an unnamed route")
-const unnamed = journeyRows({journeys: [direct], departure, serviceDayStartsMs, names: {stops: {}, routes: {}}, timeZone: TIME_ZONE})
+const unnamed = journeyRows({journeys: [direct], nowMs: NOW_MS, serviceDayStartsMs, names: {stops: {}, routes: {}}, timeZone: TIME_ZONE})
 deepStrictEqual(unnamed[0].steps[0], "8:46 am board 1_100275 at 1_431", "an unnamed stop")
 
-// A journey on the next service date reads "Tomorrow" before its time.
+// A journey that leaves on the next day reads "Tomorrow" before its time.
 const tomorrow = {...direct, serviceDate: "2026-11-09", isEarliest: true, arrivalS: seconds("05:40"), legs: [ride({routeId: "1_100275", from: "1_431", departs: "05:12", to: "1_11920", arrives: "05:40"})]}
-const lateDeparture = {serviceDate: "2026-11-08", departureS: seconds("23:30")}
-const [tomorrowRow] = journeyRows({journeys: [tomorrow], departure: lateDeparture, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+const LATE_NOW_MS = TODAY_START_MS + seconds("23:30") * SECOND_MS
+const [tomorrowRow] = journeyRows({journeys: [tomorrow], nowMs: LATE_NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
 deepStrictEqual(tomorrowRow.timesText, "Tomorrow 5:12 am → 5:40 am", "the next service date")
 
-// A journey past midnight of the departure's own service date is not tomorrow's.
+// A journey that leaves before midnight and arrives after it is today's.
 const pastMidnight = {...tomorrow, serviceDate: "2026-11-08", arrivalS: seconds("24:30"), legs: [ride({routeId: "1_100275", from: "1_431", departs: "23:50", to: "1_11920", arrives: "24:30"})]}
-const [pastMidnightRow] = journeyRows({journeys: [pastMidnight], departure: lateDeparture, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+const [pastMidnightRow] = journeyRows({journeys: [pastMidnight], nowMs: LATE_NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
 deepStrictEqual(pastMidnightRow.timesText, "11:50 pm → 12:30 am", "past midnight of the same service date")
+
+// A journey of today's service date that leaves past midnight leaves tomorrow.
+const owl = {...pastMidnight, arrivalS: seconds("24:50"), legs: [ride({routeId: "1_100275", from: "1_431", departs: "24:10", to: "1_11920", arrives: "24:50"})]}
+const [owlRow] = journeyRows({journeys: [owl], nowMs: LATE_NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+deepStrictEqual(owlRow.timesText, "Tomorrow 12:10 am → 12:50 am", "leaving past midnight of the same service date")
+
+// A journey two days on names its weekday.
+const later = {...tomorrow, legs: [ride({routeId: "1_100275", from: "1_431", departs: "29:12", to: "1_11920", arrives: "29:40"})], arrivalS: seconds("29:40")}
+const [laterRow] = journeyRows({journeys: [later], nowMs: LATE_NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+deepStrictEqual(laterRow.timesText, "Tue 5:12 am → 5:40 am", "two days on")
+
+// A walk alone leaves its walk before it arrives.
+const walkOnly = {serviceDate: "2026-11-08", arrivalS: seconds("08:50"), changes: 0, isEarliest: true, legs: [walk({from: "1_431", to: "1_440", durationS: 300})], stopPositions: {}}
+const [walkOnlyRow] = journeyRows({journeys: [walkOnly], nowMs: NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+deepStrictEqual(walkOnlyRow.timesText, "8:45 am → 8:50 am", "a walk alone")
+
+// Arriving by a time, the latest journey is marked, and a journey leaves at
+// the time the router found.
+const latest = {...direct, isEarliest: undefined, isLatest: true, departureS: seconds("08:46")}
+const sooner = {...earliest, isEarliest: undefined, isLatest: false, departureS: seconds("08:42")}
+const arrivingRows = journeyRows({journeys: [sooner, latest], nowMs: NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+deepStrictEqual(arrivingRows[0].badgeText, "Latest · 28 min", "the latest is marked")
+deepStrictEqual(arrivingRows[0].isMarked, true, "the latest is the marked row")
+deepStrictEqual(arrivingRows[1].badgeText, "20 min", "a sooner journey is not marked")
+deepStrictEqual(journeysAnnouncement(arrivingRows), "2 journeys. The latest leaves at 8:46 am.", "several journeys arriving by a time")
+deepStrictEqual(journeysAnnouncement([arrivingRows[0]]), "1 journey. It leaves at 8:46 am.", "one journey arriving by a time")
 
 // The status line a screen reader hears once the journeys are written.
 deepStrictEqual(journeysAnnouncement(rows), "2 journeys. The earliest arrives at 9:02 am.", "several journeys")
@@ -165,8 +200,70 @@ deepStrictEqual(journeysAnnouncement([rows[1]]), "1 journey. It arrives at 9:02 
 deepStrictEqual(journeysAnnouncement([tomorrowRow]), "1 journey. It arrives tomorrow at 5:40 am.", "a journey on the next service date")
 deepStrictEqual(journeysAnnouncement([pastMidnightRow]), "1 journey. It arrives at 12:30 am.", "past midnight of the same service date")
 
-// The window line names the earliest arrival plus 45 minutes.
-deepStrictEqual(windowText({journeys: [earliest, direct], serviceDayStartsMs, timeZone: TIME_ZONE}), "Leaving now · journeys arriving by 9:47 am", "the window")
+// The window line names the mode and the time chosen, with the earliest
+// arrival plus 45 minutes, or the latest departure less 45 minutes.
+const NINE_TOMORROW_MS = TOMORROW_START_MS + seconds("09:00") * SECOND_MS
+const HALF_EIGHT_MS = TODAY_START_MS + seconds("08:30") * SECOND_MS
+const leavingWindow = {journeys: [earliest, direct], nowMs: NOW_MS, serviceDayStartsMs, timeZone: TIME_ZONE}
+
+const windowCases = [
+  {name: "now", planned: {kind: PlannedKind.leaving, mode: TimeMode.now, ms: NOW_MS}, journeys: [earliest, direct], expected: "Leaving now · journeys arriving by 9:47 am"},
+  {name: "a departure today", planned: {kind: PlannedKind.leaving, mode: TimeMode.departAt, ms: HALF_EIGHT_MS}, journeys: [earliest, direct], expected: "Leaving at 8:30 am · journeys arriving by 9:47 am"},
+  {name: "a departure tomorrow", planned: {kind: PlannedKind.leaving, mode: TimeMode.departAt, ms: TOMORROW_START_MS + seconds("05:00") * SECOND_MS}, journeys: [tomorrow], expected: "Leaving at 5:00 am tomorrow · journeys arriving by 6:25 am"},
+  {name: "an arrival tomorrow", planned: {kind: PlannedKind.arrivingBy, mode: TimeMode.arriveBy, ms: NINE_TOMORROW_MS}, journeys: [{...latest, serviceDate: "2026-11-09"}, {...sooner, serviceDate: "2026-11-09"}], expected: "Arriving by 9:00 am tomorrow · journeys leaving from 8:01 am"},
+]
+
+for (const {name, planned, journeys, expected} of windowCases) {
+  deepStrictEqual(windowText({...leavingWindow, journeys, planned}), expected, `the window: ${name}`)
+}
+
+// A time on the page's clock, a day and an HH:MM, is the instant it names
+// in the time zone, across a change of daylight saving time too.
+const OCTOBER_31_EVENING_MS = Date.UTC(2026, 9, 31, 21, 0)
+
+const clockCases = [
+  {name: "today", nowMs: NOW_MS, day: DayChoice.today, clockText: "09:00", expected: {kind: ClockKind.valid, ms: TODAY_START_MS + seconds("09:00") * SECOND_MS}},
+  {name: "tomorrow", nowMs: NOW_MS, day: DayChoice.tomorrow, clockText: "09:00", expected: {kind: ClockKind.valid, ms: NINE_TOMORROW_MS}},
+  {name: "midnight", nowMs: NOW_MS, day: DayChoice.tomorrow, clockText: "00:00", expected: {kind: ClockKind.valid, ms: TOMORROW_START_MS}},
+  {name: "the day standard time starts", nowMs: OCTOBER_31_EVENING_MS, day: DayChoice.tomorrow, clockText: "09:00", expected: {kind: ClockKind.valid, ms: Date.UTC(2026, 10, 1, 17, 0)}},
+  {name: "the evening before it", nowMs: OCTOBER_31_EVENING_MS, day: DayChoice.today, clockText: "20:00", expected: {kind: ClockKind.valid, ms: Date.UTC(2026, 10, 1, 3, 0)}},
+  {name: "no time", nowMs: NOW_MS, day: DayChoice.today, clockText: "", expected: {kind: ClockKind.invalid}},
+  {name: "not a time", nowMs: NOW_MS, day: DayChoice.today, clockText: "25:00", expected: {kind: ClockKind.invalid}},
+]
+
+for (const {name, nowMs, day, clockText, expected} of clockCases) {
+  deepStrictEqual(wallClockMs({nowMs, day, clockText, timeZone: TIME_ZONE}), expected, `the clock: ${name}`)
+}
+
+// A time chosen starts at the next five minutes, tomorrow past midnight.
+deepStrictEqual(defaultClock({nowMs: NOW_MS, timeZone: TIME_ZONE}), {day: DayChoice.today, clockText: "08:40"}, "the default time")
+deepStrictEqual(defaultClock({nowMs: TODAY_START_MS + seconds("23:58") * SECOND_MS, timeZone: TIME_ZONE}), {day: DayChoice.tomorrow, clockText: "00:00"}, "the default time at midnight")
+
+// What a query leaves at or arrives by, in the service date that holds it,
+// and a time no saved date holds refused with its own message.
+const LAST_DEPARTURE_S = seconds("26:00")
+
+function dayEntry({serviceDate, serviceDayStartMs}) {
+  return {serviceDate, serviceDayStartMs, connectionChunks: [{departureSMin: 0, departureSMax: LAST_DEPARTURE_S}]}
+}
+
+const twoDays = {formatVersion: 2, snapshots: [dayEntry({serviceDate: "2026-11-08", serviceDayStartMs: TODAY_START_MS}), dayEntry({serviceDate: "2026-11-09", serviceDayStartMs: TOMORROW_START_MS})]}
+const todayOnly = {formatVersion: 2, snapshots: [dayEntry({serviceDate: "2026-11-08", serviceDayStartMs: TODAY_START_MS})]}
+
+const plannedCases = [
+  {name: "now", when: {mode: TimeMode.now, day: DayChoice.today, clockText: "17:30"}, manifest: twoDays, expected: {kind: PlannedKind.leaving, mode: TimeMode.now, ms: NOW_MS, serviceDate: "2026-11-08", seconds: seconds("08:38")}},
+  {name: "a departure today", when: {mode: TimeMode.departAt, day: DayChoice.today, clockText: "17:30"}, manifest: twoDays, expected: {kind: PlannedKind.leaving, mode: TimeMode.departAt, ms: TODAY_START_MS + seconds("17:30") * SECOND_MS, serviceDate: "2026-11-08", seconds: seconds("17:30")}},
+  {name: "an arrival tomorrow", when: {mode: TimeMode.arriveBy, day: DayChoice.tomorrow, clockText: "09:00"}, manifest: twoDays, expected: {kind: PlannedKind.arrivingBy, mode: TimeMode.arriveBy, ms: NINE_TOMORROW_MS, serviceDate: "2026-11-09", seconds: seconds("09:00")}},
+  {name: "an arrival past midnight", when: {mode: TimeMode.arriveBy, day: DayChoice.tomorrow, clockText: "00:45"}, manifest: twoDays, expected: {kind: PlannedKind.arrivingBy, mode: TimeMode.arriveBy, ms: TOMORROW_START_MS + seconds("00:45") * SECOND_MS, serviceDate: "2026-11-09", seconds: seconds("00:45")}},
+  {name: "a departure tomorrow no saved date holds", when: {mode: TimeMode.departAt, day: DayChoice.tomorrow, clockText: "09:00"}, manifest: todayOnly, expected: {kind: PlannedKind.refused, state: StateKind.outsideSchedules}},
+  {name: "an arrival tomorrow no saved date holds", when: {mode: TimeMode.arriveBy, day: DayChoice.tomorrow, clockText: "09:00"}, manifest: todayOnly, expected: {kind: PlannedKind.refused, state: StateKind.outsideSchedules}},
+  {name: "now with no saved date", when: {mode: TimeMode.now, day: DayChoice.today, clockText: ""}, manifest: {formatVersion: 2, snapshots: []}, expected: {kind: PlannedKind.refused, state: StateKind.noServiceDate}},
+  {name: "a departure with no time", when: {mode: TimeMode.departAt, day: DayChoice.today, clockText: ""}, manifest: twoDays, expected: {kind: PlannedKind.refused, state: StateKind.chooseTime}},
+]
+
+for (const {name, when, manifest, expected} of plannedCases) {
+  deepStrictEqual(plannedTime({when, nowMs: NOW_MS, timeZone: TIME_ZONE, manifest}), expected, `the planned time: ${name}`)
+}
 
 // Two ends make a query once From is set and To is a stop, and never from
 // a stop to itself.
@@ -200,6 +297,9 @@ const stateMessageCases = [
   {kind: StateKind.locationUnavailable, expected: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."}},
   {kind: StateKind.sameStop, expected: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."}},
   {kind: StateKind.notSaved, expected: {headline: "Not saved for offline", caption: "Connect to plan this trip."}},
+  {kind: StateKind.outsideSchedules, expected: {headline: "No schedule for that time", caption: "Schedules cover today and tomorrow. Choose another time."}},
+  {kind: StateKind.chooseTime, expected: {headline: "Choose a time", caption: "Set the time to plan this trip."}},
+  {kind: StateKind.noneInTime, expected: {headline: "No journeys arrive in time", caption: "Nothing reaches this stop by then. Choose a later time."}},
   {kind: JourneysKind.none, expected: {headline: "No journeys found", caption: "Nothing runs between these two today or tomorrow."}},
   {kind: JourneysKind.unknownStop, expected: {headline: "Stop not in the schedules", caption: "Choose another stop nearby."}},
   {kind: JourneysKind.noStartStop, expected: {headline: "No stop within a walk", caption: "Start from a stop instead."}},

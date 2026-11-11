@@ -1,6 +1,7 @@
-// The Trip tab: a From field, a To field, and a swap button, and under them
-// the journeys between the two, leaving now, routed in the browser from the
-// routing snapshots. The rider's position, where the trip starts from it,
+// The Trip tab: a From field, a To field, and a swap button, a switch of
+// when the trip is for, leaving now, leaving at a time, or arriving by one,
+// and under them the journeys between the two, routed in the browser from
+// the routing snapshots. The rider's position, where the trip starts from it,
 // stays in this module: no event to the server carries it, and the router
 // fetches only the files the manifest names. After a query the page is
 // asked to name the stops and the routes of the journeys shown, and while a
@@ -12,17 +13,22 @@
 
 import {unreachable} from "./assert"
 import {chipElements} from "./route_chips"
-import {FetchKind, FailureReason, FromKind, JourneysKind, ServiceDateKind, routeJourneys, serviceDateAt} from "./routing_journeys"
+import {FetchKind, FailureReason, FromKind, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {createTripMap} from "./trip_map"
 import {
+  DayChoice,
   EndKind,
   LOCATION_END,
   NO_END,
+  PlannedKind,
   QueryKind,
   StateKind,
+  TimeMode,
   TripEnd,
+  defaultClock,
   failureState,
+  isMarkedRow,
   isRetryable,
   journeyFeatures,
   journeyRows,
@@ -30,6 +36,7 @@ import {
   nameRequest,
   queryOf,
   pickingMessage,
+  plannedTime,
   stateMessage,
   stopEnd,
   swappedEnds,
@@ -57,6 +64,9 @@ const PICK_TEXT = "Pick a stop on the map"
 const CHIP_COUNT_MAX = 1
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const NO_NAMES = Object.freeze({stops: {}, routes: {}})
+const MODE_LABELS = Object.freeze({[TimeMode.now]: "Now", [TimeMode.departAt]: "Depart at", [TimeMode.arriveBy]: "Arrive by"})
+const DAY_LABELS = Object.freeze({[DayChoice.today]: "Today", [DayChoice.tomorrow]: "Tomorrow"})
+const LEAVING_NOW = Object.freeze({mode: TimeMode.now, day: DayChoice.today, clockText: ""})
 
 // The kinds of what the query's start resolves to.
 const StartKind = Object.freeze({start: "start", refused: "refused"})
@@ -102,10 +112,6 @@ function locate(resolve) {
 // Whether the browser gives the rider's position, and the position.
 function currentPosition() {
   return new Promise(locate)
-}
-
-function isEarliestRow(row) {
-  return row.isEarliest
 }
 
 // `elements` as one fragment, to put in place of an element's children.
@@ -165,6 +171,30 @@ async function fetchManifest(url) {
     console.warn("Routing manifest not fetched", error)
     return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: url}
   }
+}
+
+// The journeys of the query leaving at, or arriving by, the time `planned`
+// names.
+async function routeFor({planned, manifest, from, toStopId}) {
+  const {serviceDate, seconds} = planned
+
+  switch (planned.kind) {
+    case PlannedKind.leaving:
+      return await routeJourneys({manifest, serviceDate, departureS: seconds, from, toStopId, fetchFile})
+    case PlannedKind.arrivingBy:
+      return await routeJourneysArrivingBy({manifest, serviceDate, arrivalS: seconds, from, toStopId, fetchFile})
+    default:
+      return unreachable(planned.kind, "trip planner: a planned time of unknown kind")
+  }
+}
+
+// The state that says no journey was found for the time `planned` names.
+function noneState(planned) {
+  if (planned.kind === PlannedKind.arrivingBy) {
+    return StateKind.noneInTime
+  }
+
+  return JourneysKind.none
 }
 
 function serviceDayStartsOf(manifest) {
@@ -234,6 +264,7 @@ function summaryElement(row) {
 export const TripPlanner = {
   mounted() {
     this.ends = {[TripEnd.from]: NO_END, [TripEnd.to]: NO_END}
+    this.when = LEAVING_NOW
     // The query whose answer the tab shows; an answer to an earlier one is
     // dropped.
     this.queryCount = 0
@@ -272,7 +303,9 @@ export const TripPlanner = {
 
     if (handed.kind === HandoffKind.found) {
       this.ends = handed.state.ends
+      this.when = handed.state.when
       this.writeFields()
+      this.writeWhen()
       this.plan()
     }
   },
@@ -286,7 +319,7 @@ export const TripPlanner = {
       return NO_HANDOFF
     }
 
-    return {kind: HandoffKind.found, state: {ends: {...this.ends}}}
+    return {kind: HandoffKind.found, state: {ends: {...this.ends}, when: this.when}}
   },
 
   resendFilter() {
@@ -356,9 +389,92 @@ export const TripPlanner = {
       }
     })
 
-    this.el.replaceChildren(ends, this.status, this.windowLine, this.journeysElement, this.clearButton)
+    this.el.replaceChildren(ends, this.buildWhen(), this.status, this.windowLine, this.journeysElement, this.clearButton)
     this.writeFields()
     this.writeMenus()
+    this.writeWhen()
+  },
+
+  // The switch of when the trip is for, as a group of toggle buttons, and
+  // the day and the browser's own time input a chosen time reads.
+  buildWhen() {
+    const when = element({tag: "div", className: "trip-when"})
+    const modes = element({tag: "div", className: "trip-modes"})
+    modes.setAttribute("role", "group")
+    modes.setAttribute("aria-label", "When")
+    this.modeButtons = {}
+
+    for (const mode of Object.values(TimeMode)) {
+      const modeButton = button({className: "trip-mode", text: MODE_LABELS[mode]})
+      modeButton.addEventListener("click", () => { this.setMode(mode) })
+      this.modeButtons[mode] = modeButton
+      modes.append(modeButton)
+    }
+
+    this.timeRow = element({tag: "div", className: "trip-time"})
+    const dayField = element({tag: "div", className: "trip-time-field"})
+    const dayLabel = element({tag: "label", className: "trip-time-label", text: "Day"})
+    dayLabel.htmlFor = "trip-day"
+    this.daySelect = element({tag: "select", className: "trip-time-input"})
+    this.daySelect.id = "trip-day"
+
+    for (const day of Object.values(DayChoice)) {
+      const option = element({tag: "option", className: "", text: DAY_LABELS[day]})
+      option.value = day
+      this.daySelect.append(option)
+    }
+
+    this.daySelect.addEventListener("change", () => { this.setClock({day: this.daySelect.value, clockText: this.when.clockText}) })
+    dayField.append(dayLabel, this.daySelect)
+
+    const clockField = element({tag: "div", className: "trip-time-field"})
+    const clockLabel = element({tag: "label", className: "trip-time-label", text: "Time"})
+    clockLabel.htmlFor = "trip-clock"
+    this.clockInput = element({tag: "input", className: "trip-time-input"})
+    this.clockInput.id = "trip-clock"
+    this.clockInput.type = "time"
+    this.clockInput.addEventListener("change", () => { this.setClock({day: this.when.day, clockText: this.clockInput.value}) })
+    clockField.append(clockLabel, this.clockInput)
+
+    this.timeRow.append(dayField, clockField)
+    when.append(modes, this.timeRow)
+    return when
+  },
+
+  writeWhen() {
+    for (const [mode, modeButton] of Object.entries(this.modeButtons)) {
+      modeButton.setAttribute("aria-pressed", String(mode === this.when.mode))
+    }
+
+    this.timeRow.hidden = this.when.mode === TimeMode.now
+    this.daySelect.value = this.when.day
+    this.clockInput.value = this.when.clockText
+  },
+
+  // Switches when the trip is for; a chosen time starts at the next five
+  // minutes the first time one is shown.
+  setMode(mode) {
+    const isChosenTime = mode !== TimeMode.now
+    const isUnset = this.when.clockText === ""
+    const isFirstChosen = isChosenTime && isUnset
+    let {day, clockText} = this.when
+
+    if (isFirstChosen) {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const started = defaultClock({nowMs: Date.now(), timeZone})
+      day = started.day
+      clockText = started.clockText
+    }
+
+    this.when = {mode, day, clockText}
+    this.writeWhen()
+    this.plan()
+  },
+
+  setClock({day, clockText}) {
+    this.when = {mode: this.when.mode, day, clockText}
+    this.writeWhen()
+    this.plan()
   },
 
   writeFields() {
@@ -473,7 +589,9 @@ export const TripPlanner = {
   clear() {
     stopPicking()
     this.ends = {[TripEnd.from]: NO_END, [TripEnd.to]: NO_END}
+    this.when = LEAVING_NOW
     this.writeFields()
+    this.writeWhen()
     this.closeResult()
     this.status.replaceChildren()
     this.startFromLocation()
@@ -506,8 +624,9 @@ export const TripPlanner = {
     }
   },
 
-  // Plans the trip the two ends make, leaving now, in place of the one
-  // shown. Each wait checks that no later query has started since.
+  // Plans the trip the two ends make, for the time the switch names, in
+  // place of the one shown. Each wait checks that no later query has
+  // started since.
   async plan() {
     this.closeResult()
     this.status.replaceChildren()
@@ -541,20 +660,22 @@ export const TripPlanner = {
     }
 
     const {manifest} = manifestOutcome
-    const dated = serviceDateAt({manifest, departureMs: Date.now()})
+    const nowMs = Date.now()
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const planned = plannedTime({when: this.when, nowMs, timeZone, manifest})
 
-    if (dated.kind === ServiceDateKind.none) {
-      this.showState({kind: StateKind.noServiceDate, retry: true})
+    if (planned.kind === PlannedKind.refused) {
+      this.showState({kind: planned.state, retry: planned.state === StateKind.noServiceDate})
       return
     }
 
-    const answer = await routeJourneys({manifest, serviceDate: dated.serviceDate, departureS: dated.departureS, from: start.from, toStopId: query.toStopId, fetchFile})
+    const answer = await routeFor({planned, manifest, from: start.from, toStopId: query.toStopId})
 
     if (queryNumber !== this.queryCount) {
       return
     }
 
-    this.answer({answer, dated, manifest, origin: start.origin})
+    this.answer({answer, planned, nowMs, manifest, origin: start.origin})
   },
 
   // The router's start for `from`: a stop, or the rider's position, which
@@ -574,7 +695,7 @@ export const TripPlanner = {
     return {kind: StartKind.start, from: {kind: FromKind.position, lat, lon}, origin: located.position}
   },
 
-  answer({answer, dated, manifest, origin}) {
+  answer({answer, planned, nowMs, manifest, origin}) {
     switch (answer.kind) {
       case JourneysKind.found:
         break
@@ -583,6 +704,8 @@ export const TripPlanner = {
         this.showState({kind: failureState(answer), retry: isRetryable(answer)})
         return
       case JourneysKind.none:
+        this.showState({kind: noneState(planned), retry: false})
+        return
       case JourneysKind.unknownStop:
       case JourneysKind.noStartStop:
         this.showState({kind: answer.kind, retry: false})
@@ -595,7 +718,8 @@ export const TripPlanner = {
 
     this.shown = {
       journeys: answer.journeys,
-      departure: {serviceDate: dated.serviceDate, departureS: dated.departureS},
+      planned,
+      nowMs,
       serviceDayStartsMs: serviceDayStartsOf(manifest),
       origin,
       queryNumber: this.queryCount
@@ -603,7 +727,7 @@ export const TripPlanner = {
 
     this.names = NO_NAMES
     const rows = this.rows()
-    this.selectedIndex = rows.findIndex(isEarliestRow)
+    this.selectedIndex = rows.findIndex(isMarkedRow)
     this.writeJourneys(rows)
     this.selectJourney({index: this.selectedIndex, rows})
     this.announceJourneys(rows)
@@ -618,9 +742,9 @@ export const TripPlanner = {
   },
 
   rows() {
-    const {journeys, departure, serviceDayStartsMs} = this.shown
+    const {journeys, nowMs, serviceDayStartsMs} = this.shown
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    return journeyRows({journeys, departure, serviceDayStartsMs, names: this.names, timeZone})
+    return journeyRows({journeys, nowMs, serviceDayStartsMs, names: this.names, timeZone})
   },
 
   // Asks the page to name the stops and routes of the journeys shown; the
@@ -652,7 +776,8 @@ export const TripPlanner = {
 
   writeJourneys(rows) {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    this.windowLine.textContent = windowText({journeys: this.shown.journeys, serviceDayStartsMs: this.shown.serviceDayStartsMs, timeZone})
+    const {journeys, planned, nowMs, serviceDayStartsMs} = this.shown
+    this.windowLine.textContent = windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone})
     const items = []
 
     for (const [index, row] of rows.entries()) {
@@ -663,7 +788,7 @@ export const TripPlanner = {
       const heading = element({tag: "span", className: "trip-journey-heading"})
       heading.append(element({tag: "strong", className: "trip-journey-times", text: row.timesText}))
       const badge = element({tag: "span", className: "trip-journey-badge", text: row.badgeText})
-      badge.classList.toggle("trip-journey-earliest", row.isEarliest)
+      badge.classList.toggle("trip-journey-marked", row.isMarked)
       heading.append(badge)
       item.append(heading, summaryElement(row))
       item.addEventListener("click", () => { this.selectJourney({index, rows: this.rows()}) })

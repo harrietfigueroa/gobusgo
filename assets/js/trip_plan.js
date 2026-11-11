@@ -1,13 +1,13 @@
 // What the Trip tab decides, as pure functions: whether two ends make a
-// query, what the journeys of a query read as, which stops and routes the
-// page is asked to name, which routes a selected journey's filter names,
-// and what the map draws of it. Nothing here reads the document, the
-// clock, storage, or the network: the time zone, the names, and the
-// positions arrive as arguments.
+// query, the time it leaves at or arrives by, what the journeys of a query
+// read as, which stops and routes the page is asked to name, which routes a
+// selected journey's filter names, and what the map draws of it. Nothing
+// here reads the document, the clock, storage, or the network: the time,
+// the time zone, the names, and the positions arrive as arguments.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {LegKind} from "./routing_engine.js"
-import {FailureReason, JourneysKind, WINDOW_SECONDS} from "./routing_journeys.js"
+import {FailureReason, JourneysKind, ServiceDateKind, WINDOW_SECONDS, serviceDateAt} from "./routing_journeys.js"
 
 /** The two ends of a trip. */
 export const TripEnd = Object.freeze({from: "from", to: "to"})
@@ -26,7 +26,22 @@ export const StateKind = Object.freeze({
   locationUnavailable: "locationUnavailable",
   sameStop: "sameStop",
   notSaved: "notSaved",
+  outsideSchedules: "outsideSchedules",
+  chooseTime: "chooseTime",
+  noneInTime: "noneInTime",
 })
+
+/** When a trip is planned for: leaving now, leaving at a time, or arriving by one. */
+export const TimeMode = Object.freeze({now: "now", departAt: "departAt", arriveBy: "arriveBy"})
+
+/** The days a chosen time can fall on. */
+export const DayChoice = Object.freeze({today: "today", tomorrow: "tomorrow"})
+
+/** The kinds of the time a query is planned for: leaving at it, arriving by it, or refused. */
+export const PlannedKind = Object.freeze({leaving: "leaving", arrivingBy: "arrivingBy", refused: "refused"})
+
+/** The kinds of a time read from the page's clock: a valid instant, or text that names none. */
+export const ClockKind = Object.freeze({valid: "valid", invalid: "invalid"})
 
 /** The kinds of a feature the map draws of a journey. */
 export const FeatureKind = Object.freeze({ride: "ride", walk: "walk", origin: "origin", destination: "destination"})
@@ -48,6 +63,12 @@ const MINUTE_S = 60
 const ARROW = " → "
 const LINE_POINT_COUNT_MIN = 2
 const TOMORROW_PREFIX = "Tomorrow "
+const DAY_MS = 24 * 60 * 60 * SECOND_MS
+const DEFAULT_STEP_MINUTES = 5
+const CLOCK_DIGITS = 2
+// A time input's value: two-digit hours and minutes.
+const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
+const DAY_SHIFTS = Object.freeze({[DayChoice.today]: 0, [DayChoice.tomorrow]: 1})
 
 const stateMessages = Object.freeze({
   [StateKind.loading]: {headline: "Finding journeys…", caption: "Searching today's and tomorrow's schedules."},
@@ -56,6 +77,9 @@ const stateMessages = Object.freeze({
   [StateKind.locationUnavailable]: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."},
   [StateKind.sameStop]: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."},
   [StateKind.notSaved]: {headline: "Not saved for offline", caption: "Connect to plan this trip."},
+  [StateKind.outsideSchedules]: {headline: "No schedule for that time", caption: "Schedules cover today and tomorrow. Choose another time."},
+  [StateKind.chooseTime]: {headline: "Choose a time", caption: "Set the time to plan this trip."},
+  [StateKind.noneInTime]: {headline: "No journeys arrive in time", caption: "Nothing reaches this stop by then. Choose a later time."},
   [JourneysKind.none]: {headline: "No journeys found", caption: "Nothing runs between these two today or tomorrow."},
   [JourneysKind.unknownStop]: {headline: "Stop not in the schedules", caption: "Choose another stop nearby."},
   [JourneysKind.noStartStop]: {headline: "No stop within a walk", caption: "Start from a stop instead."},
@@ -170,9 +194,14 @@ function absoluteMs({serviceDayStartsMs, serviceDate, seconds}) {
   return startMs + seconds * SECOND_MS
 }
 
-// The seconds a journey leaves at: its first ride's departure less the
-// walks before it, or `departureS` for a journey with no ride.
-function leaveS({journey, departureS}) {
+// The seconds a journey leaves at: the time a journey arriving by a time
+// was found to leave at, or else its first ride's departure less the walks
+// before it, or its arrival less its walks for a journey with no ride.
+function leaveS(journey) {
+  if (journey.departureS !== undefined) {
+    return journey.departureS
+  }
+
   let walkS = 0
 
   for (const leg of journey.legs) {
@@ -183,7 +212,149 @@ function leaveS({journey, departureS}) {
     walkS += leg.durationS
   }
 
-  return departureS
+  return journey.arrivalS - walkS
+}
+
+// The fields of `ms` on the clock of `timeZone`, as numbers.
+function zonedParts({ms, timeZone}) {
+  const format = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
+  const parts = {}
+
+  for (const part of format.formatToParts(new Date(ms))) {
+    if (part.type !== "literal") {
+      parts[part.type] = Number(part.value)
+    }
+  }
+
+  return parts
+}
+
+// How far the clock of `timeZone` stands ahead of UTC at `ms`.
+function zoneOffsetMs({ms, timeZone}) {
+  const parts = zonedParts({ms, timeZone})
+  const asUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  const wholeMs = Math.floor(ms / SECOND_MS) * SECOND_MS
+  return asUtcMs - wholeMs
+}
+
+// The day of `ms` on the calendar of `timeZone`, counted in whole days.
+function dayNumber({ms, timeZone}) {
+  const parts = zonedParts({ms, timeZone})
+  const dayMs = Date.UTC(parts.year, parts.month - 1, parts.day)
+  return Math.round(dayMs / DAY_MS)
+}
+
+// The words that place `ms` on a day relative to `nowMs`: none for today,
+// "tomorrow", or the weekday.
+function dayWords({ms, nowMs, timeZone}) {
+  const offset = dayNumber({ms, timeZone}) - dayNumber({ms: nowMs, timeZone})
+
+  if (offset === 0) {
+    return {prefix: "", phrase: ""}
+  } else if (offset === 1) {
+    return {prefix: TOMORROW_PREFIX, phrase: "tomorrow "}
+  }
+
+  const weekday = new Intl.DateTimeFormat("en-US", {weekday: "short", timeZone}).format(new Date(ms))
+  return {prefix: `${weekday} `, phrase: `on ${weekday} `}
+}
+
+/**
+ * The instant a time on the page's clock names: `day`, a DayChoice member
+ * counted from `nowMs`, at `clockText`, "HH:MM" as a time input gives it,
+ * on the clock of `timeZone`. A ClockKind member: valid with `ms`, or
+ * invalid for text that names no time.
+ */
+export function wallClockMs({nowMs, day, clockText, timeZone}) {
+  const match = CLOCK_PATTERN.exec(clockText)
+
+  if (match === null) {
+    return {kind: ClockKind.invalid}
+  }
+
+  const isKnownDay = Object.hasOwn(DAY_SHIFTS, day)
+  assertCondition(isKnownDay, "trip plan: a day of unknown kind " + day)
+  const today = zonedParts({ms: nowMs, timeZone})
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const guessMs = Date.UTC(today.year, today.month - 1, today.day + DAY_SHIFTS[day], hours, minutes)
+  const firstMs = guessMs - zoneOffsetMs({ms: guessMs, timeZone})
+  const ms = guessMs - zoneOffsetMs({ms: firstMs, timeZone})
+  return {kind: ClockKind.valid, ms}
+}
+
+/** The day and "HH:MM" a chosen time starts at: the next whole five minutes from `nowMs`. */
+export function defaultClock({nowMs, timeZone}) {
+  const stepMs = DEFAULT_STEP_MINUTES * MINUTE_S * SECOND_MS
+  const roundedMs = Math.ceil(nowMs / stepMs) * stepMs
+  const parts = zonedParts({ms: roundedMs, timeZone})
+  const clockText = `${String(parts.hour).padStart(CLOCK_DIGITS, "0")}:${String(parts.minute).padStart(CLOCK_DIGITS, "0")}`
+  const isToday = dayNumber({ms: roundedMs, timeZone}) === dayNumber({ms: nowMs, timeZone})
+
+  if (isToday) {
+    return {day: DayChoice.today, clockText}
+  }
+
+  return {day: DayChoice.tomorrow, clockText}
+}
+
+function refused(state) {
+  return {kind: PlannedKind.refused, state}
+}
+
+/**
+ * The time a query leaves at or arrives by, from `when`, its TimeMode
+ * `mode` with the `day` and `clockText` a chosen time reads: a PlannedKind
+ * member, leaving or arriving by with the mode, the instant in `ms`, and
+ * the service date of `manifest` that holds it with the seconds from that
+ * date's start, or refused with the state that says why. A time no
+ * snapshot holds is refused, never moved to another time.
+ */
+export function plannedTime({when, nowMs, timeZone, manifest}) {
+  switch (when.mode) {
+    case TimeMode.now: {
+      const dated = serviceDateAt({manifest, departureMs: nowMs})
+
+      if (dated.kind === ServiceDateKind.none) {
+        return refused(StateKind.noServiceDate)
+      }
+
+      return {kind: PlannedKind.leaving, mode: when.mode, ms: nowMs, serviceDate: dated.serviceDate, seconds: dated.departureS}
+    }
+    case TimeMode.departAt:
+    case TimeMode.arriveBy: {
+      const clock = wallClockMs({nowMs, day: when.day, clockText: when.clockText, timeZone})
+
+      if (clock.kind === ClockKind.invalid) {
+        return refused(StateKind.chooseTime)
+      }
+
+      const dated = serviceDateAt({manifest, departureMs: clock.ms})
+
+      if (dated.kind === ServiceDateKind.none) {
+        return refused(StateKind.outsideSchedules)
+      }
+
+      let kind = PlannedKind.leaving
+
+      if (when.mode === TimeMode.arriveBy) {
+        kind = PlannedKind.arrivingBy
+      }
+
+      return {kind, mode: when.mode, ms: clock.ms, serviceDate: dated.serviceDate, seconds: dated.departureS}
+    }
+    default:
+      return unreachable(when.mode, "trip plan: a time mode of unknown kind")
+  }
 }
 
 /** Whole minutes of a walk, rounded up, so a short walk reads as one minute. */
@@ -284,16 +455,28 @@ function steps({journey, names, clockOf}) {
   return result
 }
 
+// The text a row's badge leads with: the journey the answer marks, the
+// earliest arrival or the latest departure, or none.
+function markText(journey) {
+  if (journey.isEarliest === true) {
+    return "Earliest · "
+  } else if (journey.isLatest === true) {
+    return "Latest · "
+  }
+
+  return ""
+}
+
 /**
  * The rows of the journey list for `journeys`, a found answer's, fewest
- * changes first and the earlier arrival first within that. `departure` is
- * the query's, its `serviceDate` and its `departureS`; a journey of another
- * service date reads "Tomorrow" before its time. `serviceDayStartsMs` holds
- * each service date's start, `names` the page's names of the stops and the
- * routes, and `timeZone` the zone the times read in. Each row keeps its
- * journey.
+ * changes first and the earlier arrival first within that. A journey that
+ * leaves on another day than `nowMs` reads "Tomorrow" or its weekday before
+ * its time. `serviceDayStartsMs` holds each service date's start, `names`
+ * the page's names of the stops and the routes, and `timeZone` the zone the
+ * times read in. Each row keeps its journey, and the row of the journey the
+ * answer marks, the earliest arrival or the latest departure, is marked.
  */
-export function journeyRows({journeys, departure, serviceDayStartsMs, names, timeZone}) {
+export function journeyRows({journeys, nowMs, serviceDayStartsMs, names, timeZone}) {
   const timed = []
 
   for (const journey of journeys) {
@@ -305,36 +488,27 @@ export function journeyRows({journeys, departure, serviceDayStartsMs, names, tim
   const rows = []
 
   for (const {journey, arrivalMs} of timed) {
-    const isTomorrow = journey.serviceDate !== departure.serviceDate
-
     function clockOf(seconds) {
       const ms = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds})
       return clockText({ms, timeZone})
     }
 
-    const startS = leaveS({journey, departureS: departure.departureS})
-    let leaveText = clockOf(startS)
-
-    if (isTomorrow) {
-      leaveText = TOMORROW_PREFIX + leaveText
-    }
-
+    const startS = leaveS(journey)
+    const leaveMs = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds: startS})
+    const day = dayWords({ms: leaveMs, nowMs, timeZone})
+    const leaveClockText = clockOf(startS)
     const durationMinutes = Math.round((journey.arrivalS - startS) / MINUTE_S)
-    let badgeText = `${durationMinutes} min`
-
-    if (journey.isEarliest) {
-      badgeText = `Earliest · ${badgeText}`
-    }
-
+    const mark = markText(journey)
     const arrivalText = clockText({ms: arrivalMs, timeZone})
 
     rows.push({
       journey,
-      isEarliest: journey.isEarliest,
-      isTomorrow,
+      isMarked: mark !== "",
+      dayPhrase: day.phrase,
+      leaveClockText,
       arrivalText,
-      timesText: leaveText + ARROW + arrivalText,
-      badgeText,
+      timesText: day.prefix + leaveClockText + ARROW + arrivalText,
+      badgeText: `${mark}${durationMinutes} min`,
       changesText: changesText(journey.changes),
       summary: summaryParts({journey, names}),
       steps: steps({journey, names, clockOf}),
@@ -344,41 +518,50 @@ export function journeyRows({journeys, departure, serviceDayStartsMs, names, tim
   return rows
 }
 
-function arrivalPhrase(row) {
-  if (row.isTomorrow) {
-    return `tomorrow at ${row.arrivalText}`
-  }
-
-  return `at ${row.arrivalText}`
-}
-
 /**
  * The sentence the Trip tab's status line holds once `rows`, the rows of
  * a found answer, are written: how many journeys there are and when the
- * earliest arrives, which a screen reader announces in place of the list
- * a sighted rider sees appear.
+ * marked one arrives, or leaves for an answer arriving by a time, which a
+ * screen reader announces in place of the list a sighted rider sees appear.
  */
 export function journeysAnnouncement(rows) {
   assertCondition(rows.length > 0, `trip plan: an announcement needs a journey, got ${rows.length}`)
+  const marked = rows.find(isMarkedRow)
+  assertCondition(marked !== undefined, "trip plan: a found answer marks a journey")
+  const isArrivingBy = marked.journey.isLatest === true
 
   if (rows.length === 1) {
-    return `1 journey. It arrives ${arrivalPhrase(rows[0])}.`
+    if (isArrivingBy) {
+      return `1 journey. It leaves ${marked.dayPhrase}at ${marked.leaveClockText}.`
+    }
+
+    return `1 journey. It arrives ${marked.dayPhrase}at ${marked.arrivalText}.`
   }
 
-  const earliest = rows.find(isEarliestRow)
-  assertCondition(earliest !== undefined, "trip plan: a found answer marks its earliest journey")
-  return `${rows.length} journeys. The earliest arrives ${arrivalPhrase(earliest)}.`
+  if (isArrivingBy) {
+    return `${rows.length} journeys. The latest leaves ${marked.dayPhrase}at ${marked.leaveClockText}.`
+  }
+
+  return `${rows.length} journeys. The earliest arrives ${marked.dayPhrase}at ${marked.arrivalText}.`
 }
 
-function isEarliestRow(row) {
-  return row.isEarliest
+/** Whether `row` is the row of the journey its answer marks. */
+export function isMarkedRow(row) {
+  return row.isMarked
 }
 
-/**
- * The line over the journey list: that the query leaves now, and the time
- * by which the journeys shown arrive, the earliest arrival plus the window.
- */
-export function windowText({journeys, serviceDayStartsMs, timeZone}) {
+// The words after a chosen time that place it on a day, such as " tomorrow".
+function daySuffix({ms, nowMs, timeZone}) {
+  const {phrase} = dayWords({ms, nowMs, timeZone})
+
+  if (phrase === "") {
+    return ""
+  }
+
+  return " " + phrase.trim()
+}
+
+function earliestArrivalMs({journeys, serviceDayStartsMs}) {
   let earliestMs = Number.POSITIVE_INFINITY
 
   for (const journey of journeys) {
@@ -387,8 +570,47 @@ export function windowText({journeys, serviceDayStartsMs, timeZone}) {
   }
 
   assertCondition(Number.isFinite(earliestMs), "trip plan: a window over no journey")
-  const cutoffMs = earliestMs + WINDOW_SECONDS * SECOND_MS
-  return `Leaving now · journeys arriving by ${clockText({ms: cutoffMs, timeZone})}`
+  return earliestMs
+}
+
+function latestDepartureMs({journeys, serviceDayStartsMs}) {
+  let latestMs = Number.NEGATIVE_INFINITY
+
+  for (const journey of journeys) {
+    const departureMs = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds: leaveS(journey)})
+    latestMs = Math.max(latestMs, departureMs)
+  }
+
+  assertCondition(Number.isFinite(latestMs), "trip plan: a window over no journey")
+  return latestMs
+}
+
+/**
+ * The line over the journey list: what `planned`, a PlannedKind member a
+ * query was routed for, asked, and the window of the journeys shown: those
+ * arriving by the earliest arrival plus the window, or those leaving from
+ * the latest departure less it for a query arriving by a time.
+ */
+export function windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone}) {
+  const windowMs = WINDOW_SECONDS * SECOND_MS
+  const chosenText = clockText({ms: planned.ms, timeZone}) + daySuffix({ms: planned.ms, nowMs, timeZone})
+
+  switch (planned.mode) {
+    case TimeMode.now: {
+      const cutoffMs = earliestArrivalMs({journeys, serviceDayStartsMs}) + windowMs
+      return `Leaving now · journeys arriving by ${clockText({ms: cutoffMs, timeZone})}`
+    }
+    case TimeMode.departAt: {
+      const cutoffMs = earliestArrivalMs({journeys, serviceDayStartsMs}) + windowMs
+      return `Leaving at ${chosenText} · journeys arriving by ${clockText({ms: cutoffMs, timeZone})}`
+    }
+    case TimeMode.arriveBy: {
+      const cutoffMs = latestDepartureMs({journeys, serviceDayStartsMs}) - windowMs
+      return `Arriving by ${chosenText} · journeys leaving from ${clockText({ms: cutoffMs, timeZone})}`
+    }
+    default:
+      return unreachable(planned.mode, "trip plan: a time mode of unknown kind")
+  }
 }
 
 function addBounded({values, value, countMax}) {
