@@ -21,6 +21,18 @@
 //
 // A change to a field's meaning, or a field removed, is a new version; a
 // field added keeps the version.
+//
+// The journeys the app finds itself are offered as a second object, version
+// 1 of "gobusgo.journeys", with no choice behind it:
+//
+//   schema        "gobusgo.journeys"
+//   version       1
+//   timeZone      the IANA zone the rider's clock reads in
+//   from, to      the names of the two ends
+//   plannedAt     the instant the plan was made, an ISO 8601 UTC time
+//   journeys      at most JOURNEYS_OFFERED_MAX, in the order given, each with the
+//                 serviceDate, departsAt, arrivesAt, changes, and legs of the
+//                 object above
 
 import {assertCondition, unreachable} from "./assert.js"
 import {LEG_KIND_TO_POINT} from "./point_journeys.js"
@@ -32,6 +44,15 @@ export const JOURNEY_SCHEMA_NAME = "gobusgo.journey"
 
 /** The version of the object this module writes. */
 export const JOURNEY_SCHEMA_VERSION = 1
+
+/** The name that tells the offered journeys from the journey the rider chose. */
+export const JOURNEYS_SCHEMA_NAME = "gobusgo.journeys"
+
+/** The version of the offered journeys this module writes. */
+export const JOURNEYS_SCHEMA_VERSION = 1
+
+/** The most journeys the offered object holds. */
+export const JOURNEYS_OFFERED_MAX = 3
 
 /** The most legs a journey holds; the router's rounds bound it far below this. */
 export const JOURNEY_LEG_COUNT_MAX = 32
@@ -80,14 +101,9 @@ function contextLeg({leg, journey, names, fromName, instants}) {
   }
 }
 
-/**
- * The object of `journey`, one of a found answer's journeys: `names` is the
- * page's `{stops, routes}`, `serviceDayStartsMs` the start of each service
- * date's day, `timeZone` the rider's, and `from` and `to` the names of the
- * two ends. The journey's own times are seconds from its service date's
- * start, written here as instants.
- */
-export function journeyContext({journey, names, serviceDayStartsMs, timeZone, from, to}) {
+// The fields of `journey` the two objects share: its service date, instants,
+// changes, and legs.
+function journeyFields({journey, names, serviceDayStartsMs, from}) {
   assertCondition(journey.legs.length > 0, "journey context: a journey has no leg")
   assertCondition(journey.legs.length <= JOURNEY_LEG_COUNT_MAX, "journey context: a journey has more legs than " + JOURNEY_LEG_COUNT_MAX)
   const {serviceDate} = journey
@@ -102,21 +118,66 @@ export function journeyContext({journey, names, serviceDayStartsMs, timeZone, fr
     legs.push(contextLeg({leg, journey, names, fromName: from, instants}))
   }
 
-  const context = {
-    schema: JOURNEY_SCHEMA_NAME,
-    version: JOURNEY_SCHEMA_VERSION,
+  return {
     serviceDate,
-    timeZone,
-    from,
-    to,
     departsAt: instants(journeyLeaveS(journey)),
     arrivesAt: instants(journey.arrivalS),
     changes: journey.changes,
     legs,
   }
+}
+
+/**
+ * The object of `journey`, one of a found answer's journeys: `names` is the
+ * page's `{stops, routes}`, `serviceDayStartsMs` the start of each service
+ * date's day, `timeZone` the rider's, and `from` and `to` the names of the
+ * two ends. The journey's own times are seconds from its service date's
+ * start, written here as instants.
+ */
+export function journeyContext({journey, names, serviceDayStartsMs, timeZone, from, to}) {
+  const fields = journeyFields({journey, names, serviceDayStartsMs, from})
+
+  const context = {
+    schema: JOURNEY_SCHEMA_NAME,
+    version: JOURNEY_SCHEMA_VERSION,
+    timeZone,
+    from,
+    to,
+    ...fields,
+  }
 
   const problem = journeyProblem(context)
   assertCondition(problem.kind === ProblemKind.valid, "journey context: the object is invalid at " + problem.path)
+  return context
+}
+
+/**
+ * The offered object of `journeys`, a found answer's journeys in the order
+ * the cards show them, of which the first JOURNEYS_OFFERED_MAX are written;
+ * `plannedAtMs` is the instant of the plan, and the other arguments are
+ * those of `journeyContext`.
+ */
+export function journeysContext({journeys, names, serviceDayStartsMs, timeZone, from, to, plannedAtMs}) {
+  assertCondition(journeys.length > 0, "journeys context: no journey is offered")
+  const kept = journeys.slice(0, JOURNEYS_OFFERED_MAX)
+  const written = []
+
+  for (const journey of kept) {
+    written.push(journeyFields({journey, names, serviceDayStartsMs, from}))
+  }
+
+  const context = {
+    schema: JOURNEYS_SCHEMA_NAME,
+    version: JOURNEYS_SCHEMA_VERSION,
+    timeZone,
+    from,
+    to,
+    plannedAt: new Date(plannedAtMs).toISOString(),
+    journeys: written,
+  }
+
+  const problem = journeysProblem(context)
+  assertCondition(problem.kind === ProblemKind.valid, "journeys context: the object is invalid at " + problem.path)
   return context
 }
 
@@ -258,17 +319,86 @@ export function journeyProblem(value) {
     return headFailure
   }
 
-  const legCountFailure = firstFailure([{path: "legs", isValid: value.legs.length > 0}, {path: "legs", isValid: value.legs.length <= JOURNEY_LEG_COUNT_MAX}])
+  return legListProblem({legs: value.legs, path: "legs"})
+}
+
+// The checks of a list of legs: its length, then each leg, at `path`.
+function legListProblem({legs, path}) {
+  const legCountFailure = firstFailure([{path, isValid: legs.length > 0}, {path, isValid: legs.length <= JOURNEY_LEG_COUNT_MAX}])
 
   if (legCountFailure.kind === ProblemKind.invalid) {
     return legCountFailure
   }
 
-  for (const [index, leg] of value.legs.entries()) {
-    const legFailure = legProblem({leg, path: `legs.${index}`})
+  for (const [index, leg] of legs.entries()) {
+    const legFailure = legProblem({leg, path: `${path}.${index}`})
 
     if (legFailure.kind === ProblemKind.invalid) {
       return legFailure
+    }
+  }
+
+  return VALID
+}
+
+// The checks of one journey of the offered object, at `path`.
+function offeredJourneyProblem({value, path}) {
+  if (!isRecord(value)) {
+    return invalid(path)
+  }
+
+  const isLegList = Array.isArray(value.legs)
+  const headFailure = firstFailure([
+    {path: path + ".serviceDate", isValid: isText(value.serviceDate)},
+    {path: path + ".departsAt", isValid: isInstant(value.departsAt)},
+    {path: path + ".arrivesAt", isValid: isInstant(value.arrivesAt)},
+    {path: path + ".changes", isValid: isCount(value.changes)},
+    {path: path + ".legs", isValid: isLegList},
+  ])
+
+  if (headFailure.kind === ProblemKind.invalid) {
+    return headFailure
+  }
+
+  return legListProblem({legs: value.legs, path: path + ".legs"})
+}
+
+/**
+ * Whether `value` is an offered object of version 1: a ProblemKind member,
+ * valid, or invalid with the `path` of the first field that is not what the
+ * version says. Fields it does not name are left alone.
+ */
+export function journeysProblem(value) {
+  if (!isRecord(value)) {
+    return invalid("root")
+  }
+
+  const isJourneyList = Array.isArray(value.journeys)
+  const headFailure = firstFailure([
+    {path: "schema", isValid: value.schema === JOURNEYS_SCHEMA_NAME},
+    {path: "version", isValid: value.version === JOURNEYS_SCHEMA_VERSION},
+    {path: "timeZone", isValid: isText(value.timeZone)},
+    {path: "from", isValid: isText(value.from)},
+    {path: "to", isValid: isText(value.to)},
+    {path: "plannedAt", isValid: isInstant(value.plannedAt)},
+    {path: "journeys", isValid: isJourneyList},
+  ])
+
+  if (headFailure.kind === ProblemKind.invalid) {
+    return headFailure
+  }
+
+  const countFailure = firstFailure([{path: "journeys", isValid: value.journeys.length > 0}, {path: "journeys", isValid: value.journeys.length <= JOURNEYS_OFFERED_MAX}])
+
+  if (countFailure.kind === ProblemKind.invalid) {
+    return countFailure
+  }
+
+  for (const [index, journey] of value.journeys.entries()) {
+    const journeyFailure = offeredJourneyProblem({value: journey, path: `journeys.${index}`})
+
+    if (journeyFailure.kind === ProblemKind.invalid) {
+      return journeyFailure
     }
   }
 

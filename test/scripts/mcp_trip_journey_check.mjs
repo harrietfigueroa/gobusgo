@@ -8,7 +8,7 @@
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
 import {LegKind} from "../../assets/js/routing_engine.js"
-import {JOURNEY_LEG_COUNT_MAX, JOURNEY_SCHEMA_NAME, JOURNEY_SCHEMA_VERSION, ProblemKind, chosenMessage, journeyContext, journeyProblem} from "../../assets/js/mcp_trip_journey.js"
+import {JOURNEY_LEG_COUNT_MAX, JOURNEY_SCHEMA_NAME, JOURNEY_SCHEMA_VERSION, JOURNEYS_OFFERED_MAX, JOURNEYS_SCHEMA_NAME, JOURNEYS_SCHEMA_VERSION, ProblemKind, chosenMessage, journeyContext, journeyProblem, journeysContext, journeysProblem} from "../../assets/js/mcp_trip_journey.js"
 import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
 import {journeyRows} from "../../assets/js/trip_plan.js"
 import {seconds} from "./routing_timetable.js"
@@ -162,3 +162,63 @@ throws(() => contextOf({journey: longJourney}), AssertionError)
 throws(() => contextOf({serviceDayStartsMs: {}}), AssertionError)
 
 console.log(`mcp_trip_journey_check: ${refusals.length} refusals and the legs of a journey passed`)
+
+// The journeys offered as context: the object of each journey in the order
+// given, bounded, with the instant of the plan and no field that says the
+// rider chose one.
+const PLANNED_AT_MS = NOW_MS
+const OTHER_JOURNEYS_COUNT = JOURNEYS_OFFERED_MAX + 2
+
+function offeredOf(overrides) {
+  return journeysContext({journeys: [journey], names, serviceDayStartsMs, timeZone: TIME_ZONE, from: "My location", to: "Ballard Locks", plannedAtMs: PLANNED_AT_MS, ...overrides})
+}
+
+const offered = offeredOf({})
+deepStrictEqual(offered.schema, JOURNEYS_SCHEMA_NAME, "the journeys schema's name")
+deepStrictEqual(offered.version, JOURNEYS_SCHEMA_VERSION, "the journeys schema's version")
+deepStrictEqual(offered.timeZone, TIME_ZONE, "the journeys' time zone")
+deepStrictEqual([offered.from, offered.to], ["My location", "Ballard Locks"], "the journeys' ends")
+deepStrictEqual(offered.plannedAt, instantAt(seconds("07:00")), "the instant of the plan")
+deepStrictEqual(offered.journeys.length, 1, "one journey given, one offered")
+const {serviceDate, departsAt, arrivesAt, changes, legs} = context
+deepStrictEqual(offered.journeys[0], {serviceDate, departsAt, arrivesAt, changes, legs}, "a journey holds the fields the journey object gives")
+deepStrictEqual(journeysProblem(offered), {kind: ProblemKind.valid}, "the journeys object is valid")
+deepStrictEqual(journeysProblem(JSON.parse(JSON.stringify(offered))), {kind: ProblemKind.valid}, "the journeys object is valid after a JSON round trip")
+
+const later = {...journey, arrivalS: seconds("09:00"), changes: 0}
+const ordered = offeredOf({journeys: [later, journey]})
+deepStrictEqual(Array.from(ordered.journeys, (member) => member.arrivesAt), [instantAt(seconds("09:00")), instantAt(seconds("08:40"))], "the journeys keep the order given")
+
+const many = Array.from({length: OTHER_JOURNEYS_COUNT}, (_, index) => ({...journey, arrivalS: seconds("08:40") + index * 60}))
+const bounded = offeredOf({journeys: many})
+deepStrictEqual(bounded.journeys.length, JOURNEYS_OFFERED_MAX, "more journeys than the bound keeps the first")
+deepStrictEqual(bounded.journeys[JOURNEYS_OFFERED_MAX - 1].arrivesAt, instantAt(seconds("08:40") + (JOURNEYS_OFFERED_MAX - 1) * 60), "the kept journeys are the first given")
+throws(() => offeredOf({journeys: []}), AssertionError)
+
+const firstJourney = offered.journeys[0]
+const journeysRefusals = [
+  {name: "a value that is no object", value: 4, path: "root"},
+  {name: "another journeys schema", value: {...offered, schema: "gobusgo.journey"}, path: "schema"},
+  {name: "another journeys version", value: {...offered, version: OTHER_VERSION}, path: "version"},
+  {name: "a time zone that is no text", value: {...offered, timeZone: NOT_TEXT}, path: "timeZone"},
+  {name: "a blank start", value: {...offered, from: ""}, path: "from"},
+  {name: "a blank destination", value: {...offered, to: ""}, path: "to"},
+  {name: "a plan instant with no zone", value: {...offered, plannedAt: "2026-11-08T07:00:00"}, path: "plannedAt"},
+  {name: "journeys that are no list", value: {...offered, journeys: {}}, path: "journeys"},
+  {name: "no journey", value: {...offered, journeys: []}, path: "journeys"},
+  {name: "more journeys than the bound", value: {...offered, journeys: Array.from({length: JOURNEYS_OFFERED_MAX + 1}, () => firstJourney)}, path: "journeys"},
+  {name: "a journey that is no object", value: {...offered, journeys: [7]}, path: "journeys.0"},
+  {name: "a blank service date", value: {...offered, journeys: [{...firstJourney, serviceDate: ""}]}, path: "journeys.0.serviceDate"},
+  {name: "a departure that is no instant", value: {...offered, journeys: [firstJourney, {...firstJourney, departsAt: "soon"}]}, path: "journeys.1.departsAt"},
+  {name: "a negative count of changes", value: {...offered, journeys: [{...firstJourney, changes: NEGATIVE_CHANGES}]}, path: "journeys.0.changes"},
+  {name: "legs that are no list", value: {...offered, journeys: [{...firstJourney, legs: {}}]}, path: "journeys.0.legs"},
+  {name: "no leg", value: {...offered, journeys: [{...firstJourney, legs: []}]}, path: "journeys.0.legs"},
+  {name: "a leg of unknown kind", value: {...offered, journeys: [{...firstJourney, legs: [{...firstJourney.legs[WALK_FROM_START], kind: "fly"}]}]}, path: "journeys.0.legs.0.kind"},
+  {name: "a ride with no route name", value: {...offered, journeys: [{...firstJourney, legs: [{...firstJourney.legs[FIRST_RIDE], route: {id: "1_40"}}]}]}, path: "journeys.0.legs.0.route.name"},
+]
+
+for (const {name, value, path} of journeysRefusals) {
+  deepStrictEqual(journeysProblem(value), {kind: ProblemKind.invalid, path}, name)
+}
+
+console.log(`mcp_trip_journey_check: ${journeysRefusals.length} refusals of the journeys object passed`)

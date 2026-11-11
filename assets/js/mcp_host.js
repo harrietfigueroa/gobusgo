@@ -250,6 +250,19 @@ export function isLocationGranted(hostCapabilities) {
   return isRecord(hostCapabilities.sandbox.permissions.geolocation)
 }
 
+/**
+ * Whether the host takes the model's context, from the `hostCapabilities` of
+ * its initialize result: it declares `updateModelContext`. A host that omits
+ * the field takes none, so the app offers it no journeys unasked.
+ */
+export function isContextAccepted(hostCapabilities) {
+  if (!isRecord(hostCapabilities)) {
+    return false
+  }
+
+  return isRecord(hostCapabilities.updateModelContext)
+}
+
 /** The theme, `light` or `dark`, of `hostContext`, a context or the part of one the host changed, or none. */
 export function themeOf(hostContext) {
   if (!isRecord(hostContext)) {
