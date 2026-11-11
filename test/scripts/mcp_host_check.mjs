@@ -168,7 +168,7 @@ function setup() {
   const messaging = sendMessage({host, text: "I chose it."})
   const message = parent.posted[1].message
   deepStrictEqual(message.method, HostMethod.message, "the message request's method")
-  deepStrictEqual(message.params, {role: "user", content: {type: "text", text: "I chose it."}}, "the message request's params")
+  deepStrictEqual(message.params, {role: "user", content: [{type: "text", text: "I chose it."}]}, "the message request's params")
   deepStrictEqual(update.id === message.id, false, "each request has its own id")
 
   // The answers arrive out of order and each finds its request.
@@ -178,6 +178,28 @@ function setup() {
   const updateOutcome = await updating
   deepStrictEqual(messageOutcome, {kind: OutcomeKind.refused, message: "Message sending denied"}, "a refused message")
   deepStrictEqual(updateOutcome, {kind: OutcomeKind.answered, result: {}}, "an answered context update")
+}
+
+// An answer that carries isError is a refusal, for either request.
+{
+  const {parent, host, answer} = setup()
+  const updating = updateModelContext({host, structuredContent: {version: 1}})
+  const messaging = sendMessage({host, text: "I chose it."})
+  answer(parent.posted[0].message.id, {isError: true})
+  answer(parent.posted[1].message.id, {isError: true})
+  const updateOutcome = await updating
+  const messageOutcome = await messaging
+  deepStrictEqual(updateOutcome.kind, OutcomeKind.refused, "a context update answered with isError")
+  deepStrictEqual(messageOutcome.kind, OutcomeKind.refused, "a message answered with isError")
+}
+
+// An answer with isError false is an answer.
+{
+  const {parent, host, answer} = setup()
+  const messaging = sendMessage({host, text: "I chose it."})
+  answer(parent.posted[0].message.id, {isError: false})
+  const messageOutcome = await messaging
+  deepStrictEqual(messageOutcome, {kind: OutcomeKind.answered, result: {isError: false}}, "a message answered with isError false")
 }
 
 // An answer after the timeout, or to no request, is dropped.
