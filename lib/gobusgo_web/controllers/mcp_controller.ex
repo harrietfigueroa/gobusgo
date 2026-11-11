@@ -16,17 +16,14 @@ defmodule GobusgoWeb.McpController do
   (`Gobusgo.Usage.count/2`). A recorder that refuses, or is not running,
   leaves the request unrecorded and answered.
 
-  A request whose `Origin` header does not name the public host is answered
-  with `403` and a JSON-RPC error before its body is read
-  (`GobusgoWeb.Mcp.Origin`); one with no `Origin` proceeds.
+  A request whose `Origin` header does not name the public host is refused
+  with a JSON-RPC error before its body is read (`GobusgoWeb.Mcp.Origin`);
+  one with no `Origin` proceeds.
 
-  The body is read up to #{@request_bytes_max} bytes; a longer one is
-  answered with `413` and a JSON-RPC error. The answer is one JSON object
-  whose media type stays `application/json` under an error status, since the
-  body is a JSON-RPC error and not problem details, and no response carries
-  a session id. Any method other than `POST` is answered with `405` problem
-  details and an `Allow` header, since the endpoint offers no stream to a
-  `GET`.
+  The body is read up to #{@request_bytes_max} bytes. The media type of the
+  answer stays `application/json` under an error status, since the body is a
+  JSON-RPC error and not problem details. The statuses, headers, and bodies
+  are described in `priv/openapi.json`.
 
   The tools and resources are those the `GobusgoWeb.Mcp` application
   environment names, read on every request.
@@ -48,7 +45,7 @@ defmodule GobusgoWeb.McpController do
 
   @recorder Usage
 
-  @doc "Answers the JSON-RPC message in the body, or accepts the notification with `202`."
+  @doc "Answers the JSON-RPC message in the body, or accepts the notification."
   @spec handle(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def handle(conn, _params) do
     record(conn)
@@ -59,7 +56,7 @@ defmodule GobusgoWeb.McpController do
     end
   end
 
-  @doc "Answers `405` problem details to every method but `POST`."
+  @doc "Answers every method but `POST` as not allowed."
   @spec method_not_allowed(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def method_not_allowed(conn, _params) do
     record(conn)

@@ -158,6 +158,22 @@ jobs:
           node-version-file: tools/lint/.node-version
       - run: node test/scripts/agents_md_check.mjs
 
+  # Lints priv/openapi.json and priv/openapi.private.json as JSON and against the OpenAPI 3.1 schema, after checking that the lint still reports the failures its fixtures hold.
+  openapi:
+    name: openapi
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      - run: npm ci --prefix tools/lint
+      - run: npm run --prefix tools/lint check
+      - run: npm run --prefix tools/lint lint:openapi
+
   image:
     name: image
     runs-on: ubuntu-24.04-arm
@@ -213,7 +229,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:

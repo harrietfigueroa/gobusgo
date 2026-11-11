@@ -3,10 +3,8 @@ defmodule GobusgoWeb.AgencyJSON do
   The bodies of the agency responses: `data`, the agencies as the view holds
   them, and `meta`, the fetch they come from. Everything here is pure.
 
-  An agency holds `id`, `name`, `url`, `timezone`, and `coverage` with
-  `lat`, `lon`, `latSpan`, and `lonSpan`. `meta.fetchedAt` is the fetch time
-  in UTC extended ISO 8601 and `meta.requestId` is the request identifier of
-  the fetch.
+  `components.schemas.AgencyCollection` and `components.schemas.AgencyResource`
+  in `priv/openapi.json` describe the two bodies.
   """
 
   alias Gobusgo.OneBusAway.AgencyView.State

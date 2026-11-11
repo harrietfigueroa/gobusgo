@@ -6,8 +6,9 @@ defmodule GobusgoWeb.AgencyController do
   `Gobusgo.OneBusAway.AgencyView`. Every response draws on one read of the
   view, so its agencies and its `meta` come from the same fetch.
 
-  While the view has no current fetch, both actions answer `503` problem
-  details with `Retry-After: #{@retry_after_seconds}`.
+  The statuses, headers, and bodies of both actions are described in
+  `priv/openapi.json`; while the view has no current fetch they answer
+  unavailable after `#{@retry_after_seconds}` seconds.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -16,7 +17,7 @@ defmodule GobusgoWeb.AgencyController do
   alias GobusgoWeb.AgencyJSON
   alias GobusgoWeb.Problem
 
-  @doc "Answers `200` with every agency of the current fetch, in identifier order."
+  @doc "Answers every agency of the current fetch, in identifier order."
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     case AgencyView.current(AgencyView) do
@@ -26,8 +27,8 @@ defmodule GobusgoWeb.AgencyController do
   end
 
   @doc """
-  Answers `200` with the agency `id` of the current fetch, or `404` problem
-  details when the fetch holds no such agency.
+  Answers the agency `id` of the current fetch, or that the fetch holds no
+  such agency.
   """
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
