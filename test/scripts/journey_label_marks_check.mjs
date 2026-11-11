@@ -11,7 +11,17 @@ import {contrastRatio} from "../../assets/js/math/color_contrast.js"
 import {Theme, mapColors} from "../../assets/js/theme.js"
 
 const TEXT_CONTRAST_MIN = 4.5
-const PIXEL_RATIOS = [1, 2, 3]
+const RATIO_ONE = 1
+const RATIO_TWO = 2
+const RATIO_THREE = 3
+const PIXEL_RATIOS = [RATIO_ONE, RATIO_TWO, RATIO_THREE]
+const CORNERS_PER_SIDE = 2
+const PADDING_SIDES_COUNT = 4
+const PADDING_SIDEWAYS_MIN_PIXELS = 4
+
+function isPositive(padding) {
+  return padding > 0
+}
 
 // MapLibre reads the stretch and content areas in the image's own pixels,
 // so a pill drawn at a pixel ratio of 2 names areas twice as far out.
@@ -26,18 +36,20 @@ for (const pixelRatio of PIXEL_RATIOS) {
 
   // The text stands in the stretched middle.
   deepStrictEqual(spec.content, [corner, corner, side - corner, side - corner], `the text stands in the stretched middle at ratio ${pixelRatio}`)
-  ok(corner * 2 <= side, `the corners fit in the image at ratio ${pixelRatio}`)
+  ok(corner * CORNERS_PER_SIDE <= side, `the corners fit in the image at ratio ${pixelRatio}`)
 }
 
 // The padding is in CSS pixels, whatever the ratio.
-const spec = pillImageSpec({pixelRatio: 2})
-deepStrictEqual(spec.textFitPaddingPixels.length, 4, "the padding names top, right, bottom, and left")
-ok(spec.textFitPaddingPixels.every((padding) => padding > 0), "the pill pads the text on every side")
+const spec = pillImageSpec({pixelRatio: RATIO_TWO})
+deepStrictEqual(spec.textFitPaddingPixels.length, PADDING_SIDES_COUNT, "the padding names top, right, bottom, and left")
+const everySideIsPadded = spec.textFitPaddingPixels.every(isPositive)
+ok(everySideIsPadded, "the pill pads the text on every side")
 
 // The sideways padding is the gap that sets a pill apart from a text
 // selection, which hugs its glyphs.
-ok(spec.textFitPaddingPixels[1] >= 4, "the pill pads the text sideways by at least 4 pixels")
-deepStrictEqual(spec.textFitPaddingPixels, pillImageSpec({pixelRatio: 1}).textFitPaddingPixels, "the padding does not move with the ratio")
+ok(spec.textFitPaddingPixels[1] >= PADDING_SIDEWAYS_MIN_PIXELS, "the pill pads the text sideways by at least 4 pixels")
+const unscaled = pillImageSpec({pixelRatio: RATIO_ONE})
+deepStrictEqual(spec.textFitPaddingPixels, unscaled.textFitPaddingPixels, "the padding does not move with the ratio")
 
 deepStrictEqual(stopBlockerVisibility(true), BlockerVisibility.visible, "the stops' signs block a label while a journey is chosen")
 deepStrictEqual(stopBlockerVisibility(false), BlockerVisibility.none, "the stops' signs block nothing without a journey")
