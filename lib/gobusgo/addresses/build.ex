@@ -1,20 +1,17 @@
 defmodule Gobusgo.Addresses.Build do
   @shard_bytes_max 65_536
-  @download_bytes_max 536_870_912
   @heap_words_max 40_000_000
   @sample_interval_ms 100
+  @reason_inspect_limit 50
 
   @moduledoc """
-  One run of the address build: fetches a county's whole address layer into
-  a file, reads it into the streets the shards hold, and, when what it read
-  is not what the current build holds or the current build is not from
-  today, cuts the streets into shards, writes every file through
-  `Gobusgo.Writer`, and hands the manifest to `Gobusgo.Addresses`.
-
-  The export is checked against the layer before any of it is written to
-  disk (`Gobusgo.Addresses.Source`): one that is older than the layer is a
-  stale export, which leaves the current files in place. The file is
-  deleted when the run ends.
+  One run of the address build: reads a county's whole address layer, page
+  by page (`Gobusgo.Addresses.Source`), into the streets the shards hold,
+  and, when what it read is not what the current build holds or the current
+  build is not from today, cuts the streets into shards, writes every file
+  through `Gobusgo.Writer`, and hands the manifest to `Gobusgo.Addresses`.
+  A run that reads another count of records than the layer reports builds
+  nothing.
 
   The streets are cut into shards by `Gobusgo.Addresses.Shards`, each at
   most #{@shard_bytes_max} bytes as `Gobusgo.Addresses.Format` writes it,
@@ -38,14 +35,12 @@ defmodule Gobusgo.Addresses.Build do
 
     * `Address shards built` at `info`, with the counts of records read,
       accepted, and left out by cause, the counts of streets, addresses,
-      and shards, the bytes written, the sizes of the export and the
-      times each step took, and the peak heap of the build in words.
+      and shards, the bytes written, the count of page requests, the times
+      each step took, and the peak heap of the build in words.
     * `Address shards unchanged` at `info`, with the counts and times.
-    * `Address export stale` at `warning`, with why, when the export is
-      older than the layer; the current files stay.
-    * `Address shards not built` at `error`, with the `reason`, when a
-      request or a write failed or the records read differ in count from
-      the layer's.
+    * `Address shards not built` at `error`, when a request or a write
+      failed or the records read differ in count from the layer's. The
+      message ends with the inspected `reason`, which is also a property.
     * `Address shard build killed` at `error` when the build outgrows its
       heap cap.
 
@@ -53,16 +48,15 @@ defmodule Gobusgo.Addresses.Build do
   (`Gobusgo.Addresses.Rows`) and runs in a process of its own whose heap is
   capped at `:heap_words_max` words and that collects its whole heap at
   every collection, so garbage of the earlier steps is not kept in an old
-  generation.
+  generation. The page requests run inside it, and each page is added to
+  the streets as it arrives.
 
   ## Options
 
     * `:server` (required): the `Gobusgo.Addresses` process.
     * `:source`: the `Gobusgo.Addresses.Source` module. Defaults to
       `Gobusgo.Addresses.Source.King`.
-    * `:source_options`: options for the source's `fetch/2`.
-    * `:work_directory`: where the export is written. Defaults to a
-      directory of the system's temporary directory.
+    * `:source_options`: options for the source's `fetch/1`.
     * `:bounds`: `{:bounds, bounds}` to keep the positions inside `bounds`
       or `:none` for every position. Defaults to the bounds of the basemap's
       manifest, or `:none` where the base directory holds none.
@@ -70,8 +64,6 @@ defmodule Gobusgo.Addresses.Build do
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
     * `:shard_bytes_max`: the most bytes of a shard's content, before
       compression. Defaults to #{@shard_bytes_max}.
-    * `:download_bytes_max`: the most bytes of the export. Defaults to
-      #{@download_bytes_max}.
     * `:heap_words_max`: the heap cap of the build, in words. Defaults to
       #{@heap_words_max}.
   """
@@ -91,7 +83,6 @@ defmodule Gobusgo.Addresses.Build do
   @type outcome ::
           {:built, map()}
           | {:unchanged, map()}
-          | {:stale, map()}
           | {:failed, term()}
 
   @doc "The most bytes of a shard's content, before compression."
@@ -121,62 +112,35 @@ defmodule Gobusgo.Addresses.Build do
         :server,
         source: Gobusgo.Addresses.Source.King,
         source_options: [],
-        work_directory: nil,
         bounds: nil,
         clock: &DateTime.utc_now/0,
         write_options: [],
         shard_bytes_max: @shard_bytes_max,
-        download_bytes_max: @download_bytes_max,
         heap_words_max: @heap_words_max
       ])
 
     started_ms = System.monotonic_time(:millisecond)
     now = Keyword.fetch!(options, :clock).()
-    work_directory = work_directory(options)
-    File.mkdir_p!(work_directory)
-
-    try do
-      outcome = fetch_and_build(options, %{now: now, work_directory: work_directory})
-      finish(outcome, %{started_ms: started_ms, options: options})
-    after
-      File.rm_rf!(work_directory)
-    end
+    outcome = fetch_and_build(options, now)
+    finish(outcome, %{started_ms: started_ms, options: options})
   end
 
-  defp work_directory(options) do
-    case Keyword.fetch!(options, :work_directory) do
-      nil ->
-        Path.join(System.tmp_dir!(), "gobusgo-addresses-#{System.unique_integer([:positive])}")
-
-      directory ->
-        directory
-    end
-  end
-
-  defp fetch_and_build(options, %{now: now, work_directory: work_directory}) do
+  defp fetch_and_build(options, now) do
     source = Keyword.fetch!(options, :source)
     fetch_started_ms = System.monotonic_time(:millisecond)
 
-    request = %{
-      directory: work_directory,
-      bytes_max: Keyword.fetch!(options, :download_bytes_max)
-    }
-
-    case source.fetch(request, Keyword.fetch!(options, :source_options)) do
-      {:ok, export} ->
+    case source.fetch(Keyword.fetch!(options, :source_options)) do
+      {:ok, layer} ->
         fetch_ms = System.monotonic_time(:millisecond) - fetch_started_ms
 
         build_in_process(%{
           options: options,
           now: now,
-          export: export,
+          layer: layer,
           bounds: bounds(options),
           current: Addresses.built(Keyword.fetch!(options, :server)),
           fetch_ms: fetch_ms
         })
-
-      {:stale, details} ->
-        {:stale, details}
 
       {:error, reason} ->
         {:failed, {:fetch, reason}}
@@ -274,39 +238,58 @@ defmodule Gobusgo.Addresses.Build do
   defp annotate(other, _extra), do: other
 
   defp build(input) do
-    %{options: options, export: export, bounds: bounds, current: current} = input
-    source = Keyword.fetch!(options, :source)
     build_started_ms = System.monotonic_time(:millisecond)
 
-    accumulator =
-      export.path
-      |> source.records()
-      |> Enum.reduce(Accumulator.new(bounds_value(bounds)), &Accumulator.add(&2, &1))
+    case read_pages(input.layer.pages, Accumulator.new(bounds_value(input.bounds))) do
+      {:read, accumulator, request_count} ->
+        read_ms = System.monotonic_time(:millisecond) - build_started_ms
 
-    result = Accumulator.finish(accumulator)
-    read_ms = System.monotonic_time(:millisecond) - build_started_ms
+        decide(
+          Map.merge(input, %{
+            result: Accumulator.finish(accumulator),
+            request_count: request_count,
+            read_ms: read_ms,
+            build_started_ms: build_started_ms
+          })
+        )
+
+      {:failed, reason} ->
+        {:failed, {:fetch, reason}}
+    end
+  end
+
+  defp read_pages(pages, accumulator) do
+    Enum.reduce_while(pages, {:read, accumulator, 0}, fn
+      {:records, records, page_request_count}, {:read, accumulator, request_count} ->
+        accumulator = Enum.reduce(records, accumulator, &Accumulator.add(&2, &1))
+        {:cont, {:read, accumulator, request_count + page_request_count}}
+
+      {:failed, reason}, _read ->
+        {:halt, {:failed, reason}}
+    end)
+  end
+
+  defp decide(%{result: result, layer: layer} = input) do
     today = DateTime.to_date(input.now)
 
     summary = %{
       counts: result.counts,
       street_count: length(result.streets),
       address_count: result.address_count,
-      export_byte_count: export.byte_count,
+      request_count: input.request_count,
       fetch_ms: input.fetch_ms,
-      read_ms: read_ms
+      read_ms: input.read_ms
     }
 
     cond do
-      result.counts.read != export.record_count ->
-        {:failed, {:record_count_differs, result.counts.read, export.record_count}}
+      result.counts.read != layer.record_count ->
+        {:failed, {:record_count_differs, result.counts.read, layer.record_count}}
 
-      unchanged?(current, %{sha256: result.sha256, today: today}) ->
+      unchanged?(input.current, %{sha256: result.sha256, today: today}) ->
         {:unchanged, summary}
 
       true ->
-        write_files(
-          Map.merge(input, %{result: result, summary: summary, build_started_ms: build_started_ms})
-        )
+        write_files(Map.put(input, :summary, summary))
     end
   end
 
@@ -415,7 +398,7 @@ defmodule Gobusgo.Addresses.Build do
 
     body = %{
       "builtAt" => DateTime.to_iso8601(built_at),
-      "sourceLastEditAt" => DateTime.to_iso8601(input.export.last_edit_at),
+      "sourceLastEditAt" => DateTime.to_iso8601(input.layer.last_edit_at),
       "inputsSha256" => Base.encode16(inputs_sha256, case: :lower),
       "addressCount" => input.result.address_count,
       "streetCount" => length(input.result.streets),
@@ -464,26 +447,19 @@ defmodule Gobusgo.Addresses.Build do
     {:ok, %{outcome: :unchanged}}
   end
 
-  defp finish({:stale, details}, %{started_ms: started_ms}) do
-    Logger.warning(
-      "Address export stale",
-      reason: details.reason,
-      layer_last_edit_at: DateTime.to_iso8601(details.layer_last_edit_at),
-      layer_record_count: details.layer_record_count,
-      elapsed_ms: System.monotonic_time(:millisecond) - started_ms
-    )
-
-    {:ok, %{outcome: :stale}}
-  end
-
   defp finish({:killed, details}, _context) do
     Logger.error("Address shard build killed", heap_words_max: details.heap_words_max)
     {:error, :killed}
   end
 
+  # Production's log format prints the message and none of the properties,
+  # so the message carries the reason too.
   defp finish({:failed, reason}, %{started_ms: started_ms}) do
-    Logger.error("Address shards not built",
-      reason: inspect(reason),
+    reason_text =
+      inspect(reason, limit: @reason_inspect_limit, printable_limit: @reason_inspect_limit)
+
+    Logger.error("Address shards not built: " <> reason_text,
+      reason: reason_text,
       elapsed_ms: System.monotonic_time(:millisecond) - started_ms
     )
 
@@ -503,7 +479,7 @@ defmodule Gobusgo.Addresses.Build do
       address_count: details.address_count,
       shard_count: Map.get(details, :shard_count, 0),
       written_byte_count: Map.get(details, :written_byte_count, 0),
-      export_byte_count: details.export_byte_count,
+      request_count: details.request_count,
       fetch_ms: details.fetch_ms,
       read_ms: details.read_ms,
       write_ms: Map.get(details, :write_ms, 0),

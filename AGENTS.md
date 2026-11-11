@@ -228,7 +228,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo/packed/AGENTS.md`: the packed container of published data files, its layout, kinds, storage, fixtures, and Mix task.
 - `lib/gobusgo/places/AGENTS.md`: the places file, its selection and merge rules, its kind of the packed container, its publication and serving, and the Mix task that builds it.
 - `lib/gobusgo/routing/AGENTS.md`: the routing snapshots and the browser's routing modules.
-- `lib/gobusgo/addresses/AGENTS.md`: the county address points, their export, normalization, the address shard and index kinds of the packed container, the build, and the manifest.
+- `lib/gobusgo/addresses/AGENTS.md`: the county address points, their download in pages, normalization, the address shard and index kinds of the packed container, the build, and the manifest.
 - `lib/gobusgo/intersections/AGENTS.md`: the street intersections of OpenStreetMap's named roads, their selection and merge rules, the intersection shard and index kinds of the packed container, the lookup, the license they are published under, the build, and the manifest.
 - `lib/gobusgo/s3/AGENTS.md`: the S3 backends' requests, settings, and credentials.
 - `lib/gobusgo/vendor_assets/AGENTS.md`: the vendored front-end assets and their sources.

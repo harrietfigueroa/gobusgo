@@ -1,46 +1,55 @@
 defmodule Gobusgo.Addresses.ArcGis do
-  @poll_count_max 18
-  @poll_answer_statuses [200, 202]
-  @poll_delay_ms 10_000
   @json_bytes_max 1_048_576
-  @hub_host "hub.arcgis.com"
-  @arcgis_host_suffix ".arcgis.com"
+  @request_interval_ms 250
+  @concurrency_max 4
+  @attempt_count_max 4
+  @retry_base_ms 1_000
+  @retry_cap_ms 16_000
 
   @moduledoc """
-  The two ArcGIS services a county's address export is read through. Read
-  `lib/gobusgo/addresses/AGENTS.md` before changing it.
+  The FeatureServer requests a county's address points are read through.
+  Read `lib/gobusgo/addresses/AGENTS.md` before changing it.
 
-  `layer_status/2` reads a FeatureServer layer's last edit and its record
-  count. `export_url/2` asks the ArcGIS Hub download API for a one-file
-  export of a layer and polls it, at most #{@poll_count_max} times
-  #{@poll_delay_ms} ms apart, until it names the address of the finished
-  file. `redirect_target/1` accepts the address a redirect names only when it
-  is an `https` address of a host under `#{@arcgis_host_suffix}`.
+  `layer_status/2` reads a layer's last edit and its record count.
+  `pages/2` reads every record of a layer as a lazy stream of pages of
+  `Gobusgo.Addresses.FeaturePages.page_size/0` records, a request starting
+  at most every #{@request_interval_ms} ms and at most #{@concurrency_max} in
+  flight. A page whose request fails with a transient failure is asked for
+  again, at most #{@attempt_count_max} times in all, after a delay that
+  doubles from #{@retry_base_ms} ms to #{@retry_cap_ms} ms with jitter, or
+  the delay a `Retry-After` header names.
 
-  Every outcome the services document is a value. Transport faults come back
-  as `{:error, {:transport, reason}}` and a status or body the services do
-  not document as `{:error, {:unexpected_status, status}}` or
-  `{:error, {:malformed, path}}`.
+  Every outcome the service documents is a value. Transport faults come back
+  as `{:transport, reason}` and a status or body the service does not
+  document as `{:unexpected_status, status}` or `{:malformed, path}`.
+
+  Options: `:plug` (see `Gobusgo.Addresses.Http`), and for tests
+  `:request_interval_ms` and `:retry_base_ms`.
   """
 
+  alias Gobusgo.Addresses.FeaturePages
   alias Gobusgo.Addresses.Http
+  alias Gobusgo.Assert
   alias Gobusgo.Schema
 
   @type layer_status :: %{last_edit_at: DateTime.t(), record_count: non_neg_integer()}
 
-  @type error ::
-          Http.error()
-          | {:unexpected_status, pos_integer()}
-          | {:malformed, String.t()}
-          | :export_failed
-          | :export_not_supported
-          | :export_not_found
-          | :export_not_ready
-          | :layer_error
+  @type error :: Http.error() | {:unexpected_status, pos_integer()} | FeaturePages.error()
+
+  @typedoc """
+  One item of `pages/2`: a page's features with the count of requests it
+  took, or the failure that ends the stream, with the page's offset.
+  """
+  @type page ::
+          {:features, [FeaturePages.feature()], pos_integer()}
+          | {:failed, {:page, non_neg_integer(), error()} | :page_deadline_exceeded}
 
   @layer_schema {:map, %{"editingInfo" => {:map, %{"lastEditDate" => :integer}}}}
   @count_schema {:map, %{"count" => :integer}}
-  @hub_schema {:map, %{"status" => :string, "resultUrl" => {:optional, :string}}}
+
+  @doc "The most requests one page takes, its retries included."
+  @spec attempt_count_max() :: pos_integer()
+  def attempt_count_max, do: @attempt_count_max
 
   @doc """
   The last edit and the record count of the layer at `layer_url`, an `https`
@@ -52,7 +61,7 @@ defmodule Gobusgo.Addresses.ArcGis do
     # (the layer's `editingInfo.lastEditDate`, milliseconds since the epoch)
     # and
     # https://developers.arcgis.com/rest/services-reference/enterprise/query-feature-service-layer/
-    # (`returnCountOnly`) — checked 2026-11-10
+    # (`returnCountOnly`) — checked 2026-11-11
     with {:ok, layer} <- get_json(layer_url <> "?f=json", @layer_schema, options),
          {:ok, count} <-
            get_json(
@@ -91,86 +100,130 @@ defmodule Gobusgo.Addresses.ArcGis do
   end
 
   @doc """
-  The address of the finished export of layer `export.layer` of the item
-  `export.item_id`, in `export.format`, which the Hub's download API at
-  `https://#{@hub_host}/api/download/v1/items/<item>/<format>` has made.
-
-  The API answers `200` with a JSON object whose `status` is `"Completed"`
-  and whose `resultUrl` names the file once it is ready, another `status`
-  while it is not, `202` with a `status` of `"Pending"` and the message
-  "Up to date download file is being generated" while it makes a fresh file
-  (about one poll in five on 2026-11-11), `400` for an item that cannot be
-  downloaded, and `404` for a layer the item lacks. A `status` of
-  `"Failed"` ends the wait. The contract is what the API answered on
-  2026-11-10 and 2026-11-11; Esri has not published it.
+  A lazy stream of the pages of the `layer.record_count` records of the
+  layer at `layer.layer_url`, each record holding the fields
+  `layer.out_fields` and its point, in the order of the offsets. The stream
+  ends after its last page, or after the first `{:failed, _}`; a consumer
+  that stops early stops the requests in flight. A record count past
+  `Gobusgo.Addresses.FeaturePages.record_count_max/0` is refused before any
+  request.
   """
-  @spec export_url(
-          %{item_id: String.t(), layer: non_neg_integer(), format: String.t()},
+  @spec pages(
+          %{layer_url: String.t(), out_fields: [String.t()], record_count: non_neg_integer()},
           keyword()
-        ) :: {:ok, String.t()} | {:error, error()}
-  def export_url(%{item_id: item_id, layer: layer, format: format}, options)
-      when is_binary(item_id) and is_integer(layer) and layer >= 0 and is_binary(format) and
-             is_list(options) do
+        ) :: {:ok, Enumerable.t(page())} | {:error, {:record_count_too_large, pos_integer()}}
+  def pages(%{layer_url: layer_url, out_fields: out_fields, record_count: record_count}, options)
+      when is_binary(layer_url) and is_list(out_fields) and is_list(options) do
+    with {:ok, offsets} <- FeaturePages.offsets(record_count) do
+      settings = %{
+        layer_url: layer_url,
+        out_fields: out_fields,
+        request_interval_ms: Keyword.get(options, :request_interval_ms, @request_interval_ms),
+        retry_base_ms: Keyword.get(options, :retry_base_ms, @retry_base_ms),
+        options: options
+      }
+
+      stream =
+        offsets
+        |> paced(settings.request_interval_ms)
+        |> Task.async_stream(&fetch_page(%{settings: settings, offset: &1, attempt_index: 0}),
+          max_concurrency: @concurrency_max,
+          ordered: true,
+          timeout: page_deadline_ms(),
+          on_timeout: :kill_task
+        )
+        |> Stream.transform(:reading, &page_item/2)
+
+      {:ok, stream}
+    end
+  end
+
+  # A page's task outlives every attempt's request deadline and every delay
+  # between them, so only a request that hangs past its own deadline reaches
+  # this one.
+  defp page_deadline_ms do
+    retry_count = @attempt_count_max - 1
+    @attempt_count_max * Http.json_deadline_ms() + retry_count * @retry_cap_ms + @retry_cap_ms
+  end
+
+  # Each offset leaves no sooner than `interval_ms` after the one before it,
+  # and the stream of tasks takes an offset only when it has a free slot, so
+  # requests start at most once per interval.
+  defp paced(offsets, interval_ms) do
+    Stream.transform(offsets, nil, fn offset, previous_ms ->
+      now_ms = System.monotonic_time(:millisecond)
+
+      case previous_ms do
+        nil -> :ok
+        previous_ms -> Process.sleep(max(previous_ms + interval_ms - now_ms, 0))
+      end
+
+      {[offset], System.monotonic_time(:millisecond)}
+    end)
+  end
+
+  defp page_item(_result, :failed), do: {:halt, :failed}
+
+  defp page_item({:ok, {:features, _features, _count} = page}, :reading), do: {[page], :reading}
+
+  defp page_item({:ok, {:failed, _reason} = failure}, :reading), do: {[failure], :failed}
+
+  defp page_item({:exit, :timeout}, :reading), do: {[{:failed, :page_deadline_exceeded}], :failed}
+
+  defp fetch_page(%{settings: settings, offset: offset, attempt_index: attempt_index} = request) do
+    Assert.condition(
+      attempt_index < @attempt_count_max,
+      "attempt #{attempt_index} is past #{@attempt_count_max}"
+    )
+
     url =
-      "https://#{@hub_host}/api/download/v1/items/#{item_id}/#{format}?layers=#{layer}&redirect=false"
+      FeaturePages.query_url(%{
+        layer_url: settings.layer_url,
+        out_fields: settings.out_fields,
+        offset: offset
+      })
 
-    poll_delay_ms = Keyword.get(options, :poll_delay_ms, @poll_delay_ms)
-    poll(%{url: url, polls_left: @poll_count_max, poll_delay_ms: poll_delay_ms, options: options})
-  end
+    attempt_count = attempt_index + 1
 
-  defp poll(%{polls_left: 0}), do: {:error, :export_not_ready}
+    case request_page(url, settings) do
+      {:ok, features} ->
+        {:features, features, attempt_count}
 
-  defp poll(%{url: url, options: options} = state) do
-    case Http.get_json(%{url: url, bytes_max: @json_bytes_max}, options) do
-      {:ok, %{status: status, body: body}} when status in @poll_answer_statuses ->
-        poll_answer(body, state)
+      {:error, reason, retry_after_ms} ->
+        is_retried = FeaturePages.transient?(reason) and attempt_count < @attempt_count_max
 
-      {:ok, %{status: 400}} ->
-        {:error, :export_not_supported}
-
-      {:ok, %{status: 404}} ->
-        {:error, :export_not_found}
-
-      {:ok, %{status: status}} ->
-        {:error, {:unexpected_status, status}}
-
-      {:error, _reason} = failure ->
-        failure
+        if is_retried do
+          Process.sleep(retry_delay_ms(settings, attempt_index, retry_after_ms))
+          fetch_page(%{request | attempt_index: attempt_count})
+        else
+          {:failed, {:page, offset, reason}}
+        end
     end
   end
 
-  defp poll_answer(body, state) do
-    case decode(body, @hub_schema) do
-      {:ok, %{"status" => "Completed", "resultUrl" => result_url}} ->
-        {:ok, result_url}
-
-      {:ok, %{"status" => "Failed"}} ->
-        {:error, :export_failed}
-
-      {:ok, %{"status" => _pending}} ->
-        Process.sleep(state.poll_delay_ms)
-        poll(%{state | polls_left: state.polls_left - 1})
-
-      {:error, _reason} = failure ->
-        failure
-    end
+  defp retry_delay_ms(settings, attempt_index, retry_after_ms) do
+    FeaturePages.retry_delay_ms(%{
+      attempt_index: attempt_index,
+      base_ms: settings.retry_base_ms,
+      cap_ms: @retry_cap_ms,
+      retry_after_ms: retry_after_ms,
+      jitter: :rand.uniform()
+    })
   end
 
-  @doc """
-  `{:ok, url}` when `location` is an `https` address of a host under
-  `#{@arcgis_host_suffix}`, and `:refused` otherwise, so a redirect never
-  leaves the services the integration names.
-  """
-  @spec redirect_target(String.t() | nil) :: {:ok, String.t()} | :refused
-  def redirect_target(location) when is_binary(location) do
-    case URI.parse(location) do
-      %URI{scheme: "https", host: host} when is_binary(host) ->
-        if String.ends_with?(host, @arcgis_host_suffix), do: {:ok, location}, else: :refused
+  defp request_page(url, settings) do
+    case Http.get_json(%{url: url, bytes_max: @json_bytes_max}, settings.options) do
+      {:ok, %{status: 200, body: body}} ->
+        case FeaturePages.decode_page(body, settings.out_fields) do
+          {:ok, features} -> {:ok, features}
+          {:error, reason} -> {:error, reason, nil}
+        end
 
-      _other ->
-        :refused
+      {:ok, %{status: status, retry_after: retry_after}} ->
+        {:error, {:unexpected_status, status}, FeaturePages.retry_after_ms(retry_after)}
+
+      {:error, reason} ->
+        {:error, reason, nil}
     end
   end
-
-  def redirect_target(nil), do: :refused
 end

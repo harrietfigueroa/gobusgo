@@ -103,8 +103,7 @@ defmodule Gobusgo.AddressesTest do
         ],
         bounds: :none,
         clock: fn -> now end,
-        write_options: [base_dir: context.tmp_dir],
-        work_directory: Path.join(context.tmp_dir, "work")
+        write_options: [base_dir: context.tmp_dir]
       ]
     end
 
