@@ -45,22 +45,25 @@ config :gobusgo, :addresses, dir: Path.join(base_dir, "addresses")
 
 # The basemap archives are served from a directory beside the stored
 # responses.
-config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")
-
 # The address the pages link for donations; unset, they link none.
+config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")
 config :gobusgo, :donation, url: System.get_env("GOBUSGO_DONATION_URL")
 
 config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),
   port: System.get_env("GOBUSGO_HTTP_PORT")
 
+# The intersection files the local writer stores under `intersections/` are
+# served from there.
+config :gobusgo, :intersections, dir: Path.join(base_dir, "intersections")
+
 # Credentials come from the environment only; nothing here is committed.
 config :gobusgo, :one_bus_away,
+  # The places files the local writer stores under `places/` are served from
+  # there.
   base_url: System.get_env("ONEBUSAWAY_BASE_URL"),
   api_key: System.get_env("ONEBUSAWAY_API_KEY")
 
-# The places files the local writer stores under `places/` are served from
-# there.
 config :gobusgo, :places, dir: Path.join(base_dir, "places")
 
 # The host name pages are served on, which the socket's origin check needs.

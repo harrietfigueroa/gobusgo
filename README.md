@@ -461,6 +461,29 @@ osmium --version
 
 The selection rules, the merge rules, the file's layout, and the measured counts and sizes are in [lib/gobusgo/places/AGENTS.md](lib/gobusgo/places/AGENTS.md). The places file is derived from OpenStreetMap data under the Open Database License; the notice and attribution it needs are GOB-367's.
 
+## Intersection files
+
+The intersection files are the files of street crossings, such as "4th & Pike", that a map search reads, built by hand from the same [Geofabrik Washington extract](https://download.geofabrik.de/north-america/us/washington.html) as the places file: every node that two differently named roads share, merged within 150 m, stored under both streets' names in shards by name prefix. Nothing in the application builds them. Refresh them with the places file and each [basemap refresh](#basemap-archives), because their bounds are the basemap archives' bounds. They need `osmium-tool` as the places file does.
+
+1. Download and check the extract as the [places file](#places-file) does, then, with the basemap extracted under `data/basemap`, run:
+
+   ```sh
+   mix gobusgo.intersections.build --extract washington-latest.osm.pbf
+   ```
+
+   `--bounds south,west,north,east` replaces the manifest's bounds, and is required where there is no manifest. The task prints the counts of what it read and kept, the time of each step, and the sizes of the files it stored. It peaked at 295 MB on a development machine.
+
+2. It stores `intersections/intersections-<SHA-256>.bin.gz` for each shard and the index, and then `intersections/manifest.json`, under `<GOBUSGO_DATA_DIR>`, and with a bucket configured in the bucket. Check that the server serves the manifest and a file:
+
+   ```sh
+   curl --silent http://127.0.0.1:4000/api/intersections/manifest
+   curl --silent --dump-header - --output /dev/null http://127.0.0.1:4000/intersections/intersections-index-<SHA-256>.bin.gz
+   ```
+
+   The manifest's `index.path` names the index, its `sourceDate` is the extract's date, and the files answer `application/gzip` with `cache-control: public, max-age=31536000, immutable`. Nothing deletes an earlier build's files, so remove the old ones by hand.
+
+The selection rules, the file layout, and the measured counts and sizes are in [lib/gobusgo/intersections/AGENTS.md](lib/gobusgo/intersections/AGENTS.md). The files are a derivative database of OpenStreetMap data and are published under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/) — checked 2026-11-10; the info panel's credits name OpenStreetMap and say so, and the manifest carries the license and the credit.
+
 ## Development
 
 ```sh

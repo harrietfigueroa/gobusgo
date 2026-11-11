@@ -323,6 +323,16 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       end
     end
 
+    test "credits OpenStreetMap for the intersections and links the license they are offered under" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      %{license: %{url: url}, credit: credit} = AppInfo.intersection_source()
+
+      assert has_element?(view, ~s(#app-info-credits-more a[href="#{url}"]))
+      assert text(view, "#app-info-intersection-source") =~ credit
+      assert text(view, "#app-info-intersection-source") =~ "Open Database License"
+      assert text(view, "#app-info-intersection-source") =~ "/intersections/"
+    end
+
     test "holds every field of the usage record, what it never holds, and the cookie behind their disclosure" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       disclosure = text(view, "#app-info-recorded-more")
