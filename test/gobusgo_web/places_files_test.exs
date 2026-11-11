@@ -10,6 +10,7 @@ defmodule GobusgoWeb.PlacesFilesTest do
   import Plug.Conn
 
   alias Gobusgo.Deleter
+  alias Gobusgo.Places.License
   alias Gobusgo.Places.Publication
   alias Gobusgo.Test.PlaceFixture
   alias Gobusgo.Writer
@@ -63,6 +64,27 @@ defmodule GobusgoWeb.PlacesFilesTest do
       conn = get(build_conn(), "/places/places-#{String.duplicate("0", 64)}.bin.gz")
 
       assert conn.status == 404
+    end
+  end
+
+  describe "GET /places/NOTICE.txt" do
+    test "answers the notice's text" do
+      conn = get(build_conn(), "/places/NOTICE.txt")
+
+      assert response(conn, 200) == License.notice_text()
+    end
+
+    test "names its type as UTF-8 text" do
+      conn = get(build_conn(), "/places/NOTICE.txt")
+
+      assert get_resp_header(conn, "content-type") == ["text/plain; charset=utf-8"]
+    end
+
+    test "must be revalidated and carries an etag" do
+      conn = get(build_conn(), "/places/NOTICE.txt")
+
+      assert {get_resp_header(conn, "cache-control"), get_resp_header(conn, "etag") != []} ==
+               {["no-cache"], true}
     end
   end
 

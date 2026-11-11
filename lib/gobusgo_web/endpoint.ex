@@ -37,7 +37,8 @@ defmodule GobusgoWeb.Endpoint do
   places directory, as the gzip streams they are stored as, `application/gzip`
   with no content encoding. A file's name holds the SHA-256 of its stream, so
   a cache may keep it for a year as immutable; the manifest that names the
-  current file has to be revalidated on every use.
+  current file and the license notice beside it, `NOTICE.txt` as UTF-8 text,
+  have to be revalidated on every use.
 
   The locally stored shared vehicle files are served under
   `/shared-vehicles`, from the shared vehicle directory, as the gzip
@@ -73,6 +74,7 @@ defmodule GobusgoWeb.Endpoint do
   @places_path "/places"
   @places_file_prefix "places-"
   @places_manifest_name "manifest.json"
+  @places_notice_name "NOTICE.txt"
   @places_cache_seconds Gobusgo.Places.Publication.reader_keep_seconds()
   @shared_vehicles_path "/shared-vehicles"
   # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
@@ -172,6 +174,14 @@ defmodule GobusgoWeb.Endpoint do
     from: {__MODULE__, :places_dir, []},
     gzip: false,
     only: [@places_manifest_name],
+    cache_control_for_etags: "no-cache"
+
+  plug Plug.Static,
+    at: @places_path,
+    from: {__MODULE__, :places_dir, []},
+    gzip: false,
+    only: [@places_notice_name],
+    content_types: %{@places_notice_name => "text/plain; charset=utf-8"},
     cache_control_for_etags: "no-cache"
 
   plug Plug.RequestId

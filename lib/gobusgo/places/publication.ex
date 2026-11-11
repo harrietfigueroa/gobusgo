@@ -1,6 +1,7 @@
 defmodule Gobusgo.Places.Publication do
   @directory "places"
   @manifest_destination "places/manifest.json"
+  @notice_destination Gobusgo.Places.License.notice_destination()
   @reader_keep_seconds 31_536_000
 
   @moduledoc """
@@ -14,9 +15,12 @@ defmodule Gobusgo.Places.Publication do
   written, canonical JSON naming it:
 
       {"builtAt": ..., "file": {"byteSize": ..., "path": ..., "sha256": ...},
-       "kind": 5, "kindVersion": 1, "placeCount": ..., "sourceDate": ...}
+       "kind": 5, "kindVersion": 1, "license": {...}, "placeCount": ...,
+       "sourceDate": ...}
 
-  `file` is `Gobusgo.Packed.file_entry/2`, whose `path` is the destination.
+  `file` is `Gobusgo.Packed.file_entry/2`, whose `path` is the destination,
+  and `license` is `Gobusgo.Places.License.manifest_entry/0`, which names the
+  notice stored at `#{@notice_destination}` before the manifest.
   The manifest changes with every build, so the previous one is deleted
   before the new one is written; a reader that asks between the two finds
   none. Nothing deletes a file: an earlier file stays until it is removed
@@ -31,6 +35,7 @@ defmodule Gobusgo.Places.Publication do
   alias Gobusgo.Deleter
   alias Gobusgo.Packed
   alias Gobusgo.Places.Format
+  alias Gobusgo.Places.License
   alias Gobusgo.Places.Selection
   alias Gobusgo.Writer
 
@@ -78,6 +83,7 @@ defmodule Gobusgo.Places.Publication do
       "file" => Packed.file_entry(destination, stored),
       "kind" => Format.kind(),
       "kindVersion" => Format.version(),
+      "license" => License.manifest_entry(),
       "placeCount" => input.place_count,
       "sourceDate" => input.source_date,
       "builtAt" => DateTime.to_iso8601(built_at)
@@ -139,21 +145,31 @@ defmodule Gobusgo.Places.Publication do
   end
 
   defp replace_manifest(manifest, options) do
-    delete = %{destination: @manifest_destination, within: @directory <> "/"}
+    write_options = Keyword.get(options, :write_options, [])
+    delete_options = Keyword.get(options, :delete_options, [])
 
-    with :ok <- delete_manifest(Deleter.delete(delete, Keyword.get(options, :delete_options, []))),
+    with :ok <- delete_destination(@manifest_destination, delete_options),
+         :ok <- delete_destination(@notice_destination, delete_options),
          :ok <-
            Writer.write(
-             %{destination: @manifest_destination, content: manifest},
-             Keyword.get(options, :write_options, [])
-           ) do
+             %{destination: @notice_destination, content: License.notice_text()},
+             write_options
+           ),
+         :ok <-
+           Writer.write(%{destination: @manifest_destination, content: manifest}, write_options) do
       :ok
     else
       {:error, reason} -> {:error, {:write_manifest, reason}}
     end
   end
 
-  defp delete_manifest(:ok), do: :ok
-  defp delete_manifest({:error, :not_found}), do: :ok
-  defp delete_manifest({:error, _reason} = failure), do: failure
+  defp delete_destination(destination, delete_options) do
+    request = %{destination: destination, within: @directory <> "/"}
+
+    case Deleter.delete(request, delete_options) do
+      :ok -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} = failure -> failure
+    end
+  end
 end

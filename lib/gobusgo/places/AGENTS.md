@@ -13,7 +13,8 @@ The places file is one published file of the names a rider searches for, such as
 - `build.ex` runs the extractor, selection, and merge, and removes the files it wrote.
 - `records.ex` is the row of a place and the JSON that shows the rows. Pure.
 - `format.ex` is the kind's encoder and decoder on `Gobusgo.Packed`, and implements `Gobusgo.Packed.Kind`. Pure.
-- `publication.ex` stores the file and its manifest through the writer.
+- `license.ex` holds the texts of the file's license, its notice, and the manifest's `license` object. Pure.
+- `publication.ex` stores the file, the notice, and the manifest through the writer.
 - `lib/mix/tasks/gobusgo.places.build.ex` is the Mix task.
 - `assets/js/place_file.js` is the browser's decoder, checked by `node test/scripts/place_file_check.mjs`.
 
@@ -58,11 +59,34 @@ A reader refuses another version, another section count, alias counts that do no
 
 ## Publication
 
-`Gobusgo.Places.Publication` stores the file at `places/places-<SHA-256 of the gzip stream>.bin.gz` through `Gobusgo.Writer` with a reader keep time of a year, then, only after the file is stored, `places/manifest.json`: canonical JSON with `file` (`path`, `byteSize`, and `sha256`, from `Gobusgo.Packed.file_entry/2`), `kind` (5), `kindVersion`, `sourceDate`, `placeCount`, and `builtAt`. The manifest changes with every build, so the previous one is deleted before the new one is written and a reader that asks between the two finds none; a file of the same name is left as it is. A field a later change adds to the manifest, such as the license notice of GOB-367, goes beside these.
+`Gobusgo.Places.Publication` stores the file at `places/places-<SHA-256 of the gzip stream>.bin.gz` through `Gobusgo.Writer` with a reader keep time of a year, then, only after the file is stored, `places/NOTICE.txt` and then `places/manifest.json`: canonical JSON with `file` (`path`, `byteSize`, and `sha256`, from `Gobusgo.Packed.file_entry/2`), `kind` (5), `kindVersion`, `license` (`name` "ODbL-1.0", `uri`, `attribution`, `attributionUri`, and `notice`, the notice's path), `sourceDate`, `placeCount`, and `builtAt`. The manifest and the notice change with a build, so the previous ones are deleted before the new ones are written and a reader that asks between the two finds no manifest; a file of the same name is left as it is.
 
-`GobusgoWeb.Endpoint` serves `<GOBUSGO_DATA_DIR>/places` under `/places` with two `Plug.Static` plugs: the `places-` files as the gzip streams they are stored as, `application/gzip` with no content encoding, `public, max-age=31536000, immutable`, and `manifest.json` with `no-cache` and an `etag`. With a bucket configured the files are in S3 and production needs a CloudFront behavior for `/places/*` from the bucket in the infrastructure repository, which does not exist yet.
+`GobusgoWeb.Endpoint` serves `<GOBUSGO_DATA_DIR>/places` under `/places` with three `Plug.Static` plugs: the `places-` files as the gzip streams they are stored as, `application/gzip` with no content encoding, `public, max-age=31536000, immutable`, `manifest.json` with `no-cache` and an `etag`, and `NOTICE.txt` as `text/plain; charset=utf-8` with `no-cache` and an `etag`. With a bucket configured the files are in S3 and production needs a CloudFront behavior for `/places/*` from the bucket in the infrastructure repository, which does not exist yet.
 
 Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it and the hourly cleanup leaves it alone, so an earlier file stays until it is removed by hand.
+
+## License
+
+The places file is a Derivative Database of OpenStreetMap, offered under the Open Database License 1.0 (ODbL), "© OpenStreetMap contributors" (GOB-367). `license.ex` holds the texts, pure, and the notice and the manifest's `license` object both read them. The file is not under the repository's own license. The ODbL's obligations and how each is met:
+
+- **§4.2, notices.** `places/NOTICE.txt` names the file a Derivative Database of OpenStreetMap, offered under the ODbL with its address, credits "© OpenStreetMap contributors" with the copyright page, and names the manifest that names the whole database. `Gobusgo.Places.Publication` stores it before the manifest, and the manifest's `license` names it. The endpoint serves it at `/places/NOTICE.txt` as `text/plain; charset=utf-8` with `no-cache`. The Settings tab's licenses list "Places: ODbL 1.0, © OpenStreetMap contributors" with links to the ODbL, the copyright page, and the manifest.
+- **§4.3, notice for a Produced Work.** A page that shows results from the file carries "Places © OpenStreetMap" linked to the copyright page. That credit belongs to the results list that searches the file (GOB-368), and no page shows one yet.
+- **§4.4, share alike.** The file is itself offered under the ODbL, whole and unrestricted, so the share-alike condition on a Derivative Database holds for it. Its notices stay in the file's notice and manifest.
+- **§4.6, access.** `/places/manifest.json` is the stable, free address that names the current file. It needs no login, and the file it names is the whole database, in the container format `Gobusgo.Places.Format` describes and `mix gobusgo.packed.decode` reads.
+
+OneBusAway's stop names stay outside the ODbL's share-alike beside the places file, as a Collective Database, on three conditions, which the OSM Foundation's guidelines state:
+
+1. **No references between the two.** Neither dataset joins, deduplicates, filters, positions, or renames the other. A page may run both searches and show both result sets in one list, with OpenStreetMap credited (Geocoding Guideline).
+2. **Each feature type comes from one source in the region.** Stops and platforms come only from OneBusAway, and the file excludes every feature tagged `highway=bus_stop`, `public_transport=platform`, `public_transport=stop_position`, `railway=platform`, `railway=tram_stop`, or `railway=stop` (`Classification.stop?/1`). Stations come only from OpenStreetMap, so a stop search never lists OneBusAway's parent stations (Horizontal Map Layers Guideline).
+3. **No OneBusAway data in the places file and no OpenStreetMap data in the stop data.**
+
+Guidance, checked 2026-11-10:
+
+- <https://opendatacommons.org/licenses/odbl/1-0/>
+- <https://osmfoundation.org/wiki/Licence/Community_Guidelines/Collective_Database_Guideline_Guideline> (endorsed 2016-06-17)
+- <https://osmfoundation.org/wiki/Licence/Community_Guidelines/Horizontal_Map_Layers_-_Guideline> (endorsed 2014-06-06)
+- <https://osmfoundation.org/wiki/Licence/Community_Guidelines/Geocoding_-_Guideline> (endorsed 2017-08-24)
+- <https://osmfoundation.org/wiki/Licence/Attribution_Guidelines>
 
 ## The task
 
