@@ -51,6 +51,7 @@ import {
 import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys"
 import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
 import {SORT_LABELS, SegmentKind, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
+import {TimelineRowKind, timelineRows} from "./journey_timeline"
 import {TRIP_HOLDER as TRIP_STOP_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {liveDot} from "./stop_arrivals"
 import {startArrivalTicker} from "./arrival_ticker"
@@ -242,6 +243,21 @@ async function readSnapshotStops({searchFiles, entry}) {
   }
 }
 
+// The walking speed of each service date's snapshot, by its date.
+function walkSpeedsOf(manifest) {
+  const speeds = {}
+
+  for (const entry of manifest.snapshots) {
+    speeds[entry.serviceDate] = entry.transferRules.walkSpeedMPerS
+  }
+
+  return speeds
+}
+
+function serviceDateOfJourney(journey) {
+  return journey.serviceDate
+}
+
 function serviceDayStartsOf(manifest) {
   const starts = {}
 
@@ -341,7 +357,7 @@ function summaryText(row) {
 // first bus's live lateness, with the live dot, or that it is scheduled.
 function cardElement(card) {
   const item = button({className: "trip-journey"})
-  item.dataset.journeyIndex = String(card.order)
+  item.dataset.focusKey = `journey:${card.order}`
   const heading = element({tag: "span", className: "trip-journey-heading"})
   heading.append(element({tag: "strong", className: "trip-journey-lead", text: card.leadText}))
   heading.append(element({tag: "span", className: "trip-journey-arrive", text: card.arriveText}))
@@ -361,29 +377,107 @@ function cardElement(card) {
 }
 
 // The index of the journey whose card has the focus, or none.
-function focusedJourneyIndex(container) {
+function focusedKey(container) {
   const focused = document.activeElement
   const isInside = focused !== null && container.contains(focused)
-  const isCard = isInside && focused.dataset.journeyIndex !== undefined
+  const isKeyed = isInside && focused.dataset.focusKey !== undefined
 
-  if (isCard) {
-    return focused.dataset.journeyIndex
+  if (isKeyed) {
+    return focused.dataset.focusKey
   }
 
   return ""
 }
 
-// Gives the focus back to the card of `index`, written anew.
-function refocusJourney({container, index}) {
-  if (index === "") {
+// Gives the focus back to the control of `key`, a card or an expand
+// button, written anew.
+function refocus({container, key}) {
+  if (key === "") {
     return
   }
 
-  const card = container.querySelector(`[data-journey-index="${index}"]`)
+  const control = container.querySelector(`[data-focus-key="${key}"]`)
 
-  if (card !== null) {
-    card.focus()
+  if (control !== null) {
+    control.focus()
   }
+}
+
+// The rail of a timeline row: its dot, or its ride's colored line or its
+// walk's dotted one, drawn for the eye alone.
+function railElement(row) {
+  const rail = element({tag: "span", className: "trip-timeline-rail"})
+  rail.setAttribute("aria-hidden", "true")
+  const isStop = row.kind === TimelineRowKind.board || row.kind === TimelineRowKind.alight
+  const hasColor = isStop || row.kind === TimelineRowKind.ride
+
+  if (hasColor) {
+    rail.style.setProperty("--rail-color", rowColor(row))
+  }
+
+  return rail
+}
+
+function rowColor(row) {
+  if (row.kind === TimelineRowKind.ride) {
+    return row.chip.color
+  }
+
+  return row.color
+}
+
+// What a sighted rider reads of a row beside its rail; the row's sentence
+// is what a screen reader reads.
+function rowBodyElement(row) {
+  const body = element({tag: "span", className: "trip-timeline-body"})
+  body.setAttribute("aria-hidden", "true")
+
+  switch (row.kind) {
+    case TimelineRowKind.origin:
+    case TimelineRowKind.arrive:
+      body.append(element({tag: "strong", className: "", text: row.name}))
+      break
+    case TimelineRowKind.board:
+    case TimelineRowKind.alight:
+      body.append(element({tag: "strong", className: "", text: row.name}))
+
+      if (row.detail !== "") {
+        body.append(element({tag: "span", className: "trip-timeline-detail", text: row.detail}))
+      }
+
+      break
+    case TimelineRowKind.walk:
+      body.append(element({tag: "span", className: "trip-timeline-detail", text: row.text}))
+      break
+    case TimelineRowKind.ride:
+      body.append(rideLineElement(row))
+      break
+    default:
+      unreachable(row.kind, "trip planner: a timeline row of unknown kind")
+  }
+
+  return body
+}
+
+// A ride's chip, headsign, and live lateness.
+function rideLineElement(row) {
+  const line = element({tag: "span", className: "trip-timeline-ride-line"})
+  const chip = element({tag: "span", className: "trip-timeline-chip", text: row.chip.name})
+  chip.style.backgroundColor = row.chip.color
+  chip.style.color = chipTextColor(row.chip.color)
+  line.append(chip)
+
+  if (row.headsign !== "") {
+    line.append(element({tag: "span", className: "", text: `to ${row.headsign}`}))
+  }
+
+  if (row.lateText !== "") {
+    const late = element({tag: "span", className: "trip-timeline-late"})
+    late.append(liveDot(), row.lateText)
+    line.append(late)
+  }
+
+  return line
 }
 
 function keepFocusCallback(event) {
@@ -434,6 +528,11 @@ export const TripPlanner = {
     this.queryCount = 0
     this.shown = null
     this.names = NO_NAMES
+    // The headsigns of the journeys' trips, and the rides whose passed
+    // stops the timeline shows, by journey and leg.
+    this.headsigns = new Map()
+    this.snapshotStopNames = {}
+    this.expandedRides = new Set()
     this.selectedIndex = 0
     this.isFilterSent = false
     // The end the search box searches for, the text typed since it took
@@ -1274,9 +1373,15 @@ export const TripPlanner = {
       planned,
       nowMs,
       serviceDayStartsMs: serviceDayStartsOf(manifest),
+      walkSpeedsMPerS: walkSpeedsOf(manifest),
+      originName: endText(trip.from),
       origin,
       queryNumber: this.queryCount
     }
+
+    this.headsigns = new Map()
+    this.snapshotStopNames = {}
+    this.expandedRides = new Set()
 
     this.names = NO_NAMES
     const rows = this.rows()
@@ -1287,6 +1392,7 @@ export const TripPlanner = {
     this.announceJourneys(rows)
     this.requestNames()
     this.holdLiveStops()
+    this.loadJourneyNames(manifest)
   },
 
   // The status line says, out of sight, what the list that appeared holds,
@@ -1333,7 +1439,7 @@ export const TripPlanner = {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const {journeys, planned, nowMs, serviceDayStartsMs} = this.shown
     this.windowLine.textContent = windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone})
-    const focusedIndex = focusedJourneyIndex(this.journeysElement)
+    const focused = focusedKey(this.journeysElement)
     const cards = []
 
     for (const [order, row] of rows.entries()) {
@@ -1352,18 +1458,129 @@ export const TripPlanner = {
       items.push(item)
 
       if (isSelected) {
-        const stepsElement = element({tag: "ol", className: "trip-journey-steps"})
-
-        for (const step of card.row.steps) {
-          stepsElement.append(element({tag: "li", className: "", text: step}))
-        }
-
-        items.push(stepsElement)
+        items.push(this.timelineElement(card))
       }
     }
 
     this.journeysElement.replaceChildren(fragmentOf(items))
-    refocusJourney({container: this.journeysElement, index: focusedIndex})
+    refocus({container: this.journeysElement, key: focused})
+  },
+
+  // The timeline of the selected journey, `card`'s: a list in the order
+  // taken, each row's rail and text drawn for the eye and its sentence for
+  // a screen reader, a ride's passed stops behind a disclosure.
+  timelineElement(card) {
+    const {journey} = card.row
+    const live = firstRideLive({journey, shownByStop: this.shownByStop, serviceDayStartsMs: this.shown.serviceDayStartsMs})
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    // The page's names come first; the snapshot's name the stops a ride
+    // only passes, which the page is not asked for.
+    const names = {stops: {...this.snapshotStopNames, ...this.names.stops}, routes: this.names.routes}
+    const rows = timelineRows({
+      journey,
+      names,
+      headsigns: this.headsigns,
+      live,
+      originName: this.shown.originName,
+      serviceDayStartsMs: this.shown.serviceDayStartsMs,
+      timeZone,
+      walkSpeedMPerS: this.shown.walkSpeedsMPerS[journey.serviceDate],
+    })
+    const timeline = element({tag: "ol", className: "trip-timeline"})
+    timeline.setAttribute("aria-label", "Steps")
+
+    for (const row of rows) {
+      timeline.append(this.timelineRowElement({row, journeyIndex: card.order}))
+    }
+
+    return timeline
+  },
+
+  timelineRowElement({row, journeyIndex}) {
+    const rowItem = element({tag: "li", className: `trip-timeline-row trip-timeline-${row.kind}`})
+    const time = element({tag: "span", className: "trip-timeline-time", text: row.timeText})
+    time.setAttribute("aria-hidden", "true")
+    rowItem.append(time, railElement(row), rowBodyElement(row))
+    const isExpandable = row.kind === TimelineRowKind.ride && row.passedStops.length > 0
+
+    if (isExpandable) {
+      for (const part of this.passedStopsElements({row, journeyIndex})) {
+        rowItem.append(part)
+      }
+    } else {
+      rowItem.append(element({tag: "span", className: HIDDEN_TEXT_CLASS_NAME, text: row.sentence}))
+    }
+
+    return rowItem
+  },
+
+  // A ride's "Ride 3 stops" disclosure, named by the ride's sentence, and
+  // the stops it passes, shown while it is expanded.
+  passedStopsElements({row, journeyIndex}) {
+    const key = `ride:${journeyIndex}:${row.legIndex}`
+    const isExpanded = this.expandedRides.has(key)
+    const listId = `trip-passed-${journeyIndex}-${row.legIndex}`
+    const toggle = button({className: "trip-timeline-expand inline-target", text: row.stopCountText})
+    toggle.dataset.focusKey = key
+    toggle.setAttribute("aria-label", row.sentence)
+    toggle.setAttribute("aria-expanded", String(isExpanded))
+    toggle.setAttribute("aria-controls", listId)
+    toggle.addEventListener("click", () => { this.toggleRide(key) })
+    const passed = element({tag: "ol", className: "trip-timeline-passed"})
+    passed.id = listId
+    passed.hidden = !isExpanded
+
+    for (const name of row.passedStops) {
+      passed.append(element({tag: "li", className: "", text: name}))
+    }
+
+    return [toggle, passed]
+  },
+
+  toggleRide(key) {
+    if (this.expandedRides.has(key)) {
+      this.expandedRides.delete(key)
+    } else {
+      this.expandedRides.add(key)
+    }
+
+    this.writeJourneys(this.rows())
+  },
+
+  // Reads the headsigns and the stop names of the service dates of the
+  // journeys shown from their snapshots' names files, then writes the
+  // timeline again with them.
+  async loadJourneyNames(manifest) {
+    const {queryNumber, journeys} = this.shown
+    const serviceDates = Array.from(journeys, serviceDateOfJourney)
+    const dates = new Set(serviceDates)
+    const entries = manifest.snapshots.filter((entry) => dates.has(entry.serviceDate))
+    const pending = Array.from(entries, (entry) => this.searchFiles.journeyNames({entry}))
+    const settled = await Promise.allSettled(pending)
+    const isCurrent = this.shown !== null && this.shown.queryNumber === queryNumber
+
+    if (!isCurrent) {
+      return
+    }
+
+    const headsigns = new Map()
+    let stops = {}
+
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        for (const [key, headsign] of outcome.value.headsigns) {
+          headsigns.set(key, headsign)
+        }
+
+        stops = {...stops, ...outcome.value.stops}
+      } else {
+        console.warn("Journey names not read", outcome.reason)
+      }
+    }
+
+    this.headsigns = headsigns
+    this.snapshotStopNames = stops
+    this.writeJourneys(this.rows())
   },
 
   // Selects the journey at `index`: its steps in the list, its drawing on
