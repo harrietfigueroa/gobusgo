@@ -34,6 +34,12 @@ function labelOf(chosen) {
   return yourBusLabel({chosen})
 }
 
+// The label of the journey chosen now.
+function labelNow() {
+  const chosen = chosenJourney()
+  return labelOf(chosen)
+}
+
 // The filter and text of the map layer for `label`: the marker of its trip
 // and service date and its text; or a filter no marker passes for none.
 function layerOf(label) {
@@ -50,21 +56,21 @@ function layerOf(label) {
  * `sourceName`, for a vehicle the source holds; `onLabel(label)` is called
  * with each label for a vehicle the canvas draws, which writes it itself.
  * `attach(map)` adds the layer to a map whose style has loaded and the
- * source exists in, `current()` gives the label of the journey chosen now,
+ * source exists in, `current` is the label of the journey chosen now,
  * and `destroy` stops it following the chosen journey.
  */
 export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT, onLabel}) {
   let map = null
 
   function apply() {
-    onLabel(labelOf(chosenJourney()))
+    onLabel(labelNow())
     const hasLayer = map !== null && map.getLayer(LAYER_NAME) !== undefined
 
     if (!hasLayer) {
       return
     }
 
-    const {filter, text} = layerOf(labelOf(chosenJourney()))
+    const {filter, text} = layerOf(labelNow())
     map.setFilter(LAYER_NAME, filter)
     map.setLayoutProperty(LAYER_NAME, "text-field", text)
   }
@@ -72,7 +78,7 @@ export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT, onLabel}) 
   function attach(attached) {
     map = attached
     const colors = mapColors(currentTheme())
-    const {filter, text} = layerOf(labelOf(chosenJourney()))
+    const {filter, text} = layerOf(labelNow())
 
     // The label is its marker's own, so it stays where it collides with the
     // marker's badge, and it takes its room before the journey's labels,
@@ -105,7 +111,7 @@ export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT, onLabel}) 
 
   return {
     attach,
-    current() { return labelOf(chosenJourney()) },
+    current: labelNow,
     destroy() { window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, apply) }
   }
 }
