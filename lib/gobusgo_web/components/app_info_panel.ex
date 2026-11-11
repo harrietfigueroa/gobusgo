@@ -507,6 +507,7 @@ defmodule GobusgoWeb.AppInfoPanel do
     assigns =
       assign(assigns,
         terms: AppInfo.terms(),
+        provision: AppInfo.provision(),
         address_sources: AppInfo.address_sources(),
         intersection_source: AppInfo.intersection_source()
       )
@@ -516,9 +517,9 @@ defmodule GobusgoWeb.AppInfoPanel do
       <.heading message={AppInfo.summary(:credits)} />
       <.more id="app-info-credits-more" summary="Credits and data terms">
         <p>
-          Transit data is provided on an "as is" basis by {agencies_text(@agencies)}, under the
+          {@provision.lead}{AppInfo.agencies_credit(@agencies)}, under the
           <a href={@terms.url} class="underline" rel="noopener">{@terms.name}</a>
-          of Sound Transit's Open Transit Data program, and served by OneBusAway.
+          {@provision.trail}
         </p>
         <p>
           Map data © OpenStreetMap contributors, under the Open Database License, from a
@@ -582,12 +583,6 @@ defmodule GobusgoWeb.AppInfoPanel do
       </.more>
     </section>
     """
-  end
-
-  defp agencies_text([]), do: "the transit agencies of the Puget Sound region"
-
-  defp agencies_text(agencies) do
-    "the following transit agencies: " <> Enum.map_join(agencies, ", ", & &1.name)
   end
 
   # A section's headline, its heading, over its caption.

@@ -1,7 +1,7 @@
 defmodule GobusgoWeb.Router do
   @moduledoc """
   The routes of the application: browser pages, the health and readiness
-  endpoints, and the JSON API under `/api`. Every browser page is in one live session whose
+  endpoints, the MCP endpoint at `/mcp`, and the JSON API under `/api`. Every browser page is in one live session whose
   mount hook, `GobusgoWeb.UsageHook`, registers the page's connection with
   the usage recorder. A request under `/api` that no route matches is
   answered with problem details by `GobusgoWeb.FallbackController`. Any
@@ -43,6 +43,8 @@ defmodule GobusgoWeb.Router do
 
     get "/health", HealthController, :show
     get "/ready", ReadinessController, :show
+    post "/mcp", McpController, :handle
+    match :*, "/mcp", McpController, :method_not_allowed
   end
 
   scope "/api", GobusgoWeb do

@@ -126,6 +126,10 @@ config :gobusgo, GobusgoWeb.Endpoint,
   pubsub_server: Gobusgo.PubSub,
   live_view: [signing_salt: "live_view"]
 
+# The modules the MCP endpoint serves, implementing GobusgoWeb.Mcp.Tool and
+# GobusgoWeb.Mcp.Resource.
+config :gobusgo, GobusgoWeb.Mcp, tools: [], resources: []
+
 # The sources run on their schedule everywhere except under test, where no
 # request may leave the machine.
 config :gobusgo, :ingestion, scheduled: config_env() != :test

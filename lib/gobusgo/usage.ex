@@ -19,6 +19,10 @@ defmodule Gobusgo.Usage do
   recorder that is not running or does not answer, so a page never fails
   for its recorder.
 
+  A request that has no connection to keep is recorded with `count/2`: the
+  record of a connection that ended the moment it began, with a duration of
+  0. It names no process and holds nothing open.
+
   Every #{@write_interval_ms_default} ms by default, and when it shuts down,
   the recorder writes the records it holds as one file, at most
   `Gobusgo.Usage.Records.file_record_count_max/0` of them, and nothing when
@@ -100,6 +104,19 @@ defmodule Gobusgo.Usage do
   end
 
   @doc """
+  Records one request as a connection that ended as it began, so each request
+  of one process is one record where `register/2` keeps one connection per
+  process. It is refused as `register/2` is, for a recorder at its bound or
+  one that is not running.
+  """
+  @spec count(GenServer.server(), Records.connection()) :: :ok | {:error, register_error()}
+  def count(recorder, %{page: page} = connection) when is_binary(page) do
+    GenServer.call(recorder, {:count, connection}, @register_timeout_ms)
+  catch
+    :exit, _reason -> {:error, :unavailable}
+  end
+
+  @doc """
   Names the filter the calling process's connection shows now. It changes
   nothing for a process with no open connection or a recorder that is not
   running.
@@ -156,6 +173,27 @@ defmodule Gobusgo.Usage do
 
       {_state, :already_open} ->
         {:reply, :ok, recorder}
+
+      {state, :open_count_exceeded = refusal} ->
+        {:reply, {:error, refusal}, %{recorder | state: state}}
+    end
+  end
+
+  def handle_call({:count, connection}, _from, recorder) do
+    holder = make_ref()
+    now_ms = now_ms(recorder)
+
+    opening = %{
+      holder: holder,
+      connection: connection,
+      connected_at: now(recorder),
+      now_ms: now_ms
+    }
+
+    case State.open(recorder.state, opening) do
+      {state, :opened} ->
+        state = State.close(state, %{holder: holder, now_ms: now_ms})
+        {:reply, :ok, %{recorder | state: state}}
 
       {state, :open_count_exceeded = refusal} ->
         {:reply, {:error, refusal}, %{recorder | state: state}}
