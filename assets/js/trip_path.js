@@ -11,10 +11,8 @@
 // https://developers.google.com/maps/documentation/utilities/polylinealgorithm — checked 2026-11-09
 
 import {assertCondition} from "./assert.js"
-// The most paths the page holds, and the most trips one request names, the
-// server's own bound on a request.
+// The most paths the page holds.
 export const TRIP_PATH_COUNT_MAX = 300
-export const TRIP_PATH_REQUEST_COUNT_MAX = 100
 
 const CHARACTER_OFFSET = 63
 const CHARACTER_MAX = 126
@@ -118,7 +116,7 @@ export function tripPathKey({tripId, serviceDateMs}) {
 }
 
 /**
- * One path of a `trip-paths:paths` event, decoded: its points, longitude
+ * One encoded path, decoded: its points, longitude
  * first, and each stop's distance along them in meters and its scheduled
  * times in seconds from `serviceDateMs`, in the order the trip serves them.
  * A stop's distance is the sum of haversine distances between the points
@@ -179,27 +177,4 @@ export function withTripPaths(cache, paths) {
   }
 
   return next
-}
-
-/**
- * The trips of `trips`, each with its `tripId`, `routeId`, and
- * `serviceDateMs`, whose paths `cache` does not hold, once each, at most
- * TRIP_PATH_REQUEST_COUNT_MAX, as the `trips` of a `trip-paths:request`.
- */
-export function tripPathRequest(cache, trips) {
-  const requested = new Map()
-
-  for (const trip of trips) {
-    if (requested.size >= TRIP_PATH_REQUEST_COUNT_MAX) {
-      break
-    }
-    const key = tripPathKey(trip)
-    const unheld = !cache.has(key) && !requested.has(key)
-
-    if (unheld) {
-      requested.set(key, {trip_id: trip.tripId, route_id: trip.routeId, service_date_ms: trip.serviceDateMs})
-    }
-  }
-
-  return Array.from(requested.values())
 }

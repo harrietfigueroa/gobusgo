@@ -52,14 +52,6 @@ defmodule Gobusgo.OneBusAway.RouteScheduleViewTest do
              RouteScheduleView.schedule(view, "19_41", ~D[2026-11-07])
   end
 
-  test "returns the request identifier of a route's schedule on a service date", %{view: view} do
-    :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-07])])
-
-    assert RouteScheduleView.request_id(view, "19_41", ~D[2026-11-07]) == @request_id
-    assert RouteScheduleView.request_id(view, "19_41", ~D[2026-11-08]) == nil
-    assert RouteScheduleView.request_id(NoSuchView, "19_41", ~D[2026-11-07]) == nil
-  end
-
   test "returns nil for a date it does not hold", %{view: view} do
     :ok = RouteScheduleView.apply_records(view, [value(~D[2026-11-07])])
 
