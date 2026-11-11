@@ -12,7 +12,8 @@ import {
   showsDetail
 } from "./panel_detail"
 import {chosenStopMark, stopViewElements, suppliedName, writeFavoriteButton, writeTripLine} from "./stop_view"
-import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME} from "./chosen_journey"
+import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME, ChosenKind, chosenJourney} from "./chosen_journey"
+import {stopBlockerVisibility} from "./journey_label_marks"
 import {yourBusRow} from "./journey_stop_marks"
 import {isPicking, pickStop} from "./trip_ends"
 import {revealOnMap} from "./panel_sheet"
@@ -55,6 +56,10 @@ export const MARKER_LAYER_NAME = "stop-markers"
 // region cover its routes.
 export const ZOOM_MIN = 14
 const ARROW_LAYER_NAME = "stop-markers-arrow"
+// The layers that stand in the sign's and the arrow's place for the chosen
+// journey's labels, which are placed under them and so give way to them.
+export const SIGN_BLOCKER_LAYER_NAME = "stop-markers-blocker"
+const ARROW_BLOCKER_LAYER_NAME = "stop-markers-arrow-blocker"
 const LABEL_LAYER_NAME = "stop-markers-label"
 const IMAGE_RESOLVER_KEY = "stop-markers"
 const SIGN_IMAGE_PREFIX = "stop-sign-"
@@ -267,7 +272,9 @@ export const StopMarkers = {
         return
       } else if (this.attached) {
         setLayerFilter({map: this.map, layerName: MARKER_LAYER_NAME, layerFilter: stopFilter()})
+        setLayerFilter({map: this.map, layerName: SIGN_BLOCKER_LAYER_NAME, layerFilter: stopFilter()})
         this.map.setFilter(ARROW_LAYER_NAME, keptFilter(hasCompassDirection))
+        this.map.setFilter(ARROW_BLOCKER_LAYER_NAME, keptFilter(hasCompassDirection))
         this.map.setFilter(LABEL_LAYER_NAME, keptFilter(hasChips))
       } else {
         this.attach()
@@ -309,6 +316,10 @@ export const StopMarkers = {
     // A journey chosen, changed, or cleared rewrites the view's trip line
     // and the mark on its arrivals.
     this.onChosenChange = () => {
+      if (this.attached) {
+        this.writeBlockerVisibility()
+      }
+
       if (this.view !== null) {
         writeTripLine({line: this.view.tripLine, stopId: this.view.stop.id})
         this.tickArrivals(Date.now())
@@ -436,6 +447,46 @@ export const StopMarkers = {
     const theme = currentTheme()
     registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => { addStopImage({map, id}) }})
 
+    // The signs and arrows ignore placement, so a journey's label can stand
+    // over one. A copy of each, invisible and taking part in placement,
+    // stands under the sign and over the labels, while a journey is chosen.
+    const signLayout = {
+      "icon-image": SIGN_IMAGE_PREFIX + theme,
+      "icon-size": iconSize,
+      "icon-allow-overlap": true
+    }
+    const arrowLayout = {
+      "icon-image": ARROW_IMAGE_PREFIX + theme,
+      "icon-size": iconSize,
+      "icon-rotate": ["match", ["get", "direction"], ...directionAngleCases(), 0],
+      "icon-rotation-alignment": "map",
+      "icon-offset": arrowOffsetPixels,
+      "icon-allow-overlap": true
+    }
+    const blockerVisibility = this.blockerVisibilityNow()
+
+    map.addLayer({
+      id: SIGN_BLOCKER_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      "source-layer": STOP_LAYER_NAME,
+      minzoom: ZOOM_MIN,
+      ...filterProperties(stopFilter()),
+      layout: {...signLayout, visibility: blockerVisibility},
+      paint: {"icon-opacity": 0}
+    }, firstVehicleLayerName(map))
+
+    map.addLayer({
+      id: ARROW_BLOCKER_LAYER_NAME,
+      type: "symbol",
+      source: SOURCE_NAME,
+      "source-layer": STOP_LAYER_NAME,
+      minzoom: ZOOM_MIN,
+      filter: keptFilter(hasCompassDirection),
+      layout: {...arrowLayout, visibility: blockerVisibility},
+      paint: {"icon-opacity": 0}
+    }, firstVehicleLayerName(map))
+
     // Every sign is drawn, however crowded the street.
     map.addLayer({
       id: MARKER_LAYER_NAME,
@@ -444,12 +495,7 @@ export const StopMarkers = {
       "source-layer": STOP_LAYER_NAME,
       minzoom: ZOOM_MIN,
       ...filterProperties(stopFilter()),
-      layout: {
-        "icon-image": SIGN_IMAGE_PREFIX + theme,
-        "icon-size": iconSize,
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true
-      }
+      layout: {...signLayout, "icon-ignore-placement": true}
     }, firstVehicleLayerName(map))
 
     // The arrow stands beside the sign on the side the stop faces, and turns
@@ -461,15 +507,7 @@ export const StopMarkers = {
       "source-layer": STOP_LAYER_NAME,
       minzoom: ZOOM_MIN,
       filter: keptFilter(hasCompassDirection),
-      layout: {
-        "icon-image": ARROW_IMAGE_PREFIX + theme,
-        "icon-size": iconSize,
-        "icon-rotate": ["match", ["get", "direction"], ...directionAngleCases(), 0],
-        "icon-rotation-alignment": "map",
-        "icon-offset": arrowOffsetPixels,
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true
-      }
+      layout: {...arrowLayout, "icon-ignore-placement": true}
     }, firstVehicleLayerName(map))
 
     // The chips are left out where they would cover other chips, so a
@@ -498,6 +536,17 @@ export const StopMarkers = {
     }
 
     this.attached = true
+  },
+
+  // Whether the blockers are drawn now: while a journey is chosen.
+  blockerVisibilityNow() {
+    return stopBlockerVisibility(chosenJourney().kind === ChosenKind.journey)
+  },
+
+  writeBlockerVisibility() {
+    const visibility = this.blockerVisibilityNow()
+    this.map.setLayoutProperty(SIGN_BLOCKER_LAYER_NAME, "visibility", visibility)
+    this.map.setLayoutProperty(ARROW_BLOCKER_LAYER_NAME, "visibility", visibility)
   },
 
   // A map keeps the listeners of a layer while the layer is added again.

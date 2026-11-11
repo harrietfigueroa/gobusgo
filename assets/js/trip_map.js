@@ -12,7 +12,9 @@ import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME, ChosenKind, chosenJourney
 import {currentTheme} from "./color_theme"
 import {LabelKind, journeyLabels} from "./journey_labels"
 import {sheetInsets} from "./panel_sheet"
-import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
+import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "./journey_label_marks"
+import {SIGN_BLOCKER_LAYER_NAME as STOP_BLOCKER_LAYER_NAME, MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
+import {registerImageResolver} from "./style_images"
 import {mapColors} from "./theme"
 import {BoundsKind, FeatureKind} from "./trip_plan"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
@@ -24,6 +26,10 @@ const WALK_LAYER_NAME = "trip-journey-walk"
 const ENDS_LAYER_NAME = "trip-journey-ends"
 const LABEL_SOURCE_NAME = "trip-journey-label-points"
 const LABEL_LAYER_NAME = "trip-journey-labels"
+const ARRIVAL_LAYER_NAME = "trip-journey-arrival"
+const IMAGE_RESOLVER_KEY = "trip-map"
+const PILL_IMAGE_PREFIX = "trip-label-pill-"
+const IMAGE_PIXEL_RATIO = 2
 const RIDE_WIDTH_PIXELS = 5
 // A casing is as much wider than its line as it shows on both sides.
 const CASING_WIDTH_EXTRA_PIXELS = 4
@@ -69,6 +75,7 @@ const isRide = ["==", ["get", "kind"], FeatureKind.ride]
 const isWalk = ["==", ["get", "kind"], FeatureKind.walk]
 const isEnd = ["in", ["get", "kind"], ["literal", [FeatureKind.origin, FeatureKind.destination]]]
 const isArrival = ["==", ["get", "kind"], LabelKind.arrive]
+const isNotArrival = ["!=", ["get", "kind"], LabelKind.arrive]
 
 function labelFeature(label) {
   return {
@@ -91,11 +98,44 @@ function labelCollectionNow() {
   return {type: "FeatureCollection", features}
 }
 
-// The first layer the journey goes under: a stop's, or else a vehicle's,
-// or none on a map that holds neither yet, which adds them over it later.
+// The first layer the journey goes under: the stops' blocker, which the
+// labels stand under so they give way to the signs, or else a stop's or a
+// vehicle's, or none on a map that holds none yet, which adds them over it
+// later.
 function beforeLayerName(map) {
-  const layerNames = [STOP_MARKER_LAYER_NAME, ...vehicleMarkerLayerNames]
+  const layerNames = [STOP_BLOCKER_LAYER_NAME, STOP_MARKER_LAYER_NAME, ...vehicleMarkerLayerNames]
   return layerNames.find((layerName) => map.getLayer(layerName) !== undefined)
+}
+
+// The pill the arrival label stands on, drawn in the label ink of `theme`
+// at the size MapLibre stretches it from.
+function pillImage({theme}) {
+  const colors = mapColors(theme)
+  const spec = pillImageSpec({pixelRatio: IMAGE_PIXEL_RATIO})
+  const canvas = document.createElement("canvas")
+  canvas.width = PILL_IMAGE_SIZE_PIXELS * IMAGE_PIXEL_RATIO
+  canvas.height = PILL_IMAGE_SIZE_PIXELS * IMAGE_PIXEL_RATIO
+  const context = canvas.getContext("2d")
+  context.scale(IMAGE_PIXEL_RATIO, IMAGE_PIXEL_RATIO)
+  context.beginPath()
+  context.roundRect(0, 0, PILL_IMAGE_SIZE_PIXELS, PILL_IMAGE_SIZE_PIXELS, spec.radiusPixels)
+  context.fillStyle = colors.badgeInk
+  context.fill()
+  return context.getImageData(0, 0, canvas.width, canvas.height)
+}
+
+function addPillImage({map, id}) {
+  const spec = pillImageSpec({pixelRatio: IMAGE_PIXEL_RATIO})
+  const theme = currentTheme()
+
+  if (id === PILL_IMAGE_PREFIX + theme) {
+    map.addImage(id, pillImage({theme}), {
+      pixelRatio: IMAGE_PIXEL_RATIO,
+      stretchX: spec.stretchX,
+      stretchY: spec.stretchY,
+      content: spec.content
+    })
+  }
 }
 
 function addLayers(map) {
@@ -142,12 +182,11 @@ function addLayers(map) {
     }
   }, before)
 
-  // The arrival is an inverted label, so it reads apart from the times
-  // along the way.
   map.addLayer({
     id: LABEL_LAYER_NAME,
     type: "symbol",
     source: LABEL_SOURCE_NAME,
+    filter: isNotArrival,
     layout: {
       "text-field": ["get", "text"],
       "text-font": LABEL_FONT,
@@ -160,10 +199,38 @@ function addLayers(map) {
       "symbol-sort-key": ["get", "sortKey"]
     },
     paint: {
-      "text-color": ["case", isArrival, colors.badgePaper, colors.badgeInk],
-      "text-halo-color": ["case", isArrival, colors.badgeInk, colors.badgePaper],
+      "text-color": colors.badgeInk,
+      "text-halo-color": colors.badgePaper,
       "text-halo-width": LABEL_HALO_WIDTH_PIXELS
     }
+  }, before)
+
+  // The arrival is a pill in the label ink with the label paper for its
+  // text, so it reads apart from the times along the way, over their layer
+  // so it is placed first. The pill stands out from the point by its padding
+  // too, to clear the end's dot.
+  const spec = pillImageSpec({pixelRatio: IMAGE_PIXEL_RATIO})
+  const padding = spec.textFitPaddingPixels
+  map.addLayer({
+    id: ARRIVAL_LAYER_NAME,
+    type: "symbol",
+    source: LABEL_SOURCE_NAME,
+    filter: isArrival,
+    layout: {
+      "text-field": ["get", "text"],
+      "text-font": LABEL_FONT,
+      "text-size": LABEL_SIZE_PIXELS,
+      "text-max-width": LABEL_WIDTH_MAX,
+      "text-variable-anchor": LABEL_ANCHORS,
+      "text-radial-offset": LABEL_RADIAL_OFFSET + padding[1] / LABEL_SIZE_PIXELS,
+      "text-justify": "auto",
+      "text-allow-overlap": false,
+      "icon-image": PILL_IMAGE_PREFIX + currentTheme(),
+      "icon-text-fit": "both",
+      "icon-text-fit-padding": padding,
+      "icon-allow-overlap": false
+    },
+    paint: {"text-color": colors.badgePaper}
   }, before)
 }
 
@@ -179,6 +246,7 @@ export function createTripMap() {
   function attach() {
     map.addSource(SOURCE_NAME, {type: "geojson", data: collection})
     map.addSource(LABEL_SOURCE_NAME, {type: "geojson", data: labelCollectionNow()})
+    registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => { addPillImage({map, id}) }})
     addLayers(map)
   }
 
