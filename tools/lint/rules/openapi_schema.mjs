@@ -131,7 +131,9 @@ function withDialectForDynamicRefs(schema) {
 }
 
 function compile({schemaPath, cwd}) {
-  const schema = JSON.parse(readFileSync(resolve(cwd, schemaPath), "utf8"))
+  const absolutePath = resolve(cwd, schemaPath)
+  const text = readFileSync(absolutePath, "utf8")
+  const schema = JSON.parse(text)
   const resolved = withDialectForDynamicRefs(schema)
 
   // The OpenAPI schema carries annotation keywords and a `$comment` per
