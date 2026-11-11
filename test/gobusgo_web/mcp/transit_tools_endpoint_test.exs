@@ -15,7 +15,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
 
   @endpoint GobusgoWeb.Endpoint
   @legacy "2025-11-25"
-  @transit_tool_names ["arrivals", "find", "vehicles"]
+  @transit_tool_names ["alerts", "arrivals", "find", "vehicles"]
   @transit_resource_uris ["gobusgo://api/agencies", "gobusgo://api/routing/manifest"]
 
   setup do
@@ -50,7 +50,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
     rpc("tools/call", %{"name" => name, "arguments" => arguments})
   end
 
-  test "lists the three transit tools, each with an output schema" do
+  test "lists the four transit tools, each with an output schema" do
     assert %{"result" => %{"tools" => tools}} = rpc("tools/list", %{})
 
     transit_tools = for tool <- tools, tool["name"] in @transit_tool_names, do: tool
@@ -82,6 +82,32 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
   test "calls vehicles" do
     assert %{"result" => %{"structuredContent" => %{"data" => %{"vehicles" => [%{"id" => _id}]}}}} =
              call("vehicles", %{"agency" => ["1"]})
+  end
+
+  test "calls alerts for a route with an alert" do
+    :ok =
+      Gobusgo.Test.TransitSeeds.vehicle_situations("1", [
+        %{
+          id: "1_detour",
+          summary: "Detour",
+          description: nil,
+          url: nil,
+          reason: nil,
+          creation_time_ms: nil,
+          active_windows: [],
+          affects: [%{agency_id: "1", route_id: "1_100", stop_id: nil}]
+        }
+      ])
+
+    assert %{
+             "result" => %{
+               "structuredContent" => %{"data" => %{"alerts" => [%{"id" => "1_detour"}]}}
+             }
+           } = call("alerts", %{"route" => ["1_100"]})
+  end
+
+  test "answers a call to alerts with neither route nor stop as a tool error" do
+    assert %{"result" => %{"isError" => true}} = call("alerts", %{})
   end
 
   test "calls arrivals for a stop with no fetch" do

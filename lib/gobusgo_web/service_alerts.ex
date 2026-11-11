@@ -123,6 +123,66 @@ defmodule GobusgoWeb.ServiceAlerts do
   end
 
   @doc """
+  Returns the alerts of `situation_fetches` that affect a route of
+  `route_ids` or a stop of `stop_ids`, at `now`, as whole situations: the
+  current ones, newest first, then the upcoming ones, soonest first, with
+  each upcoming alert's start in `starts_at`. The lists are not bounded. An
+  alert that names an agency and no route or stop matches nothing, as on a
+  page.
+  """
+  @spec matching(%{
+          situation_fetches: [map()],
+          route_ids: [String.t()],
+          stop_ids: [String.t()],
+          now: DateTime.t()
+        }) :: [
+          %{
+            situation: map(),
+            status: :current | :upcoming,
+            starts_at: DateTime.t() | nil
+          }
+        ]
+  def matching(%{
+        situation_fetches: situation_fetches,
+        route_ids: route_ids,
+        stop_ids: stop_ids,
+        now: %DateTime{} = now
+      }) do
+    now_ms = DateTime.to_unix(now, :millisecond)
+
+    kept =
+      for situation <- latest_situations(situation_fetches),
+          names_route_or_stop?(situation, %{route_ids: route_ids, stop_ids: stop_ids}) do
+        situation
+      end
+
+    {current, later} = Enum.split_with(kept, &current?(&1, now_ms))
+
+    current =
+      current
+      |> Enum.sort_by(&{-(&1.creation_time_ms || 0), &1.id})
+      |> Enum.map(&%{situation: &1, status: :current, starts_at: nil})
+
+    upcoming =
+      for situation <- later,
+          starts_ms = next_start_ms(situation, now_ms),
+          starts_ms != nil,
+          starts_ms <= now_ms + @upcoming_window_ms do
+        {situation, starts_ms}
+      end
+      |> Enum.sort_by(fn {situation, starts_ms} -> {starts_ms, situation.id} end)
+      |> Enum.map(fn {situation, starts_ms} ->
+        %{
+          situation: situation,
+          status: :upcoming,
+          starts_at: DateTime.from_unix!(starts_ms, :millisecond)
+        }
+      end)
+
+    current ++ upcoming
+  end
+
+  @doc """
   Returns the names the route view gives the routes of `route_fetches`, as
   `alerts/1` takes them.
   """
@@ -155,6 +215,14 @@ defmodule GobusgoWeb.ServiceAlerts do
     affected
     |> Enum.filter(&kept_route?(&1, kept_route_ids))
     |> Enum.sort()
+  end
+
+  defp names_route_or_stop?(situation, %{route_ids: route_ids, stop_ids: stop_ids}) do
+    Enum.any?(situation.affects, fn %{route_id: route_id, stop_id: stop_id} ->
+      names_route = route_id != nil and route_id in route_ids
+      names_stop = stop_id != nil and stop_id in stop_ids
+      names_route or names_stop
+    end)
   end
 
   defp kept_route?(_route_id, :every), do: true

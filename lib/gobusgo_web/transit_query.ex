@@ -4,7 +4,7 @@ defmodule GobusgoWeb.TransitQuery do
   @moduledoc """
   What the views answer to a question about the transit data: the agencies
   and the filter bar's suggestions, the vehicles a filter keeps, a stop's
-  arrivals, and the routing manifest. A vehicle page and the MCP tools ask
+  arrivals, the service alerts of routes and stops, and the routing manifest. A vehicle page and the MCP tools ask
   the same functions, so both show the same answer to the same question.
 
   Every function reads the views and changes nothing, and each answer
@@ -25,12 +25,15 @@ defmodule GobusgoWeb.TransitQuery do
   alias Gobusgo.Routing.Snapshots
   alias GobusgoWeb.FilterBar
   alias GobusgoWeb.RouteLines
+  alias GobusgoWeb.ServiceAlerts
   alias GobusgoWeb.StopArrivals
   alias GobusgoWeb.VehicleLive.AgencyMarkers
   alias GobusgoWeb.VehicleLive.Filter
 
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @route_view Gobusgo.OneBusAway.RouteView
+  @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
+  @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
   @typedoc "The request and the time of a fetch."
   @type fetch_header :: %{request_id: String.t(), fetched_at: DateTime.t()}
@@ -258,6 +261,45 @@ defmodule GobusgoWeb.TransitQuery do
     {FetchView.request_id(@arrival_view, stop_id), vehicle_version()}
   end
 
+  @doc """
+  The current and upcoming alerts that affect a route of `route_ids` or a
+  stop of `stop_ids`, as `GobusgoWeb.ServiceAlerts.matching/1` reads them
+  from the fetches of the two situation views, with the oldest of those
+  fetches, which every alert is at least as fresh as. `:unavailable` while
+  neither situation view holds a fetch.
+  """
+  @spec alerts(%{route_ids: [String.t()], stop_ids: [String.t()]}) ::
+          {:ok, %{fetch: fetch_header(), alerts: [map()]}} | :unavailable
+  def alerts(%{route_ids: route_ids, stop_ids: stop_ids}) do
+    situation_fetches =
+      FetchView.current(@vehicle_situation_view) ++ FetchView.current(@arrival_situation_view)
+
+    case situation_fetches do
+      [] ->
+        :unavailable
+
+      situation_fetches ->
+        %{request_id: request_id, fetched_at: fetched_at} =
+          Enum.min_by(situation_fetches, & &1.fetched_at, DateTime)
+
+        alerts =
+          ServiceAlerts.matching(%{
+            situation_fetches: situation_fetches,
+            route_ids: route_ids,
+            stop_ids: stop_ids,
+            now: DateTime.utc_now()
+          })
+
+        {:ok, %{fetch: %{request_id: request_id, fetched_at: fetched_at}, alerts: alerts}}
+    end
+  end
+
+  @doc "The identity of the fetches `alerts/1` draws on: the request of each situation fetch."
+  @spec alerts_version() :: {[String.t()], [String.t()]}
+  def alerts_version do
+    {request_ids(@vehicle_situation_view), request_ids(@arrival_situation_view)}
+  end
+
   @doc "The body of `GET /api/routing/manifest`: the canonical JSON of the manifest."
   @spec routing_manifest() :: binary()
   def routing_manifest, do: Gobusgo.CanonicalJson.encode(Snapshots.manifest(Snapshots))
@@ -278,6 +320,10 @@ defmodule GobusgoWeb.TransitQuery do
         into: %{} do
       {route_id, RouteLines.css_color(route["color"])}
     end
+  end
+
+  defp request_ids(view) do
+    for %{request_id: request_id} <- FetchView.current(view), do: request_id
   end
 
   defp stops(query) do
