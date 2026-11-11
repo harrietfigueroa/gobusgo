@@ -814,7 +814,115 @@ a.inline-target {
 /* The details view stands in place of the summary, the tabs, and the
    panels while it shows an item: a back button beside the item's title,
    and the item's content under them. */
-.panel-sheet:has(> .panel-sheet-detail:not([hidden])) > :is(.panel-sheet-summary, .panel-sheet-tabs, .panel-sheet-body) {
+.panel-sheet:has(> .panel-sheet-detail:not([hidden])) > :is(.panel-sheet-summary, .trip-strip, .panel-sheet-tabs, .panel-sheet-body) {
+  display: none;
+}
+
+/* The chosen journey's strip stands above the tabs, in the collapsed sheet
+   on a phone and at the top of the side panel from `md` up, and takes the
+   place of the summary line while it shows. Its texts and bar are drawn
+   for the eye; the main control carries the sentence, and the bar is
+   decoration whose colors forced colors leave. */
+.trip-strip {
+  flex-shrink: 0;
+  padding: 0 16px 6px;
+}
+
+.trip-strip[hidden] {
+  display: none;
+}
+
+.panel-sheet:has(> .trip-strip:not([hidden])) > .panel-sheet-summary {
+  display: none;
+}
+
+/* The strip stands aside while the Trip tab's panel shows, which the
+   panel's card already says: always from `md` up, and on a phone while the
+   sheet is expanded or dragged. A collapsed sheet shows it over every tab. */
+@media (width < 48rem) {
+  .panel-sheet:is([data-expanded="true"], [data-dragging]):has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
+    display: none;
+  }
+}
+
+@media (width >= 48rem) {
+  .panel-sheet:has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
+    display: none;
+  }
+}
+
+.trip-strip-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip-strip-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: var(--close-button-hit-size);
+  padding: 4px 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trip-strip-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.trip-strip-lead {
+  font-size: 1rem;
+}
+
+.trip-strip-arrive {
+  font-size: 0.8125rem;
+}
+
+.trip-strip-bar {
+  display: block;
+}
+
+.trip-strip-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.trip-strip-dot:empty {
+  display: none;
+}
+
+.trip-strip-step {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trip-strip-step::before {
+  content: "· ";
+}
+
+.trip-strip-end {
+  flex-shrink: 0;
+  min-width: var(--close-button-hit-size);
+  min-height: var(--close-button-hit-size);
+  padding: 4px 12px;
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trip-strip-more {
   display: none;
 }
 
@@ -1736,6 +1844,9 @@ a.inline-target {
 .favorite-stop-name:focus-visible,
 .favorite-stop-move:focus-visible,
 .panel-sheet-tab:focus-visible,
+.trip-strip-main:focus-visible,
+.trip-strip-end:focus-visible,
+.trip-strip-all:focus-visible,
 .panel-sheet-panel:focus-visible {
   outline: 2px solid var(--close-button-focus-color);
   outline-offset: -2px;
@@ -1787,6 +1898,35 @@ a.inline-target {
 
   .panel-sheet-summary {
     padding-top: 10px;
+  }
+
+  .trip-strip {
+    padding-top: 10px;
+  }
+
+  /* The side panel has room for the next two steps and a way to the rest. */
+  .trip-strip-more {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 0.8125rem;
+  }
+
+  .trip-strip-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .trip-strip-all {
+    min-height: var(--close-button-hit-size);
+    padding: 0;
+    color: var(--panel-sheet-selected-color);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .panel-sheet-tab[aria-selected="true"] {
