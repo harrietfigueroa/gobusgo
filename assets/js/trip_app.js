@@ -347,6 +347,11 @@ export function startTripApp({root, origin, host}) {
     const updated = await updateModelContext({host, structuredContent: context})
     const messaged = await sendMessage({host, text: chosenMessage({row, from: fromName, to: toName})})
     const isSent = updated.kind === OutcomeKind.answered && messaged.kind === OutcomeKind.answered
+
+    if (!isSent) {
+      console.debug("Journey not taken", {updateModelContext: updated.kind, message: messaged.kind})
+    }
+
     app.chosen = {kind: "sent", isSent}
     render()
   }

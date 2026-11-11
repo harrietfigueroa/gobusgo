@@ -273,18 +273,32 @@ function responseOutcome(incoming) {
   return {kind: OutcomeKind.answered, result: incoming.result}
 }
 
+// A result with `isError` true is the host reporting that it did not take
+// the request, which the specification gives the message result.
+function takenOutcome(outcome) {
+  const isErrorResult = outcome.kind === OutcomeKind.answered && outcome.result.isError === true
+
+  if (isErrorResult) {
+    return {kind: OutcomeKind.refused, message: "The host answered with isError"}
+  }
+
+  return outcome
+}
+
 /**
  * Sends `structuredContent`, an object, as the model's context, with the
  * same object as the text of a content block for a host that reads only
  * content; the host keeps it in place of the context the app sent before.
  * Resolves on an OutcomeKind member.
  */
-export function updateModelContext({host, structuredContent}) {
+export async function updateModelContext({host, structuredContent}) {
   const text = JSON.stringify(structuredContent)
-  return host.request({method: HostMethod.updateModelContext, params: {content: [{type: "text", text}], structuredContent}})
+  const outcome = await host.request({method: HostMethod.updateModelContext, params: {content: [{type: "text", text}], structuredContent}})
+  return takenOutcome(outcome)
 }
 
-/** Sends `text` to the conversation as the rider's message, and resolves on an OutcomeKind member. */
-export function sendMessage({host, text}) {
-  return host.request({method: HostMethod.message, params: {role: "user", content: {type: "text", text}}})
+/** Sends `text` to the conversation as the rider's message, in the list of content blocks the SDK types give, and resolves on an OutcomeKind member. */
+export async function sendMessage({host, text}) {
+  const outcome = await host.request({method: HostMethod.message, params: {role: "user", content: [{type: "text", text}]}})
+  return takenOutcome(outcome)
 }
