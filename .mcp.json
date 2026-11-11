@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.12.0",
+        "--headless",
+        "--isolated",
+        "--no-usage-statistics"
+      ]
+    }
+  }
+}
