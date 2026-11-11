@@ -41,6 +41,18 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   `files.tripPaths`. A trip path build that is killed or fails leaves the
   entry recorded without `files.tripPaths`, and the snapshot stays.
 
+  A date recorded without `files.tripPaths` after a failed trip path build
+  is passed over until `Gobusgo.Routing.TripPathRetry` says its next attempt
+  is due, 10 minutes after the failure, then 30, then hourly, measured by
+  `:clock`. Then only its trip paths are built again, in the process and
+  under the cap above, from the views as they are, and its entry gains
+  `files.tripPaths`; the files it already names stay. The state of the
+  failures is held with the entry in `Gobusgo.Routing.Snapshots`, so a
+  build of other inputs or of a later day starts it again, and a start
+  loses it. Each failure is logged by the trip path build with its
+  `attempt` number, and the success that follows a failure as
+  `Routing trip paths built after failure` at `info`.
+
   ## Options
 
     * `:server` (required): the `Gobusgo.Routing.Snapshots` process.
@@ -70,6 +82,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   alias Gobusgo.Routing.Snapshot
   alias Gobusgo.Routing.Snapshots
   alias Gobusgo.Routing.Snapshots.TripPaths
+  alias Gobusgo.Routing.TripPathRetry
   alias Gobusgo.Routing.Timetable
   alias Gobusgo.Routing.Transfers
   alias Gobusgo.Writer
@@ -82,7 +95,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           trip_path_count: non_neg_integer(),
           trip_path_shard_count: non_neg_integer(),
           trip_path_elapsed_ms: non_neg_integer(),
-          trip_path_failed_count: non_neg_integer()
+          trip_path_failed_count: non_neg_integer(),
+          trip_path_retried_count: non_neg_integer()
         }
 
   @doc "Builds the snapshot of every held service date whose inputs changed."
@@ -135,18 +149,23 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     :ok = Snapshots.retain(server, dates)
 
+    trip_path_outcomes =
+      for {kind, _counts} = outcome <- outcomes, kind in [:built, :retried], do: outcome
+
     counts = %{
       built_count: Enum.count(outcomes, &match?({:built, _count}, &1)),
       unchanged_count: Enum.count(outcomes, &(&1 == :unchanged)),
       failed_count: Enum.count(outcomes, &(&1 == :failed)),
       connection_count: Enum.sum(for {:built, built} <- outcomes, do: built.connection_count),
-      trip_path_count: Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_count),
+      trip_path_count:
+        Enum.sum(for {_kind, built} <- trip_path_outcomes, do: built.trip_path_count),
       trip_path_shard_count:
-        Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_shard_count),
+        Enum.sum(for {_kind, built} <- trip_path_outcomes, do: built.trip_path_shard_count),
       trip_path_elapsed_ms:
-        Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_elapsed_ms),
+        Enum.sum(for {_kind, built} <- trip_path_outcomes, do: built.trip_path_elapsed_ms),
       trip_path_failed_count:
-        Enum.count(outcomes, &match?({:built, %{trip_paths_failed: true}}, &1))
+        Enum.count(trip_path_outcomes, &match?({_kind, %{trip_paths_failed: true}}, &1)),
+      trip_path_retried_count: Enum.count(outcomes, &match?({:retried, _counts}, &1))
     }
 
     log(counts, System.monotonic_time(:millisecond) - started_ms)
@@ -198,7 +217,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     case result do
       {:ok, {:written, written}} ->
-        trip_paths_outcome(written, input)
+        trip_paths_outcome(Map.merge(written, %{previous: :none, kind: :built}), input)
+
+      {:ok, {:retry_trip_paths, retry}} ->
+        trip_paths_outcome(Map.put(retry, :kind, :retried), input)
 
       {:ok, outcome} ->
         outcome
@@ -236,8 +258,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       })
 
     case input.built do
-      %{inputs_sha256: ^inputs_sha256, built_on: ^today} ->
-        :unchanged
+      %{inputs_sha256: ^inputs_sha256, built_on: ^today} = built ->
+        unchanged_outcome(built, input.now)
 
       _other ->
         build_date(%{
@@ -250,6 +272,22 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           now: input.now,
           options: options
         })
+    end
+  end
+
+  # A date built today from these inputs is passed over, unless its last trip
+  # path build failed and the backoff has passed, which has only the trip
+  # paths built again.
+  defp unchanged_outcome(%{trip_path_failure: :none}, _now), do: :unchanged
+
+  defp unchanged_outcome(%{trip_path_failure: failure} = built, now) do
+    due? = TripPathRetry.due?(%{state: failure, now_ms: DateTime.to_unix(now, :millisecond)})
+
+    if due? do
+      {:retry_trip_paths,
+       %{entry: built.entry, inputs_sha256: built.inputs_sha256, previous: failure}}
+    else
+      :unchanged
     end
   end
 
@@ -402,8 +440,13 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
   # The trip paths are built once the date's process has ended and its heap
   # is freed, and written before the entry names them.
+  # `written.previous` is the state of the failures of these inputs, `:none`
+  # for a date built from scratch, and `written.kind` is `:built` for a date
+  # built from scratch and `:retried` for one whose trip paths alone are
+  # built again, on the files its entry already names.
   defp trip_paths_outcome(written, %{date: date, now: now, options: options}) do
     started_ms = System.monotonic_time(:millisecond)
+    attempt = attempt_number(written.previous)
 
     outcome =
       TripPaths.run(%{
@@ -411,22 +454,49 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         directory: Snapshot.directory(now),
         options:
           Keyword.take(options, [:schedule_view, :stop_view, :route_path_view, :write_options]) ++
-            [heap_words_max: Keyword.fetch!(options, :trip_path_heap_words_max)]
+            [heap_words_max: Keyword.fetch!(options, :trip_path_heap_words_max), attempt: attempt]
       })
 
     elapsed_ms = System.monotonic_time(:millisecond) - started_ms
     counts = trip_path_counts(outcome, elapsed_ms)
+
+    failure = failure_state(outcome, written, now)
 
     :ok =
       Snapshots.record(Keyword.fetch!(options, :server), %{
         service_date: date,
         entry: with_trip_paths(written.entry, outcome),
         inputs_sha256: written.inputs_sha256,
-        built_on: DateTime.to_date(now)
+        built_on: DateTime.to_date(now),
+        trip_path_failure: failure
       })
 
-    {:built, Map.put(counts, :connection_count, written.connection_count)}
+    log_recovery(%{outcome: outcome, previous: written.previous, date: date, attempt: attempt})
+
+    {written.kind, Map.put(counts, :connection_count, Map.get(written, :connection_count, 0))}
   end
+
+  defp attempt_number(:none), do: 1
+  defp attempt_number(%{failure_count: failure_count}), do: failure_count + 1
+
+  defp failure_state({:built, _built}, _written, _now), do: :none
+
+  defp failure_state(failure, written, now) when failure in [:killed, :failed] do
+    TripPathRetry.after_failure(%{
+      previous: written.previous,
+      inputs_sha256: written.inputs_sha256,
+      failed_at_ms: DateTime.to_unix(now, :millisecond)
+    })
+  end
+
+  defp log_recovery(%{outcome: {:built, _built}, previous: %{}} = input) do
+    Logger.info("Routing trip paths built after failure",
+      service_date: Date.to_iso8601(input.date),
+      attempt: input.attempt
+    )
+  end
+
+  defp log_recovery(_input), do: :ok
 
   defp with_trip_paths(entry, {:built, %{index_entry: index_entry}}) when is_map(index_entry) do
     Map.update!(entry, "files", &Map.put(&1, "tripPaths", index_entry))
@@ -464,9 +534,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     properties = Map.to_list(counts) ++ [elapsed_ms: elapsed_ms]
 
     cond do
-      counts.failed_count >= 1 -> Logger.error("Routing snapshots not built", properties)
-      counts.built_count >= 1 -> Logger.info("Routing snapshots built", properties)
-      true -> Logger.debug("Routing snapshots unchanged", properties)
+      counts.failed_count >= 1 ->
+        Logger.error("Routing snapshots not built", properties)
+
+      counts.built_count + counts.trip_path_retried_count >= 1 ->
+        Logger.info("Routing snapshots built", properties)
+
+      true ->
+        Logger.debug("Routing snapshots unchanged", properties)
     end
   end
 end

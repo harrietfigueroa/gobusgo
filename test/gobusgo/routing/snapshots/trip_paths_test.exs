@@ -129,7 +129,8 @@ defmodule Gobusgo.Routing.Snapshots.TripPathsTest do
         stop_view: context.stop_view,
         route_path_view: context.route_path_view,
         write_options: [backend: RecordingBackend, recipient: self()],
-        heap_words_max: TripPaths.heap_words_max()
+        heap_words_max: TripPaths.heap_words_max(),
+        attempt: 1
       ],
       overrides
     )
@@ -311,6 +312,49 @@ defmodule Gobusgo.Routing.Snapshots.TripPathsTest do
 
       refute Map.has_key?(entry(context)["files"], "tripPaths")
       assert Map.has_key?(entry(context)["files"], "names")
+    end
+
+    test "builds only the trip paths of a date recorded without them, once the backoff passed",
+         context do
+      hold_all(context)
+
+      assert {:ok, %{trip_path_failed_count: 1}} =
+               build(context, trip_path_heap_words_max: @heap_words_tiny)
+
+      before_retry = entry(context)
+      _first_writes = writes()
+
+      assert {:ok, %{built_count: 0, unchanged_count: 1, trip_path_retried_count: 0}} =
+               build(context, clock: fn -> DateTime.add(@now, 9 * 60 + 59, :second) end)
+
+      assert writes() == []
+
+      assert {:ok, %{built_count: 0, trip_path_retried_count: 1, trip_path_shard_count: 1}} =
+               build(context, clock: fn -> DateTime.add(@now, 10 * 60, :second) end)
+
+      after_retry = entry(context)
+      assert Map.has_key?(after_retry["files"], "tripPaths")
+      assert Map.delete(after_retry["files"], "tripPaths") == before_retry["files"]
+
+      assert [
+               {"routing/snapshots/dt=2026-11-09/trip-paths-" <> _shard, _shard_content},
+               {"routing/snapshots/dt=2026-11-09/trip-paths-index-" <> _index, _index_content}
+             ] = writes()
+    end
+
+    test "waits 30 minutes after a second failure", context do
+      hold_all(context)
+      tiny = [trip_path_heap_words_max: @heap_words_tiny]
+      {:ok, _first} = build(context, tiny)
+
+      assert {:ok, %{trip_path_retried_count: 1, trip_path_failed_count: 1}} =
+               build(context, tiny ++ [clock: fn -> DateTime.add(@now, 10 * 60, :second) end])
+
+      assert {:ok, %{trip_path_retried_count: 0}} =
+               build(context, clock: fn -> DateTime.add(@now, 39 * 60, :second) end)
+
+      assert {:ok, %{trip_path_retried_count: 1, trip_path_failed_count: 0}} =
+               build(context, clock: fn -> DateTime.add(@now, 40 * 60, :second) end)
     end
 
     test "builds a date again when its route path is fetched again", context do
