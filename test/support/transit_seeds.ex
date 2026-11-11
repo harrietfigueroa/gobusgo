@@ -15,6 +15,7 @@ defmodule Gobusgo.Test.TransitSeeds do
   alias Gobusgo.OneBusAway.ArrivalBatch
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.RouteBatch
+  alias Gobusgo.OneBusAway.RoutePathBatch
   alias Gobusgo.OneBusAway.RoutePathBatch.StopRecords
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.VehicleBatch
@@ -22,6 +23,7 @@ defmodule Gobusgo.Test.TransitSeeds do
 
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @route_view Gobusgo.OneBusAway.RouteView
+  @route_path_view Gobusgo.OneBusAway.RoutePathView
   @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
   @views [
@@ -30,6 +32,7 @@ defmodule Gobusgo.Test.TransitSeeds do
     StopView,
     @arrival_view,
     @route_view,
+    @route_path_view,
     @vehicle_situation_view,
     @arrival_situation_view
   ]
@@ -104,6 +107,45 @@ defmodule Gobusgo.Test.TransitSeeds do
       })
 
     FetchView.apply_records(@route_view, [record.value])
+  end
+
+  @doc """
+  A fetch of the paths of the route `route_id`: one direction group for each
+  `{name, stop identifiers}`, in order, now. The stops themselves are the
+  stop view's, which `stops/2` fills.
+  """
+  @spec route_path(String.t(), [{String.t() | nil, [String.t()]}]) :: :ok
+  def route_path(route_id, directions) do
+    stop_groups =
+      for {{name, stop_ids}, index} <- Enum.with_index(directions) do
+        %{
+          id: Integer.to_string(index),
+          name: name,
+          names: [],
+          name_type: "destination",
+          stop_ids: stop_ids,
+          polylines: []
+        }
+      end
+
+    record =
+      RoutePathBatch.Records.build(%{
+        route_id: route_id,
+        destination: "raw/oba/stops-for-route/dt=2026-11-07/route=#{route_id}/file.json.gz",
+        fetched_at: now(),
+        data_sha256: @sha,
+        request_id: request_id(),
+        route_path: %{
+          route_id: route_id,
+          stop_ids: Enum.flat_map(directions, fn {_name, stop_ids} -> stop_ids end),
+          polylines: [],
+          stop_groupings: [%{type: "direction", ordered: true, stop_groups: stop_groups}],
+          stops: [],
+          parent_stops: []
+        }
+      })
+
+    FetchView.apply_records(@route_path_view, [record.value])
   end
 
   @doc """

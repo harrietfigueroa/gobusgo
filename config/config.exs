@@ -134,6 +134,7 @@ config :gobusgo, GobusgoWeb.Mcp,
     GobusgoWeb.Mcp.Tools.Arrivals,
     GobusgoWeb.Mcp.Tools.Find,
     GobusgoWeb.Mcp.Tools.PlanTrip,
+    GobusgoWeb.Mcp.Tools.Route,
     GobusgoWeb.Mcp.Tools.Vehicles
   ],
   resources: [
