@@ -17,7 +17,8 @@ const TIME_ZONE = "America/Los_Angeles"
 const TODAY = "2026-11-08"
 // 2026-11-08 at midnight in Seattle, eight hours after midnight UTC.
 const TODAY_START_MS = 1794124800000
-const YESTERDAY_START_MS = TODAY_START_MS - 24 * 60 * 60 * 1000
+const DAY_MS = 86400000
+const YESTERDAY_START_MS = TODAY_START_MS - DAY_MS
 const serviceDayStartsMs = {[TODAY]: TODAY_START_MS}
 const HOUR_SECONDS = 60 * 60
 const MINUTE_SECONDS = 60
