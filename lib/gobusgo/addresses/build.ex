@@ -1,5 +1,5 @@
 defmodule Gobusgo.Addresses.Build do
-  @shard_bytes_max 131_072
+  @shard_bytes_max 65_536
   @download_bytes_max 536_870_912
   @heap_words_max 40_000_000
   @sample_interval_ms 100
