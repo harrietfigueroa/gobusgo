@@ -1,10 +1,20 @@
 defmodule Gobusgo.Addresses.Source.Pierce do
   @item_id "c8361c8247da4430922e4439da8513c8"
   @layer_url "https://services2.arcgis.com/1UvBaQ5y1ubjUPmd/arcgis/rest/services/Address_Points/FeatureServer/0"
-  @export_file_name "pierce-addresses.csv"
+  @file_name "pierce-addresses.csv"
   @read_bytes 65_536
-  @wgs84_spatial_ref_id 4326
+  @page_count_max 5_000
   @active_status "ACTIVE"
+  @out_fields [
+    "OBJECTID",
+    "HouseNumber",
+    "PrefixDirectional",
+    "StreetName",
+    "StreetType",
+    "PostDirectional",
+    "City",
+    "Status"
+  ]
   @columns %{
     house_number: "HouseNumber",
     pre_direction: "PrefixDirectional",
@@ -19,14 +29,15 @@ defmodule Gobusgo.Addresses.Source.Pierce do
 
   @moduledoc """
   Pierce County's "Address_Points" layer, item `#{@item_id}` of the county's
-  open geospatial data portal, as the one-file CSV export of the ArcGIS Hub
-  (`Gobusgo.Addresses.HubExport`). Read `lib/gobusgo/addresses/AGENTS.md`
-  before changing it.
+  open geospatial data portal, read by paging its FeatureServer on
+  `services2.arcgis.com` with `Gobusgo.Addresses.PagedLayer`, at most
+  #{@page_count_max} pages, since production reaches only hosts with an
+  IPv6 address and the Hub's export host has none. Read
+  `lib/gobusgo/addresses/AGENTS.md` before changing it.
 
-  The layer is in State Plane South (EPSG 2927). The export is asked for in
-  WGS 84 (`spatialRefId=#{@wgs84_spatial_ref_id}`), where the Hub writes
-  the longitude and latitude in the `x` and `y` columns, so the server needs
-  no projection.
+  The layer is in State Plane South (EPSG 2927). The query asks for the
+  geometry in WGS 84, written to the file's `x` (longitude) and `y`
+  (latitude) columns, so the server needs no projection.
 
   A record whose `Status` is `#{@active_status}` is an address. Any other
   status, which the county gives to a temporary point on a vacant parcel, is
@@ -37,23 +48,53 @@ defmodule Gobusgo.Addresses.Source.Pierce do
   @behaviour Gobusgo.Addresses.Source
 
   alias Gobusgo.Addresses.Csv
-  alias Gobusgo.Addresses.HubExport
+  alias Gobusgo.Addresses.PagedLayer
 
   @impl Gobusgo.Addresses.Source
   def name, do: :pierce
 
   @impl Gobusgo.Addresses.Source
   def fetch(%{directory: directory, bytes_max: bytes_max}, options) when is_list(options) do
-    HubExport.fetch(
+    PagedLayer.fetch(
       %{
-        item_id: @item_id,
         layer_url: Keyword.get(options, :layer_url, @layer_url),
-        path: Path.join(directory, @export_file_name),
+        path: Path.join(directory, @file_name),
         bytes_max: bytes_max,
-        spatial_ref_id: @wgs84_spatial_ref_id
+        out_fields: @out_fields,
+        columns: file_columns(),
+        row: &row/1,
+        page_count_max: @page_count_max
       },
       options
     )
+  end
+
+  defp file_columns do
+    [
+      @columns.house_number,
+      @columns.pre_direction,
+      @columns.name,
+      @columns.type,
+      @columns.suf_direction,
+      @columns.city,
+      @columns.status,
+      @columns.lon,
+      @columns.lat
+    ]
+  end
+
+  defp row(%{"attributes" => attributes} = feature) do
+    [
+      PagedLayer.attribute_text(attributes, "HouseNumber"),
+      PagedLayer.attribute_text(attributes, "PrefixDirectional"),
+      PagedLayer.attribute_text(attributes, "StreetName"),
+      PagedLayer.attribute_text(attributes, "StreetType"),
+      PagedLayer.attribute_text(attributes, "PostDirectional"),
+      PagedLayer.attribute_text(attributes, "City"),
+      PagedLayer.attribute_text(attributes, "Status"),
+      PagedLayer.coordinate_text(feature, "x"),
+      PagedLayer.coordinate_text(feature, "y")
+    ]
   end
 
   @impl Gobusgo.Addresses.Source
@@ -75,7 +116,7 @@ defmodule Gobusgo.Addresses.Source.Pierce do
           {field, index}
 
         :error ->
-          raise Gobusgo.Assert.AssertionError, message: "the export has no #{column} column"
+          raise Gobusgo.Assert.AssertionError, message: "the file has no #{column} column"
       end
     end)
   end

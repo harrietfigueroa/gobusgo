@@ -4,9 +4,8 @@ defmodule Gobusgo.Addresses.Source.SnohomishTest do
   # records of the file the fetch wrote. No request leaves the machine.
   use ExUnit.Case, async: true
 
-  import Plug.Conn
-
   alias Gobusgo.Addresses.Source.Snohomish
+  alias Gobusgo.Test.FeatureLayer
 
   @moduletag :tmp_dir
 
@@ -35,53 +34,19 @@ defmodule Gobusgo.Addresses.Source.SnohomishTest do
     }
   end
 
-  # A layer of `features`, answered as ArcGIS answers: the description, the
-  # count, and pages above the `OBJECTID` the `where` names. `script`, when
-  # given, may answer a request in place of the layer.
-  defp plug(test_pid, features, script) do
-    fn conn ->
-      conn = fetch_query_params(conn)
-      send(test_pid, {:request, conn.request_path, conn.query_params})
-
-      case script.(conn) do
-        :default -> layer_answer(conn, features)
-        {status, body} -> send_resp(conn, status, body)
-      end
-    end
-  end
-
-  defp layer_answer(%{request_path: @layer_path} = conn, _features) do
-    body = %{"editingInfo" => %{"lastEditDate" => @layer_last_edit_ms}}
-    send_resp(conn, 200, JSON.encode!(body))
-  end
-
-  defp layer_answer(%{request_path: @layer_path <> "/query"} = conn, features) do
-    case conn.query_params do
-      %{"returnCountOnly" => "true"} ->
-        send_resp(conn, 200, JSON.encode!(%{"count" => length(features)}))
-
-      %{"where" => "OBJECTID>" <> last, "resultRecordCount" => size} ->
-        above =
-          Enum.filter(features, &(&1["attributes"]["OBJECTID"] > String.to_integer(last)))
-
-        page = Enum.take(above, String.to_integer(size))
-        body = %{"features" => page}
-
-        body =
-          if length(above) > length(page),
-            do: Map.put(body, "exceededTransferLimit", true),
-            else: body
-
-        send_resp(conn, 200, JSON.encode!(body))
-    end
-  end
-
   defp fetch(tmp_dir, features, options \\ []) do
     script = Keyword.get(options, :script, fn _conn -> :default end)
 
     Snohomish.fetch(
       %{directory: tmp_dir, bytes_max: Keyword.get(options, :bytes_max, 1_000_000)},
-      plug: plug(self(), features, script),
+      plug:
+        FeatureLayer.plug(%{
+          test_pid: self(),
+          path: @layer_path,
+          last_edit_ms: @layer_last_edit_ms,
+          features: features,
+          script: script
+        }),
       retry_base_ms: 0
     )
   end
