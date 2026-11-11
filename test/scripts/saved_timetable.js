@@ -1,6 +1,6 @@
 // The saved snapshot of a hand-written fixture timetable as the page reads it
-// from the offline bundle: the snapshot files `routing_timetable.js` writes,
-// decoded by the page's own readers. Everything here is pure.
+// from the offline bundle: the fixture's snapshot files, decoded by the
+// page's own readers. Everything here is pure.
 
 import {deepStrictEqual} from "node:assert/strict"
 import {TableKind} from "../../assets/js/offline_answers.js"

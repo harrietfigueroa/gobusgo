@@ -88,16 +88,17 @@ function visitsOf(connections) {
   return visits
 }
 
-// The [lon, lat] of `stop`, or null for a stop with no known position.
+// The [lon, lat] of `stop`, found, or missing for a stop with no known position.
 function pointOfStop({positions, stop}) {
   const latMicrodegrees = positions.latMicrodegrees[stop]
   const lonMicrodegrees = positions.lonMicrodegrees[stop]
 
   if (latMicrodegrees === POSITION_UNKNOWN_MICRODEGREES) {
-    return null
+    return {kind: TableKind.missing}
   }
 
-  return [lonMicrodegrees / MICRODEGREES_PER_DEGREE, latMicrodegrees / MICRODEGREES_PER_DEGREE]
+  const point = [lonMicrodegrees / MICRODEGREES_PER_DEGREE, latMicrodegrees / MICRODEGREES_PER_DEGREE]
+  return {kind: TableKind.found, point}
 }
 
 /**
@@ -125,19 +126,19 @@ export function fallbackPath({snapshot, trip, connections}) {
   let meters = 0
 
   for (const visit of visitsOf(connections)) {
-    const point = pointOfStop({positions: snapshot.positions.table, stop: visit.stop})
+    const read = pointOfStop({positions: snapshot.positions.table, stop: visit.stop})
 
-    if (point === null) {
+    if (read.kind === TableKind.missing) {
       continue
     }
 
     if (points.length > 0) {
-      meters += distanceMeters(points[points.length - 1], point)
+      meters += distanceMeters(points[points.length - 1], read.point)
     }
 
     const arrivalSeconds = Math.max(visit.arrivalS, departedS)
     const departureSeconds = Math.max(visit.departureS, arrivalSeconds)
-    points.push(point)
+    points.push(read.point)
     stops.push({distanceMeters: meters, arrivalSeconds, departureSeconds})
     departedS = departureSeconds
   }

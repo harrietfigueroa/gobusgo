@@ -130,21 +130,22 @@ function runKeyOf({snapshot, trip}) {
 
 // The start of the service day `trip` runs on, in milliseconds: its
 // snapshot's own, or for a run of the previous date the start of that date's
-// snapshot among `snapshots`, or null where that snapshot is not saved.
-function runStartMsOf({snapshots, snapshot, trip}) {
+// snapshot among `snapshots`, found, or missing where that snapshot is not
+// saved.
+function runStartOf({snapshots, snapshot, trip}) {
   if (trip.serviceDayOffset !== PREVIOUS_DATE_OFFSET) {
-    return snapshot.serviceDayStartMs
+    return {kind: TableKind.found, startMs: snapshot.serviceDayStartMs}
   }
 
   const serviceDate = previousDate(snapshot.serviceDate)
 
   for (const saved of snapshots) {
     if (saved.serviceDate === serviceDate) {
-      return saved.serviceDayStartMs
+      return {kind: TableKind.found, startMs: saved.serviceDayStartMs}
     }
   }
 
-  return null
+  return {kind: TableKind.missing}
 }
 
 // Whether `snapshot` can be read for trips at `nowMs`: its trips are saved
@@ -339,7 +340,7 @@ function headsignOf({names, trip}) {
   return {kind: TableKind.missing}
 }
 
-function markerOf({snapshot, trip, runKey, runStartMs, point, placement, timeS, color}) {
+function markerOf({snapshot, trip, runKey, runStart, point, placement, timeS, color}) {
   const {routeId} = snapshot.trips.table[trip]
   const {names} = snapshot
   const savedHeadsign = headsignOf({names, trip})
@@ -348,6 +349,13 @@ function markerOf({snapshot, trip, runKey, runStartMs, point, placement, timeS, 
 
   if (savedHeadsign.kind === TableKind.found) {
     headsign = savedHeadsign.headsign
+  }
+
+  // The server's marker holds null for a vehicle on no saved date.
+  let serviceDateMs = null
+
+  if (runStart.kind === TableKind.found) {
+    serviceDateMs = runStart.startMs
   }
 
   return {
@@ -366,7 +374,7 @@ function markerOf({snapshot, trip, runKey, runStartMs, point, placement, timeS, 
     location_age: NO_LOCATION_REPORTED,
     real_time: REAL_TIME_NO,
     trip_id: snapshot.trips.table[trip].id,
-    service_date_ms: runStartMs,
+    service_date_ms: serviceDateMs,
     is_saved_schedule: true
   }
 }
@@ -422,8 +430,8 @@ function placeSnapshot({snapshots, snapshot, nowMs, kept, color, placed}) {
       continue
     }
 
-    const runStartMs = runStartMsOf({snapshots, snapshot, trip: record})
-    const marker = markerOf({snapshot, trip, runKey, runStartMs, point, placement, timeS, color})
+    const runStart = runStartOf({snapshots, snapshot, trip: record})
+    const marker = markerOf({snapshot, trip, runKey, runStart, point, placement, timeS, color})
     placed.set(runKey, {marker, snapshot, trip})
   }
 
@@ -472,7 +480,7 @@ function fallbackPathReaderOf(origins) {
  * placed once, from the first snapshot that places it. Each marker names its
  * `trip_id` and the `service_date_ms` its run starts on, null where that
  * date's snapshot is not saved, and `fallbackPathOf(markerId)` gives the
- * straight-line path of its trip (`scheduled_path.js`), found or missing.
+ * path of straight lines between the stops of its trip, found or missing.
  */
 export function scheduledMarkers({snapshots, nowMs, kept, color, countMax}) {
   assertTime(nowMs)

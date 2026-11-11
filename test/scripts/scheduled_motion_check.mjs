@@ -51,9 +51,13 @@ const MARKER_COUNT_MAX = 3000
 const DAY_START_MS = 1794124800000
 const MICRODEGREES_PER_DEGREE = 1000000
 
-const S1 = [47600000, -122300000]
-const S2 = [47610000, -122300000]
-const S3 = [47610000, -122290000]
+const SOUTH_LAT_MICRODEGREES = 47600000
+const NORTH_LAT_MICRODEGREES = 47610000
+const WEST_LON_MICRODEGREES = -122300000
+const EAST_LON_MICRODEGREES = -122290000
+const S1 = [SOUTH_LAT_MICRODEGREES, WEST_LON_MICRODEGREES]
+const S2 = [NORTH_LAT_MICRODEGREES, WEST_LON_MICRODEGREES]
+const S3 = [NORTH_LAT_MICRODEGREES, EAST_LON_MICRODEGREES]
 
 function pointOfStop([latMicrodegrees, lonMicrodegrees]) {
   return [lonMicrodegrees / MICRODEGREES_PER_DEGREE, latMicrodegrees / MICRODEGREES_PER_DEGREE]
@@ -94,7 +98,9 @@ function distanceOffPath({path, position}) {
 
 // The road path of the shard fixture's trip, prepared as the page prepares a
 // path it reads from a saved shard.
-const shardBytes = new Uint8Array(readFileSync(fileURLToPath(new URL("../fixtures/routing/trip-paths-v1/shard.bin", import.meta.url))))
+const shardUrl = new URL("../fixtures/routing/trip-paths-v1/shard.bin", import.meta.url)
+const shardFile = readFileSync(fileURLToPath(shardUrl))
+const shardBytes = new Uint8Array(shardFile)
 const decodedShard = decodeTripPathShard(shardBytes)
 deepStrictEqual(decodedShard.kind, "decoded", "the shard fixture decodes")
 const shardTrip = {tripId: SHARD_TRIP_ID, routeId: SHARD_ROUTE_ID, serviceDateMs: SHARD_SERVICE_DATE_MS}
@@ -130,7 +136,7 @@ const laterMeters = SHARD_SECOND_STOP_METERS * (100 + TEN_SECONDS) / hopSeconds
 ok(Math.abs(roadLater.drawn.distanceMeters - laterMeters) <= DISTANCE_TOLERANCE_METERS, `ten seconds later ${roadLater.drawn.distanceMeters} m along its path, expected ${laterMeters} m`)
 ok(distanceOffPath({path: roadPath, position: roadLater.drawn.position}) <= POSITION_TOLERANCE_METERS, "it is drawn on its road path")
 
-const stoppedMs = roadPlacedMs + PREDICTION_HORIZON_MS * 2
+const stoppedMs = roadPlacedMs + PREDICTION_HORIZON_MS + SIXTY_SECONDS * SECOND_MS
 const roadStopped = drawnVehicle({tracked: roadTracked, atMs: stoppedMs})
 const horizonMeters = SHARD_SECOND_STOP_METERS * (100 + PREDICTION_HORIZON_MS / SECOND_MS) / hopSeconds
 ok(roadStopped.drawn.distanceMeters <= horizonMeters + DISTANCE_TOLERANCE_METERS, "a vehicle no placement refreshes stops at the prediction horizon")
@@ -174,18 +180,23 @@ function nearStop({position, stop, message}) {
 
 const minuteLater = drawnVehicle({tracked: straightTracked, atMs: placedAt + SIXTY_SECONDS * SECOND_MS})
 const [, minuteLat] = minuteLater.drawn.position
-const expectedLat = 47.6 + 0.01 * (300 + SIXTY_SECONDS) / 600
-ok(Math.abs(minuteLat - expectedLat) <= DEGREES_TOLERANCE,`a minute later it is on the line between its stops: ${minuteLat}, expected ${expectedLat}`)
+const firstHopSeconds = seconds("08:10") - seconds("08:00")
+const elapsedSeconds = seconds("08:05") - seconds("08:00") + SIXTY_SECONDS
+const expectedLat = pointOfStop(S1)[1] + (pointOfStop(S2)[1] - pointOfStop(S1)[1]) * elapsedSeconds / firstHopSeconds
+ok(Math.abs(minuteLat - expectedLat) <= DEGREES_TOLERANCE, `a minute later it is on the line between its stops: ${minuteLat}, expected ${expectedLat}`)
 deepStrictEqual(minuteLater.drawn.position[0], pointOfStop(S1)[0], "the line between its first two stops runs due north")
 
 const waitingMs = DAY_START_MS + seconds("08:11") * SECOND_MS
-const waiting = drawnVehicle({tracked: trackedVehicle({tracked: null, marker: straightMarker, path: straightPath, atMs: waitingMs}), atMs: waitingMs})
+const waitingTracked = trackedVehicle({tracked: null, marker: straightMarker, path: straightPath, atMs: waitingMs})
+const waiting = drawnVehicle({tracked: waitingTracked, atMs: waitingMs})
 nearStop({position: waiting.drawn.position, stop: S2, message: "it waits at the stop for its dwell"})
 
 const afterDwellMs = DAY_START_MS + seconds("08:16") * SECOND_MS
 const afterDwell = trackedVehicle({tracked: null, marker: straightMarker, path: straightPath, atMs: afterDwellMs})
 const [afterLon, afterLat] = afterDwell.drawn.position
-const expectedLon = -122.3 + 0.01 * 0.5
+const secondHopSeconds = seconds("08:20") - seconds("08:12")
+const secondElapsedSeconds = seconds("08:16") - seconds("08:12")
+const expectedLon = pointOfStop(S2)[0] + (pointOfStop(S3)[0] - pointOfStop(S2)[0]) * secondElapsedSeconds / secondHopSeconds
 const isOnLine = Math.abs(afterLon - expectedLon) <= DEGREES_TOLERANCE
 const isDueEast = Math.abs(afterLat - pointOfStop(S2)[1]) <= DEGREES_TOLERANCE
 ok(isOnLine && isDueEast, `after its dwell it runs the line to its third stop: ${afterLon}, ${afterLat}`)
