@@ -9,6 +9,7 @@ defmodule Gobusgo.RetentionPolicy do
   @route_stop_tiles_day_count 2
   @routing_snapshot_day_count 2
   @shared_vehicle_day_count 1
+  @address_day_count 7
   @cleanup_interval_ms 3_600_000
   @cleanup_deadline_ms 600_000
 
@@ -38,6 +39,9 @@ defmodule Gobusgo.RetentionPolicy do
       `Gobusgo.Gbfs.VehicleStatusRetention` deletes each within ten minutes
       of its fetch. The files that publish a fetch to the browser have the
       same backstop and are deleted with their fetch.
+    * the address shard files and their manifests, #{@address_day_count}
+      days, longer than a file the manifest names goes unwritten, since a
+      build writes every file again each day it runs.
 
   The places file and its manifest under `places/` have no rule: nothing
   deletes them, and an old file stays until it is removed by hand.
@@ -76,7 +80,8 @@ defmodule Gobusgo.RetentionPolicy do
       %{prefix: GobusgoWeb.RouteStopTiles.prefix(), day_count: @route_stop_tiles_day_count},
       %{prefix: Gobusgo.Routing.Snapshot.prefix(), day_count: @routing_snapshot_day_count},
       %{prefix: RawVehicleStatus.destination_prefix(), day_count: @shared_vehicle_day_count},
-      %{prefix: VehicleTileSet.prefix(), day_count: @shared_vehicle_day_count}
+      %{prefix: VehicleTileSet.prefix(), day_count: @shared_vehicle_day_count},
+      %{prefix: Gobusgo.Addresses.prefix(), day_count: @address_day_count}
     ]
 
     Enum.each(rules, &Retention.assert_rule/1)

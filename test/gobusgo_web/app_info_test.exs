@@ -577,6 +577,25 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "address_sources/0" do
+    test "credits King County and links its terms at an https address" do
+      assert [
+               %{
+                 operator: "King County",
+                 layer: "Addresses in King County",
+                 terms: %{
+                   name: "King County GIS Center terms and conditions",
+                   url:
+                     "https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights"
+                 },
+                 summary: summary
+               }
+             ] = AppInfo.address_sources()
+
+      assert summary =~ "as is"
+    end
+  end
+
   describe "app_license/0" do
     test "states the license and the copyright line of the repository's license" do
       %{name: name, copyright: copyright} = AppInfo.app_license()

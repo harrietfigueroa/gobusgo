@@ -39,6 +39,10 @@ if s3_bucket != "" do
   config :gobusgo, Gobusgo.Writer, backend: Gobusgo.Writer.S3
 end
 
+# The address shard files the local writer stores under `addresses/` are
+# served from there.
+config :gobusgo, :addresses, dir: Path.join(base_dir, "addresses")
+
 # The basemap archives are served from a directory beside the stored
 # responses.
 config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")

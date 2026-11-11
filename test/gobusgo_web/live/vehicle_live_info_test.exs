@@ -314,6 +314,15 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert text(view, "#app-info-credits-more") =~ "OpenStreetMap contributors"
     end
 
+    test "credits each address source and links its terms behind the credits' disclosure" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      for %{terms: %{url: url}, operator: operator} <- AppInfo.address_sources() do
+        assert has_element?(view, ~s(#app-info-credits-more a[href="#{url}"]))
+        assert text(view, "#app-info-address-source") =~ operator
+      end
+    end
+
     test "holds every field of the usage record, what it never holds, and the cookie behind their disclosure" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
       disclosure = text(view, "#app-info-recorded-more")

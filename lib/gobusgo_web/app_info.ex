@@ -41,6 +41,13 @@ defmodule GobusgoWeb.AppInfo do
 
   @type terms :: %{name: String.t(), url: String.t()}
 
+  @type address_source :: %{
+          operator: String.t(),
+          layer: String.t(),
+          terms: terms(),
+          summary: String.t()
+        }
+
   @type recorded_field :: %{field: String.t(), text: String.t()}
 
   @type app_license :: %{name: String.t(), copyright: String.t()}
@@ -111,6 +118,25 @@ defmodule GobusgoWeb.AppInfo do
     url:
       "https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use"
   }
+
+  # King County permits copying, distributing, and using the information,
+  # permits no sale of it without a written agreement, and provides it as is
+  # and states no attribution requirement.
+  # https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights — checked 2026-11-10
+  @address_sources [
+    %{
+      operator: "King County",
+      layer: "Addresses in King County",
+      terms: %{
+        name: "King County GIS Center terms and conditions",
+        url:
+          "https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights"
+      },
+      summary:
+        "King County provides the layer as is, with no warranty. It allows copying, " <>
+          "distributing, and using it, and allows no sale of it without a written agreement."
+    }
+  ]
 
   @recorded [
     %{field: "connectedAt", text: "When the page connected."},
@@ -558,6 +584,14 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The terms the transit data is provided under, as a name and an address."
   @spec terms() :: terms()
   def terms, do: @terms
+
+  @doc """
+  The counties whose address points the street address search reads, each
+  with the layer used, a link to the terms it is provided under, and what
+  those terms say.
+  """
+  @spec address_sources() :: [address_source(), ...]
+  def address_sources, do: @address_sources
 
   @doc "The application's own license and its copyright line."
   @spec app_license() :: app_license()

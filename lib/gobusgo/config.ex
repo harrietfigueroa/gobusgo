@@ -5,6 +5,8 @@ defmodule Gobusgo.Config do
   global state.
   """
 
+  @type addresses :: %{dir: String.t()}
+  @type addresses_error :: {:missing, :dir}
   @type basemap :: %{dir: String.t()}
   @type basemap_error :: {:missing, :dir}
   @type tiles :: %{dir: String.t()}
@@ -430,6 +432,14 @@ defmodule Gobusgo.Config do
   def fetch_tiles(env) when is_list(env), do: fetch_dir(env)
 
   @doc """
+  Returns the address settings from `env`: `:dir`, the directory the locally
+  stored address shard files are served from. A nil or blank value counts as
+  missing.
+  """
+  @spec fetch_addresses(Keyword.t()) :: {:ok, addresses()} | {:error, addresses_error()}
+  def fetch_addresses(env) when is_list(env), do: fetch_dir(env)
+
+  @doc """
   Returns the routing settings from `env`: `:dir`, the directory the locally
   stored routing snapshot files are served from. A nil or blank value counts
   as missing.
@@ -492,6 +502,12 @@ defmodule Gobusgo.Config do
   @spec revision() :: {:ok, revision()} | {:error, revision_error()}
   def revision do
     :gobusgo |> Application.get_env(:revision, []) |> fetch_revision()
+  end
+
+  @doc "Reads the address settings configured for the running application."
+  @spec addresses() :: {:ok, addresses()} | {:error, addresses_error()}
+  def addresses do
+    :gobusgo |> Application.get_env(:addresses, []) |> fetch_addresses()
   end
 
   @doc "Reads the routing settings configured for the running application."
