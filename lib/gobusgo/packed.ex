@@ -215,12 +215,22 @@ defmodule Gobusgo.Packed do
     }
   end
 
+  @doc """
+  Returns the name of the file of kind `input.kind` whose gzip stream has the
+  lower case hexadecimal SHA-256 `input.sha256`: the kind's prefix, the
+  hash, and the container's suffixes.
+  """
+  @spec file_name(%{kind: non_neg_integer(), sha256: String.t()}) :: String.t()
+  def file_name(%{kind: kind, sha256: sha256}) when is_binary(sha256) do
+    {:ok, %{prefix: prefix}} = Kinds.fetch(kind)
+    "#{prefix}-#{sha256}#{@suffix}#{Compression.suffix()}"
+  end
+
   @doc "Returns the destination of `stored` for kind `input.kind` under `input.directory`."
   @spec destination(%{directory: String.t(), kind: non_neg_integer(), stored: stored()}) ::
           String.t()
   def destination(%{directory: directory, kind: kind, stored: %{sha256: sha256}}) do
-    {:ok, %{prefix: prefix}} = Kinds.fetch(kind)
-    "#{directory}/#{prefix}-#{sha256}#{@suffix}#{Compression.suffix()}"
+    "#{directory}/#{file_name(%{kind: kind, sha256: sha256})}"
   end
 
   @doc """

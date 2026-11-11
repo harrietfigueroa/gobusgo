@@ -122,7 +122,8 @@ defmodule Gobusgo.Addresses.BuildTest do
 
     decoded =
       for entry <- entries do
-        stream = File.read!(Path.join([tmp_dir, "addresses/dt=2026-11-10", entry.name]))
+        name = Packed.file_name(%{kind: Format.shard_kind(), sha256: entry.sha256})
+        stream = File.read!(Path.join([tmp_dir, "addresses/dt=2026-11-10", name]))
         {:ok, content} = Packed.expand(stream, Format.expanded_bytes_max(:shard))
         {:ok, %{streets: streets}} = Format.decode_shard(content)
         streets

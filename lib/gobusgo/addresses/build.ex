@@ -364,7 +364,6 @@ defmodule Gobusgo.Addresses.Build do
 
     Map.put(file, :entry, %{
       prefix: shard.prefix,
-      name: Path.basename(file.destination),
       byte_size: file.stored.byte_size,
       sha256: file.stored.sha256
     })

@@ -28,6 +28,7 @@ const LATITUDE_MICRODEGREES_MAX = 90_000_000
 const LONGITUDE_MICRODEGREES_MAX = 180_000_000
 const VARINT_BASE = 128
 const ZIGZAG_DIVISOR = 2
+const FILE_SUFFIX = ".bin.gz"
 
 /** The bytes of a header. */
 export const HEADER_BYTES = 16
@@ -198,6 +199,17 @@ function isPointInRange({latitude, longitude}) {
   const isLatitudeInRange = isLatitude(latitude)
   const isLongitudeInRange = isLongitude(longitude)
   return isLatitudeInRange && isLongitudeInRange
+}
+
+/**
+ * The name of the file of kind `kind` whose gzip stream has the lower case
+ * hexadecimal SHA-256 `sha256`, as `Gobusgo.Packed.file_name/1` names it.
+ */
+export function packedFileName({kind, sha256}) {
+  const entry = KINDS.find((candidate) => candidate.number === kind)
+  assertCondition(entry !== undefined, "the kind must be in the table")
+  assertCondition(typeof sha256 === "string", "the hash must be a string")
+  return `${entry.prefix}-${sha256}${FILE_SUFFIX}`
 }
 
 /** The signed integer whose zigzag is `value`, an unsigned 32-bit integer. */

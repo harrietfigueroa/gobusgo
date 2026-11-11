@@ -72,10 +72,10 @@ defmodule Gobusgo.Test.AddressFixture do
   ]
 
   @index_entries [
-    %{prefix: "", name: "addresses-a.bin.gz", byte_size: 4_096, sha256: "a"},
-    %{prefix: "MAIN$", name: "addresses-b.bin.gz", byte_size: 1, sha256: "b"},
-    %{prefix: "MAIN", name: "addresses-c.bin.gz", byte_size: 4_294_967_295, sha256: "c"},
-    %{prefix: "ÉCOLE", name: "addresses-d.bin.gz", byte_size: 131_072, sha256: "d"}
+    %{prefix: "", byte_size: 4_096, sha256: "a"},
+    %{prefix: "MAIN$", byte_size: 1, sha256: "b"},
+    %{prefix: "MAIN", byte_size: 4_294_967_295, sha256: "c"},
+    %{prefix: "ÉCOLE", byte_size: 131_072, sha256: "d"}
   ]
 
   @doc "The directory the fixture files are in."
@@ -147,7 +147,7 @@ defmodule Gobusgo.Test.AddressFixture do
     %{
       "shardCount" => length(entries),
       "prefixes" => Enum.map(entries, & &1.prefix),
-      "paths" => Enum.map(entries, & &1.name),
+      "paths" => Enum.map(entries, &Gobusgo.Packed.file_name(%{kind: 3, sha256: &1.sha256})),
       "byteSizes" => Enum.map(entries, & &1.byte_size),
       "sha256s" => Enum.map(entries, & &1.sha256)
     }
