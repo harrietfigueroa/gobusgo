@@ -76,7 +76,7 @@ defmodule GobusgoWeb.StopArrivalsTest do
   end
 
   describe "arrivals/1" do
-    test "names the stop and holds the arrival's route, its color, headsign, minutes, time, and kind" do
+    test "names the stop and holds the arrival's route, its color, headsign, minutes, time, kind, trip, and scheduled time" do
       assert shown([arrival(%{})]) == %{
                stop_id: "1_1471",
                status: :arrivals,
@@ -88,10 +88,23 @@ defmodule GobusgoWeb.StopArrivalsTest do
                    headsign: "Othello Station",
                    minutes: 12,
                    time_ms: in_minutes(12),
-                   predicted: true
+                   predicted: true,
+                   trip_id: "1_800582101",
+                   scheduled_ms: in_minutes(10)
                  }
                ]
              }
+    end
+
+    test "gives the scheduled departure as the scheduled time of an arrival that only departs" do
+      fields = %{
+        "arrivalEnabled" => false,
+        "scheduledDepartureTimeMs" => in_minutes(11),
+        "predictedDepartureTimeMs" => in_minutes(13)
+      }
+
+      assert %{scheduled_ms: scheduled_ms, time_ms: time_ms} = line(fields)
+      assert {scheduled_ms, time_ms} == {in_minutes(11), in_minutes(13)}
     end
 
     test "holds no arrival for a fetch without arrivals" do

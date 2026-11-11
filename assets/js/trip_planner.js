@@ -1,21 +1,25 @@
-// The Trip tab: a From field, a To field, and a swap button, a switch of
-// when the trip is for, leaving now, leaving at a time, or arriving by one,
-// and under them the journeys between the two, routed in the browser from
-// the routing snapshots. The rider's position, where the trip starts from it,
-// stays in this module: no event to the server carries it, and the router
-// fetches only the files the manifest names. After a query the page is
-// asked to name the stops and the routes of the journeys shown, and while a
-// journey is selected the map's filter is its routes, which the page holds
-// for as long as the trip is open and never stores.
+// The Trip tab: a From chip and a swap button over one "Where to?" search,
+// a switch of when the trip is for, leaving now, leaving at a time, or
+// arriving by one, and under them the journeys between the two ends, routed
+// in the browser from the routing snapshots. The search box is a WAI-ARIA
+// combobox whose listbox groups the rider's recent trips and the places,
+// addresses, intersections, and stops a text names; the From chip opens the
+// same search for the start. The rider's position, where the trip starts
+// from it, stays in this module, and so does every text typed: no event to
+// the server carries either, the search reads files fetched whole or by a
+// shard a text names, and the router fetches only the files the manifest
+// names. After a query the page is asked to name the stops and the routes
+// of the journeys shown, and while a journey is selected the map's filter
+// is its routes, which the page holds for as long as the trip is open and
+// never stores.
 //
 // Every text here is built as text nodes: names come from outside the
 // application and are never parsed as HTML.
 
 import {unreachable} from "./assert"
-import {chipElements} from "./route_chips"
 import {FetchKind, FailureReason, FromKind, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
-import {createTripMap} from "./trip_map"
+import {CenterKind, createTripMap} from "./trip_map"
 import {
   DayChoice,
   EndKind,
@@ -34,15 +38,24 @@ import {
   journeyRows,
   journeysAnnouncement,
   nameRequest,
-  queryOf,
   pickingMessage,
   plannedTime,
+  pointEnd,
+  queryOf,
   stateMessage,
   stopEnd,
   swappedEnds,
   tripRouteIds,
   windowText
 } from "./trip_plan"
+import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys"
+import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
+import {SORT_LABELS, SegmentKind, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
+import {TRIP_HOLDER as TRIP_STOP_HOLDER, holdStop, releaseStop} from "./stop_holds"
+import {liveDot} from "./stop_arrivals"
+import {startArrivalTicker} from "./arrival_ticker"
+import {chipTextColor} from "./route_chip_color"
+import {createSearchFiles} from "./where_to_files"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
@@ -50,26 +63,37 @@ import {isNotSaved} from "./offline_bundle"
 import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
-import {TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
+import {SEARCH_HOLDER, TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
+import {storedSettings} from "./stored_settings"
 
 const NAMES_EVENT_NAME = "trip:names"
 const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
 const FILTER_ENDED_EVENT_NAME = "trip:filter-ended"
+const ARRIVALS_EVENT_NAME = "stop-arrivals:arrivals"
 const MANIFEST_TIMEOUT_MS = 20 * 1000
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
-const EMPTY_FIELD_TEXT = "Choose a stop"
+const SEARCH_LABELS = Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
+const EMPTY_FROM_TEXT = "Choose a start"
 const LOCATION_TEXT = "My location"
-const PICK_TEXT = "Pick a stop on the map"
-const CHIP_COUNT_MAX = 1
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const NO_NAMES = Object.freeze({stops: {}, routes: {}})
+const LISTBOX_ID = "trip-suggestions"
+const INPUT_ID = "trip-search-input"
+const OPTION_ID_PREFIX = "trip-suggestion-"
+const NONE_INDEX = -1
+// The center a search ranks by before a map has loaded: downtown Seattle.
+const SEARCH_CENTER_DEFAULT = Object.freeze({lat: 47.6062, lon: -122.3321})
+const KEY_MOVES = Object.freeze({ArrowDown: OptionMove.down, ArrowUp: OptionMove.up, Home: OptionMove.home, End: OptionMove.end})
 const MODE_LABELS = Object.freeze({[TimeMode.now]: "Now", [TimeMode.departAt]: "Depart at", [TimeMode.arriveBy]: "Arrive by"})
 const DAY_LABELS = Object.freeze({[DayChoice.today]: "Today", [DayChoice.tomorrow]: "Tomorrow"})
 const LEAVING_NOW = Object.freeze({mode: TimeMode.now, day: DayChoice.today, clockText: ""})
 
 // The kinds of what the query's start resolves to.
 const StartKind = Object.freeze({start: "start", refused: "refused"})
+
+// The kinds of a read of a snapshot's stops, beside the router's failure.
+const StopsReadKind = Object.freeze({read: "read"})
 
 function locatedStart(fix) {
   return {kind: StartKind.start, position: {lat: fix.latitude, lon: fix.longitude}}
@@ -173,10 +197,10 @@ async function fetchManifest(url) {
   }
 }
 
-// The journeys of the query leaving at, or arriving by, the time `planned`
-// names.
-async function routeFor({planned, manifest, from, toStopId}) {
-  const {serviceDate, seconds} = planned
+// The journeys of the query to the stop `toStopId` leaving at, or arriving
+// by, the time `planned` names, `seconds` being when it leaves or arrives.
+async function routeFor({planned, seconds, manifest, from, toStopId}) {
+  const {serviceDate} = planned
 
   switch (planned.kind) {
     case PlannedKind.leaving:
@@ -195,6 +219,27 @@ function noneState(planned) {
   }
 
   return JourneysKind.none
+}
+
+// The frontier the journeys to a point meet in for the time `planned` names.
+function frontierOf(planned) {
+  if (planned.kind === PlannedKind.arrivingBy) {
+    return FrontierKind.latestDeparture
+  }
+
+  return FrontierKind.earliestArrival
+}
+
+// The stop identifiers and positions of the manifest entry `entry`, which
+// the stops near a point end are found in, or the failure that read them.
+async function readSnapshotStops({searchFiles, entry}) {
+  try {
+    const [stopIds, positions] = await searchFiles.snapshotStops({entry})
+    return {kind: StopsReadKind.read, stopIds, positions}
+  } catch (error) {
+    console.warn("Snapshot stops not read", error)
+    return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: entry.files.positions.path}
+  }
 }
 
 function serviceDayStartsOf(manifest) {
@@ -224,41 +269,160 @@ function button({className, text}) {
   return created
 }
 
-// The text an end shows in its field.
+// The text an end shows in the chip or the search box.
 function endText(end) {
   switch (end.kind) {
     case EndKind.none:
-      return EMPTY_FIELD_TEXT
+      return ""
     case EndKind.location:
       return LOCATION_TEXT
     case EndKind.stop:
+    case EndKind.point:
       return end.name
     default:
       return unreachable(end.kind, "trip planner: an end of unknown kind")
   }
 }
 
-// The line that sums up a row: a chip per ride and a text per walk, with
-// the changes after them.
-function summaryElement(row) {
-  const summary = element({tag: "span", className: "trip-journey-summary"})
+// A stored end as the tab's own: a stored shape is the tab's, so each is
+// built again by its constructor, which asserts it.
+function endOfStored(stored) {
+  switch (stored.kind) {
+    case EndKind.location:
+      return LOCATION_END
+    case EndKind.stop:
+      return stopEnd(stored)
+    case EndKind.point:
+      return pointEnd(stored)
+    default:
+      return unreachable(stored.kind, "trip planner: a stored end of unknown kind")
+  }
+}
 
-  for (const [index, part] of row.summary.entries()) {
-    if (index > 0) {
-      summary.append(element({tag: "span", className: "trip-journey-separator", text: "›"}))
+// The bar of a card: a segment per walk, wait, and ride, each as wide as it
+// takes, a ride in its route's color with its name. It is drawn for the
+// eye alone; the text beside it says the same.
+function barElement(segments) {
+  const bar = element({tag: "span", className: "trip-bar"})
+  bar.setAttribute("aria-hidden", "true")
+
+  for (const segment of segments) {
+    const part = element({tag: "span", className: `trip-bar-segment trip-bar-${segment.kind}`})
+    part.style.flexGrow = String(segment.durationS)
+
+    if (segment.kind === SegmentKind.ride) {
+      part.textContent = segment.name
+      part.style.backgroundColor = segment.color
+      part.style.color = chipTextColor(segment.color)
     }
 
+    bar.append(part)
+  }
+
+  return bar
+}
+
+// What the bar shows, as text: each ride's route and each walk, in order.
+function summaryText(row) {
+  const parts = []
+
+  for (const part of row.summary) {
     if (part.kind === "ride") {
-      for (const chip of chipElements({chips: [part.chip], countMax: CHIP_COUNT_MAX, emptyText: ""})) {
-        summary.append(chip)
-      }
+      parts.push(`route ${part.chip.name}`)
     } else {
-      summary.append(element({tag: "span", className: "trip-journey-walk", text: part.text}))
+      parts.push(part.text)
     }
   }
 
-  summary.append(element({tag: "span", className: "trip-journey-changes", text: row.changesText}))
-  return summary
+  return parts.join(", ")
+}
+
+// A journey's card: when to leave and when it arrives, the bar, and the
+// first bus's live lateness, with the live dot, or that it is scheduled.
+function cardElement(card) {
+  const item = button({className: "trip-journey"})
+  item.dataset.journeyIndex = String(card.order)
+  const heading = element({tag: "span", className: "trip-journey-heading"})
+  heading.append(element({tag: "strong", className: "trip-journey-lead", text: card.leadText}))
+  heading.append(element({tag: "span", className: "trip-journey-arrive", text: card.arriveText}))
+  const summary = element({tag: "span", className: HIDDEN_TEXT_CLASS_NAME, text: summaryText(card.row)})
+  const detail = element({tag: "span", className: "trip-journey-detail"})
+
+  if (card.isLive) {
+    detail.append(liveDot())
+  }
+
+  detail.append(element({tag: "span", className: "trip-journey-status", text: card.detailText}))
+  const badge = element({tag: "span", className: "trip-journey-badge", text: card.row.badgeText})
+  badge.classList.toggle("trip-journey-marked", card.row.isMarked)
+  detail.append(badge)
+  item.append(heading, barElement(card.segments), summary, detail)
+  return item
+}
+
+// The index of the journey whose card has the focus, or none.
+function focusedJourneyIndex(container) {
+  const focused = document.activeElement
+  const isInside = focused !== null && container.contains(focused)
+  const isCard = isInside && focused.dataset.journeyIndex !== undefined
+
+  if (isCard) {
+    return focused.dataset.journeyIndex
+  }
+
+  return ""
+}
+
+// Gives the focus back to the card of `index`, written anew.
+function refocusJourney({container, index}) {
+  if (index === "") {
+    return
+  }
+
+  const card = container.querySelector(`[data-journey-index="${index}"]`)
+
+  if (card !== null) {
+    card.focus()
+  }
+}
+
+function keepFocusCallback(event) {
+  event.preventDefault()
+}
+
+// One option of the list, named by its text and its detail.
+function optionElement({option, index}) {
+  const optionItem = element({tag: "div", className: `trip-suggestion trip-suggestion-${option.kind}`})
+  optionItem.id = OPTION_ID_PREFIX + index
+  optionItem.setAttribute("role", "option")
+  optionItem.setAttribute("aria-selected", "false")
+  optionItem.dataset.optionIndex = String(index)
+  optionItem.append(element({tag: "span", className: "trip-suggestion-text", text: option.text}))
+
+  if (option.detail !== "") {
+    optionItem.append(element({tag: "span", className: "trip-suggestion-detail", text: option.detail}))
+  }
+
+  return optionItem
+}
+
+// A group of the list, named by its label, which a screen reader announces
+// as the active option enters it. The name is the label's own text in an
+// attribute, since Chrome computes a name from an element's rendered text,
+// which the stylesheet draws in capitals.
+function groupElement({group, firstIndex}) {
+  const created = element({tag: "div", className: "trip-suggestion-group"})
+  created.setAttribute("role", "group")
+  created.setAttribute("aria-label", group.label)
+  const label = element({tag: "div", className: "trip-suggestion-group-label", text: group.label})
+  label.setAttribute("aria-hidden", "true")
+  created.append(label)
+
+  for (const [offset, option] of group.options.entries()) {
+    created.append(optionElement({option, index: firstIndex + offset}))
+  }
+
+  return created
 }
 
 export const TripPlanner = {
@@ -272,11 +436,27 @@ export const TripPlanner = {
     this.names = NO_NAMES
     this.selectedIndex = 0
     this.isFilterSent = false
-    this.openMenu = null
+    // The end the search box searches for, the text typed since it took
+    // focus, the options the list shows, and the search whose results the
+    // list shows; a later search's results replace an earlier one's.
+    this.searching = TripEnd.to
+    this.searchText = ""
+    this.options = []
+    this.activeIndex = NONE_INDEX
+    this.searchCount = 0
+    this.searchFix = null
     this.manifestUrl = this.el.dataset.manifestUrl
     this.nameCountMax = Number(this.el.dataset.nameCountMax)
     this.routeCountMax = Number(this.el.dataset.routeCountMax)
+    this.openCountMax = Number(this.el.dataset.openCountMax)
+    // The sort the cards stand in, the stops held open for the live times
+    // of the journeys' first rides, and the latest arrivals of each.
+    this.sort = SortKind.soonest
+    this.liveStops = new Set()
+    this.shownByStop = {}
+    this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
+    this.searchFiles = createSearchFiles()
     this.events = pageEvents(this)
     this.build()
 
@@ -286,12 +466,18 @@ export const TripPlanner = {
       this.el.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true}))
     }
 
-    this.onFavoriteChange = () => { this.writeMenus() }
+    this.onFavoriteChange = () => { this.refreshList() }
     window.addEventListener(END_EVENT_NAME, this.onEnd)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
-    // A page that is live again holds no trip's filter, and is sent it again.
-    this.events.whenLive(() => { this.resendFilter() })
+    this.events.handle(ARRIVALS_EVENT_NAME, (shown) => { this.liveArrivals(shown) })
+    // A page that is live again holds no trip's filter and none of the
+    // stops held for the live times, and is sent both again.
+    this.events.whenLive(() => {
+      this.resendFilter()
+      this.resendLiveStops()
+    })
+    this.stopTicker = startArrivalTicker(() => { this.tickCards() })
     this.takeHandedEnds()
     this.startFromLocation()
   },
@@ -304,7 +490,7 @@ export const TripPlanner = {
     if (handed.kind === HandoffKind.found) {
       this.ends = handed.state.ends
       this.when = handed.state.when
-      this.writeFields()
+      this.writeEnds()
       this.writeWhen()
       this.plan()
     }
@@ -337,40 +523,69 @@ export const TripPlanner = {
 
     if (isLocationStart) {
       this.ends[TripEnd.from] = LOCATION_END
-      this.writeFields()
+      this.writeEnds()
     }
   },
 
   build() {
-    const ends = element({tag: "div", className: "trip-ends"})
-    const fields = element({tag: "div", className: "trip-fields"})
-    this.fields = {}
-    this.menus = {}
-
-    for (const end of [TripEnd.from, TripEnd.to]) {
-      const field = button({className: "trip-field"})
-      field.id = `trip-${end}`
-      field.setAttribute("aria-expanded", "false")
-      field.setAttribute("aria-controls", `trip-${end}-menu`)
-      field.append(element({tag: "span", className: `trip-dot trip-dot-${end}`}))
-      field.append(element({tag: "span", className: "trip-field-label", text: FIELD_LABELS[end]}))
-      const value = element({tag: "span", className: "trip-field-value"})
-      field.append(value)
-      field.addEventListener("click", () => { this.toggleMenu(end) })
-
-      const menu = element({tag: "div", className: "trip-menu"})
-      menu.id = `trip-${end}-menu`
-      menu.hidden = true
-
-      this.fields[end] = {field, value}
-      this.menus[end] = menu
-      fields.append(field, menu)
-    }
+    const fromRow = element({tag: "div", className: "trip-from"})
+    fromRow.append(element({tag: "span", className: "trip-field-label", text: FIELD_LABELS[TripEnd.from]}))
+    this.fromChip = button({className: "trip-from-chip"})
+    this.fromChip.id = "trip-from"
+    this.fromChip.append(element({tag: "span", className: "trip-dot trip-dot-from"}))
+    this.fromValue = element({tag: "span", className: "trip-field-value"})
+    this.fromChip.append(this.fromValue)
+    this.fromChip.addEventListener("click", () => { this.searchFor(TripEnd.from) })
 
     const swap = button({className: "trip-swap", text: "⇅"})
     swap.setAttribute("aria-label", "Swap From and To")
     swap.addEventListener("click", () => { this.swap() })
-    ends.append(fields, swap)
+    fromRow.append(this.fromChip, swap)
+
+    const searchBox = element({tag: "div", className: "trip-search-box"})
+    this.searchDot = element({tag: "span", className: "trip-dot trip-dot-to"})
+    this.searchLabel = element({tag: "label", className: HIDDEN_TEXT_CLASS_NAME, text: SEARCH_LABELS[TripEnd.to]})
+    this.searchLabel.htmlFor = INPUT_ID
+    this.input = element({tag: "input", className: "trip-search-input"})
+    this.input.id = INPUT_ID
+    this.input.type = "text"
+    this.input.autocomplete = "off"
+    this.input.spellcheck = false
+    this.input.placeholder = SEARCH_LABELS[TripEnd.to]
+    this.input.setAttribute("role", "combobox")
+    this.input.setAttribute("aria-autocomplete", "list")
+    this.input.setAttribute("aria-controls", LISTBOX_ID)
+    this.input.setAttribute("aria-expanded", "false")
+    this.input.addEventListener("focus", () => { this.openSearch() })
+    this.input.addEventListener("input", () => { this.typed() })
+    this.input.addEventListener("keydown", (event) => { this.keydownCallback(event) })
+    searchBox.append(this.searchDot, this.searchLabel, this.input)
+
+    this.listbox = element({tag: "div", className: "trip-suggestions"})
+    this.listbox.id = LISTBOX_ID
+    this.listbox.setAttribute("role", "listbox")
+    this.listbox.setAttribute("aria-label", "Suggestions")
+    this.listbox.hidden = true
+    // A press on an option keeps the focus in the search box, so the list
+    // stays open until the click chooses it.
+    this.listbox.addEventListener("mousedown", keepFocusCallback)
+    this.listbox.addEventListener("click", (event) => { this.optionClickCallback(event) })
+
+    this.credit = element({tag: "p", className: "trip-credit"})
+    const creditLink = element({tag: "a", className: "inline-target", text: OSM_CREDIT.linkText})
+    creditLink.href = OSM_CREDIT.href
+    creditLink.target = "_blank"
+    creditLink.rel = "noopener noreferrer"
+    this.credit.append(`${OSM_CREDIT.text} `, creditLink)
+    this.credit.hidden = true
+
+    this.searchStatus = element({tag: "div", className: HIDDEN_TEXT_CLASS_NAME})
+    this.searchStatus.setAttribute("role", "status")
+
+    const search = element({tag: "div", className: "trip-search"})
+    search.append(fromRow, searchBox, this.listbox, this.credit, this.searchStatus)
+    search.addEventListener("focusout", (event) => { this.focusOutCallback(event) })
+    this.searchElement = search
 
     this.status = element({tag: "div", className: "trip-status"})
     this.status.setAttribute("role", "status")
@@ -380,19 +595,85 @@ export const TripPlanner = {
     this.clearButton = button({className: "panel-detail-action trip-clear", text: "Clear trip"})
     this.clearButton.addEventListener("click", () => { this.clear() })
 
-    this.el.addEventListener("keydown", (event) => {
-      const isMenuEscape = event.key === "Escape" && this.openMenu !== null
-
-      if (isMenuEscape) {
-        event.stopPropagation()
-        this.closeMenus()
-      }
-    })
-
-    this.el.replaceChildren(ends, this.buildWhen(), this.status, this.windowLine, this.journeysElement, this.clearButton)
-    this.writeFields()
-    this.writeMenus()
+    this.el.replaceChildren(search, this.buildWhen(), this.status, this.windowLine, this.buildSorts(), this.journeysElement, this.clearButton)
+    this.writeEnds()
     this.writeWhen()
+  },
+
+  // The sorts of the journey list, as a group of toggle buttons shown with
+  // the journeys.
+  buildSorts() {
+    this.sortsElement = element({tag: "div", className: "trip-sorts"})
+    this.sortsElement.setAttribute("role", "group")
+    this.sortsElement.setAttribute("aria-label", "Sort journeys")
+    this.sortsElement.hidden = true
+    this.sortButtons = {}
+
+    for (const sort of Object.values(SortKind)) {
+      const sortButton = button({className: "trip-sort", text: SORT_LABELS[sort]})
+      sortButton.setAttribute("aria-pressed", String(sort === this.sort))
+      sortButton.addEventListener("click", () => { this.setSort(sort) })
+      this.sortButtons[sort] = sortButton
+      this.sortsElement.append(sortButton)
+    }
+
+    return this.sortsElement
+  },
+
+  setSort(sort) {
+    this.sort = sort
+
+    for (const [kind, sortButton] of Object.entries(this.sortButtons)) {
+      sortButton.setAttribute("aria-pressed", String(kind === sort))
+    }
+
+    if (this.shown !== null) {
+      this.writeJourneys(this.rows())
+    }
+  },
+
+  // Holds the boarding stops of the journeys' first rides open, within the
+  // page's budget of open stops, so their live arrivals move the cards.
+  holdLiveStops() {
+    const stopIds = liveStopIds({journeys: this.shown.journeys, countMax: this.openCountMax})
+
+    for (const stopId of stopIds) {
+      this.liveStops.add(stopId)
+      holdStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+  },
+
+  releaseLiveStops() {
+    for (const stopId of this.liveStops) {
+      releaseStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+
+    this.liveStops = new Set()
+    this.shownByStop = {}
+  },
+
+  resendLiveStops() {
+    for (const stopId of this.liveStops) {
+      holdStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+  },
+
+  // An answer for a stop the cards hold moves the cards with it.
+  liveArrivals(shown) {
+    const isHeld = this.liveStops.has(shown.stop_id)
+    const isShowing = isHeld && this.shown !== null
+
+    if (isShowing) {
+      this.shownByStop = {...this.shownByStop, [shown.stop_id]: shown}
+      this.writeJourneys(this.rows())
+    }
+  },
+
+  // The cards count down between answers.
+  tickCards() {
+    if (this.shown !== null) {
+      this.writeJourneys(this.rows())
+    }
   },
 
   // The switch of when the trip is for, as a group of toggle buttons, and
@@ -477,79 +758,298 @@ export const TripPlanner = {
     this.plan()
   },
 
-  writeFields() {
-    for (const end of [TripEnd.from, TripEnd.to]) {
-      const shown = this.ends[end]
-      const {value} = this.fields[end]
-      value.textContent = endText(shown)
-      value.classList.toggle("trip-field-empty", shown.kind === EndKind.none)
+  // The From chip, the search box's value and label, and whether a trip
+  // can be cleared.
+  writeEnds() {
+    const from = this.ends[TripEnd.from]
+    this.fromValue.textContent = endText(from) || EMPTY_FROM_TEXT
+    this.fromValue.classList.toggle("trip-field-empty", from.kind === EndKind.none)
+    this.fromChip.setAttribute("aria-label", `From: ${this.fromValue.textContent}. Change the start`)
+    this.searchLabel.textContent = SEARCH_LABELS[this.searching]
+    this.input.placeholder = SEARCH_LABELS[this.searching]
+    this.searchDot.className = `trip-dot trip-dot-${this.searching}`
+
+    if (!this.isListOpen()) {
+      this.input.value = endText(this.ends[this.searching])
     }
 
-    const isOpen = this.ends[TripEnd.from].kind !== EndKind.none || this.ends[TripEnd.to].kind !== EndKind.none
+    const isOpen = from.kind !== EndKind.none || this.ends[TripEnd.to].kind !== EndKind.none
     this.clearButton.hidden = isOpen === false
   },
 
-  // The choices of each field: the rider's location for From, each
-  // favorite, and a stop picked on the map.
-  writeMenus() {
-    for (const end of [TripEnd.from, TripEnd.to]) {
-      const menu = this.menus[end]
-      const items = []
+  // Has the search box search for `end` and takes the focus to it.
+  searchFor(end) {
+    const isFocused = document.activeElement === this.input
+    this.searching = end
+    this.closeList()
+    this.writeEnds()
+    this.input.focus()
 
-      if (end === TripEnd.from) {
-        const location = button({className: "trip-menu-item", text: LOCATION_TEXT})
-        location.addEventListener("click", () => { this.setEnd({end, value: LOCATION_END}) })
-        items.push(location)
-      }
-
-      for (const favorite of storedFavorites()) {
-        const item = button({className: "trip-menu-item", text: `★ ${favorite.name}`})
-        item.addEventListener("click", () => { this.setEnd({end, value: stopEnd(favorite)}) })
-        items.push(item)
-      }
-
-      const pick = button({className: "trip-menu-item", text: PICK_TEXT})
-      pick.addEventListener("click", () => { this.pick(end) })
-      items.push(pick)
-      menu.replaceChildren(fragmentOf(items))
+    // A box that has the focus already gets no focus event.
+    if (isFocused) {
+      this.openSearch()
     }
   },
 
-  toggleMenu(end) {
-    const isOpen = this.openMenu === end
-    this.closeMenus()
-
-    if (!isOpen) {
-      this.openMenu = end
-      this.menus[end].hidden = false
-      this.fields[end].field.setAttribute("aria-expanded", "true")
-      this.menus[end].querySelector("button").focus()
-    }
+  isListOpen() {
+    return this.listbox.hidden === false
   },
 
-  // A field's list is a disclosure of plain buttons: closing a list that
-  // holds focus, as a choice, Escape, or "Pick a stop on the map" does,
-  // hands focus back to its field, so a keyboard keeps its place.
-  closeMenus() {
-    for (const end of [TripEnd.from, TripEnd.to]) {
-      const menu = this.menus[end]
-      const {field} = this.fields[end]
-      const hasFocus = menu.contains(document.activeElement)
-      menu.hidden = true
-      field.setAttribute("aria-expanded", "false")
+  // When the box takes focus the files load, its text is selected so
+  // typing replaces it, and the list offers what an empty text does.
+  openSearch() {
+    this.searchFiles.warm({routingManifestUrl: this.manifestUrl})
+    this.input.select()
+    this.searchText = ""
+    this.listbox.hidden = false
+    this.input.setAttribute("aria-expanded", "true")
+    this.refreshList()
+    this.searchWhenLoaded()
+    this.holdSearchPosition()
+  },
 
-      if (hasFocus) {
-        field.focus()
+  // Holds the page's position watch while the list is open, where the
+  // browser gives the position with no prompt, so the results rank from
+  // where the rider stands; a fix writes the list again.
+  async holdSearchPosition() {
+    const granted = await permissionGranted()
+    const isHeld = granted && this.isListOpen()
+
+    if (!isHeld) {
+      return
+    }
+
+    const onOutcome = (outcome) => {
+      const isFirstFix = outcome.kind === OutcomeKind.fix && this.searchFix === null
+      this.searchFix = null
+
+      if (outcome.kind === OutcomeKind.fix) {
+        this.searchFix = outcome.fix
+      }
+
+      if (isFirstFix) {
+        this.refreshList()
       }
     }
 
-    this.openMenu = null
+    holdPosition({holder: SEARCH_HOLDER, onOutcome})
+  },
+
+  // Searches again once the files a search reads have loaded, so a list
+  // written before they did gains their results.
+  async searchWhenLoaded() {
+    const pending = this.searchFiles.pendingLoads()
+    await Promise.allSettled(pending)
+
+    if (this.isListOpen()) {
+      this.refreshList()
+    }
+  },
+
+  typed() {
+    this.searchText = this.input.value
+
+    if (!this.isListOpen()) {
+      this.listbox.hidden = false
+      this.input.setAttribute("aria-expanded", "true")
+    }
+
+    this.refreshList()
+  },
+
+  // Writes the list for the text typed, once each source has answered;
+  // the answer to an earlier text is dropped.
+  async refreshList() {
+    if (!this.isListOpen()) {
+      return
+    }
+
+    this.searchCount += 1
+    const searchNumber = this.searchCount
+    const text = this.searchText
+    const near = this.searchCenter()
+    const found = await this.searchFiles.search({text, near})
+
+    if (searchNumber !== this.searchCount) {
+      return
+    }
+
+    const recents = storedSettings.listRecentTrips(RECENT_TRIP_COUNT_MAX)
+    const list = suggestionList({text, end: this.searching, recents, favorites: storedFavorites(), found})
+    this.writeList(list)
+  },
+
+  // The point a search ranks its results by: the rider's fix while the
+  // list holds the position watch, or the latest while it is fresh, which
+  // stays in this module, or else the map's center.
+  searchCenter() {
+    if (this.searchFix !== null) {
+      return {lat: this.searchFix.latitude, lon: this.searchFix.longitude}
+    }
+
+    const latest = latestFix()
+
+    if (latest.kind === LatestKind.fresh) {
+      return {lat: latest.fix.latitude, lon: latest.fix.longitude}
+    }
+
+    const center = this.tripMap.center()
+
+    if (center.kind === CenterKind.center) {
+      return {lat: center.lat, lon: center.lon}
+    }
+
+    return SEARCH_CENTER_DEFAULT
+  },
+
+  writeList(list) {
+    const items = []
+    const options = []
+
+    for (const option of list.leading) {
+      items.push(optionElement({option, index: options.length}))
+      options.push(option)
+    }
+
+    for (const group of list.groups) {
+      items.push(groupElement({group, firstIndex: options.length}))
+
+      for (const option of group.options) {
+        options.push(option)
+      }
+    }
+
+    for (const option of list.trailing) {
+      items.push(optionElement({option, index: options.length}))
+      options.push(option)
+    }
+
+    this.options = options
+    this.activeIndex = NONE_INDEX
+    this.input.removeAttribute("aria-activedescendant")
+    this.listbox.replaceChildren(fragmentOf(items))
+    this.credit.hidden = !list.isCredited
+    this.searchStatus.textContent = suggestionsAnnouncement(list.count)
+  },
+
+  closeList() {
+    releasePosition({holder: SEARCH_HOLDER})
+    this.searchFix = null
+    this.searchCount += 1
+    this.listbox.hidden = true
+    this.listbox.replaceChildren()
+    this.credit.hidden = true
+    this.options = []
+    this.activeIndex = NONE_INDEX
+    this.input.setAttribute("aria-expanded", "false")
+    this.input.removeAttribute("aria-activedescendant")
+    this.searchStatus.textContent = ""
+    this.input.value = endText(this.ends[this.searching])
+  },
+
+  // Focus leaving the search closes its list.
+  focusOutCallback(event) {
+    const isInside = this.searchElement.contains(event.relatedTarget)
+
+    if (!isInside) {
+      this.closeList()
+      this.searching = TripEnd.to
+      this.writeEnds()
+    }
+  },
+
+  keydownCallback(event) {
+    const move = KEY_MOVES[event.key]
+
+    if (move !== undefined) {
+      this.moveActive({event, move})
+    } else if (event.key === "Enter") {
+      this.chooseActive(event)
+    } else if (event.key === "Escape") {
+      this.escape(event)
+    }
+  },
+
+  moveActive({event, move}) {
+    const isHomeOrEnd = move === OptionMove.home || move === OptionMove.end
+    const isTextMove = isHomeOrEnd && this.activeIndex === NONE_INDEX
+    const isNoMove = isTextMove || this.options.length === 0
+
+    // Home and End move the caret in the text until an option is active.
+    if (isNoMove) {
+      return
+    }
+
+    event.preventDefault()
+    this.activeIndex = movedOptionIndex({move, index: this.activeIndex, count: this.options.length})
+    this.showActive()
+  },
+
+  showActive() {
+    for (const item of this.listbox.querySelectorAll("[role=option]")) {
+      const isActive = Number(item.dataset.optionIndex) === this.activeIndex
+      item.setAttribute("aria-selected", String(isActive))
+
+      if (isActive) {
+        this.input.setAttribute("aria-activedescendant", item.id)
+        item.scrollIntoView({block: "nearest"})
+      }
+    }
+  },
+
+  chooseActive(event) {
+    if (this.activeIndex === NONE_INDEX) {
+      return
+    }
+
+    event.preventDefault()
+    this.choose(this.options[this.activeIndex])
+  },
+
+  // Escape with the list open closes it and stays in the box; with it
+  // closed it reaches the sheet, which collapses.
+  escape(event) {
+    if (this.isListOpen()) {
+      event.stopPropagation()
+      this.closeList()
+    }
+  },
+
+  optionClickCallback(event) {
+    const item = event.target.closest("[role=option]")
+
+    if (item !== null) {
+      this.choose(this.options[Number(item.dataset.optionIndex)])
+    }
+  },
+
+  choose(option) {
+    const {choice} = option
+    const end = this.searching
+    this.closeList()
+    this.searching = TripEnd.to
+
+    switch (choice.kind) {
+      case ChoiceKind.end:
+        this.setEnd({end, value: choice.end})
+        break
+      case ChoiceKind.trip:
+        this.ends = {[TripEnd.from]: endOfStored(choice.trip.from), [TripEnd.to]: endOfStored(choice.trip.to)}
+        this.writeEnds()
+        this.plan()
+        break
+      case ChoiceKind.pick:
+        this.writeEnds()
+        this.pick(end)
+        break
+      default:
+        unreachable(choice.kind, "trip planner: a choice of unknown kind")
+    }
   },
 
   // Waits for the next stop the rider taps on the map, with the sheet out
   // of the way on a phone.
   pick(end) {
-    this.closeMenus()
     startPicking(end)
 
     const note = element({tag: "p", className: "trip-note", text: ""})
@@ -570,16 +1070,15 @@ export const TripPlanner = {
       stopPicking()
     }
 
-    this.closeMenus()
     this.ends[end] = value
-    this.writeFields()
+    this.writeEnds()
     this.plan()
   },
 
   swap() {
     const swapped = swappedEnds({from: this.ends[TripEnd.from], to: this.ends[TripEnd.to]})
     this.ends = {[TripEnd.from]: swapped.from, [TripEnd.to]: swapped.to}
-    this.writeFields()
+    this.writeEnds()
     this.plan()
   },
 
@@ -590,7 +1089,8 @@ export const TripPlanner = {
     stopPicking()
     this.ends = {[TripEnd.from]: NO_END, [TripEnd.to]: NO_END}
     this.when = LEAVING_NOW
-    this.writeFields()
+    this.searching = TripEnd.to
+    this.writeEnds()
     this.writeWhen()
     this.closeResult()
     this.status.replaceChildren()
@@ -603,6 +1103,8 @@ export const TripPlanner = {
     this.shown = null
     this.windowLine.replaceChildren()
     this.journeysElement.replaceChildren()
+    this.sortsElement.hidden = true
+    this.releaseLiveStops()
     this.tripMap.clear()
 
     if (this.isFilterSent) {
@@ -624,9 +1126,8 @@ export const TripPlanner = {
     }
   },
 
-  // Plans the trip the two ends make, for the time the switch names, in
-  // place of the one shown. Each wait checks that no later query has
-  // started since.
+  // Plans the trip the two ends make, leaving now, in place of the one
+  // shown. Each wait checks that no later query has started since.
   async plan() {
     this.closeResult()
     this.status.replaceChildren()
@@ -636,6 +1137,9 @@ export const TripPlanner = {
       return
     } else if (query.kind === QueryKind.sameStop) {
       this.showState({kind: StateKind.sameStop, retry: false})
+      return
+    } else if (query.kind === QueryKind.samePoint) {
+      this.showState({kind: StateKind.samePoint, retry: false})
       return
     }
 
@@ -669,20 +1173,65 @@ export const TripPlanner = {
       return
     }
 
-    const answer = await routeFor({planned, manifest, from: start.from, toStopId: query.toStopId})
+    const answer = await this.routeTo({manifest, planned, from: start.from, to: query.to})
 
     if (queryNumber !== this.queryCount) {
       return
     }
 
-    this.answer({answer, planned, nowMs, manifest, origin: start.origin})
+    this.answer({answer, planned, nowMs, manifest, origin: start.origin, trip: query})
   },
 
-  // The router's start for `from`: a stop, or the rider's position, which
-  // stays in this module.
+  // The journeys from `from` to `to`, a stop or a point, for the time
+  // `planned` names: to a point, the journeys to each stop within a walk of
+  // it, arriving there by the time less the walk for a trip arriving by a
+  // time, joined in one frontier.
+  async routeTo({manifest, planned, from, to}) {
+    const {serviceDate} = planned
+
+    if (to.kind === EndKind.stop) {
+      return await routeFor({planned, seconds: planned.seconds, manifest, from, toStopId: to.stopId})
+    }
+
+    const entry = manifest.snapshots.find((candidate) => candidate.serviceDate === serviceDate)
+    const read = await readSnapshotStops({searchFiles: this.searchFiles, entry})
+
+    if (read.kind === JourneysKind.failed) {
+      return read
+    }
+
+    const {stopIds, positions} = read
+
+    const targets = targetStops({position: {lat: to.lat, lon: to.lon}, stopIds, positions, transferRules: entry.transferRules, countMax: TARGET_STOP_COUNT_MAX})
+
+    if (targets.length === 0) {
+      return {kind: PointJourneysKind.noEndStop}
+    }
+
+    const routed = []
+
+    for (const target of targets) {
+      let seconds = planned.seconds
+
+      if (planned.kind === PlannedKind.arrivingBy) {
+        seconds -= target.walkS
+      }
+
+      const answer = await routeFor({planned, seconds, manifest, from, toStopId: target.stopId})
+      routed.push({target, answer})
+    }
+
+    const destination = {name: to.name, lat: to.lat, lon: to.lon}
+    return journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
+  },
+
+  // The router's start for `from`: a stop, a point, or the rider's
+  // position, which stays in this module.
   async startOf(from) {
     if (from.kind === EndKind.stop) {
       return {kind: StartKind.start, from: {kind: FromKind.stop, stopId: from.stopId}, origin: null}
+    } else if (from.kind === EndKind.point) {
+      return {kind: StartKind.start, from: {kind: FromKind.position, lat: from.lat, lon: from.lon}, origin: {lat: from.lat, lon: from.lon}}
     }
 
     const located = await currentPosition()
@@ -695,7 +1244,7 @@ export const TripPlanner = {
     return {kind: StartKind.start, from: {kind: FromKind.position, lat, lon}, origin: located.position}
   },
 
-  answer({answer, planned, nowMs, manifest, origin}) {
+  answer({answer, planned, nowMs, manifest, origin, trip}) {
     switch (answer.kind) {
       case JourneysKind.found:
         break
@@ -710,11 +1259,15 @@ export const TripPlanner = {
       case JourneysKind.noStartStop:
         this.showState({kind: answer.kind, retry: false})
         return
+      case PointJourneysKind.noEndStop:
+        this.showState({kind: StateKind.noEndStop, retry: false})
+        return
       default:
         unreachable(answer.kind, "trip planner: an answer of unknown kind")
     }
 
     this.status.replaceChildren()
+    storedSettings.addRecentTrip({trip: {from: trip.from, to: trip.to}, countMax: RECENT_TRIP_COUNT_MAX})
 
     this.shown = {
       journeys: answer.journeys,
@@ -728,10 +1281,12 @@ export const TripPlanner = {
     this.names = NO_NAMES
     const rows = this.rows()
     this.selectedIndex = rows.findIndex(isMarkedRow)
+    this.sortsElement.hidden = false
     this.writeJourneys(rows)
     this.selectJourney({index: this.selectedIndex, rows})
     this.announceJourneys(rows)
     this.requestNames()
+    this.holdLiveStops()
   },
 
   // The status line says, out of sight, what the list that appeared holds,
@@ -778,26 +1333,28 @@ export const TripPlanner = {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const {journeys, planned, nowMs, serviceDayStartsMs} = this.shown
     this.windowLine.textContent = windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone})
+    const focusedIndex = focusedJourneyIndex(this.journeysElement)
+    const cards = []
+
+    for (const [order, row] of rows.entries()) {
+      const live = firstRideLive({journey: row.journey, shownByStop: this.shownByStop, serviceDayStartsMs})
+      cards.push(journeyCard({row, order, live, nowMs: Date.now(), serviceDayStartsMs, names: this.names, timeZone}))
+    }
+
     const items = []
 
-    for (const [index, row] of rows.entries()) {
-      const item = button({className: "trip-journey"})
+    for (const card of sortedCards({cards, sort: this.sort})) {
+      const index = card.order
+      const item = cardElement(card)
       const isSelected = index === this.selectedIndex
       item.setAttribute("aria-pressed", String(isSelected))
-
-      const heading = element({tag: "span", className: "trip-journey-heading"})
-      heading.append(element({tag: "strong", className: "trip-journey-times", text: row.timesText}))
-      const badge = element({tag: "span", className: "trip-journey-badge", text: row.badgeText})
-      badge.classList.toggle("trip-journey-marked", row.isMarked)
-      heading.append(badge)
-      item.append(heading, summaryElement(row))
       item.addEventListener("click", () => { this.selectJourney({index, rows: this.rows()}) })
       items.push(item)
 
       if (isSelected) {
         const stepsElement = element({tag: "ol", className: "trip-journey-steps"})
 
-        for (const step of row.steps) {
+        for (const step of card.row.steps) {
           stepsElement.append(element({tag: "li", className: "", text: step}))
         }
 
@@ -806,6 +1363,7 @@ export const TripPlanner = {
     }
 
     this.journeysElement.replaceChildren(fragmentOf(items))
+    refocusJourney({container: this.journeysElement, index: focusedIndex})
   },
 
   // Selects the journey at `index`: its steps in the list, its drawing on
@@ -853,8 +1411,11 @@ export const TripPlanner = {
     window.removeEventListener(END_EVENT_NAME, this.onEnd)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
+    this.stopTicker()
+    this.releaseLiveStops()
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})
+    releasePosition({holder: SEARCH_HOLDER})
     this.events.release()
   }
 }

@@ -1133,32 +1133,29 @@ a.inline-target {
   color: var(--filter-kind-active-color);
 }
 
-/* The Trip tab: the two ends beside the swap button, then the journeys,
-   each a button that selects it, with the steps of the selected one under
-   it. */
+/* The Trip tab: the From chip beside the swap button over the "Where to?"
+   search and its list, then the journeys, each a button that selects it,
+   with the steps of the selected one under it. */
 .trip-planner {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.trip-ends {
+.trip-search {
   display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.trip-fields {
-  display: flex;
-  flex: 1;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+  gap: 8px;
 }
 
-.trip-field,
+.trip-from {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip-from-chip,
 .trip-swap,
-.trip-menu-item,
 .trip-journey {
   border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
   border-radius: var(--surface-radius);
@@ -1166,17 +1163,99 @@ a.inline-target {
   cursor: pointer;
 }
 
-.trip-field {
+.trip-from-chip {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   min-height: var(--close-button-hit-size);
-  padding: 0 10px;
+  padding: 0 12px;
+  border-radius: calc(var(--close-button-hit-size) / 2);
   text-align: left;
 }
 
-.trip-field[aria-expanded="true"] {
-  border-color: var(--surface-border-color);
+.trip-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--filter-bar-height-min);
+  padding: 0 10px;
+  border: 2px solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--filter-bar-fill);
+  cursor: text;
+}
+
+.trip-search-box:focus-within {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 1px;
+}
+
+.trip-search-input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--filter-token-height);
+  border: 0;
+  background: transparent;
+  font-size: 1rem;
+  outline: none;
+}
+
+.trip-suggestions {
+  display: flex;
+  flex-direction: column;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.trip-suggestions[hidden],
+.trip-credit[hidden] {
+  display: none;
+}
+
+.trip-suggestion-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.trip-suggestion-group-label {
+  padding: 8px 8px 4px;
+  color: var(--filter-kind-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trip-suggestion {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--filter-suggestion-height-min);
+  padding: 6px 8px;
+  border-radius: var(--control-radius-inner);
+  cursor: pointer;
+}
+
+.trip-suggestion-detail {
+  color: var(--filter-kind-color);
+  font-size: 0.8125rem;
+}
+
+.trip-suggestion:hover,
+.trip-suggestion[aria-selected="true"] {
+  background-color: var(--filter-suggestion-active-fill);
+}
+
+.trip-suggestion:hover .trip-suggestion-detail,
+.trip-suggestion[aria-selected="true"] .trip-suggestion-detail {
+  color: var(--filter-kind-active-color);
+}
+
+.trip-credit {
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
 }
 
 .trip-dot {
@@ -1318,22 +1397,6 @@ a.inline-target {
   font-weight: 400;
 }
 
-.trip-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.trip-menu[hidden] {
-  display: none;
-}
-
-.trip-menu-item {
-  min-height: var(--close-button-hit-size);
-  padding: 4px 10px;
-  text-align: left;
-}
-
 .trip-swap {
   flex: none;
   width: var(--close-button-hit-size);
@@ -1346,7 +1409,8 @@ a.inline-target {
   gap: 8px;
 }
 
-.trip-modes {
+.trip-modes,
+.trip-sorts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow: hidden;
@@ -1354,7 +1418,12 @@ a.inline-target {
   border-radius: var(--surface-radius);
 }
 
-.trip-mode {
+.trip-sorts[hidden] {
+  display: none;
+}
+
+.trip-mode,
+.trip-sort {
   min-height: var(--close-button-hit-size);
   padding: 0 4px;
   border: 0;
@@ -1363,11 +1432,13 @@ a.inline-target {
   cursor: pointer;
 }
 
-.trip-mode + .trip-mode {
+.trip-mode + .trip-mode,
+.trip-sort + .trip-sort {
   border-left: var(--surface-border-width) solid var(--panel-sheet-rule-color);
 }
 
-.trip-mode[aria-pressed="true"] {
+.trip-mode[aria-pressed="true"],
+.trip-sort[aria-pressed="true"] {
   background-color: var(--panel-detail-action-pressed-fill);
   color: var(--panel-sheet-selected-color);
   font-weight: 700;
@@ -1441,11 +1512,21 @@ a.inline-target {
 
 .trip-journey-heading {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
 
+.trip-journey-lead {
+  font-size: 1rem;
+}
+
+.trip-journey-arrive {
+  font-size: 0.8125rem;
+}
+
 .trip-journey-badge {
+  margin-left: auto;
   color: var(--filter-kind-color);
 }
 
@@ -1454,25 +1535,46 @@ a.inline-target {
   font-weight: 600;
 }
 
-.trip-journey-summary {
+/* A card's bar: each walk, wait, and ride as wide as it takes, a ride in
+   its route's color with its name, a walk dotted. The bar is decoration
+   whose text the card also holds, so forced colors leave its colors. */
+.trip-bar {
+  display: flex;
+  gap: 2px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+  forced-color-adjust: none;
+}
+
+.trip-bar-segment {
+  min-width: 4px;
+  overflow: hidden;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 18px;
+  padding-left: 3px;
+  white-space: nowrap;
+}
+
+.trip-bar-walk {
+  align-self: center;
+  height: 0;
+  border-top: 3px dotted var(--filter-kind-color);
+}
+
+.trip-bar-wait {
+  align-self: center;
+  height: 0;
+  border-top: 1px solid var(--panel-sheet-rule-color);
+}
+
+.trip-journey-detail {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   font-size: 0.8125rem;
-}
-
-.trip-journey-summary .route-chip {
-  font-weight: 700;
-}
-
-.trip-journey-walk,
-.trip-journey-changes {
-  color: var(--filter-kind-color);
-}
-
-.trip-journey-changes {
-  margin-left: auto;
 }
 
 .trip-journey-steps {
@@ -1488,11 +1590,11 @@ a.inline-target {
   display: none;
 }
 
-.trip-field:focus-visible,
+.trip-from-chip:focus-visible,
 .trip-mode:focus-visible,
+.trip-sort:focus-visible,
 .trip-time-input:focus-visible,
 .trip-swap:focus-visible,
-.trip-menu-item:focus-visible,
 .trip-journey:focus-visible,
 .panel-sheet-handle:focus-visible,
 .panel-sheet-back:focus-visible,
@@ -1586,13 +1688,16 @@ a.inline-target {
   .panel-detail-action[aria-pressed="true"],
   .panel-detail-favorite[aria-pressed="true"],
   .trip-mode[aria-pressed="true"],
-  .filter-suggestion[aria-selected="true"] {
+  .trip-sort[aria-pressed="true"],
+  .filter-suggestion[aria-selected="true"],
+  .trip-suggestion[aria-selected="true"] {
     background-color: Highlight;
     color: HighlightText;
     forced-color-adjust: none;
   }
 
-  .filter-suggestion[aria-selected="true"] * {
+  .filter-suggestion[aria-selected="true"] *,
+  .trip-suggestion[aria-selected="true"] * {
     color: HighlightText;
   }
 

@@ -70,7 +70,7 @@ Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it and the 
 The places file is a Derivative Database of OpenStreetMap, offered under the Open Database License 1.0 (ODbL), "© OpenStreetMap contributors" (GOB-367). `license.ex` holds the texts, pure, and the notice and the manifest's `license` object both read them. The file is not under the repository's own license. The ODbL's obligations and how each is met:
 
 - **§4.2, notices.** `places/NOTICE.txt` names the file a Derivative Database of OpenStreetMap, offered under the ODbL with its address, credits "© OpenStreetMap contributors" with the copyright page, and names the manifest that names the whole database. `Gobusgo.Places.Publication` stores it before the manifest, and the manifest's `license` names it. The endpoint serves it at `/places/NOTICE.txt` as `text/plain; charset=utf-8` with `no-cache`. The Settings tab's licenses list "Places: ODbL 1.0, © OpenStreetMap contributors" with links to the ODbL, the copyright page, and the manifest.
-- **§4.3, notice for a Produced Work.** A page that shows results from the file carries "Places © OpenStreetMap" linked to the copyright page. That credit belongs to the results list that searches the file (GOB-368), and no page shows one yet.
+- **§4.3, notice for a Produced Work.** A page that shows results from the file carries "Places © OpenStreetMap" linked to the copyright page. The Trip tab's "Where to?" list shows it under its suggestions while a place or an intersection is among them (`OSM_CREDIT` of `assets/js/where_to.js`, GOB-375).
 - **§4.4, share alike.** The file is itself offered under the ODbL, whole and unrestricted, so the share-alike condition on a Derivative Database holds for it. Its notices stay in the file's notice and manifest.
 - **§4.6, access.** `/places/manifest.json` is the stable, free address that names the current file. It needs no login, and the file it names is the whole database, in the container format `Gobusgo.Places.Format` describes and `mix gobusgo.packed.decode` reads.
 
@@ -79,6 +79,8 @@ OneBusAway's stop names stay outside the ODbL's share-alike beside the places fi
 1. **No references between the two.** Neither dataset joins, deduplicates, filters, positions, or renames the other. A page may run both searches and show both result sets in one list, with OpenStreetMap credited (Geocoding Guideline).
 2. **Each feature type comes from one source in the region.** Stops and platforms come only from OneBusAway, and the file excludes every feature tagged `highway=bus_stop`, `public_transport=platform`, `public_transport=stop_position`, `railway=platform`, `railway=tram_stop`, or `railway=stop` (`Classification.stop?/1`). Stations come only from OpenStreetMap, so a stop search never lists OneBusAway's parent stations (Horizontal Map Layers Guideline).
 3. **No OneBusAway data in the places file and no OpenStreetMap data in the stop data.**
+
+The Trip tab's search keeps them (GOB-375): `assets/js/where_to.js` puts each source's results in a group of its own and never joins, removes, renames, or moves one by another, and its stop search reads the routing snapshot's stops file, which holds only the stops a trip calls at and so no parent station. The offline bundle saves the places file whole, beside the stop data and apart from it.
 
 Guidance, checked 2026-11-10:
 

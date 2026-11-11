@@ -11,6 +11,7 @@ import {deepStrictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
 import {LegKind} from "../../assets/js/routing_engine.js"
 import {FailureReason, JourneysKind} from "../../assets/js/routing_journeys.js"
+import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
 import {
   BoundsKind,
   ClockKind,
@@ -33,6 +34,7 @@ import {
   queryOf,
   pickingMessage,
   plannedTime,
+  pointEnd,
   stateMessage,
   stopEnd,
   swappedEnds,
@@ -270,18 +272,23 @@ for (const {name, when, manifest, expected} of plannedCases) {
   deepStrictEqual(plannedTime({when, nowMs: NOW_MS, timeZone: TIME_ZONE, manifest}), expected, `the planned time: ${name}`)
 }
 
-// Two ends make a query once From is set and To is a stop, and never from
-// a stop to itself.
+// Two ends make a query once From is set and To is a stop or a point, and
+// never from a stop or a point to itself.
 const pike = stopEnd({stopId: "1_431", name: "3rd Ave & Pike St"})
 const othello = stopEnd({stopId: "1_11920", name: "Rainier Ave S & S Othello St"})
+const market = pointEnd({name: "Pike Place Market", lat: 47.6094, lon: -122.3422})
+const marketAgain = pointEnd({name: "Market", lat: 47.6094, lon: -122.3422})
 
 const queryCases = [
   {name: "no end", ends: {from: NO_END, to: NO_END}, expected: {kind: QueryKind.incomplete}},
   {name: "no To", ends: {from: LOCATION_END, to: NO_END}, expected: {kind: QueryKind.incomplete}},
   {name: "no From", ends: {from: NO_END, to: othello}, expected: {kind: QueryKind.incomplete}},
   {name: "one stop at both ends", ends: {from: pike, to: pike}, expected: {kind: QueryKind.sameStop}},
-  {name: "from a stop", ends: {from: pike, to: othello}, expected: {kind: QueryKind.ready, from: pike, toStopId: "1_11920"}},
-  {name: "from the location", ends: {from: LOCATION_END, to: othello}, expected: {kind: QueryKind.ready, from: LOCATION_END, toStopId: "1_11920"}},
+  {name: "one point at both ends", ends: {from: market, to: marketAgain}, expected: {kind: QueryKind.samePoint}},
+  {name: "from a stop", ends: {from: pike, to: othello}, expected: {kind: QueryKind.ready, from: pike, to: othello}},
+  {name: "from the location", ends: {from: LOCATION_END, to: othello}, expected: {kind: QueryKind.ready, from: LOCATION_END, to: othello}},
+  {name: "from a point", ends: {from: market, to: othello}, expected: {kind: QueryKind.ready, from: market, to: othello}},
+  {name: "to a point", ends: {from: pike, to: market}, expected: {kind: QueryKind.ready, from: pike, to: market}},
 ]
 
 for (const {name, ends, expected} of queryCases) {
@@ -301,6 +308,8 @@ const stateMessageCases = [
   {kind: StateKind.locationDenied, expected: {headline: "Location is off", caption: "Start from a stop instead, or allow location in your browser's settings."}},
   {kind: StateKind.locationUnavailable, expected: {headline: "Can't find your location", caption: "Start from a stop instead, or try again."}},
   {kind: StateKind.sameStop, expected: {headline: "From and To are the same stop", caption: "Choose another stop for one of them."}},
+  {kind: StateKind.samePoint, expected: {headline: "From and To are the same place", caption: "Choose another place for one of them."}},
+  {kind: StateKind.noEndStop, expected: {headline: "No stop within a walk of there", caption: "Choose a place nearer a stop."}},
   {kind: StateKind.notSaved, expected: {headline: "Not saved for offline", caption: "Connect to plan this trip."}},
   {kind: StateKind.outsideSchedules, expected: {headline: "No schedule for that time", caption: "Schedules cover today and tomorrow. Choose another time."}},
   {kind: StateKind.chooseTime, expected: {headline: "Choose a time", caption: "Set the time to plan this trip."}},
@@ -367,6 +376,31 @@ const fromRider = journeyFeatures({journey: located, names, origin: RIDER})
 const [walkFromRider, , origin] = fromRider.collection.features
 deepStrictEqual(walkFromRider.geometry.coordinates, [lonLat(RIDER), lonLat(PIKE)], "a walk from the position")
 deepStrictEqual(origin.geometry.coordinates, lonLat(RIDER), "the origin at the position")
+
+function isDestinationFeature(feature) {
+  return feature.properties.kind === FeatureKind.destination
+}
+
+// A journey to a point ends with the walk from its last stop: its summary,
+// its steps, the names it asks for, and the line the map draws to the point.
+const MARKET = {lat: 47.6094, lon: -122.3422}
+const toMarket = {
+  ...direct,
+  arrivalS: direct.arrivalS + 300,
+  legs: [...direct.legs, {kind: LEG_KIND_TO_POINT, fromStopId: "1_11920", durationS: 300}],
+  destination: {name: "Pike Place Market", ...MARKET},
+}
+const [marketRow] = journeyRows({journeys: [toMarket], nowMs: NOW_MS, serviceDayStartsMs, names, timeZone: TIME_ZONE})
+deepStrictEqual(marketRow.summary[1], {kind: LegKind.walk, text: "walk 5 min"}, "the final walk in the summary")
+const FINAL_STEP_COUNT = 2
+const finalSteps = marketRow.steps.slice(marketRow.steps.length - FINAL_STEP_COUNT)
+deepStrictEqual(finalSteps, ["walk 5 min to Pike Place Market", "9:19 am arrive at Pike Place Market"], "the final walk's steps")
+deepStrictEqual(nameRequest({journeys: [toMarket], countMax: NAME_COUNT_MAX}).stopIds, ["1_431", "1_11920"], "the final walk names its stop")
+const toPoint = journeyFeatures({journey: toMarket, names, origin: null})
+const walkToMarket = toPoint.collection.features[1]
+deepStrictEqual(walkToMarket.geometry.coordinates, [lonLat(OTHELLO), lonLat(MARKET)], "a walk to the point")
+const destinationPoint = toPoint.collection.features.find(isDestinationFeature)
+deepStrictEqual(destinationPoint.geometry.coordinates, lonLat(MARKET), "the destination at the point")
 
 // A journey whose stops have no known position draws nothing.
 const unplaced = journeyFeatures({journey: {...direct, stopPositions: {}}, names, origin: null})

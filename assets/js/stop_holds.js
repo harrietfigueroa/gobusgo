@@ -1,11 +1,12 @@
 // The stops the page has open for the server, and what in the page holds
 // each one: the favorite stop's panel, the details view of the panel sheet,
-// or both. The page registers an open stop in the demand registry once
+// the Trip tab's journey cards, or more than one of them. The page registers an open stop in the demand registry once
 // however many hold it, so a stop is closed for the server only when its
 // last holder lets go.
 
 export const FAVORITE_HOLDER = "favorite"
 export const VIEW_HOLDER = "view"
+export const TRIP_HOLDER = "trip"
 
 const OPEN_EVENT_NAME = "stop-arrivals:open"
 const CLOSE_EVENT_NAME = "stop-arrivals:close"

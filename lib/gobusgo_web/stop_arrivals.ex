@@ -40,6 +40,10 @@ defmodule GobusgoWeb.StopArrivals do
   arrival at the time the line was made, `time_ms` the arrival's time in
   Unix milliseconds, from which a page counts the minutes down itself, and
   `predicted` says whether the time is a prediction or the schedule.
+  `trip_id` is the arrival's trip and `scheduled_ms` its scheduled time in
+  Unix milliseconds, the arrival's, or the departure's where the stop is
+  only departed from, so a page can tell which trip an arrival is and how
+  late it runs.
   """
   @type line :: %{
           route: String.t() | nil,
@@ -47,7 +51,9 @@ defmodule GobusgoWeb.StopArrivals do
           headsign: String.t() | nil,
           minutes: non_neg_integer(),
           time_ms: integer(),
-          predicted: boolean()
+          predicted: boolean(),
+          trip_id: String.t() | nil,
+          scheduled_ms: integer()
         }
 
   @typedoc """
@@ -138,6 +144,8 @@ defmodule GobusgoWeb.StopArrivals do
 
     %{
       key: {arrival["tripId"], arrival["serviceDateMs"], arrival["stopSequence"]},
+      trip_id: arrival["tripId"],
+      scheduled_ms: scheduled_ms,
       time_ms: time_ms,
       predicted: predicted_ms != nil,
       route: route_name(arrival),
@@ -206,7 +214,9 @@ defmodule GobusgoWeb.StopArrivals do
       headsign: timed.headsign,
       minutes: div(time_ms - now_ms, @ms_per_minute),
       time_ms: time_ms,
-      predicted: timed.predicted
+      predicted: timed.predicted,
+      trip_id: timed.trip_id,
+      scheduled_ms: timed.scheduled_ms
     }
   end
 end
