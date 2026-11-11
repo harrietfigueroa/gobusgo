@@ -83,7 +83,7 @@ async function reportedOpenapiRules(text) {
   return ruleIds.sort()
 }
 
-const SCHEMA_RULE = "json-schema-validator/no-invalid"
+const SCHEMA_RULE = "local/openapi-schema"
 
 // A syntax error is a fatal message with no rule id.
 const openapiCases = [
@@ -91,7 +91,10 @@ const openapiCases = [
   {name: "malformed JSON", text: `{"openapi": "3.1.0",`, rules: [null]},
   {name: "a duplicate key", text: `{"openapi": "3.1.0", "info": {"title": "Case", "version": "1"}, "paths": {}, "paths": {}}`, rules: ["json/no-duplicate-keys"]},
   {name: "a missing info", text: JSON.stringify({openapi: "3.1.0", paths: {}}), rules: [SCHEMA_RULE]},
-  {name: "a path item that is not an object", text: JSON.stringify({...validOpenapi, paths: {"/x": 5}}), rules: [SCHEMA_RULE]}
+  {name: "a path item that is not an object", text: JSON.stringify({...validOpenapi, paths: {"/x": 5}}), rules: [SCHEMA_RULE]},
+  {name: "an unknown top-level key", text: JSON.stringify({...validOpenapi, zz: 1}), rules: [SCHEMA_RULE]},
+  {name: "an unknown key in info", text: JSON.stringify({...validOpenapi, info: {...validOpenapi.info, zz: 1}}), rules: [SCHEMA_RULE]},
+  {name: "a component schema of an unknown type", text: JSON.stringify({...validOpenapi, components: {schemas: {Case: {type: "strng"}}}}), rules: [SCHEMA_RULE]}
 ]
 
 for (const {name, text, rules} of openapiCases) {

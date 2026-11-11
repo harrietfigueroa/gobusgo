@@ -4,31 +4,25 @@
 // config is run from the repository root with `--config`, which makes the
 // root its base path: `npm run lint:openapi` does so.
 // https://spec.openapis.org/oas/3.1/schema/2025-11-23 — checked 2026-11-11
+//
+// The schema is JSON Schema 2020-12 and is compiled by Ajv's 2020 dialect,
+// so required fields, types, patterns, enums, unknown fields
+// (`unevaluatedProperties`), and the contents of Schema Objects
+// (`$dynamicRef` to the dialect's meta-schema, which the schema leaves
+// open) are checked. The schema-base variant is not used: it names a
+// remote dialect and the Schema Object check above is the base schema's.
 
 import json from "@eslint/json"
-import validator from "eslint-plugin-json-schema-validator"
-
-const OPENAPI_FILES = ["priv/openapi*.json"]
-
-// The plugin compiles the schema with Ajv's draft-07 dialect and ignores a
-// keyword it does not know, so `unevaluatedProperties` and `$dynamicRef`
-// of the 2020-12 schema check nothing: required fields, types, patterns,
-// and enums of the OpenAPI objects are checked, an unknown field and the
-// contents of a Schema Object are not.
-const openapiSchemaOptions = {
-  // The schema catalog is fetched over the network.
-  useSchemastoreCatalog: false,
-  schemas: [{fileMatch: OPENAPI_FILES, schema: "tools/lint/schemas/openapi-3.1.json"}]
-}
+import openapiSchema from "./rules/openapi_schema.mjs"
 
 export default [
   {
-    files: OPENAPI_FILES,
+    files: ["priv/openapi*.json"],
     language: "json/json",
-    plugins: {json, "json-schema-validator": validator},
+    plugins: {json, local: openapiSchema},
     rules: {
       ...json.configs.recommended.rules,
-      "json-schema-validator/no-invalid": ["error", openapiSchemaOptions]
+      "local/openapi-schema": ["error", {schemaPath: "tools/lint/schemas/openapi-3.1.json"}]
     }
   }
 ]
