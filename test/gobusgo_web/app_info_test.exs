@@ -606,6 +606,24 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "places_license/0" do
+    test "states the places file's license and its credit" do
+      assert %{name: "Places", license: "ODbL 1.0, © OpenStreetMap contributors"} =
+               AppInfo.places_license()
+    end
+
+    test "links the ODbL, the copyright page, and the manifest of the places file" do
+      assert AppInfo.places_license().links == [
+               %{
+                 text: "Open Database License 1.0",
+                 url: "https://opendatacommons.org/licenses/odbl/1-0/"
+               },
+               %{text: "OpenStreetMap copyright", url: "https://www.openstreetmap.org/copyright"},
+               %{text: "Places file", url: "/places/manifest.json"}
+             ]
+    end
+  end
+
   describe "components/0" do
     test "names a license for every vendored package and archive" do
       lock = @lock_path |> File.read!() |> JSON.decode!()

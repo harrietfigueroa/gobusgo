@@ -15,13 +15,18 @@ import {
   PersistenceKind,
   PlanKind,
   SettingKind,
+  ShardPlanKind,
+  ShardRefusal,
   StatusKind,
+  TRIP_PATH_SHARD_COUNT_MAX,
   bundleStatus,
+  bundleWithTripPaths,
   persistenceText,
   planBundle,
   savedIndex as indexOf,
   stalePaths,
-  statusMessage
+  statusMessage,
+  tripPathShardPlan
 } from "../../assets/js/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
@@ -177,5 +182,112 @@ const statusMessageCases = [
 for (const {name, setting, expected} of statusMessageCases) {
   deepStrictEqual(statusMessage(setting), expected, `the status message: ${name}`)
 }
+
+// A date whose snapshot has trip paths saves its index with its other files,
+// and the shards its index names after them.
+function withTripPaths(source) {
+  const tripPaths = {path: "/routing/" + source.serviceDate + "-trip-paths-index.bin.gz", byteSize: 300, sha256: "ab"}
+  return {...source, files: {...source.files, tripPaths}}
+}
+
+function shardEntry(serviceDate, number) {
+  return {path: "/routing/" + serviceDate + "-trip-paths-" + number + ".bin.gz", byteSize: SHARD_BYTE_SIZE + number, sha256: "cd"}
+}
+
+function shardEntryAt(serviceDate) {
+  return function entryAt(_unused, number) {
+    return shardEntry(serviceDate, number)
+  }
+}
+
+function shardPlanOf(serviceDate, shardCount) {
+  const entries = Array.from({length: shardCount}, shardEntryAt(serviceDate))
+  return {serviceDate, shardPlan: tripPathShardPlan(entries)}
+}
+
+const pathsFirst = withTripPaths(firstDate)
+const pathsSecond = withTripPaths(secondDate)
+const pathsManifest = {formatVersion: 2, snapshots: [pathsFirst, pathsSecond]}
+const pathsPlan = planBundle({manifest: pathsManifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH})
+const SHARDS_PER_DATE = 3
+const SHARD_BYTE_SIZE = 1000
+const SHARED_PLAN_FILE_COUNT = 2
+const shardPlans = [shardPlanOf(pathsFirst.serviceDate, SHARDS_PER_DATE), shardPlanOf(pathsSecond.serviceDate, SHARDS_PER_DATE)]
+const pathsBundle = bundleWithTripPaths({plan: pathsPlan, shardPlans})
+
+deepStrictEqual(
+  pathsPlan.tripPathIndexes,
+  [
+    {serviceDate: pathsFirst.serviceDate, path: pathsFirst.files.tripPaths.path, byteSize: 300},
+    {serviceDate: pathsSecond.serviceDate, path: pathsSecond.files.tripPaths.path, byteSize: 300}
+  ],
+  "a plan names each date's trip path index"
+)
+deepStrictEqual(pathsPlan.paths.length, morning.paths.length + BUNDLE_DATE_COUNT, "the plan holds each index")
+deepStrictEqual(pathsPlan.manifest.snapshots, [pathsFirst, pathsSecond], "the bundle's manifest keeps files.tripPaths")
+deepStrictEqual(pathsBundle.shardFiles.length, BUNDLE_DATE_COUNT * SHARDS_PER_DATE, "every shard of every date is to save")
+deepStrictEqual(pathsBundle.paths.length, pathsPlan.paths.length + BUNDLE_DATE_COUNT * SHARDS_PER_DATE, "the bundle holds the shards")
+
+for (const {shardPlan} of shardPlans) {
+  for (const file of shardPlan.files) {
+    deepStrictEqual(pathsBundle.paths.includes(file.path), true, "the bundle holds " + file.path)
+  }
+}
+
+deepStrictEqual(pathsBundle.manifest.snapshots, [pathsFirst, pathsSecond], "the manifest still names both indexes")
+
+// The saved index names the shards, so a shard the browser evicted is a
+// missing file of an incomplete bundle, and a complete one counts none.
+const pathsSaved = {kind: IndexKind.found, index: indexOf({plan: pathsBundle, savedAtMs})}
+deepStrictEqual(pathsSaved.index.paths.includes(shardEntry(pathsFirst.serviceDate, 0).path), true)
+deepStrictEqual(bundleStatus({savedIndex: pathsSaved, presentPaths: pathsBundle.paths, nowMs}).kind, StatusKind.saved)
+const evictedShardPath = shardEntry(pathsSecond.serviceDate, 1).path
+function isNotEvicted(path) {
+  return path !== evictedShardPath
+}
+
+const shardEvicted = pathsBundle.paths.filter(isNotEvicted)
+deepStrictEqual(bundleStatus({savedIndex: pathsSaved, presentPaths: shardEvicted, nowMs}), {
+  kind: StatusKind.incomplete,
+  dates: pathsPlan.dates,
+  missingCount: 1
+})
+
+// A store keeps the shards the index names and drops those of a date no
+// longer saved.
+const droppedDate = shardEntry(thirdDate.serviceDate, 0).path
+const storedWithOld = [...pathsBundle.paths, droppedDate]
+deepStrictEqual(stalePaths({index: pathsSaved.index, storedPaths: storedWithOld}), [droppedDate])
+
+// A shard two routes share is named once.
+const sharedPlan = tripPathShardPlan([shardEntry("d", 0), {...shardEntry("d", 0), sha256: "cd"}, shardEntry("d", 1)])
+deepStrictEqual(sharedPlan.files.length, SHARED_PLAN_FILE_COUNT)
+
+// A date with no files.tripPaths, a killed path build, saves without them
+// and is complete.
+const noPathsPlan = planBundle({manifest, nowMs: DAY_START_MS + HOUR_MS, tileArchivePath: TILE_ARCHIVE_PATH})
+deepStrictEqual(noPathsPlan.tripPathIndexes, [])
+const noPathsBundle = bundleWithTripPaths({plan: noPathsPlan, shardPlans: []})
+deepStrictEqual(noPathsBundle.paths, noPathsPlan.paths)
+deepStrictEqual(noPathsBundle.shardFiles, [])
+const noPathsSaved = {kind: IndexKind.found, index: indexOf({plan: noPathsBundle, savedAtMs})}
+deepStrictEqual(bundleStatus({savedIndex: noPathsSaved, presentPaths: noPathsBundle.paths, nowMs}).kind, StatusKind.saved)
+
+// An index naming more than the bound refuses its date: the bundle holds the
+// date's other files, and its manifest entry drops files.tripPaths.
+const overBound = shardPlanOf(pathsFirst.serviceDate, TRIP_PATH_SHARD_COUNT_MAX + 1)
+deepStrictEqual(overBound.shardPlan, {kind: ShardPlanKind.refused, reason: ShardRefusal.tooManyShards})
+deepStrictEqual(shardPlanOf(pathsFirst.serviceDate, TRIP_PATH_SHARD_COUNT_MAX).shardPlan.kind, ShardPlanKind.shards)
+const refusedBundle = bundleWithTripPaths({plan: pathsPlan, shardPlans: [overBound, shardPlans[1]]})
+deepStrictEqual(refusedBundle.paths.includes(pathsFirst.files.tripPaths.path), false)
+deepStrictEqual(refusedBundle.paths.includes(pathsSecond.files.tripPaths.path), true)
+deepStrictEqual(refusedBundle.manifest.snapshots, [firstDate, pathsSecond])
+deepStrictEqual(refusedBundle.shardFiles.length, SHARDS_PER_DATE)
+
+// A shard path outside the routing files is refused.
+deepStrictEqual(tripPathShardPlan([{path: "/other/shard.bin.gz", byteSize: 1, sha256: "cd"}]), {
+  kind: ShardPlanKind.refused,
+  reason: ShardRefusal.badPath
+})
 
 console.log("offline bundle: every case holds")

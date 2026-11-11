@@ -31,6 +31,7 @@ defmodule GobusgoWeb.AppInfo do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Places.License
 
   @type cadences :: %{
           vehicle_interval_ms: pos_integer(),
@@ -53,6 +54,12 @@ defmodule GobusgoWeb.AppInfo do
   @type app_license :: %{name: String.t(), copyright: String.t()}
 
   @type message :: %{headline: String.t(), caption: String.t()}
+
+  @type places_license :: %{
+          name: String.t(),
+          license: String.t(),
+          links: [%{text: String.t(), url: String.t()}]
+        }
 
   @typedoc """
   One thing a page ships to the browser, with its license. `lock_names` are
@@ -596,6 +603,24 @@ defmodule GobusgoWeb.AppInfo do
   @doc "The application's own license and its copyright line."
   @spec app_license() :: app_license()
   def app_license, do: @app_license
+
+  @doc """
+  The license of the places file, as a name, the license and its credit, and
+  the links to the license's text, the copyright page, and the places
+  manifest.
+  """
+  @spec places_license() :: places_license()
+  def places_license do
+    %{
+      name: "Places",
+      license: "ODbL 1.0, #{License.attribution()}",
+      links: [
+        %{text: "Open Database License 1.0", url: License.uri()},
+        %{text: "OpenStreetMap copyright", url: License.attribution_uri()},
+        %{text: "Places file", url: License.manifest_path()}
+      ]
+    }
+  end
 
   @doc "Everything a page ships to the browser that has a license of its own, in display order."
   @spec components() :: [component()]
