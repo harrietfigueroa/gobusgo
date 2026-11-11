@@ -128,7 +128,16 @@ config :gobusgo, GobusgoWeb.Endpoint,
 
 # The modules the MCP endpoint serves, implementing GobusgoWeb.Mcp.Tool and
 # GobusgoWeb.Mcp.Resource.
-config :gobusgo, GobusgoWeb.Mcp, tools: [], resources: []
+config :gobusgo, GobusgoWeb.Mcp,
+  tools: [
+    GobusgoWeb.Mcp.Tools.Arrivals,
+    GobusgoWeb.Mcp.Tools.Find,
+    GobusgoWeb.Mcp.Tools.Vehicles
+  ],
+  resources: [
+    GobusgoWeb.Mcp.Resources.Agencies,
+    GobusgoWeb.Mcp.Resources.RoutingManifest
+  ]
 
 # The sources run on their schedule everywhere except under test, where no
 # request may leave the machine.

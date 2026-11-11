@@ -16,6 +16,7 @@ defmodule GobusgoWeb.ReadinessControllerTest do
   alias Gobusgo.OneBusAway.RawAgencyResponse
   alias Gobusgo.OneBusAway.RoutePathView
   alias Gobusgo.OneBusAway.RouteView
+  alias Gobusgo.Test.AppEnv
   alias Gobusgo.Test.RouteViewSeeds
   alias Gobusgo.Writer
   alias GobusgoWeb.RouteStopTiles
@@ -36,7 +37,8 @@ defmodule GobusgoWeb.ReadinessControllerTest do
   # at most this much more than the one the test recorded.
   @age_slack_seconds 5
 
-  setup do
+  setup %{tmp_dir: tmp_dir} do
+    AppEnv.isolate_data(tmp_dir)
     restart_views()
     on_exit(&restart_views/0)
   end

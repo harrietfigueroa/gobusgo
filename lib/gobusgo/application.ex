@@ -156,6 +156,8 @@ defmodule Gobusgo.Application do
             {GobusgoWeb.RouteStopTiles, name: GobusgoWeb.RouteStopTiles},
             {Gobusgo.Routing.Snapshots, name: Gobusgo.Routing.Snapshots},
             {Gobusgo.Addresses, name: Gobusgo.Addresses},
+            {GobusgoWeb.Mcp.AnswerCache, name: GobusgoWeb.Mcp.AnswerCache},
+            {GobusgoWeb.Mcp.StopHolds, name: GobusgoWeb.Mcp.StopHolds},
             {GobusgoWeb.Endpoint,
              [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
