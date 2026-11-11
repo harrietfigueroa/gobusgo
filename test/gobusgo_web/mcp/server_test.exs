@@ -15,6 +15,8 @@ defmodule GobusgoWeb.Mcp.ServerTest do
 
   @legacy "2025-11-25"
   @modern "2026-07-28"
+  @older_legacy ["2025-06-18", "2025-03-26"]
+  @supported [@modern, @legacy | @older_legacy]
   @empty Registry.new(%{tools: [], resources: []})
   @full Registry.new(%{
           tools: [EchoTool, RefusingTool],
@@ -137,6 +139,50 @@ defmodule GobusgoWeb.Mcp.ServerTest do
     test "answers an empty result to a client of an earlier revision" do
       assert respond_legacy(request("ping", nil, "abc")) ==
                %{status: 200, body: %{"jsonrpc" => "2.0", "id" => "abc", "result" => %{}}}
+    end
+
+    test "is an unknown method under 2026-07-28, which removes it" do
+      response = respond(modern("ping"), @empty)
+
+      assert response.status == 404
+      assert error_code(response) == -32_601
+    end
+  end
+
+  describe "the older revisions 2025-06-18 and 2025-03-26" do
+    for version <- @older_legacy do
+      test "initialize answers #{version} to a client that asks for it" do
+        params = %{@initialize_params | "protocolVersion" => unquote(version)}
+
+        response = respond_legacy(request("initialize", params))
+
+        assert response.body["result"]["protocolVersion"] == unquote(version)
+      end
+
+      test "ping, tools/list, and resources/list answer a client that names #{version}" do
+        headers = %{@no_headers | protocol_version: unquote(version)}
+
+        assert %{status: 200, body: %{"result" => %{}}} =
+                 respond({request("ping"), headers}, @empty)
+
+        assert %{status: 200, body: %{"result" => %{"tools" => []}}} =
+                 respond({request("tools/list"), headers}, @empty)
+
+        assert %{status: 200, body: %{"result" => %{"resources" => []}}} =
+                 respond({request("resources/list"), headers}, @empty)
+      end
+
+      test "tools/call and resources/read answer a client that names #{version}" do
+        headers = %{@no_headers | protocol_version: unquote(version)}
+        call = request("tools/call", %{"name" => "echo", "arguments" => %{"text" => "x"}})
+        read = request("resources/read", %{"uri" => "gobusgo://nope"})
+
+        assert %{body: %{"result" => %{"content" => [%{"text" => "x"}]}}} =
+                 respond({call, headers}, @full)
+
+        assert %{status: 200, body: %{"error" => %{"code" => -32_002}}} =
+                 respond({read, headers}, @full)
+      end
     end
   end
 
@@ -290,7 +336,7 @@ defmodule GobusgoWeb.Mcp.ServerTest do
       response = respond(modern("server/discover"), @empty)
 
       assert %{status: 200, body: %{"result" => result}} = response
-      assert result["supportedVersions"] == [@modern, @legacy]
+      assert result["supportedVersions"] == @supported
       assert result["capabilities"] == %{"tools" => %{}, "resources" => %{}}
       assert result["instructions"] =~ AppInfo.terms().url
       assert result["resultType"] == "complete"
@@ -384,7 +430,7 @@ defmodule GobusgoWeb.Mcp.ServerTest do
       assert error_code(response) == -32_022
 
       assert response.body["error"]["data"] ==
-               %{"supported" => [@modern, @legacy], "requested" => "1900-01-01"}
+               %{"supported" => @supported, "requested" => "1900-01-01"}
     end
   end
 

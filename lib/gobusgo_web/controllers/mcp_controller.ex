@@ -16,6 +16,10 @@ defmodule GobusgoWeb.McpController do
   (`Gobusgo.Usage.count/2`). A recorder that refuses, or is not running,
   leaves the request unrecorded and answered.
 
+  A request whose `Origin` header does not name the public host is answered
+  with `403` and a JSON-RPC error before its body is read
+  (`GobusgoWeb.Mcp.Origin`); one with no `Origin` proceeds.
+
   The body is read up to #{@request_bytes_max} bytes; a longer one is
   answered with `413` and a JSON-RPC error. The answer is one JSON object
   whose media type stays `application/json` under an error status, since the
@@ -32,10 +36,12 @@ defmodule GobusgoWeb.McpController do
 
   require Logger
 
+  alias Gobusgo.Config
   alias Gobusgo.Usage
   alias GobusgoWeb.ConnectionFacts
   alias GobusgoWeb.Endpoint
   alias GobusgoWeb.Mcp.Error
+  alias GobusgoWeb.Mcp.Origin
   alias GobusgoWeb.Mcp.Registry
   alias GobusgoWeb.Mcp.Server
   alias GobusgoWeb.Problem
@@ -47,6 +53,37 @@ defmodule GobusgoWeb.McpController do
   def handle(conn, _params) do
     record(conn)
 
+    case origin_decision(conn) do
+      :allowed -> read_and_answer(conn)
+      :refused -> write(conn, Server.failure(Error.origin_refused()))
+    end
+  end
+
+  @doc "Answers `405` problem details to every method but `POST`."
+  @spec method_not_allowed(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def method_not_allowed(conn, _params) do
+    record(conn)
+
+    case origin_decision(conn) do
+      :allowed ->
+        conn
+        |> put_resp_header("allow", "POST")
+        |> Problem.respond(%{
+          status: 405,
+          detail: "The MCP endpoint answers POST and offers no stream."
+        })
+
+      :refused ->
+        write(conn, Server.failure(Error.origin_refused()))
+    end
+  end
+
+  defp origin_decision(conn) do
+    {:ok, public_host} = Config.public_host()
+    Origin.decide(get_req_header(conn, "origin"), public_host)
+  end
+
+  defp read_and_answer(conn) do
     read_options = [
       length: @request_bytes_max,
       read_length: @read_chunk_bytes,
@@ -64,19 +101,6 @@ defmodule GobusgoWeb.McpController do
       {:error, _reason} ->
         write(conn, Server.failure(Error.invalid_request("The request body could not be read")))
     end
-  end
-
-  @doc "Answers `405` problem details to every method but `POST`."
-  @spec method_not_allowed(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def method_not_allowed(conn, _params) do
-    record(conn)
-
-    conn
-    |> put_resp_header("allow", "POST")
-    |> Problem.respond(%{
-      status: 405,
-      detail: "The MCP endpoint answers POST and offers no stream."
-    })
   end
 
   defp write(conn, %{status: 202, body: nil}), do: send_resp(conn, 202, "")

@@ -7,10 +7,20 @@ defmodule GobusgoWeb.Mcp.Revision do
   carries its revision, capabilities, and client in `params._meta`, and
   mirrors its revision, method, and target into the `MCP-Protocol-Version`,
   `Mcp-Method`, and `Mcp-Name` headers; the server checks the headers against
-  the body. A `:legacy` request, revision 2025-11-25 and earlier, is one that
-  names no revision in a header, as an `initialize` does, or names
-  2025-11-25. Any other revision is refused with the revisions the server
-  speaks.
+  the body. A `:legacy` request, revisions 2025-03-26, 2025-06-18, and
+  2025-11-25, is one that names no revision in a header, as an `initialize`
+  does, or names one of the three. The methods the endpoint answers take the
+  same params and give the same results under the three, apart from fields
+  an older client ignores: `structuredContent` and `title` (2025-06-18) and
+  icons (2025-11-25). The one difference a client can meet is that
+  2025-03-26 lets a POST body be a batch, which the endpoint refuses. Any
+  other revision is refused with the revisions the server speaks.
+
+  The three are checked against the transport, lifecycle, and resources pages
+  of each and the changelogs of 2025-06-18 and 2025-11-25
+  (https://modelcontextprotocol.io/specification/2025-06-18/changelog and
+  https://modelcontextprotocol.io/specification/2025-11-25/changelog —
+  checked 2026-11-11).
 
   The headers arrive as what the controller read of them: each value, or
   `nil` for a header that was absent or sent more than once.
@@ -21,6 +31,7 @@ defmodule GobusgoWeb.Mcp.Revision do
 
   @modern "2026-07-28"
   @legacy "2025-11-25"
+  @legacy_versions [@legacy, "2025-06-18", "2025-03-26"]
 
   @type revision :: :legacy | :modern
 
@@ -52,18 +63,23 @@ defmodule GobusgoWeb.Mcp.Revision do
 
   @doc "The revisions the server speaks, the newest first."
   @spec supported() :: [String.t(), ...]
-  def supported, do: [@modern, @legacy]
+  def supported, do: [@modern | @legacy_versions]
 
-  @doc "The revision a client that opens with `initialize` is answered with."
-  @spec legacy() :: String.t()
-  def legacy, do: @legacy
+  @doc """
+  The revision `initialize` answers a client that asks for `requested`: the
+  same one when the server speaks it as a legacy revision, and the newest
+  legacy revision otherwise.
+  """
+  @spec negotiate(String.t()) :: String.t()
+  def negotiate(requested) when requested in @legacy_versions, do: requested
+  def negotiate(requested) when is_binary(requested), do: @legacy
 
   @doc "The revision of `request` under `headers`, or the error that refuses it."
   @spec resolve(Message.request(), headers()) :: {:ok, revision()} | {:error, Error.t()}
   def resolve(%{kind: :request} = request, %{protocol_version: protocol_version} = headers) do
     case protocol_version do
       nil -> {:ok, :legacy}
-      @legacy -> {:ok, :legacy}
+      legacy when legacy in @legacy_versions -> {:ok, :legacy}
       @modern -> modern(request, headers)
       other -> {:error, Error.unsupported_protocol_version(other, supported())}
     end

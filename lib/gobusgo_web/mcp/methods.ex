@@ -39,6 +39,8 @@ defmodule GobusgoWeb.Mcp.Methods do
   end
 
   defp dispatch(:legacy, "initialize", params, _registry), do: initialize(params)
+  # The 2026-07-28 revision removes `ping`, so only a legacy request has it.
+  # https://modelcontextprotocol.io/specification/2026-07-28/changelog — checked 2026-11-11
   defp dispatch(:legacy, "ping", _params, _registry), do: {:ok, %{}}
   defp dispatch(:modern, "server/discover", _params, _registry), do: {:ok, discover()}
 
@@ -60,16 +62,15 @@ defmodule GobusgoWeb.Mcp.Methods do
     {:error, Error.method_not_found(method, revision)}
   end
 
-  # The client's own revision is not echoed: the handshake revisions are one
-  # revision here, 2025-11-25, which is the answer to any version a client of
-  # them asks for.
+  # The server answers the requested version when it speaks it, and another
+  # version it speaks otherwise.
   # https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#version-negotiation — checked 2026-11-11
   defp initialize(params) do
     case Schema.mismatch(params, @initialize_schema) do
       nil ->
         {:ok,
          %{
-           "protocolVersion" => Revision.legacy(),
+           "protocolVersion" => Revision.negotiate(params["protocolVersion"]),
            "capabilities" => ServerInfo.capabilities(),
            "serverInfo" => ServerInfo.implementation(),
            "instructions" => ServerInfo.instructions()

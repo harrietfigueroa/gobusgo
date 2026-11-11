@@ -187,6 +187,68 @@ defmodule GobusgoWeb.McpControllerTest do
     end
   end
 
+  describe "the Origin header with a public host" do
+    setup do
+      configured = Application.fetch_env!(:gobusgo, :public)
+      Application.put_env(:gobusgo, :public, host: "gobusgo.example", required: false)
+      on_exit(fn -> Application.put_env(:gobusgo, :public, configured) end)
+      :ok
+    end
+
+    test "is not required: a request with none proceeds" do
+      assert post_json(rpc("ping", %{})).status == 200
+    end
+
+    test "proceeds when it names the public host" do
+      conn = post_json(rpc("ping", %{}), [{"origin", "https://gobusgo.example"}])
+
+      assert conn.status == 200
+    end
+
+    for origin <- ["https://evil.example", "null"] do
+      test "refuses #{origin} with 403 and a JSON-RPC error" do
+        conn = post_json(rpc("ping", %{}), [{"origin", unquote(origin)}])
+
+        assert conn.status == 403
+        assert get_resp_header(conn, "content-type") == [@json_content_type]
+
+        assert %{"jsonrpc" => "2.0", "id" => nil, "error" => %{"code" => -32_600}} =
+                 JSON.decode!(conn.resp_body)
+      end
+    end
+
+    test "refuses a GET from another origin too" do
+      conn = build_conn() |> put_req_header("origin", "https://evil.example") |> get("/mcp")
+
+      assert conn.status == 403
+    end
+  end
+
+  describe "the Origin header with no public host" do
+    test "lets any origin proceed, as the socket does" do
+      conn = post_json(rpc("ping", %{}), [{"origin", "https://anywhere.example"}])
+
+      assert conn.status == 200
+    end
+  end
+
+  describe "usage of a request refused for its origin" do
+    setup [:start_recorder]
+
+    setup do
+      configured = Application.fetch_env!(:gobusgo, :public)
+      Application.put_env(:gobusgo, :public, host: "gobusgo.example", required: false)
+      on_exit(fn -> Application.put_env(:gobusgo, :public, configured) end)
+      :ok
+    end
+
+    test "is counted like any request", context do
+      post_json(rpc("ping", %{}), [{"origin", "https://evil.example"}])
+
+      assert [%{"page" => "mcp"}] = records(context)
+    end
+  end
+
   describe "a registry that holds a tool and a resource" do
     setup do
       configured = Application.fetch_env!(:gobusgo, GobusgoWeb.Mcp)

@@ -48,6 +48,10 @@ defmodule GobusgoWeb.Mcp.Error do
     %{code: @invalid_request, message: message, status: 400}
   end
 
+  @doc "The request's `Origin` header does not name the public host."
+  @spec origin_refused() :: t()
+  def origin_refused, do: %{code: @invalid_request, message: "Origin not allowed", status: 403}
+
   @doc "The body is larger than the endpoint reads."
   @spec payload_too_large() :: t()
   def payload_too_large do
