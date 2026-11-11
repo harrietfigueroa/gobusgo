@@ -1,5 +1,5 @@
 defmodule Gobusgo.Addresses.Accumulator do
-  @tail_row_count_max 256
+  @tail_row_count_max 4
   @house_number_pattern ~r/\A(\d{1,9}) ?([A-Z]?)\z/
 
   @moduledoc """

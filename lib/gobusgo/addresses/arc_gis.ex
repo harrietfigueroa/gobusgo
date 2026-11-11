@@ -1,5 +1,6 @@
 defmodule Gobusgo.Addresses.ArcGis do
   @poll_count_max 30
+  @poll_answer_statuses [200, 202]
   @poll_delay_ms 10_000
   @json_bytes_max 1_048_576
   @hub_host "hub.arcgis.com"
@@ -100,10 +101,12 @@ defmodule Gobusgo.Addresses.ArcGis do
 
   The API answers `200` with a JSON object whose `status` is `"Completed"`
   and whose `resultUrl` names the file once it is ready, another `status`
-  while it is not, `400` for an item that cannot be downloaded, and `404`
-  for a layer the item lacks. A `status` of `"Failed"` ends the wait.
-  The contract is what the API answered on 2026-11-10; Esri has not
-  published it.
+  while it is not, `202` with a `status` of `"Pending"` and the message
+  "Up to date download file is being generated" while it makes a fresh file
+  (about one poll in five on 2026-11-11), `400` for an item that cannot be
+  downloaded, and `404` for a layer the item lacks. A `status` of
+  `"Failed"` ends the wait. The contract is what the API answered on
+  2026-11-10 and 2026-11-11; Esri has not published it.
   """
   @spec export_url(
           %{
@@ -134,11 +137,20 @@ defmodule Gobusgo.Addresses.ArcGis do
 
   defp poll(%{url: url, options: options} = state) do
     case Http.get_json(%{url: url, bytes_max: @json_bytes_max}, options) do
-      {:ok, %{status: 200, body: body}} -> poll_answer(body, state)
-      {:ok, %{status: 400}} -> {:error, :export_not_supported}
-      {:ok, %{status: 404}} -> {:error, :export_not_found}
-      {:ok, %{status: status}} -> {:error, {:unexpected_status, status}}
-      {:error, _reason} = failure -> failure
+      {:ok, %{status: status, body: body}} when status in @poll_answer_statuses ->
+        poll_answer(body, state)
+
+      {:ok, %{status: 400}} ->
+        {:error, :export_not_supported}
+
+      {:ok, %{status: 404}} ->
+        {:error, :export_not_found}
+
+      {:ok, %{status: status}} ->
+        {:error, {:unexpected_status, status}}
+
+      {:error, _reason} = failure ->
+        failure
     end
   end
 

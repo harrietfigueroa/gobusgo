@@ -21,8 +21,8 @@ The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/packed_c
 | Number | Kind | Prefix | Defined by |
 | --- | --- | --- | --- |
 | 0 | fixture | `fixture` | this area's fixtures and tests, never published |
-| 1 | trip path shard | `trip-paths` | GOB-357 |
-| 2 | trip path index | `trip-paths-index` | GOB-357 |
+| 1 | trip path shard | `trip-paths` | GOB-357, `lib/gobusgo/routing/AGENTS.md` |
+| 2 | trip path index | `trip-paths-index` | GOB-357, `lib/gobusgo/routing/AGENTS.md` |
 | 3 | address shard | `addresses` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
 | 4 | address index | `addresses-index` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
 | 5 | places | `places` | GOB-366, `lib/gobusgo/places/AGENTS.md` |
@@ -39,7 +39,7 @@ A reader expands under a bound. `Gobusgo.Packed.expand/2` returns `{:error, :too
 
 ## Elixir API
 
-`Gobusgo.Packed.encode/1` takes `kind`, `version`, `record_count`, `strings`, and `sections` and returns the expanded bytes. `decode/2` takes the bytes and the reader's `kind`, `versions`, and `section_count`, each `:any` for the Mix task, and returns the header fields, the strings as a tuple, and the sections after the table, or `{:error, reason}`: `:bad_magic`, `:unknown_kind`, `:kind_mismatch`, `:unsupported_version`, `:reserved_not_zero`, `:truncated`, `:trailing_bytes`, `:section_count`, `:bad_varint`, `:bad_utf8`, `:bad_string_table`, `:bad_section_size`, `:bad_position`. `Gobusgo.Packed.Varint`, `Columns`, `Positions`, and `StringTable` hold the encoders and decoders of a section's contents, and `Gobusgo.Packed.Kind` is the optional behavior of a kind's module, whose `inspect/1` describes a decoded container.
+`Gobusgo.Packed.file_name/1` takes a kind and a SHA-256 and returns `<prefix>-<sha256>.bin.gz`, which `destination/1` joins to a directory; `packedFileName({kind, sha256})` in JavaScript names it the same way. `Gobusgo.Packed.encode/1` takes `kind`, `version`, `record_count`, `strings`, and `sections` and returns the expanded bytes. `decode/2` takes the bytes and the reader's `kind`, `versions`, and `section_count`, each `:any` for the Mix task, and returns the header fields, the strings as a tuple, and the sections after the table, or `{:error, reason}`: `:bad_magic`, `:unknown_kind`, `:kind_mismatch`, `:unsupported_version`, `:reserved_not_zero`, `:truncated`, `:trailing_bytes`, `:section_count`, `:bad_varint`, `:bad_utf8`, `:bad_string_table`, `:bad_section_size`, `:bad_position`. `Gobusgo.Packed.Varint`, `Columns`, `Positions`, and `StringTable` hold the encoders and decoders of a section's contents, and `Gobusgo.Packed.Kind` is the optional behavior of a kind's module, whose `inspect/1` describes a decoded container.
 
 ## JavaScript API
 
@@ -51,4 +51,4 @@ A reader expands under a bound. `Gobusgo.Packed.expand/2` returns `{:error, :too
 
 ## Mix task
 
-`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format` and `Gobusgo.Addresses.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`). A refused file exits with the reason.
+`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format`, `Gobusgo.Routing.TripPathShard`, `Gobusgo.Routing.TripPathIndex`, and `Gobusgo.Addresses.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/routing/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`). A refused file exits with the reason.

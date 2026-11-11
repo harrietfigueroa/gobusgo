@@ -128,6 +128,18 @@ export function decodeTripPath(path) {
   const {trip_id: tripId, route_id: routeId, service_date_ms: serviceDateMs} = path
   const points = decodePoints(path.points)
   const stops = decodeStops(path.stops)
+  return tripPathOf({tripId, routeId, serviceDateMs, points, stops})
+}
+
+/**
+ * The decoded path of `tripId` on the service day that starts at
+ * `serviceDateMs`: `points`, each a frozen `[longitude, latitude]` in
+ * degrees, and `stops`, each a frozen `{distanceMeters, arrivalSeconds,
+ * departureSeconds}`, with at least one of each and no stop before the stop
+ * before it. Every decoder of a path builds its result here, so a path has
+ * one shape wherever it was read from.
+ */
+export function tripPathOf({tripId, routeId, serviceDateMs, points, stops}) {
   assertCondition(points.length > 0, "a path holds at least one point")
   assertCondition(stops.length > 0, "a path holds at least one stop")
 

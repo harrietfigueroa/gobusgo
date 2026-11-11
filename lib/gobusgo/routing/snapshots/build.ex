@@ -1,5 +1,6 @@
 defmodule Gobusgo.Routing.Snapshots.Build do
   @date_heap_words_max 20_000_000
+  @trip_path_heap_words_max Gobusgo.Routing.Snapshots.TripPaths.heap_words_max()
 
   @moduledoc """
   One run of the routing snapshot build: for every service date the
@@ -8,8 +9,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
   A date is passed over when the SHA-256 of its inputs, the request
   identifiers of both dates' schedules, the positions and names of the stop
-  view's stops, the names of the route view's routes, and the agency view's
-  agency names, is that of its current entry and the entry was built today.
+  view's stops, the names of the route view's routes, the agency view's
+  agency names, and the request identifiers of the route path view's paths
+  of the routes the date's schedules name, is that of its current entry and
+  the entry was built today.
   The names are hashed as values, so a view fetched again unchanged builds
   nothing. A file whose destination already exists holds the same content,
   since its name is the content's hash, and counts as written. A date whose
@@ -21,13 +24,22 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   One line per run that builds or fails: `Routing snapshots built` at
   `info`, or `Routing snapshots not built` at `error` when a date's files
   were not written, with the counts built, passed over, and failed, the
-  connection count of the dates built, and the time taken. A run that
-  builds nothing and fails nothing logs `debug`.
+  connection count of the dates built, the counts of trip paths and of trip
+  path shards written, the time the trip path builds took in milliseconds,
+  and the count of trip path builds that were killed or failed, and the
+  time taken. A run that builds nothing and fails nothing logs `debug`.
 
   Each date is built in a process of its own whose heap is capped at
   `:date_heap_words_max` words. A date whose build outgrows the cap is
   killed, logged as `Routing snapshot build killed` at `error`, and counted
   as failed; the dates after it are still built.
+
+  Once a date's snapshot files are written and its process has ended, the
+  trip path files of `Gobusgo.Routing.Snapshots.TripPaths` are built in a
+  process of their own whose heap is capped at `:trip_path_heap_words_max`
+  words, and written before the entry is recorded with them, as
+  `files.tripPaths`. A trip path build that is killed or fails leaves the
+  entry recorded without `files.tripPaths`, and the snapshot stays.
 
   ## Options
 
@@ -41,6 +53,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     * `:write_options`: options for `Gobusgo.Writer.write/2`.
     * `:date_heap_words_max`: the heap cap of a date's build, in words.
       Defaults to #{@date_heap_words_max}.
+    * `:route_path_view`: the view of the route paths the trip paths are
+      built over. Defaults to `Gobusgo.OneBusAway.RoutePathView`.
+    * `:trip_path_heap_words_max`: the heap cap of a date's trip path
+      build, in words. Defaults to #{@trip_path_heap_words_max}.
   """
 
   require Logger
@@ -53,6 +69,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   alias Gobusgo.Routing.Names
   alias Gobusgo.Routing.Snapshot
   alias Gobusgo.Routing.Snapshots
+  alias Gobusgo.Routing.Snapshots.TripPaths
   alias Gobusgo.Routing.Timetable
   alias Gobusgo.Routing.Transfers
   alias Gobusgo.Writer
@@ -61,7 +78,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           built_count: non_neg_integer(),
           unchanged_count: non_neg_integer(),
           failed_count: non_neg_integer(),
-          connection_count: non_neg_integer()
+          connection_count: non_neg_integer(),
+          trip_path_count: non_neg_integer(),
+          trip_path_shard_count: non_neg_integer(),
+          trip_path_elapsed_ms: non_neg_integer(),
+          trip_path_failed_count: non_neg_integer()
         }
 
   @doc "Builds the snapshot of every held service date whose inputs changed."
@@ -76,7 +97,9 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         agency_view: AgencyView,
         clock: &DateTime.utc_now/0,
         write_options: [],
-        date_heap_words_max: @date_heap_words_max
+        date_heap_words_max: @date_heap_words_max,
+        route_path_view: Gobusgo.OneBusAway.RoutePathView,
+        trip_path_heap_words_max: @trip_path_heap_words_max
       ])
 
     started_ms = System.monotonic_time(:millisecond)
@@ -116,7 +139,14 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       built_count: Enum.count(outcomes, &match?({:built, _count}, &1)),
       unchanged_count: Enum.count(outcomes, &(&1 == :unchanged)),
       failed_count: Enum.count(outcomes, &(&1 == :failed)),
-      connection_count: Enum.sum(for {:built, count} <- outcomes, do: count)
+      connection_count: Enum.sum(for {:built, built} <- outcomes, do: built.connection_count),
+      trip_path_count: Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_count),
+      trip_path_shard_count:
+        Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_shard_count),
+      trip_path_elapsed_ms:
+        Enum.sum(for {:built, built} <- outcomes, do: built.trip_path_elapsed_ms),
+      trip_path_failed_count:
+        Enum.count(outcomes, &match?({:built, %{trip_paths_failed: true}}, &1))
     }
 
     log(counts, System.monotonic_time(:millisecond) - started_ms)
@@ -167,6 +197,9 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     Process.flag(:trap_exit, trapping)
 
     case result do
+      {:ok, {:written, written}} ->
+        trip_paths_outcome(written, input)
+
       {:ok, outcome} ->
         outcome
 
@@ -188,11 +221,16 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     today = input.today
     schedules = packed_schedules(schedule_view, date)
     previous = packed_schedules(schedule_view, Date.add(date, -1))
+    route_path_view = Keyword.fetch!(options, :route_path_view)
+
+    route_paths =
+      for fetch <- schedules, do: {fetch.id, FetchView.request_id(route_path_view, fetch.id)}
 
     inputs_sha256 =
       inputs_sha256(%{
         schedules: schedules,
         previous: previous,
+        route_paths: route_paths,
         positions: input.positions,
         sources: input.sources
       })
@@ -293,11 +331,16 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     %{stops: Map.new(stops), routes: Map.new(routes), agency_names: Map.new(agency_names)}
   end
 
-  defp inputs_sha256(%{schedules: schedules, previous: previous} = inputs) do
+  defp inputs_sha256(
+         %{schedules: schedules, previous: previous, route_paths: route_paths} = inputs
+       ) do
     requests =
       for fetch <- schedules ++ previous, do: {fetch.id, fetch.service_date, fetch.request_id}
 
-    hashed = {Enum.sort(requests), Enum.sort(inputs.positions), inputs.sources.sha256}
+    hashed =
+      {Enum.sort(requests), Enum.sort(route_paths), Enum.sort(inputs.positions),
+       inputs.sources.sha256}
+
     :crypto.hash(:sha256, :erlang.term_to_binary(hashed))
   end
 
@@ -346,18 +389,67 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     write_options = Keyword.fetch!(input.options, :write_options)
 
     if Enum.all?(files, &written?(&1, write_options)) do
-      :ok =
-        Snapshots.record(Keyword.fetch!(input.options, :server), %{
-          service_date: date,
-          entry: entry,
-          inputs_sha256: input.inputs_sha256,
-          built_on: DateTime.to_date(now)
-        })
-
-      {:built, timetable.connection_count}
+      {:written,
+       %{
+         entry: entry,
+         inputs_sha256: input.inputs_sha256,
+         connection_count: timetable.connection_count
+       }}
     else
       :failed
     end
+  end
+
+  # The trip paths are built once the date's process has ended and its heap
+  # is freed, and written before the entry names them.
+  defp trip_paths_outcome(written, %{date: date, now: now, options: options}) do
+    started_ms = System.monotonic_time(:millisecond)
+
+    outcome =
+      TripPaths.run(%{
+        service_date: date,
+        directory: Snapshot.directory(now),
+        options:
+          Keyword.take(options, [:schedule_view, :stop_view, :route_path_view, :write_options]) ++
+            [heap_words_max: Keyword.fetch!(options, :trip_path_heap_words_max)]
+      })
+
+    elapsed_ms = System.monotonic_time(:millisecond) - started_ms
+    counts = trip_path_counts(outcome, elapsed_ms)
+
+    :ok =
+      Snapshots.record(Keyword.fetch!(options, :server), %{
+        service_date: date,
+        entry: with_trip_paths(written.entry, outcome),
+        inputs_sha256: written.inputs_sha256,
+        built_on: DateTime.to_date(now)
+      })
+
+    {:built, Map.put(counts, :connection_count, written.connection_count)}
+  end
+
+  defp with_trip_paths(entry, {:built, %{index_entry: index_entry}}) when is_map(index_entry) do
+    Map.update!(entry, "files", &Map.put(&1, "tripPaths", index_entry))
+  end
+
+  defp with_trip_paths(entry, _outcome), do: entry
+
+  defp trip_path_counts({:built, built}, elapsed_ms) do
+    %{
+      trip_path_count: built.trip_path_count,
+      trip_path_shard_count: built.shard_count,
+      trip_path_elapsed_ms: elapsed_ms,
+      trip_paths_failed: false
+    }
+  end
+
+  defp trip_path_counts(failure, elapsed_ms) when failure in [:killed, :failed] do
+    %{
+      trip_path_count: 0,
+      trip_path_shard_count: 0,
+      trip_path_elapsed_ms: elapsed_ms,
+      trip_paths_failed: true
+    }
   end
 
   defp written?(%{destination: destination, content: content}, write_options) do

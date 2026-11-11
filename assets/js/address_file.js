@@ -18,11 +18,12 @@ import {
   decodeContainer,
   expandStream,
   openColumn,
+  packedFileName,
 } from "./packed_container.js"
 
 const ADDRESS_FILE_VERSION = 1
 const SHARD_SECTION_COUNT = 8
-const INDEX_SECTION_COUNT = 4
+const INDEX_SECTION_COUNT = 3
 const DIGEST_BYTES = 32
 const COORDINATE_COUNT = 2
 const SUFFIX_NONE = 0
@@ -55,9 +56,8 @@ export const AddressShardSection = Object.freeze({
 /** The sections of the index kind after the string table, in order. */
 export const AddressIndexSection = Object.freeze({
   prefixes: 0,
-  paths: 1,
-  byteSizes: 2,
-  digests: 3,
+  byteSizes: 1,
+  digests: 2,
 })
 
 /** The reasons the kinds refuse a file for, beside the container's own. */
@@ -336,12 +336,13 @@ function hexOf({view, offset}) {
  * The shards of `bytes`, the expanded container of an index:
  * `{kind: "decoded", table}`, where `table` is `{shardCount, prefixes,
  * paths, byteSizes, sha256s}`, one entry per shard in the order of their
- * prefixes: `prefixes` and `paths` are arrays of strings, a prefix ending in
- * `$` for the shard of the streets named by the prefix alone, and a path
- * relative to the index's directory; `byteSizes` is a `Uint32Array` of the
- * sizes of the shards' gzip streams; `sha256s` is an array of the streams'
- * SHA-256 as lower case hexadecimal. A refusal has the reasons of
- * `decodeAddressShard`.
+ * prefixes: `prefixes` is an array of strings, a prefix ending in `$` for
+ * the shard of the streets named by the prefix alone; `byteSizes` is a
+ * `Uint32Array` of the sizes of the shards' gzip streams; `sha256s` is an
+ * array of the streams' SHA-256 as lower case hexadecimal; and `paths` is
+ * each shard's file name, relative to the index's directory, which the
+ * index does not hold: `packedFileName` names it from the digest. A refusal
+ * has the reasons of `decodeAddressShard`.
  */
 export function decodeAddressIndex(bytes) {
   const container = decodeContainer(bytes, {
@@ -357,10 +358,9 @@ export function decodeAddressIndex(bytes) {
   const shardCount = container.header.recordCount
 
   const prefixes = stringIndexes({container, index: AddressIndexSection.prefixes, count: shardCount})
-  const paths = stringIndexes({container, index: AddressIndexSection.paths, count: shardCount})
   const sizes = column({container, index: AddressIndexSection.byteSizes, type: ColumnType.u32, count: shardCount})
   const digests = container.sections[AddressIndexSection.digests]
-  const refusal = firstRefusal([prefixes, paths, sizes])
+  const refusal = firstRefusal([prefixes, sizes])
 
   if (refusal.kind === PackedOutcome.refused) {
     return refusal
@@ -382,12 +382,16 @@ export function decodeAddressIndex(bytes) {
   const table = {
     shardCount,
     prefixes: Array.from(prefixes.indexes, (index) => strings[index]),
-    paths: Array.from(paths.indexes, (index) => strings[index]),
+    paths: Array.from(sha256s, shardFileName),
     byteSizes,
     sha256s,
   }
 
   return {kind: PackedOutcome.decoded, table}
+}
+
+function shardFileName(sha256) {
+  return packedFileName({kind: PackedKind.addressShard, sha256})
 }
 
 async function loadExpanded({source, expandedByteSizeMax}) {

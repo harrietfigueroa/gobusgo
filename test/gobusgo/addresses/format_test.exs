@@ -14,7 +14,7 @@ defmodule Gobusgo.Addresses.FormatTest do
 
   @directory AddressFixture.directory()
   @shard_expectation %{kind: 3, versions: [1], section_count: 8}
-  @index_expectation %{kind: 4, versions: [1], section_count: 4}
+  @index_expectation %{kind: 4, versions: [1], section_count: 3}
 
   defp fixture(name), do: File.read!(Path.join(@directory, name))
 
@@ -250,7 +250,19 @@ defmodule Gobusgo.Addresses.FormatTest do
     end
 
     test "refuses digests of another length" do
-      assert Format.decode_index(index_with(3, <<0::256>>)) == {:error, :bad_section_size}
+      assert Format.decode_index(index_with(2, <<0::256>>)) == {:error, :bad_section_size}
+    end
+
+    test "refuses a byte size column of another length" do
+      assert Format.decode_index(index_with(1, Columns.encode(:u32, [1]))) ==
+               {:error, :bad_section_size}
+    end
+
+    test "holds no file name: the strings are the prefixes alone" do
+      {:ok, %{strings: strings}} = Packed.decode(fixture("index.bin"), @index_expectation)
+
+      assert Tuple.to_list(strings) ==
+               Enum.map(AddressFixture.index_entries(), & &1.prefix)
     end
 
     test "asserts a digest is 64 lower case hexadecimal digits" do
@@ -266,6 +278,10 @@ defmodule Gobusgo.Addresses.FormatTest do
       description = Format.inspect(container)
       assert description["shardCount"] == 4
       assert hd(description["shards"])["prefix"] == ""
+      first = hd(AddressFixture.index_entries())
+
+      assert hd(description["shards"])["path"] ==
+               Packed.file_name(%{kind: 3, sha256: first.sha256})
     end
   end
 

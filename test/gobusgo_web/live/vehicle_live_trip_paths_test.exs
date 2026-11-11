@@ -20,6 +20,7 @@ defmodule GobusgoWeb.VehicleLiveTripPathsTest do
   alias Gobusgo.OneBusAway.StopView
   alias Gobusgo.OneBusAway.TripPath
   alias Gobusgo.OneBusAway.TripPathCache
+  alias Gobusgo.OneBusAway.TripPathsServed
 
   @moduletag capture_log: true
 
@@ -120,6 +121,37 @@ defmodule GobusgoWeb.VehicleLiveTripPathsTest do
       %{paths: [], missing: [%{trip_id: @trip_id, reason: "route_path_missing"}]},
       @push_timeout_ms
     )
+  end
+
+  test "counts the request and its trips once they are served" do
+    hold_route()
+    TripPathsServed.flush()
+    view = mounted()
+
+    render_hook(view, @request_event, %{"trips" => [trip()]})
+
+    assert_push_event(view, @paths_event, %{paths: [_path]}, @push_timeout_ms)
+    assert TripPathsServed.flush() == %{request_count: 1, trip_count: 1}
+  end
+
+  test "counts a trip with no path as served" do
+    TripPathsServed.flush()
+    view = mounted()
+
+    render_hook(view, @request_event, %{"trips" => [trip()]})
+
+    assert_push_event(view, @paths_event, %{missing: [_missing]}, @push_timeout_ms)
+    assert TripPathsServed.flush() == %{request_count: 1, trip_count: 1}
+  end
+
+  test "counts nothing for a request it refuses" do
+    TripPathsServed.flush()
+    view = mounted()
+
+    render_hook(view, @request_event, %{"trips" => "every trip"})
+
+    assert_reply(view, %{refused: true})
+    assert TripPathsServed.flush() == %{request_count: 0, trip_count: 0}
   end
 
   test "refuses a request it cannot read" do

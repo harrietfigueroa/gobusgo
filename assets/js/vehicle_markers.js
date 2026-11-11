@@ -60,6 +60,21 @@ import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
 import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
 import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
 import {tripPathKey, withTripPaths} from "./trip_path"
+import {
+  FILE_FETCH_TIMEOUT_MS,
+  FileFailure,
+  FileKind,
+  FileOutcomeKind,
+  INDEX_EXPANDED_BYTES_MAX,
+  ManifestOutcomeKind,
+  SHARD_EXPANDED_BYTES_MAX,
+  emptyTripPathFiles,
+  fileFetched,
+  hasExpectedSize,
+  manifestFetched,
+  planTripPathFiles
+} from "./trip_path_files"
+import {PackedOutcome, expandStream} from "./packed_container"
 import {preparePath} from "./vehicle_prediction"
 import {registerImageResolver} from "./style_images"
 
@@ -103,6 +118,83 @@ const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 // report lacks for a vehicle with no route.
 const hasRouteBadge = ["any", hasRoute, ["match", ["get", "status"], ["stale", "unknown"], true, false]]
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
+
+function failureOfError(error) {
+  const isDomException = error instanceof DOMException
+  const isTimeout = isDomException && error.name === "TimeoutError"
+
+  if (isTimeout) {
+    return {kind: FileOutcomeKind.failed, reason: FileFailure.timeout}
+  }
+
+  return {kind: FileOutcomeKind.failed, reason: FileFailure.fetch}
+}
+
+// The manifest, revalidated with the browser's own conditional request: a
+// body whose etag is the held one is unchanged, so the rules keep what they
+// hold.
+async function fetchManifestOutcome({url, etag}) {
+  const signal = AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
+
+    if (!response.ok) {
+      return {kind: ManifestOutcomeKind.failed}
+    }
+
+    const manifest = await response.json()
+    const received = response.headers.get("etag")
+
+    const isHeldEtag = received !== null && received === etag
+
+    if (isHeldEtag) {
+      return {kind: ManifestOutcomeKind.unchanged}
+    }
+
+    return {kind: ManifestOutcomeKind.changed, manifest, etag: received}
+  } catch {
+    // A refused or timed-out fetch and a body that is not JSON are the same
+    // outcome to the rules: the manifest is not held.
+    return {kind: ManifestOutcomeKind.failed}
+  }
+}
+
+// One index or shard the manifest or the index names, fetched as the browser
+// caches it, of the size named, and expanded within its bound.
+async function fetchTripPathFile(file) {
+  const signal = AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(file.path, {signal, cache: "default", credentials: "same-origin"})
+
+    if (!response.ok) {
+      return {kind: FileOutcomeKind.failed, reason: FileFailure.fetch}
+    }
+
+    const buffer = await response.arrayBuffer()
+
+    if (!hasExpectedSize({fetch: file, byteLength: buffer.byteLength})) {
+      return {kind: FileOutcomeKind.failed, reason: FileFailure.sizeMismatch}
+    }
+
+    let expandedByteSizeMax = SHARD_EXPANDED_BYTES_MAX
+
+    if (file.kind === FileKind.index) {
+      expandedByteSizeMax = INDEX_EXPANDED_BYTES_MAX
+    }
+
+    const expanded = await expandStream(new Uint8Array(buffer), {expandedByteSizeMax})
+
+    if (expanded.kind === PackedOutcome.refused) {
+      return {kind: FileOutcomeKind.failed, reason: FileFailure.decode}
+    }
+
+    return {kind: FileOutcomeKind.expanded, bytes: expanded.bytes}
+  } catch (error) {
+    return failureOfError(error)
+  }
+}
 
 function point(coordinates) {
   return {type: "Point", coordinates}
@@ -459,6 +551,11 @@ export const VehicleMarkers = {
     this.pathCache = new Map()
     this.preparedPaths = new WeakMap()
     this.pathRequests = emptyPathRequests()
+    // The snapshot's manifest, indexes, and route shards the paths are read
+    // from, and the address of the manifest.
+    this.tripPathFiles = emptyTripPathFiles()
+    this.manifestUrl = this.el.dataset.manifestUrl
+    this.isDestroyed = false
     this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
 
     this.onVisibilityChange = () => { this.visibilityChanged() }
@@ -1229,8 +1326,9 @@ export const VehicleMarkers = {
     return ties
   },
 
-  // Asks the server for the paths of the trips the vehicles of `markerIds`
-  // serve that the page lacks, as the requests' state allows.
+  // Reads the paths of the trips the vehicles of `markerIds` serve that the
+  // page lacks from the snapshot's route shards, fetching the files that
+  // takes, and asks the server for those the shards cannot serve.
   requestPaths(markerIds) {
     const trips = []
 
@@ -1246,6 +1344,49 @@ export const VehicleMarkers = {
       }
     }
 
+    const planned = planTripPathFiles({files: this.tripPathFiles, cache: this.pathCache, trips, nowMs: performance.now()})
+    this.tripPathFiles = planned.files
+
+    if (planned.manifest.ask) {
+      this.fetchManifest(planned.manifest.etag)
+    }
+
+    for (const file of planned.fetches) {
+      this.fetchFile(file)
+    }
+
+    this.requestFromServer(planned.fallback)
+    this.keepPaths(planned.paths)
+  },
+
+  // Fetches the manifest and hands the outcome to the files' rules, then
+  // decides again which paths the page can read.
+  async fetchManifest(etag) {
+    const outcome = await fetchManifestOutcome({url: this.manifestUrl, etag})
+
+    if (this.isDestroyed) {
+      return
+    }
+
+    this.tripPathFiles = manifestFetched({files: this.tripPathFiles, outcome, nowMs: performance.now()})
+    this.requestPaths(this.tiedIds)
+  },
+
+  // Fetches an index or a shard the same way.
+  async fetchFile(file) {
+    const outcome = await fetchTripPathFile(file)
+
+    if (this.isDestroyed) {
+      return
+    }
+
+    this.tripPathFiles = fileFetched({files: this.tripPathFiles, fetch: file, outcome, nowMs: performance.now()})
+    this.requestPaths(this.tiedIds)
+  },
+
+  // Asks the server for the paths of `trips`, which the snapshot's files
+  // cannot serve, as the requests' state allows.
+  requestFromServer(trips) {
     const next = nextPathRequest({requests: this.pathRequests, cache: this.pathCache, trips, nowMs: performance.now()})
 
     if (next.kind === PathRequestKind.none) {
@@ -1262,18 +1403,22 @@ export const VehicleMarkers = {
     })
   },
 
-  // Keeps the paths of a `trip-paths:paths` event, anchors again each
-  // vehicle of their trips, places a vehicle the source draws at its new
-  // prediction, and decides the tier again so they move.
+  // Takes the paths of a `trip-paths:paths` event.
   pathsArrived(event) {
     const received = pathsReceived({requests: this.pathRequests, event, nowMs: performance.now()})
     this.pathRequests = received.requests
+    this.keepPaths(received.paths)
+  },
 
-    if (received.paths.length === 0) {
+  // Keeps decoded `paths`, from a shard or an event, anchors again each
+  // vehicle of their trips, places a vehicle the source draws at its new
+  // prediction, and decides the tier again so they move.
+  keepPaths(paths) {
+    if (paths.length === 0) {
       return
     }
 
-    this.pathCache = withTripPaths(this.pathCache, received.paths)
+    this.pathCache = withTripPaths(this.pathCache, paths)
     const byId = markersById(this.markersByAgency)
     const nowMs = performance.now()
     let isPlacedInSource = false
@@ -1455,6 +1600,7 @@ export const VehicleMarkers = {
   },
 
   destroyed() {
+    this.isDestroyed = true
     this.stopGliding()
     document.removeEventListener("visibilitychange", this.onVisibilityChange)
     this.reducedMotion.removeEventListener("change", this.onReducedMotionChange)

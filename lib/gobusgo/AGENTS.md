@@ -92,7 +92,7 @@ With an offline zoom bound, 13 as decided in GOB-271 and set with `--offline-zoo
 
 `mix gobusgo.start_memory --image <image>` copies the fixture, or the `raw/` of `--responses <directory>`, into a Docker volume, starts the image on it with production's limits, two schedulers, and no network, reads `anon` from inside the container, and fails on a peak past the threshold, a step that logs its failure, a kill for memory, an exit, or a deadline. The BEAM's own figures are not read, since its allocators keep freed segments that `:erlang.memory/0` does not count (GOB-278).
 
-Measured on 2026-11-09 against the fixture on a development machine, a start peaked at 415 to 450 MiB with the VM's segment cache off and at 916 to 1,019 MiB with its default cache (GOB-283). The release runs with the default cache since the snapshot build reads one schedule at a time, and a start then peaked at 513 to 535 MiB (GOB-279).
+Measured on 2026-11-09 against the fixture on a development machine, a start peaked at 415 to 450 MiB with the VM's segment cache off and at 916 to 1,019 MiB with its default cache (GOB-283). The release runs with the default cache since the snapshot build reads one schedule at a time, and a start then peaked at 513 to 535 MiB (GOB-279). With the trip path files built after each date's snapshot (GOB-357), which the fixture's 390 route paths run, one start peaked at 590 MiB.
 
 ## Data flow
 
