@@ -38,11 +38,11 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTripTest do
       assert tool["_meta"] == %{"ui" => %{"resourceUri" => "ui://gobusgo/plan-trip"}}
     end
 
-    test "names the three arguments and requires the two ends" do
+    test "names the three arguments and requires the destination" do
       %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
 
       assert Map.keys(tool["inputSchema"]["properties"]) == ["from", "to", "when"]
-      assert tool["inputSchema"]["required"] == ["from", "to"]
+      assert tool["inputSchema"]["required"] == ["to"]
     end
 
     test "links a resource the server lists" do
@@ -76,6 +76,20 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTripTest do
              ]
     end
 
+    test "accepts a missing from and plans a trip to the destination" do
+      %{status: 200, body: %{"result" => result}} = call_tool(%{"to" => "B"})
+
+      assert result["content"] == [%{"type" => "text", "text" => "Planning a trip to B."}]
+      assert result["structuredContent"] == %{"to" => "B"}
+    end
+
+    test "accepts a blank from and returns it unchanged" do
+      %{status: 200, body: %{"result" => result}} = call_tool(%{"from" => "  ", "to" => "B"})
+
+      assert result["content"] == [%{"type" => "text", "text" => "Planning a trip to B."}]
+      assert result["structuredContent"] == %{"from" => "  ", "to" => "B"}
+    end
+
     test "leaves out a when the rider gave none" do
       %{body: %{"result" => result}} = call_tool(%{"from" => "A", "to" => "B"})
 
@@ -98,7 +112,7 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTripTest do
   end
 
   describe "refused arguments" do
-    test "answers invalid params for a missing end" do
+    test "answers invalid params for a missing destination" do
       assert %{body: %{"error" => %{"code" => -32_602}}} = call_tool(%{"from" => "A"})
     end
 
@@ -107,8 +121,10 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTripTest do
     end
 
     for {name, arguments} <- [
-          {"a blank end", %{"from" => "  ", "to" => "B"}},
-          {"an end past the length limit", %{"from" => "A", "to" => String.duplicate("b", 201)}},
+          {"a blank destination", %{"from" => "A", "to" => "  "}},
+          {"a destination past the length limit",
+           %{"from" => "A", "to" => String.duplicate("b", 201)}},
+          {"a start past the length limit", %{"from" => String.duplicate("a", 201), "to" => "B"}},
           {"an unknown mode", %{"from" => "A", "to" => "B", "when" => %{"mode" => "teleport"}}},
           {"an unknown day",
            %{
