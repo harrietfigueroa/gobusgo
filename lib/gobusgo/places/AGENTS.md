@@ -1,0 +1,88 @@
+# Places file
+
+The places file is one published file of the names a rider searches for, such as a market, a hospital, a neighborhood, or a station, each with a position, built by hand from a Geofabrik Washington extract of OpenStreetMap and served as a packed container of kind 5 (GOB-353 decided it, GOB-366 builds it). Nothing in the application builds it or reads it on a start. This file holds the selection rules, the merge rules, the kind's layout, the fixtures, the manifest, serving, the Mix task, and the measurements.
+
+## Files
+
+- `classification.ex` holds the 14 categories in index order, the rules that put a tagged feature in one with the base prominence of each, `stop?/1`, and `tag_filters/0`, the `osmium tags-filter` expressions that select a superset of what `classify/1` accepts. Pure.
+- `selection.ex` reads the records of an `osmium export` into candidates, with the counts of what became of each record. Pure.
+- `words.ex` is the normalization a name is compared by, the same as the browser search's. Pure.
+- `merge.ex` merges the candidates that name one place twice and orders what is left. Pure.
+- `bounds.ex` parses `--bounds` and takes the union of the basemap manifest's archive bounds. Pure.
+- `extractor.ex` runs `osmium` through `Gobusgo.Command` and splits the export into records. `plan/1` is the step arguments, pure.
+- `build.ex` runs the extractor, selection, and merge, and removes the files it wrote.
+- `records.ex` is the row of a place and the JSON that shows the rows. Pure.
+- `format.ex` is the kind's encoder and decoder on `Gobusgo.Packed`, and implements `Gobusgo.Packed.Kind`. Pure.
+- `publication.ex` stores the file and its manifest through the writer.
+- `lib/mix/tasks/gobusgo.places.build.ex` is the Mix task.
+- `assets/js/place_file.js` is the browser's decoder, checked by `node test/scripts/place_file_check.mjs`.
+
+## Selection
+
+A feature is a candidate when it has a `name`, is not a stop or a platform, falls in a category, and has a position inside the bounds. The bounds are the union of the basemap manifest's archive bounds, or `--bounds`.
+
+- **Stops and platforms are never places.** A feature tagged `highway=bus_stop`, `public_transport=platform`, `public_transport=stop_position`, `railway=platform`, `railway=tram_stop`, or `railway=stop` is left out before classification, whatever else it carries, such as `amenity=shelter` or `shop=kiosk`. Stops and platforms come from the stop view, not from OpenStreetMap, so the file holds none, and the summary counts them as `stops`. Stations stay: `railway=station|halt`, `public_transport=station`, `amenity=bus_station`, `amenity=ferry_terminal`, and `aeroway=aerodrome|terminal`.
+- **Categories**, tested in this order, the first to match wins: station, hospital, health, education, park, leisure, tourism, food, amenity, shop, office, historic, building, place. The table of tags and bases is `classification.ex`, ported from the prototype of GOB-353. Street furniture and parking are left out by the lists of excluded `amenity`, `leisure`, and `tourism` values. A feature of no category is counted as excluded.
+- **Position** is the point, or the area-weighted centroid of the outer rings of a polygon or multipolygon on a plane tangent at the first vertex, measured from each ring's own first vertex so large absolute meters lose no precision. The position is stored in integer microdegrees.
+- **Name** has control characters and `;` replaced by spaces, is trimmed, and is cut to 200 characters. **Aliases** come from `alt_name`, `short_name`, `official_name`, `old_name`, `name:en`, and `loc_name`, each split on `;`, cleaned, distinct, and different from the name.
+- **Prominence** is the category's base plus 40 for `wikidata` plus 15 for `wikipedia`, at most 255. **Area** is a separate score, 0 for a point or an area under 1,000 square meters, otherwise `min(40, round(8 * log10(area / 1000)))`. The file stores the two apart and never adds them.
+
+## Merging
+
+Two candidates of one normalized name (`words.ex`) are one place when they stand under 150 m apart, or under 300 m apart when either is a building: a park beside a building, or a building beside a station. Every other pair, a station and a park included, merges under 150 m only, so the "Seattle Center" park and the Monorail's station stay two places.
+
+Candidates are taken in descending prominence plus area score, ties broken by name and then position, so the order does not depend on the input. The first of a group is kept, and it gains the aliases of the others. A park of prominence 135 and an area score of 20 therefore outlives a station of 140 with none. The places are then ordered by category, then name, which groups like text for compression.
+
+## The kind
+
+Kind 5, prefix `places`, version 1, one record per place, 8 sections after the string table:
+
+1. names, a `u32` column of string indexes;
+2. alias counts, a `u8` column, at most 255 a place, which the writer asserts;
+3. alias names, one `u32` column of the string index of every alias in place order, as many as the counts sum to;
+4. positions, the container's positions, none unknown, which the writer asserts;
+5. categories, a `u8` column of indexes into the category names;
+6. prominences, a `u8` column;
+7. areas, a `u8` column;
+8. labels, a `u32` column of string indexes: the source date first, then the category names in index order.
+
+The string table interns the names, then the aliases, then the labels, in order of first use, so a name two places share is stored once. `place_file.js` decodes a file into `{placeCount, names, aliasStarts, aliasNames, latitudeMicrodegrees, longitudeMicrodegrees, categories, prominences, areas, categoryNames, sourceDate}`: `names`, `aliasNames`, and `categoryNames` are arrays of strings, decoded eagerly, `aliasStarts` is a `Uint32Array` of `placeCount + 1` starts into `aliasNames`, and the rest are typed arrays. The decode of the real file measured 31 ms at 1x and 139 ms at 4x CPU throttle with eager strings, inside the prototype's 28 ms and 131 to 166 ms, so the reader keeps them eager.
+
+A reader refuses another version, another section count, alias counts that do not sum to the alias column, a category index past the categories, a name or alias index past the string table, a place with an unknown position, and labels that hold no category, each as a value (`PlaceFileRefusal` and the container's own reasons). A file expands to at most `Gobusgo.Places.Format.expanded_bytes_max/0`, 8 MiB, which `PLACE_FILE_EXPANDED_BYTES_MAX` repeats in JavaScript; the real file is 2.4 MB.
+
+`mix gobusgo.packed.decode <file> --kind-module Gobusgo.Places.Format` prints a file as JSON.
+
+## Fixtures
+
+`test/fixtures/places/v1/` holds `places.bin`, `places.bin.gz`, and `expected.json`, five hand-written places of `Gobusgo.Test.PlaceFixture` with ASCII and multibyte names, two places of one name, an alias list, no aliases, prominence and area at their caps, a negative longitude, and the origin. `test/scripts/place_fixtures.exs` writes them: `MIX_ENV=test mix run --no-start test/scripts/place_fixtures.exs`. ExUnit compares `places.bin` to the encoder's output byte for byte and `places.bin.gz` by its content. A change to the kind's columns raises its version and writes `v2/` beside `v1/`. `test/fixtures/places/normalized_words.json` is the shared cases of the name normalization, which the browser search's tests use too.
+
+## Publication
+
+`Gobusgo.Places.Publication` stores the file at `places/places-<SHA-256 of the gzip stream>.bin.gz` through `Gobusgo.Writer` with a reader keep time of a year, then, only after the file is stored, `places/manifest.json`: canonical JSON with `file` (`path`, `byteSize`, and `sha256`, from `Gobusgo.Packed.file_entry/2`), `kind` (5), `kindVersion`, `sourceDate`, `placeCount`, and `builtAt`. The manifest changes with every build, so the previous one is deleted before the new one is written and a reader that asks between the two finds none; a file of the same name is left as it is. A field a later change adds to the manifest, such as the license notice of GOB-367, goes beside these.
+
+`GobusgoWeb.Endpoint` serves `<GOBUSGO_DATA_DIR>/places` under `/places` with two `Plug.Static` plugs: the `places-` files as the gzip streams they are stored as, `application/gzip` with no content encoding, `public, max-age=31536000, immutable`, and `manifest.json` with `no-cache` and an `etag`. With a bucket configured the files are in S3 and production needs a CloudFront behavior for `/places/*` from the bucket in the infrastructure repository, which does not exist yet.
+
+Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it and the hourly cleanup leaves it alone, so an earlier file stays until it is removed by hand.
+
+## The task
+
+`mix gobusgo.places.build --extract <path to .osm.pbf> [--bounds south,west,north,east] [--working-directory <dir>] [--records-json <path>]` runs five `osmium` commands through `Gobusgo.Command`, each with a 10-minute deadline, selects, merges, stores the file and the manifest, and prints the step times, the counts by category, and the stored paths. It never runs on a start.
+
+1. `fileinfo -g header.option.osmosis_replication_timestamp` reads the source date, which must be a UTC date and time, and is refused when absent.
+2. `extract -s smart -b <west,south,east,north>` cuts the bounds.
+3. `tags-filter nwr/name` keeps what has a name.
+4. `tags-filter` on `Classification.tag_filters/0` keeps what a category can accept.
+5. `export -f geojsonseq -a type,id --geometry-types=point,polygon` writes the records, each after a U+001E separator because a tag value can hold a newline.
+
+The intermediate files go to the working directory, which is a temporary one without the option, and are removed at the end. `--bounds` overrides the basemap manifest's; with neither the task refuses. `--records-json` also writes the rows of `Gobusgo.Places.Records` as JSON.
+
+osmium is `osmium-tool` 1.19.1, installed with Homebrew (`brew install osmium-tool`) and found on the `PATH`, as tippecanoe is, since no mise backend publishes it. The tests run a stand-in. The extract step needs about 3 GB, which exceeds the container's limit, so the task is run on a developer machine.
+
+## Measured
+
+On 2026-11-10 on a development machine, from Geofabrik's Washington extract of 2026-11-08T21:21:00Z (366 MB) cut to the basemap archive's bounds, 46.888124 to 48.642845 north and -123.082727 to -121.533451 east:
+
+- Read 118,433 features, 82,791 named, 163 stops, 5,170 excluded, 58 outside, 77,400 selected, 1,643 merged, **75,757 places**. By category: shop 17,990, building 12,029, food 11,319, amenity 9,185, office 6,632, park 3,975, health 3,357, tourism 3,108, leisure 2,721, place 2,284, education 1,940, historic 828, station 335, hospital 55.
+- The file is 2,437,932 bytes expanded and 1,092,528 bytes gzipped, against the prototype's 2.6 MB and 1.06 MB.
+- Steps: extract 5.7 to 8.4 s, `tags-filter` by name 2.1 to 2.3 s, by category 0.8 to 1.3 s, export 0.8 to 1.0 s, selection and merge 2.5 to 2.7 s. Peak resident memory of osmium: 3.08 GB for the extract (peak footprint 4.18 GB), 2.37 GB for each `tags-filter`, 95 MB for the export; the BEAM peaked at 270 MB.
+- Headless Chrome against `mix phx.server`, nine runs each, medians: fetch 1.9 ms and expand 7.2 ms, decode 31 ms at 1x; fetch 5.0 ms, expand 29.5 ms, decode 139 ms at 4x CPU throttle. The JavaScript heap after a collection held 2.0 MB with the table and 0.6 MB without it.

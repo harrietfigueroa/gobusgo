@@ -39,6 +39,9 @@ defmodule Gobusgo.RetentionPolicy do
       of its fetch. The files that publish a fetch to the browser have the
       same backstop and are deleted with their fetch.
 
+  The places file and its manifest under `places/` have no rule: nothing
+  deletes them, and an old file stays until it is removed by hand.
+
   The cleanup is one `Gobusgo.Cleanup.run/2` every #{@cleanup_interval_ms}
   ms, with #{@cleanup_deadline_ms} ms to finish.
   """

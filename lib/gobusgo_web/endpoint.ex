@@ -33,6 +33,12 @@ defmodule GobusgoWeb.Endpoint do
   from the routing directory. Each file's name holds the SHA-256 of its
   content, so a cache may keep it for a year as immutable.
 
+  The locally stored places files are served under `/places`, from the
+  places directory, as the gzip streams they are stored as, `application/gzip`
+  with no content encoding. A file's name holds the SHA-256 of its stream, so
+  a cache may keep it for a year as immutable; the manifest that names the
+  current file has to be revalidated on every use.
+
   The locally stored shared vehicle files are served under
   `/shared-vehicles`, from the shared vehicle directory, as the gzip
   streams they are stored as. Each file's name holds a hash of its
@@ -64,6 +70,10 @@ defmodule GobusgoWeb.Endpoint do
   @tiles_cache_seconds GobusgoWeb.RouteStopTiles.reader_keep_seconds()
   @routing_path "/routing"
   @routing_cache_seconds 31_536_000
+  @places_path "/places"
+  @places_file_prefix "places-"
+  @places_manifest_name "manifest.json"
+  @places_cache_seconds Gobusgo.Places.Publication.reader_keep_seconds()
   @shared_vehicles_path "/shared-vehicles"
   # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
   # so a cache keeps a shared vehicle file a minute, well inside them.
@@ -150,6 +160,20 @@ defmodule GobusgoWeb.Endpoint do
     gzip: false,
     cache_control_for_etags: "public, max-age=#{@shared_vehicles_cache_seconds}, immutable"
 
+  plug Plug.Static,
+    at: @places_path,
+    from: {__MODULE__, :places_dir, []},
+    gzip: false,
+    only_matching: [@places_file_prefix],
+    cache_control_for_etags: "public, max-age=#{@places_cache_seconds}, immutable"
+
+  plug Plug.Static,
+    at: @places_path,
+    from: {__MODULE__, :places_dir, []},
+    gzip: false,
+    only: [@places_manifest_name],
+    cache_control_for_etags: "no-cache"
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: {__MODULE__, :log_level, []}
   plug Plug.Session, @session_options
@@ -166,6 +190,13 @@ defmodule GobusgoWeb.Endpoint do
   @spec routing_dir() :: String.t()
   def routing_dir do
     {:ok, %{dir: dir}} = Gobusgo.Config.routing()
+    dir
+  end
+
+  @doc "The directory the locally stored places files are served from."
+  @spec places_dir() :: String.t()
+  def places_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.places()
     dir
   end
 

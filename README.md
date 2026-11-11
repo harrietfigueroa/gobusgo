@@ -423,6 +423,44 @@ mise exec -- pmtiles show http://127.0.0.1:4000/basemap/basemap-20261004-01.pmti
 
 The first answers `206 Partial Content` with `content-range: bytes 0-16383/<size>`, and the second prints the archive's header, read through range requests. A cache may keep an archive for an hour (`cache-control: public, max-age=3600`) and has to revalidate `manifest.json` on every use (`no-cache`); both carry an `etag`. The pages come from the same origin as the archives, so the server sets no CORS header.
 
+## Places file
+
+The places file is the one file of named places, such as markets, hospitals, neighborhoods, and stations, that a map search reads, built by hand from [Geofabrik's Washington extract](https://download.geofabrik.de/north-america/us/washington.html) of OpenStreetMap. Nothing in the application builds it. Refresh it monthly and with each [basemap refresh](#basemap-archives), because its bounds are the basemap archives' bounds. The task needs `osmium-tool`, which no mise backend publishes; the build was made with version 1.19.1, installed with Homebrew and found on the `PATH` as tippecanoe is:
+
+```sh
+brew install osmium-tool
+osmium --version
+```
+
+1. Download the extract and check it against its checksum. Geofabrik's `-latest` address answers a redirect, so `curl` follows it:
+
+   ```sh
+   curl -L --output washington-latest.osm.pbf https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf
+   curl -L --output washington-latest.osm.pbf.md5 https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf.md5
+   md5 -q washington-latest.osm.pbf; cat washington-latest.osm.pbf.md5
+   ```
+
+   The two checksums must be equal.
+
+2. With the basemap extracted under `data/basemap` (the task reads its bounds from `manifest.json`), run:
+
+   ```sh
+   mix gobusgo.places.build --extract washington-latest.osm.pbf
+   ```
+
+   `--bounds south,west,north,east` replaces the manifest's bounds, and is required where there is no manifest. The task prints the counts of what it read, left out, and kept by category, the time of each step, and the paths it stored. It needs about 3 GB of memory for the extract step, so it runs on a developer machine and not in the container.
+
+3. It stores `places/places-<SHA-256>.bin.gz` and then `places/manifest.json` under `<GOBUSGO_DATA_DIR>`, and with a bucket configured in the bucket. Check that the server serves the new file:
+
+   ```sh
+   curl --silent http://127.0.0.1:4000/places/manifest.json
+   curl --silent --dump-header - --output /dev/null http://127.0.0.1:4000/places/places-<SHA-256>.bin.gz
+   ```
+
+   The manifest's `file.path` names the new file, its `sourceDate` is the extract's date, and the file answers `application/gzip` with `cache-control: public, max-age=31536000, immutable`. Nothing deletes an earlier file, so remove the old ones by hand.
+
+The selection rules, the merge rules, the file's layout, and the measured counts and sizes are in [lib/gobusgo/places/AGENTS.md](lib/gobusgo/places/AGENTS.md). The places file is derived from OpenStreetMap data under the Open Database License; the notice and attribution it needs are GOB-367's.
+
 ## Development
 
 ```sh
