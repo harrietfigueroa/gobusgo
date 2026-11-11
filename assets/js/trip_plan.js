@@ -63,11 +63,11 @@ const MINUTE_S = 60
 const ARROW = " → "
 const LINE_POINT_COUNT_MIN = 2
 const TOMORROW_PREFIX = "Tomorrow "
-const DAY_MS = 24 * 60 * 60 * SECOND_MS
+const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_STEP_MINUTES = 5
 const CLOCK_DIGITS = 2
 // A time input's value: two-digit hours and minutes.
-const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
+const CLOCK_PATTERN = /^(?<hours>[01]\d|2[0-3]):(?<minutes>[0-5]\d)$/
 const DAY_SHIFTS = Object.freeze({[DayChoice.today]: 0, [DayChoice.tomorrow]: 1})
 
 const stateMessages = Object.freeze({
@@ -284,8 +284,8 @@ export function wallClockMs({nowMs, day, clockText, timeZone}) {
   const isKnownDay = Object.hasOwn(DAY_SHIFTS, day)
   assertCondition(isKnownDay, "trip plan: a day of unknown kind " + day)
   const today = zonedParts({ms: nowMs, timeZone})
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
+  const hours = Number(match.groups.hours)
+  const minutes = Number(match.groups.minutes)
   const guessMs = Date.UTC(today.year, today.month - 1, today.day + DAY_SHIFTS[day], hours, minutes)
   const firstMs = guessMs - zoneOffsetMs({ms: guessMs, timeZone})
   const ms = guessMs - zoneOffsetMs({ms: firstMs, timeZone})

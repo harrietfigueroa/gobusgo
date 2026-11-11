@@ -60,6 +60,8 @@ const NOT_BOARDED = -1
 const NOT_ALIGHTED = -1
 const NOT_A_START = -1
 const LEG_COUNT_MAX = ROUNDS_MAX + ROUNDS_MAX + 1
+// A round's origin of a query arriving by a time is left in time, or not.
+const OriginJourneyKind = Object.freeze({left: "left", unleft: "unleft"})
 
 // The walking links of each stop, as offsets into the flat link columns,
 // which the snapshot orders by the stop they leave.
@@ -257,11 +259,11 @@ function scanRound({engine, previous, state, roundIndex, query}) {
     const isAlighting = isAboard && connections.alighting[index] === 1
     const arrivalStop = connections.arrivalStop[index]
     const arrivalS = connections.arrivalS[index]
-    const isEarlierRide = isAlighting && arrivalS < state.rideArrivalS[arrivalStop]
+    const isEarlierRide = isAlighting && arrivalS < state.rideArrival.timeS[arrivalStop]
 
     if (isEarlierRide) {
-      state.rideArrivalS[arrivalStop] = arrivalS
       const ride = {stop: arrivalStop, kind: PARENT_RIDE, a: boardedAt[trip], b: index, c: 0, round: roundIndex}
+      state.rideArrival.improve({...ride, timeS: arrivalS})
       state.arrival.improve({...ride, timeS: arrivalS})
       state.ready.improve({...ride, timeS: arrivalS + minimumTransferS})
       walkFrom({engine, state, roundIndex, stop: arrivalStop, arrivalS, board: boardedAt[trip], alight: index})
@@ -334,7 +336,7 @@ function isStop({engine, stop}) {
 function stopOriginState({engine, query}) {
   const {stop} = query.origin
   assertCondition(isStop({engine, stop}), "routing engine: the origin stop " + stop + " is not a stop of the snapshot")
-  const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount), rideArrivalS: new Int32Array(engine.stopCount).fill(UNREACHED)}
+  const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount), rideArrival: Label.unreached(engine.stopCount)}
   state.arrival.timeS[stop] = query.departureS
   state.ready.timeS[stop] = query.departureS
   walkFrom({engine, state, roundIndex: 0, stop, arrivalS: query.departureS, board: NOT_BOARDED, alight: NOT_BOARDED})
@@ -344,7 +346,7 @@ function stopOriginState({engine, query}) {
 function startsOriginState({engine, query}) {
   const {starts} = query.origin
   assertCondition(starts.length >= 1, "routing engine: a query from start stops names none")
-  const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount), rideArrivalS: new Int32Array(engine.stopCount).fill(UNREACHED)}
+  const state = {arrival: Label.unreached(engine.stopCount), ready: Label.unreached(engine.stopCount), rideArrival: Label.unreached(engine.stopCount)}
 
   for (const start of starts) {
     assertCondition(isStop({engine, stop: start.stop}), "routing engine: the start stop " + start.stop + " is not a stop of the snapshot")
@@ -390,7 +392,7 @@ export function route(engine, query) {
 
   for (let roundIndex = 1; roundIndex <= ROUNDS_MAX; roundIndex++) {
     const previous = rounds[roundIndex - 1]
-    const state = {arrival: previous.arrival.copy(), ready: previous.ready.copy(), rideArrivalS: previous.rideArrivalS.slice()}
+    const state = {arrival: previous.arrival.copy(), ready: previous.ready.copy(), rideArrival: previous.rideArrival.copy()}
     scanRound({engine, previous, state, roundIndex, query})
     rounds.push(state)
     const arrivalS = state.arrival.timeS[query.target]
@@ -576,8 +578,8 @@ function arrivalAlong({engine, departureS, journeyLegs}) {
 }
 
 // The latest departure from the origin of round `roundIndex` and its legs,
-// or none: from a start stop, the latest of their boardings less the walk
-// to each, the nearer start first on a tie.
+// or that the origin cannot be left in time: from a start stop, the latest
+// of their boardings less the walk to each, the nearer start first on a tie.
 function originJourney({engine, rounds, roundIndex, search}) {
   const state = rounds[roundIndex]
   const {query} = search
@@ -586,32 +588,34 @@ function originJourney({engine, rounds, roundIndex, search}) {
     const departureS = state.depart.timeS[query.origin.stop]
 
     if (departureS === UNLEFT) {
-      return null
+      return {kind: OriginJourneyKind.unleft}
     }
 
     const journeyLegs = legsBack({engine, rounds, roundIndex, stop: query.origin.stop, labelName: "depart", target: query.target})
-    return {departureS, journeyLegs}
+    return {kind: OriginJourneyKind.left, departureS, journeyLegs}
   }
 
-  let chosen = null
+  let chosenS = UNLEFT
+  let [chosenStart] = query.origin.starts
 
   for (const start of query.origin.starts) {
     const boardedS = state.boarded.timeS[start.stop]
     const isBoarded = boardedS !== UNLEFT
-    const isLater = isBoarded && (chosen === null || boardedS - start.walkS > chosen.departureS)
+    const isLater = isBoarded && boardedS - start.walkS > chosenS
 
     if (isLater) {
-      chosen = {departureS: boardedS - start.walkS, start}
+      chosenS = boardedS - start.walkS
+      chosenStart = start
     }
   }
 
-  if (chosen === null) {
-    return null
+  if (chosenS === UNLEFT) {
+    return {kind: OriginJourneyKind.unleft}
   }
 
-  const walk = {kind: LegKind.walkFromPosition, toStop: chosen.start.stop, durationS: chosen.start.walkS}
-  const rest = legsBack({engine, rounds, roundIndex, stop: chosen.start.stop, labelName: "boarded", target: query.target})
-  return {departureS: chosen.departureS, journeyLegs: [walk, ...rest]}
+  const walk = {kind: LegKind.walkFromPosition, toStop: chosenStart.stop, durationS: chosenStart.walkS}
+  const rest = legsBack({engine, rounds, roundIndex, stop: chosenStart.stop, labelName: "boarded", target: query.target})
+  return {kind: OriginJourneyKind.left, departureS: chosenS, journeyLegs: [walk, ...rest]}
 }
 
 // The labels of round 0: the target reached by the time, and every stop a
@@ -682,7 +686,7 @@ export function routeArrivingBy(engine, query) {
     }
 
     const journey = originJourney({engine, rounds, roundIndex, search})
-    const isLater = journey !== null && journey.departureS > bestS
+    const isLater = journey.kind === OriginJourneyKind.left && journey.departureS > bestS
 
     if (isLater) {
       bestS = journey.departureS

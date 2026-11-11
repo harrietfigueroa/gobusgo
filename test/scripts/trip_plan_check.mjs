@@ -46,6 +46,8 @@ const TIME_ZONE = "America/Los_Angeles"
 // midnight UTC.
 const TODAY_START_MS = 1794124800000
 const DAY_MS = 24 * 60 * 60 * 1000
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
 const HOUR_SECONDS = 60 * 60
 const MINUTE_SECONDS = 60
 const TOMORROW_START_MS = TODAY_START_MS + DAY_MS
@@ -219,14 +221,17 @@ for (const {name, planned, journeys, expected} of windowCases) {
 
 // A time on the page's clock, a day and an HH:MM, is the instant it names
 // in the time zone, across a change of daylight saving time too.
-const OCTOBER_31_EVENING_MS = Date.UTC(2026, 9, 31, 21, 0)
+// 2026-11-01 at midnight in Seattle, still daylight saving time, seven
+// hours after midnight UTC; standard time starts at 02:00 that night.
+const NOVEMBER_1_START_MS = TODAY_START_MS - WEEK_MS - HOUR_MS
+const OCTOBER_31_AFTERNOON_MS = NOVEMBER_1_START_MS - seconds("10:00") * SECOND_MS
 
 const clockCases = [
   {name: "today", nowMs: NOW_MS, day: DayChoice.today, clockText: "09:00", expected: {kind: ClockKind.valid, ms: TODAY_START_MS + seconds("09:00") * SECOND_MS}},
   {name: "tomorrow", nowMs: NOW_MS, day: DayChoice.tomorrow, clockText: "09:00", expected: {kind: ClockKind.valid, ms: NINE_TOMORROW_MS}},
   {name: "midnight", nowMs: NOW_MS, day: DayChoice.tomorrow, clockText: "00:00", expected: {kind: ClockKind.valid, ms: TOMORROW_START_MS}},
-  {name: "the day standard time starts", nowMs: OCTOBER_31_EVENING_MS, day: DayChoice.tomorrow, clockText: "09:00", expected: {kind: ClockKind.valid, ms: Date.UTC(2026, 10, 1, 17, 0)}},
-  {name: "the evening before it", nowMs: OCTOBER_31_EVENING_MS, day: DayChoice.today, clockText: "20:00", expected: {kind: ClockKind.valid, ms: Date.UTC(2026, 10, 1, 3, 0)}},
+  {name: "the day standard time starts", nowMs: OCTOBER_31_AFTERNOON_MS, day: DayChoice.tomorrow, clockText: "09:00", expected: {kind: ClockKind.valid, ms: NOVEMBER_1_START_MS + seconds("10:00") * SECOND_MS}},
+  {name: "the evening before it", nowMs: OCTOBER_31_AFTERNOON_MS, day: DayChoice.today, clockText: "20:00", expected: {kind: ClockKind.valid, ms: NOVEMBER_1_START_MS - seconds("04:00") * SECOND_MS}},
   {name: "no time", nowMs: NOW_MS, day: DayChoice.today, clockText: "", expected: {kind: ClockKind.invalid}},
   {name: "not a time", nowMs: NOW_MS, day: DayChoice.today, clockText: "25:00", expected: {kind: ClockKind.invalid}},
 ]

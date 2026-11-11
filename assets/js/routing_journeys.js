@@ -47,6 +47,8 @@ const MICRODEGREES_PER_DEGREE = 1000000
 const SEQUENCE_BEFORE_FIRST = -1
 const NO_ARRIVAL_S = Number.POSITIVE_INFINITY
 const NO_DEPARTURE_S = Number.NEGATIVE_INFINITY
+// The index before the first chunk, where a backward load starts with none to read.
+const NO_CHUNK_INDEX = -1
 const RoutedKind = Object.freeze({routed: "routed"})
 // A snapshot's query leaves at a time, or arrives by one.
 const TimeKind = Object.freeze({leaving: "leaving", arrivingBy: "arrivingBy"})
@@ -589,7 +591,7 @@ function firstDepartureS(entry) {
 }
 
 // The index of the last chunk with a connection departing at or before
-// `arrivalS`, or -1 where none has.
+// `arrivalS`, or NO_CHUNK_INDEX where none has.
 function lastChunkIndex({chunks, arrivalS}) {
   for (let index = chunks.length - 1; index >= 0; index--) {
     if (chunks[index].departureSMin <= arrivalS) {
@@ -597,7 +599,7 @@ function lastChunkIndex({chunks, arrivalS}) {
     }
   }
 
-  return -1
+  return NO_CHUNK_INDEX
 }
 
 function latestDepartureS(frontier) {

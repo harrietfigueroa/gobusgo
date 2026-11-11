@@ -148,6 +148,10 @@ function isTomorrowPath(path) {
   return path.startsWith("/tomorrow/")
 }
 
+function isTodayPath(path) {
+  return path.startsWith("/today/")
+}
+
 // A fetch over the snapshot's files in memory, recording each path asked for.
 function memoryFetch(snapshot) {
   const requested = []
@@ -486,9 +490,7 @@ deepStrictEqual(previousDayFetch.requested.includes("/today/connections-23.bin")
 const morningFetch = memoryFetch(served(lateToday, tomorrow))
 const morningBy = await routeJourneysArrivingBy({manifest: manifestOf(lateToday, tomorrow), fetchFile: morningFetch.fetchFile, ...previousDayQuery, arrivalS: seconds("06:00")})
 deepStrictEqual(leavingReadable(morningBy.journeys), [{depart: "05:12", isLatest: true, serviceDate: "2026-11-09", arrive: "05:40", changes: 0, legs: ["ride M A 05:12 C 05:40"]}])
-const isTodayFetched = morningFetch.requested.some(function isTodayPath(path) {
-  return path.startsWith("/today/")
-})
+const isTodayFetched = morningFetch.requested.some(isTodayPath)
 deepStrictEqual(isTodayFetched, false)
 
 // With no earlier snapshot, the 9th's answer stands alone.
