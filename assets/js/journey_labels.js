@@ -192,17 +192,21 @@ export function journeyLabels({chosen}) {
   return labels
 }
 
+
+/** Whether the journey has a first bus still to board. */
+export const BoardingKind = Object.freeze({ride: "ride", none: "none"})
+
 /**
- * The label of the first bus: `{kind: YourBusLabelKind.label, tripId,
- * serviceDateMs, text}` where the journey has a ride, the vehicle of the
- * trip `tripId` on the service day starting at `serviceDateMs` being the
- * one it labels, and `{kind: YourBusLabelKind.none}` for a journey that
- * only walks and for a bus past its boarding stop. The text counts whole
- * minutes from `chosen.nowMs` to the first ride's scheduled departure moved
- * by the first bus's lateness, which is the time the bus reaches the
- * boarding stop; under a minute reads as due.
+ * Where and when the first bus is boarded: `{kind: BoardingKind.ride,
+ * tripId, serviceDateMs, stopId, boardMs}` where the journey has a ride,
+ * the vehicle of the trip `tripId` on the service day starting at
+ * `serviceDateMs` being the first bus, `stopId` the stop it is boarded at,
+ * and `boardMs` the first ride's scheduled departure moved by the first
+ * bus's lateness, which is the time the bus reaches the stop; and
+ * `{kind: BoardingKind.none}` for a journey that only walks and for a bus
+ * past its boarding stop at `chosen.nowMs`.
  */
-export function yourBusLabel({chosen}) {
+export function firstRideBoarding({chosen}) {
   const {journey, live, serviceDayStartsMs, nowMs} = chosen
   const startMs = serviceDayStartsMs[journey.serviceDate]
   assertCondition(Number.isInteger(startMs), "journey labels: no start for the service date " + journey.serviceDate)
@@ -213,21 +217,37 @@ export function yourBusLabel({chosen}) {
     }
 
     const boardMs = startMs + leg.departureS * SECOND_MS + liveShiftMs(live)
-    const awayMs = boardMs - nowMs
 
-    if (awayMs < 0) {
-      return {kind: YourBusLabelKind.none}
+    if (boardMs < nowMs) {
+      return {kind: BoardingKind.none}
     }
 
-    const minutes = Math.floor(awayMs / MINUTE_MS)
-    let awayText = DUE_TEXT
-
-    if (minutes > 0) {
-      awayText = `${minutes} min away`
-    }
-
-    return {kind: YourBusLabelKind.label, tripId: leg.tripId, serviceDateMs: startMs, text: "Your bus" + SEPARATOR + awayText}
+    return {kind: BoardingKind.ride, tripId: leg.tripId, serviceDateMs: startMs, stopId: leg.fromStopId, boardMs}
   }
 
-  return {kind: YourBusLabelKind.none}
+  return {kind: BoardingKind.none}
+}
+
+/**
+ * The label of the first bus: `{kind: YourBusLabelKind.label, tripId,
+ * serviceDateMs, text}` where `firstRideBoarding` finds a bus, and
+ * `{kind: YourBusLabelKind.none}` where it finds none. The text counts
+ * whole minutes from `chosen.nowMs` to the time the bus reaches the
+ * boarding stop; under a minute reads as due.
+ */
+export function yourBusLabel({chosen}) {
+  const boarding = firstRideBoarding({chosen})
+
+  if (boarding.kind === BoardingKind.none) {
+    return {kind: YourBusLabelKind.none}
+  }
+
+  const minutes = Math.floor((boarding.boardMs - chosen.nowMs) / MINUTE_MS)
+  let awayText = DUE_TEXT
+
+  if (minutes > 0) {
+    awayText = `${minutes} min away`
+  }
+
+  return {kind: YourBusLabelKind.label, tripId: boarding.tripId, serviceDateMs: boarding.serviceDateMs, text: "Your bus" + SEPARATOR + awayText}
 }

@@ -17,7 +17,8 @@
 // application and are never parsed as HTML.
 
 import {assertCondition, unreachable} from "./assert"
-import {FetchKind, FailureReason, FromKind, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys"
+import {FromKind, JourneysKind} from "./routing_journeys"
+import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf, walkSpeedsOf} from "./trip_route"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
 import {
@@ -33,7 +34,6 @@ import {
   defaultClock,
   failureState,
   isMarkedRow,
-  isRetryable,
   journeyFeatures,
   journeyRows,
   journeysAnnouncement,
@@ -48,10 +48,10 @@ import {
   tripRouteIds,
   windowText
 } from "./trip_plan"
-import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys"
-import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
+import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
 import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
-import {barElement} from "./journey_bar"
+import {button, element} from "./dom_element"
+import {cardElement} from "./journey_card_view"
 import {tripStrip} from "./trip_strip"
 import {createStripView} from "./trip_strip_view"
 import {clearChosenJourney, setChosenJourney} from "./chosen_journey"
@@ -64,7 +64,6 @@ import {createSearchFiles} from "./where_to_files"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
 import {LatestKind, OutcomeKind} from "./position_watch"
-import {isNotSaved} from "./offline_bundle"
 import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
@@ -78,7 +77,8 @@ const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
 const FILTER_ENDED_EVENT_NAME = "trip:filter-ended"
 const ARRIVALS_EVENT_NAME = "stop-arrivals:arrivals"
-const MANIFEST_TIMEOUT_MS = 20 * 1000
+// The files are the page's own, so no origin goes in front of a path.
+const PAGE_ORIGIN = ""
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const SEARCH_LABELS = Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
 const EMPTY_FROM_TEXT = "Choose a start"
@@ -89,8 +89,6 @@ const LISTBOX_ID = "trip-suggestions"
 const INPUT_ID = "trip-search-input"
 const OPTION_ID_PREFIX = "trip-suggestion-"
 const NONE_INDEX = -1
-// The center a search ranks by before a map has loaded: downtown Seattle.
-const SEARCH_CENTER_DEFAULT = Object.freeze({lat: 47.6062, lon: -122.3321})
 const KEY_MOVES = Object.freeze({ArrowDown: OptionMove.down, ArrowUp: OptionMove.up, Home: OptionMove.home, End: OptionMove.end})
 const MODE_LABELS = Object.freeze({[TimeMode.now]: "Now", [TimeMode.departAt]: "Depart at", [TimeMode.arriveBy]: "Arrive by"})
 const DAY_LABELS = Object.freeze({[DayChoice.today]: "Today", [DayChoice.tomorrow]: "Tomorrow"})
@@ -98,9 +96,6 @@ const LEAVING_NOW = Object.freeze({mode: TimeMode.now, day: DayChoice.today, clo
 
 // The kinds of what the query's start resolves to.
 const StartKind = Object.freeze({start: "start", refused: "refused"})
-
-// The kinds of a read of a snapshot's stops, beside the router's failure.
-const StopsReadKind = Object.freeze({read: "read"})
 
 function locatedStart(fix) {
   return {kind: StartKind.start, position: {lat: fix.latitude, lon: fix.longitude}}
@@ -156,139 +151,8 @@ function fragmentOf(elements) {
   return fragment
 }
 
-// One file the manifest names, fetched as the browser caches it: each
-// file's address holds one content, so a cached copy is that file.
-async function fetchFile({path, signal}) {
-  const response = await fetch(path, {signal, cache: "default", credentials: "same-origin"})
-
-  if (isNotSaved(response)) {
-    return {kind: FetchKind.failed, reason: FailureReason.notSaved}
-  }
-
-  if (!response.ok) {
-    return {kind: FetchKind.failed, reason: FailureReason.fetchFailed}
-  }
-
-  const buffer = await response.arrayBuffer()
-  return {kind: FetchKind.fetched, buffer}
-}
-
-// The manifest, revalidated on every query, or why there is none. Its
-// shape is the router's to judge; a body with no snapshots is a failure.
-async function fetchManifest(url) {
-  const signal = AbortSignal.timeout(MANIFEST_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(url, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
-
-    if (isNotSaved(response)) {
-      return {kind: JourneysKind.failed, reason: FailureReason.notSaved, path: url}
-    }
-
-    if (!response.ok) {
-      return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: url}
-    }
-
-    const manifest = await response.json()
-    const hasSnapshots = typeof manifest === "object" && manifest !== null
-    const isManifest = hasSnapshots && Array.isArray(manifest.snapshots)
-
-    if (!isManifest) {
-      return {kind: JourneysKind.failed, reason: FailureReason.refused, path: url}
-    }
-
-    return {kind: FetchKind.fetched, manifest}
-  } catch (error) {
-    console.warn("Routing manifest not fetched", error)
-    return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: url}
-  }
-}
-
-// The journeys of the query to the stop `toStopId` leaving at, or arriving
-// by, the time `planned` names, `seconds` being when it leaves or arrives.
-async function routeFor({planned, seconds, manifest, from, toStopId}) {
-  const {serviceDate} = planned
-
-  switch (planned.kind) {
-    case PlannedKind.leaving:
-      return await routeJourneys({manifest, serviceDate, departureS: seconds, from, toStopId, fetchFile})
-    case PlannedKind.arrivingBy:
-      return await routeJourneysArrivingBy({manifest, serviceDate, arrivalS: seconds, from, toStopId, fetchFile})
-    default:
-      return unreachable(planned.kind, "trip planner: a planned time of unknown kind")
-  }
-}
-
-// The state that says no journey was found for the time `planned` names.
-function noneState(planned) {
-  if (planned.kind === PlannedKind.arrivingBy) {
-    return StateKind.noneInTime
-  }
-
-  return JourneysKind.none
-}
-
-// The frontier the journeys to a point meet in for the time `planned` names.
-function frontierOf(planned) {
-  if (planned.kind === PlannedKind.arrivingBy) {
-    return FrontierKind.latestDeparture
-  }
-
-  return FrontierKind.earliestArrival
-}
-
-// The stop identifiers and positions of the manifest entry `entry`, which
-// the stops near a point end are found in, or the failure that read them.
-async function readSnapshotStops({searchFiles, entry}) {
-  try {
-    const [stopIds, positions] = await searchFiles.snapshotStops({entry})
-    return {kind: StopsReadKind.read, stopIds, positions}
-  } catch (error) {
-    console.warn("Snapshot stops not read", error)
-    return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: entry.files.positions.path}
-  }
-}
-
-// The walking speed of each service date's snapshot, by its date.
-function walkSpeedsOf(manifest) {
-  const speeds = {}
-
-  for (const entry of manifest.snapshots) {
-    speeds[entry.serviceDate] = entry.transferRules.walkSpeedMPerS
-  }
-
-  return speeds
-}
-
 function serviceDateOfJourney(journey) {
   return journey.serviceDate
-}
-
-function serviceDayStartsOf(manifest) {
-  const starts = {}
-
-  for (const entry of manifest.snapshots) {
-    starts[entry.serviceDate] = entry.serviceDayStartMs
-  }
-
-  return starts
-}
-
-function element({tag, className, text}) {
-  const created = document.createElement(tag)
-  created.className = className
-
-  if (text !== undefined) {
-    created.textContent = text
-  }
-
-  return created
-}
-
-function button({className, text}) {
-  const created = element({tag: "button", className, text})
-  created.type = "button"
-  return created
 }
 
 // The text an end shows in the chip or the search box.
@@ -319,44 +183,6 @@ function endOfStored(stored) {
     default:
       return unreachable(stored.kind, "trip planner: a stored end of unknown kind")
   }
-}
-
-// What the bar shows, as text: each ride's route and each walk, in order.
-function summaryText(row) {
-  const parts = []
-
-  for (const part of row.summary) {
-    if (part.kind === "ride") {
-      parts.push(`route ${part.chip.name}`)
-    } else {
-      parts.push(part.text)
-    }
-  }
-
-  return parts.join(", ")
-}
-
-// A journey's card: when to leave and when it arrives, the bar, and the
-// first bus's live lateness, with the live dot, or that it is scheduled.
-function cardElement(card) {
-  const item = button({className: "trip-journey"})
-  item.dataset.focusKey = `journey:${card.order}`
-  const heading = element({tag: "span", className: "trip-journey-heading"})
-  heading.append(element({tag: "strong", className: "trip-journey-lead", text: card.leadText}))
-  heading.append(element({tag: "span", className: "trip-journey-arrive", text: card.arriveText}))
-  const summary = element({tag: "span", className: HIDDEN_TEXT_CLASS_NAME, text: summaryText(card.row)})
-  const detail = element({tag: "span", className: "trip-journey-detail"})
-
-  if (card.isLive) {
-    detail.append(liveDot())
-  }
-
-  detail.append(element({tag: "span", className: "trip-journey-status", text: card.detailText}))
-  const badge = element({tag: "span", className: "trip-journey-badge", text: card.row.badgeText})
-  badge.classList.toggle("trip-journey-marked", card.row.isMarked)
-  detail.append(badge)
-  item.append(heading, barElement(card.segments), summary, detail)
-  return item
 }
 
 // The index of the journey whose card has the focus, or none.
@@ -543,7 +369,7 @@ export const TripPlanner = {
     this.shownByStop = {}
     this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
-    this.searchFiles = createSearchFiles()
+    this.searchFiles = createSearchFiles({origin: PAGE_ORIGIN})
     this.events = pageEvents(this)
     this.build()
 
@@ -1300,7 +1126,7 @@ export const TripPlanner = {
       return
     }
 
-    const manifestOutcome = await fetchManifest(this.manifestUrl)
+    const manifestOutcome = await fetchManifest({origin: PAGE_ORIGIN, path: this.manifestUrl})
 
     if (queryNumber !== this.queryCount) {
       return
@@ -1319,56 +1145,13 @@ export const TripPlanner = {
       return
     }
 
-    const answer = await this.routeTo({manifest, planned, from: start.from, to: query.to})
+    const answer = await routeTo({origin: PAGE_ORIGIN, searchFiles: this.searchFiles, manifest, planned, from: start.from, to: query.to})
 
     if (queryNumber !== this.queryCount) {
       return
     }
 
     this.answer({answer, planned, nowMs, manifest, origin: start.origin, trip: query})
-  },
-
-  // The journeys from `from` to `to`, a stop or a point, for the time
-  // `planned` names: to a point, the journeys to each stop within a walk of
-  // it, arriving there by the time less the walk for a trip arriving by a
-  // time, joined in one frontier.
-  async routeTo({manifest, planned, from, to}) {
-    const {serviceDate} = planned
-
-    if (to.kind === EndKind.stop) {
-      return await routeFor({planned, seconds: planned.seconds, manifest, from, toStopId: to.stopId})
-    }
-
-    const entry = manifest.snapshots.find((candidate) => candidate.serviceDate === serviceDate)
-    const read = await readSnapshotStops({searchFiles: this.searchFiles, entry})
-
-    if (read.kind === JourneysKind.failed) {
-      return read
-    }
-
-    const {stopIds, positions} = read
-
-    const targets = targetStops({position: {lat: to.lat, lon: to.lon}, stopIds, positions, transferRules: entry.transferRules, countMax: TARGET_STOP_COUNT_MAX})
-
-    if (targets.length === 0) {
-      return {kind: PointJourneysKind.noEndStop}
-    }
-
-    const routed = []
-
-    for (const target of targets) {
-      let seconds = planned.seconds
-
-      if (planned.kind === PlannedKind.arrivingBy) {
-        seconds -= target.walkS
-      }
-
-      const answer = await routeFor({planned, seconds, manifest, from, toStopId: target.stopId})
-      routed.push({target, answer})
-    }
-
-    const destination = {name: to.name, lat: to.lat, lon: to.lon}
-    return journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
   },
 
   // The router's start for `from`: a stop, a point, or the rider's
@@ -1391,25 +1174,15 @@ export const TripPlanner = {
   },
 
   answer({answer, planned, nowMs, manifest, origin, trip}) {
-    switch (answer.kind) {
-      case JourneysKind.found:
-        break
-      case JourneysKind.failed:
+    const outcome = answerOutcome({answer, planned})
+
+    if (outcome.kind === AnswerKind.state) {
+      if (answer.kind === JourneysKind.failed) {
         console.warn("Journeys not routed", answer.reason, answer.path)
-        this.showState({kind: failureState(answer), retry: isRetryable(answer)})
-        return
-      case JourneysKind.none:
-        this.showState({kind: noneState(planned), retry: false})
-        return
-      case JourneysKind.unknownStop:
-      case JourneysKind.noStartStop:
-        this.showState({kind: answer.kind, retry: false})
-        return
-      case PointJourneysKind.noEndStop:
-        this.showState({kind: StateKind.noEndStop, retry: false})
-        return
-      default:
-        unreachable(answer.kind, "trip planner: an answer of unknown kind")
+      }
+
+      this.showState({kind: outcome.state, retry: outcome.isRetry})
+      return
     }
 
     this.status.replaceChildren()

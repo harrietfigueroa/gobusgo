@@ -135,8 +135,10 @@ defmodule GobusgoWeb.Mcp.Methods do
     with nil <- Schema.mismatch(params, @resource_read_schema),
          {:ok, resource} <- fetch_resource(registry, params["uri"], revision),
          {:ok, text} <- read(resource) do
-      %{"mimeType" => mime_type} = resource.definition()
-      {:ok, %{"contents" => [%{"uri" => params["uri"], "mimeType" => mime_type, "text" => text}]}}
+      definition = resource.definition()
+      %{"mimeType" => mime_type} = definition
+      content = %{"uri" => params["uri"], "mimeType" => mime_type, "text" => text}
+      {:ok, %{"contents" => [with_meta(content, definition)]}}
     else
       %{path: path} ->
         {:error, Error.invalid_params("Invalid params at " <> Schema.format_path(path))}
@@ -145,6 +147,12 @@ defmodule GobusgoWeb.Mcp.Methods do
         {:error, error}
     end
   end
+
+  # A resource's `_meta`, such as the CSP lists of an MCP App, goes on the
+  # content as it does on the listing, where the host reads it from.
+  # https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx — checked 2026-11-11
+  defp with_meta(content, %{"_meta" => meta}), do: Map.put(content, "_meta", meta)
+  defp with_meta(content, %{}), do: content
 
   defp fetch_resource(registry, uri, revision) do
     case Registry.fetch_resource(registry, uri) do

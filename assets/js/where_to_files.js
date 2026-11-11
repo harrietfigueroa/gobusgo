@@ -16,6 +16,7 @@ import {LookupKind, mergedResults, searchAddress, shardFor} from "./address_look
 import {loadIntersectionIndex, loadIntersectionShard} from "./intersection_file.js"
 import {IntersectionLookupKind, planIntersection, searchIntersection} from "./intersection_lookup.js"
 import {IndexKind} from "./offline_bundle.js"
+import {savedRouteChip} from "./offline_answers.js"
 import {readSavedIndex} from "./offline_schedules.js"
 import {PackedOutcome} from "./packed_container.js"
 import {loadPlaceFile} from "./place_file.js"
@@ -57,8 +58,8 @@ function directoryOf(path) {
   return path.slice(0, path.lastIndexOf(PATH_SEPARATOR) + 1)
 }
 
-async function fetchJson({path, cache}) {
-  const response = await fetch(path, {cache, credentials: "same-origin", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: {accept: "application/json"}})
+async function fetchJson({origin, path, cache}) {
+  const response = await fetch(origin + path, {cache, credentials: "same-origin", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: {accept: "application/json"}})
 
   if (!response.ok) {
     throw new Error(`${path} answered ${response.status}`)
@@ -69,8 +70,8 @@ async function fetchJson({path, cache}) {
 
 // The bytes of a file whose address holds one content, as the browser
 // caches it.
-async function fetchBytes(path) {
-  const response = await fetch(path, {cache: "default", credentials: "same-origin", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)})
+async function fetchBytes({origin, path}) {
+  const response = await fetch(origin + path, {cache: "default", credentials: "same-origin", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)})
 
   if (!response.ok) {
     throw new Error(`${path} answered ${response.status}`)
@@ -91,9 +92,9 @@ function decodedTable({loaded, path}) {
 // The address of the places file: the one the places manifest names, or,
 // with no manifest to read, as offline, the one the saved offline bundle
 // holds.
-async function placesFilePath() {
+async function placesFilePath({origin}) {
   try {
-    const manifest = await fetchJson({path: PLACES_MANIFEST_PATH, cache: "no-cache"})
+    const manifest = await fetchJson({origin, path: PLACES_MANIFEST_PATH, cache: "no-cache"})
     return absolutePath(manifest.file.path)
   } catch (error) {
     const saved = await readSavedIndex()
@@ -109,25 +110,25 @@ async function placesFilePath() {
   }
 }
 
-async function loadPlaces() {
-  const path = await placesFilePath()
-  const bytes = await fetchBytes(path)
+async function loadPlaces({origin}) {
+  const path = await placesFilePath({origin})
+  const bytes = await fetchBytes({origin, path})
   const loaded = await loadPlaceFile(bytes)
   const table = decodedTable({loaded, path})
   return {kind: SourceKind.ready, table, index: buildPlaceIndex(table)}
 }
 
-async function loadIndex({manifestPath, load}) {
-  const manifest = await fetchJson({path: manifestPath, cache: "no-cache"})
+async function loadIndex({origin, manifestPath, load}) {
+  const manifest = await fetchJson({origin, path: manifestPath, cache: "no-cache"})
   const path = manifest.index.path
-  const bytes = await fetchBytes(path)
+  const bytes = await fetchBytes({origin, path})
   const loaded = await load(bytes)
   return {kind: SourceKind.ready, index: decodedTable({loaded, path}), directory: directoryOf(path), shards: createShardCache({countMax: SHARD_CACHE_COUNT_MAX})}
 }
 
-async function loadCountyIndex(county) {
+async function loadCountyIndex({origin, county}) {
   const path = county.index.path
-  const bytes = await fetchBytes(path)
+  const bytes = await fetchBytes({origin, path})
   const loaded = await loadAddressIndex(bytes)
   return {county: county.county, index: decodedTable({loaded, path}), directory: directoryOf(path)}
 }
@@ -135,9 +136,9 @@ async function loadCountyIndex(county) {
 // The address manifest names each county's build, and each county's index
 // is loaded; a county whose index fails to load is left out, so the others
 // still answer, and the source fails only when every county's does.
-async function loadAddressIndexes() {
-  const manifest = await fetchJson({path: ADDRESS_MANIFEST_PATH, cache: "no-cache"})
-  const pending = Array.from(manifest.counties, loadCountyIndex)
+async function loadAddressIndexes({origin}) {
+  const manifest = await fetchJson({origin, path: ADDRESS_MANIFEST_PATH, cache: "no-cache"})
+  const pending = Array.from(manifest.counties, (county) => loadCountyIndex({origin, county}))
   const settled = await Promise.allSettled(pending)
   const counties = []
 
@@ -156,27 +157,27 @@ async function loadAddressIndexes() {
   return {kind: SourceKind.ready, counties, shards: createShardCache({countMax: SHARD_CACHE_COUNT_MAX})}
 }
 
-async function loadShard({source, name, load}) {
+async function loadShard({origin, source, name, load}) {
   const path = source.directory + name
-  return await loadShardAt({source, path, load})
+  return await loadShardAt({origin, source, path, load})
 }
 
-async function loadShardAt({source, path, load}) {
+async function loadShardAt({origin, source, path, load}) {
   const cached = source.shards.get(path)
 
   if (cached.kind === ShardCacheKind.cached) {
     return cached.table
   }
 
-  const bytes = await fetchBytes(path)
+  const bytes = await fetchBytes({origin, path})
   const loaded = await load(bytes)
   const table = decodedTable({loaded, path})
   source.shards.put({path, table})
   return table
 }
 
-async function fetchTable({path, decode}) {
-  const bytes = await fetchBytes(path)
+async function fetchTable({origin, path, decode}) {
+  const bytes = await fetchBytes({origin, path})
   const decoded = decode(bytes.buffer)
 
   if (decoded.kind === DecodeKind.refused) {
@@ -188,8 +189,8 @@ async function fetchTable({path, decode}) {
 
 // The stop identifiers and positions of `entry`, fetched together; a
 // failure of either rejects with it, once both have settled.
-async function loadSnapshotStops(entry) {
-  const pending = [fetchTable({path: entry.files.stops.path, decode: decodeStops}), fetchTable({path: entry.files.positions.path, decode: decodePositions})]
+async function loadSnapshotStops({origin, entry}) {
+  const pending = [fetchTable({origin, path: entry.files.stops.path, decode: decodeStops}), fetchTable({origin, path: entry.files.positions.path, decode: decodePositions})]
   const settled = await Promise.allSettled(pending)
   const failure = settled.find(isRejected)
 
@@ -208,10 +209,10 @@ function settledValue(outcome) {
   return outcome.value
 }
 
-async function loadJourneyNames(entry) {
-  const trips = await fetchTable({path: entry.files.trips.path, decode: decodeTrips})
-  const stopIds = await fetchTable({path: entry.files.stops.path, decode: decodeStops})
-  const names = await decodedNames({entry, stopCount: stopIds.length})
+async function loadJourneyNames({origin, entry}) {
+  const trips = await fetchTable({origin, path: entry.files.trips.path, decode: decodeTrips})
+  const stopIds = await fetchTable({origin, path: entry.files.stops.path, decode: decodeStops})
+  const names = await decodedNames({origin, entry, stopCount: stopIds.length})
   const headsigns = headsignsByTrip({trips, tripHeadsigns: names.tripHeadsigns})
   const stops = {}
 
@@ -223,11 +224,17 @@ async function loadJourneyNames(entry) {
     }
   }
 
-  return {headsigns, stops}
+  const routes = {}
+
+  for (const [routeId, route] of Object.entries(names.routes)) {
+    routes[routeId] = savedRouteChip({route, routeId})
+  }
+
+  return {headsigns, stops, routes}
 }
 
-async function decodedNames({entry, stopCount}) {
-  const bytes = await fetchBytes(entry.files.names.path)
+async function decodedNames({origin, entry, stopCount}) {
+  const bytes = await fetchBytes({origin, path: entry.files.names.path})
   const expanded = await expandNames(bytes.buffer)
 
   if (expanded.kind === DecodeKind.refused) {
@@ -264,8 +271,9 @@ function placeResult({table, match}) {
 }
 
 /**
- * The search files of one page, loaded as its warm method and the
- * searches ask: warm, with the routing manifest's address, starts the loads
+ * The search files of one page, fetched from `origin`, the scheme and
+ * host in front of each file's path, or "" for the page's own, loaded as
+ * its warm method and the searches ask: warm, with the routing manifest's address, starts the loads
  * of the places file, the two indexes, and the stops, once; pendingLoads
  * gives the loads still running; search, with a text and a point near
  * which to rank, `{lat, lon}` in degrees, resolves on the results of each
@@ -274,7 +282,7 @@ function placeResult({table, match}) {
  * on the entry's stop identifiers and positions, which the stops of a
  * point end are found in.
  */
-export function createSearchFiles() {
+export function createSearchFiles({origin}) {
   const sources = {places: IDLE, addresses: IDLE, intersections: IDLE, stops: IDLE}
   const snapshots = new Map()
   const journeyNames = new Map()
@@ -299,7 +307,7 @@ export function createSearchFiles() {
     const path = entry.files.positions.path
 
     if (!snapshots.has(path)) {
-      const loading = loadSnapshotStops(entry)
+      const loading = loadSnapshotStops({origin, entry})
       snapshots.set(path, loading)
       loading.catch(() => { snapshots.delete(path) })
     }
@@ -308,10 +316,10 @@ export function createSearchFiles() {
   }
 
   async function loadStops(routingManifestUrl) {
-    const manifest = await fetchJson({path: routingManifestUrl, cache: "no-cache"})
+    const manifest = await fetchJson({origin, path: routingManifestUrl, cache: "no-cache"})
     const entry = searchEntry(manifest)
     const [stopIds, positions] = await snapshotStops({entry})
-    const names = await decodedNames({entry, stopCount: stopIds.length})
+    const names = await decodedNames({origin, entry, stopCount: stopIds.length})
     const index = buildStopIndex({stopIds, names: names.stopNames, codes: names.stopCodes, latMicrodegrees: positions.latMicrodegrees, lonMicrodegrees: positions.lonMicrodegrees})
     return {kind: SourceKind.ready, index}
   }
@@ -344,7 +352,7 @@ export function createSearchFiles() {
   }
 
   async function countyOutcome({source, path, text, near}) {
-    const table = await loadShardAt({source, path, load: loadAddressShard})
+    const table = await loadShardAt({origin, source, path, load: loadAddressShard})
     return searchAddress({text, table, near: [near.lon, near.lat]})
   }
 
@@ -356,7 +364,7 @@ export function createSearchFiles() {
       return NO_RESULTS
     }
 
-    const shard = await loadShard({source, name: plan.path, load: loadIntersectionShard})
+    const shard = await loadShard({origin, source, name: plan.path, load: loadIntersectionShard})
     const found = searchIntersection({query: plan.query, shard, near})
 
     if (found.kind !== IntersectionLookupKind.found) {
@@ -404,9 +412,9 @@ export function createSearchFiles() {
 
   return Object.freeze({
     warm({routingManifestUrl}) {
-      start({name: "places", load: loadPlaces})
-      start({name: "addresses", load: loadAddressIndexes})
-      start({name: "intersections", load: () => loadIndex({manifestPath: INTERSECTION_MANIFEST_PATH, load: loadIntersectionIndex})})
+      start({name: "places", load: () => loadPlaces({origin})})
+      start({name: "addresses", load: () => loadAddressIndexes({origin})})
+      start({name: "intersections", load: () => loadIndex({origin, manifestPath: INTERSECTION_MANIFEST_PATH, load: loadIntersectionIndex})})
       start({name: "stops", load: () => loadStops(routingManifestUrl)})
     },
 
@@ -445,7 +453,7 @@ export function createSearchFiles() {
       const path = entry.files.trips.path
 
       if (!journeyNames.has(path)) {
-        const loading = loadJourneyNames(entry)
+        const loading = loadJourneyNames({origin, entry})
         journeyNames.set(path, loading)
         loading.catch(() => { journeyNames.delete(path) })
       }
