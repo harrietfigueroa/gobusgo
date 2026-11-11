@@ -6,7 +6,7 @@
 
 import {assertCondition} from "./assert.js"
 import {LegKind} from "./routing_engine.js"
-import {LiveKind, isRideRun} from "./journey_cards.js"
+import {isRideRun, liveShiftMs} from "./journey_cards.js"
 import {clockText} from "./trip_plan.js"
 
 /** What a journey does at a stop. */
@@ -37,15 +37,12 @@ function rideLegs(journey) {
   return rides
 }
 
-// How far the first ride's bus is from its schedule, in milliseconds, for
-// the ride at `rideIndex`: its lateness where it is the first ride and its
-// bus is live, and none for any other ride, whose bus is not the one the
-// page sees.
+// How far the bus of the ride at `rideIndex` is from its schedule, in
+// milliseconds: the first bus's lateness where it is live, and none for any
+// other ride, whose bus is not the one the page sees.
 function shiftMsOf({live, rideIndex}) {
-  const isFirstLive = rideIndex === FIRST_RIDE_INDEX && live.kind === LiveKind.live
-
-  if (isFirstLive) {
-    return live.latenessS * SECOND_MS
+  if (rideIndex === FIRST_RIDE_INDEX) {
+    return liveShiftMs(live)
   }
 
   return 0
