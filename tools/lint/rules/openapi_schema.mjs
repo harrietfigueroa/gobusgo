@@ -24,30 +24,33 @@ function pointerTokens(instancePath) {
   return Array.from(tokens, unescapePointerToken)
 }
 
-// The member or element of a momoa node that a pointer token names, or
-// `undefined` where the node has no such child.
+const ChildKind = {found: "found", missing: "missing"}
+
+// The member or element of a momoa node that a pointer token names.
 function childOf({node, token}) {
+  const missing = {kind: ChildKind.missing}
+
   if (node.type === "Object") {
     const member = node.members.find((candidate) => candidate.name.value === token)
 
     if (member === undefined) {
-      return undefined
+      return missing
     }
 
-    return member.value
+    return {kind: ChildKind.found, node: member.value}
   }
 
   if (node.type === "Array") {
     const element = node.elements[Number(token)]
 
     if (element === undefined) {
-      return undefined
+      return missing
     }
 
-    return element.value
+    return {kind: ChildKind.found, node: element.value}
   }
 
-  return undefined
+  return missing
 }
 
 // The deepest node the pointer reaches; the document's root where it
@@ -59,11 +62,11 @@ function nodeAt({root, instancePath}) {
   for (const token of pointerTokens(instancePath)) {
     const child = childOf({node, token})
 
-    if (child === undefined) {
+    if (child.kind === ChildKind.missing) {
       return node
     }
 
-    node = child
+    node = child.node
   }
 
   return node
