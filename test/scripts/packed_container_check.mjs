@@ -247,7 +247,8 @@ const oneAxisSection = {offset: 0, byteLength: oneAxisBytes.length}
 const oneAxis = openPositions({view: oneAxisView, section: oneAxisSection, count: 1})
 deepStrictEqual(oneAxis, refusal(PackedRefusal.badPosition))
 
-const FILE_NAME_SHA256 = "ab".repeat(32)
+const SHA256_BYTES = 32
+const FILE_NAME_SHA256 = "ab".repeat(SHA256_BYTES)
 deepStrictEqual(
   packedFileName({kind: PackedKind.addressShard, sha256: FILE_NAME_SHA256}),
   `addresses-${FILE_NAME_SHA256}.bin.gz`,
