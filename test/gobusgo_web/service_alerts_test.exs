@@ -225,6 +225,121 @@ defmodule GobusgoWeb.ServiceAlertsTest do
     end
   end
 
+  describe "matching/1" do
+    defp matching(fetches, overrides) do
+      ServiceAlerts.matching(
+        Map.merge(
+          %{situation_fetches: fetches, route_ids: [], stop_ids: [], now: @now},
+          overrides
+        )
+      )
+    end
+
+    defp stop_affect(route_id, stop_id),
+      do: %{agency_id: "40", route_id: route_id, stop_id: stop_id}
+
+    test "keeps the alerts that affect a named route" do
+      fetches = [
+        fetch([
+          situation(%{id: "40_1"}),
+          situation(%{id: "40_2", affects: [stop_affect("40_other", nil)]})
+        ])
+      ]
+
+      found = matching(fetches, %{route_ids: ["40_100479"]})
+
+      assert Enum.map(found, & &1.situation.id) == ["40_1"]
+    end
+
+    test "keeps the alerts that affect a named stop" do
+      fetches = [
+        fetch([
+          situation(%{id: "40_1", affects: [stop_affect("40_100479", "40_s1")]}),
+          situation(%{id: "40_2", affects: [stop_affect("40_100479", "40_s2")]})
+        ])
+      ]
+
+      found = matching(fetches, %{stop_ids: ["40_s1"]})
+
+      assert Enum.map(found, & &1.situation.id) == ["40_1"]
+    end
+
+    test "keeps an alert that matches a route or a stop once" do
+      fetches = [
+        fetch([situation(%{id: "40_1", affects: [stop_affect("40_100479", "40_s1")]})])
+      ]
+
+      found = matching(fetches, %{route_ids: ["40_100479"], stop_ids: ["40_s1"]})
+
+      assert Enum.map(found, & &1.situation.id) == ["40_1"]
+    end
+
+    test "leaves out an alert that names an agency and no route or stop" do
+      fetches = [
+        fetch([situation(%{affects: [%{agency_id: "40", route_id: nil, stop_id: nil}]})])
+      ]
+
+      assert matching(fetches, %{route_ids: ["40_100479"], stop_ids: ["40_s1"]}) == []
+    end
+
+    test "matches nothing when it names no route and no stop" do
+      assert matching([fetch([situation(%{})])], %{}) == []
+    end
+
+    test "lists the current alerts newest first, then the upcoming by start" do
+      soon = @now_ms + @hour_ms
+      later = @now_ms + @day_ms
+
+      fetches = [
+        fetch([
+          situation(%{id: "40_later", active_windows: [%{from_ms: later, to_ms: nil}]}),
+          situation(%{id: "40_old", creation_time_ms: @now_ms - 2 * @day_ms}),
+          situation(%{id: "40_soon", active_windows: [%{from_ms: soon, to_ms: nil}]}),
+          situation(%{id: "40_new", creation_time_ms: @now_ms - @hour_ms})
+        ])
+      ]
+
+      found = matching(fetches, %{route_ids: ["40_100479"]})
+
+      assert Enum.map(found, &{&1.situation.id, &1.status}) == [
+               {"40_new", :current},
+               {"40_old", :current},
+               {"40_soon", :upcoming},
+               {"40_later", :upcoming}
+             ]
+
+      assert Enum.map(found, & &1.starts_at) == [
+               nil,
+               nil,
+               DateTime.from_unix!(soon, :millisecond),
+               DateTime.from_unix!(later, :millisecond)
+             ]
+    end
+
+    test "leaves out an alert past its last window or further off than the upcoming days" do
+      fetches = [
+        fetch([
+          situation(%{id: "40_past", active_windows: [%{from_ms: nil, to_ms: @now_ms - 1}]}),
+          situation(%{
+            id: "40_far",
+            active_windows: [%{from_ms: @now_ms + 8 * @day_ms, to_ms: nil}]
+          })
+        ])
+      ]
+
+      assert matching(fetches, %{route_ids: ["40_100479"]}) == []
+    end
+
+    test "reads a situation several fetches hold as the newest fetch holds it" do
+      older = fetch([situation(%{summary: "Old"})], DateTime.add(@now, -60, :second))
+      newer = fetch([situation(%{summary: "New"})])
+
+      [found] = matching([newer, older], %{route_ids: ["40_100479"]})
+
+      assert found.situation.summary == "New"
+    end
+  end
+
   describe "dom_id/1" do
     test "is the same for the same alert and differs between alerts" do
       assert ServiceAlerts.dom_id("40_1") == ServiceAlerts.dom_id("40_1")

@@ -130,6 +130,7 @@ config :gobusgo, GobusgoWeb.Endpoint,
 # GobusgoWeb.Mcp.Resource.
 config :gobusgo, GobusgoWeb.Mcp,
   tools: [
+    GobusgoWeb.Mcp.Tools.Alerts,
     GobusgoWeb.Mcp.Tools.Arrivals,
     GobusgoWeb.Mcp.Tools.Find,
     GobusgoWeb.Mcp.Tools.PlanTrip,

@@ -22,7 +22,17 @@ defmodule Gobusgo.Test.TransitSeeds do
 
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @route_view Gobusgo.OneBusAway.RouteView
-  @views [AgencyView, VehicleView, StopView, @arrival_view, @route_view]
+  @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
+  @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
+  @views [
+    AgencyView,
+    VehicleView,
+    StopView,
+    @arrival_view,
+    @route_view,
+    @vehicle_situation_view,
+    @arrival_situation_view
+  ]
   @sha String.duplicate("ab", 32)
 
   @doc "Restarts every view the seeds fill, so the next test starts from none."
@@ -220,6 +230,45 @@ defmodule Gobusgo.Test.TransitSeeds do
       })
 
     FetchView.apply_records(@arrival_view, [record.value])
+  end
+
+  @doc """
+  A fetch of the situations the vehicles of `agency_id` reference, each a
+  situation map as `Gobusgo.OneBusAway.Situations` parses it, now.
+  """
+  @spec vehicle_situations(String.t(), [map()]) :: :ok
+  def vehicle_situations(agency_id, situations) do
+    record =
+      VehicleBatch.SituationRecords.build(%{
+        agency_id: agency_id,
+        destination: "raw/oba/vehicles-for-agency/dt=2026-10-02/agency=#{agency_id}/file.json",
+        fetched_at: now(),
+        data_sha256: @sha,
+        request_id: request_id(),
+        situations: situations
+      })
+
+    FetchView.apply_records(@vehicle_situation_view, [record.value])
+  end
+
+  @doc """
+  A fetch of the situations the arrivals at `stop_id` reference, each a
+  situation map as `Gobusgo.OneBusAway.Situations` parses it, now.
+  """
+  @spec arrival_situations(String.t(), [map()]) :: :ok
+  def arrival_situations(stop_id, situations) do
+    record =
+      ArrivalBatch.SituationRecords.build(%{
+        stop_id: stop_id,
+        destination:
+          "raw/oba/arrivals-and-departures-for-stop/dt=2026-10-07/stop=#{stop_id}/file.json.gz",
+        fetched_at: now(),
+        data_sha256: @sha,
+        request_id: request_id(),
+        situations: situations
+      })
+
+    FetchView.apply_records(@arrival_situation_view, [record.value])
   end
 
   # Each call is later than the last by at least a millisecond, which is
