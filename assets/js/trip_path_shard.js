@@ -6,8 +6,7 @@
 // trip's own times. A reader decodes a whole file's structure when it opens
 // the file, so a bad file is refused as a value there, and decodes a trip's
 // points and stops only when a trip is asked for. Everything here is pure:
-// the bytes are an expanded container, as `expandStream` of
-// packed_container.js returns them.
+// the bytes are an expanded container, never a stream.
 
 import {assertCondition} from "./assert.js"
 import {
@@ -36,6 +35,9 @@ const SHARD_SECTION_COUNT = 4
 const INDEX_SECTION_COUNT = 2
 const COLUMNS_PER_TRIP = 3
 const COLUMNS_PER_ROUTE = 3
+const SECOND_BLOCK = 1
+const THIRD_BLOCK = 2
+const TRIP_INDEX_MISSING = -1
 const SHARD_SECTION = Object.freeze({geometries: 0, patterns: 1, trips: 2, times: 3})
 const INDEX_SECTION = Object.freeze({columns: 0, hashes: 1})
 const SHA256_BYTES = 32
@@ -119,7 +121,10 @@ function scanPatterns({view, section, geometryCount}) {
       return refused(cursor.refusal)
     }
 
-    if (geometryIndex >= geometryCount || stopCount === 0) {
+    const isGeometryMissing = geometryIndex >= geometryCount
+    const isPatternBroken = isGeometryMissing || stopCount === 0
+
+    if (isPatternBroken) {
       return refused(TripPathRefusal.badIndex)
     }
 
@@ -176,19 +181,23 @@ function scanTrips({view, container, patterns}) {
 
   for (let index = 0; index < count; index += 1) {
     const stringIndex = column.at(index)
-    const patternIndex = column.at(count + index)
-    const timeOffset = column.at(count * 2 + index)
+    const patternIndex = column.at(count * SECOND_BLOCK + index)
+    const timeOffset = column.at(count * THIRD_BLOCK + index)
     const isStringInRange = stringIndex < container.strings.count
     const isPatternInRange = patternIndex < patterns.geometries.length
 
-    if (!isStringInRange || !isPatternInRange) {
+    const isReferenceBroken = !isStringInRange || !isPatternInRange
+
+    if (isReferenceBroken) {
       return refused(TripPathRefusal.badIndex)
     }
 
     const isStringUsed = isUsed[stringIndex] === 1
     const isOffsetOffTheRun = timeOffset !== cursor.offset - timesSection.offset
 
-    if (isStringUsed || isOffsetOffTheRun) {
+    const isTripBroken = isStringUsed || isOffsetOffTheRun
+
+    if (isTripBroken) {
       return refused(TripPathRefusal.badIndex)
     }
 
@@ -277,7 +286,7 @@ export function decodeTripPathShard(bytes) {
     const index = indexByTripId.get(tripId)
 
     if (index === undefined) {
-      return -1
+      return TRIP_INDEX_MISSING
     }
 
     return index
@@ -422,12 +431,14 @@ export function decodeTripPathIndex(bytes) {
 
   for (let index = 0; index < routeCount; index += 1) {
     const routeIndex = column.at(index)
-    const pathIndex = column.at(routeCount + index)
-    const byteSize = column.at(routeCount * 2 + index)
+    const pathIndex = column.at(routeCount * SECOND_BLOCK + index)
+    const byteSize = column.at(routeCount * THIRD_BLOCK + index)
     const isRouteInRange = routeIndex < container.strings.count
     const isPathInRange = pathIndex < container.strings.count
 
-    if (!isRouteInRange || !isPathInRange) {
+    const isReferenceBroken = !isRouteInRange || !isPathInRange
+
+    if (isReferenceBroken) {
       return refused(TripPathRefusal.badIndex)
     }
 

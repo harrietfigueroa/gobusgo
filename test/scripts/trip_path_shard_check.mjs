@@ -1,11 +1,10 @@
 // Decodes the shared trip path fixtures of test/fixtures/routing/trip-paths-v1
-// with the JavaScript readers of assets/js/trip_path_shard.js: the loop
-// route's shard, expanded and as a gzip stream, and the index, against the
-// expected values beside them; checks that the loop trip's path read from
-// the shard is the frozen object `decodeTripPath` returns for the same trip's
-// encoded event, which the Elixir tests pin to the server's builder; that a
-// trip the shard lacks is a value; and that each rule a file can break is
-// refused as a value. Run it with
+// with the trip path readers, the loop route's shard, expanded and as a gzip
+// stream, and the index, against the expected values beside them. It checks
+// that the loop trip's path read from the shard is the frozen object
+// `decodeTripPath` returns for the same trip's encoded event, which the Elixir
+// tests pin to the server's builder; that a trip the shard lacks is a value;
+// and that each rule a file can break is refused as a value. Run it with
 // `node test/scripts/trip_path_shard_check.mjs`; it exits non-zero on the
 // first result that differs.
 
@@ -36,7 +35,6 @@ const MICRODEGREES_PER_DEGREE = 1_000_000
 const ROUTE_ID = "1_7994"
 const SERVICE_DATE_MS = 1_794_211_200_000
 const VERSION_OFFSET = 4
-const KIND_OFFSET = 6
 const VERSION_UNKNOWN = 2
 const U32_BYTES = 4
 const SHA256_BYTES = 32
@@ -46,9 +44,20 @@ const TRIP_SECTION = 3
 const TIMES_SECTION = 4
 const INDEX_COLUMN_SECTION = 1
 const INDEX_HASH_SECTION = 2
-const TRIP_COLUMN_BLOCKS = 3
+const FIRST_BLOCK = 0
+const SECOND_BLOCK = 1
+const THIRD_BLOCK = 2
 const STRING_INDEX_UNHELD = 99
 const PATTERN_INDEX_UNHELD = 7
+const OFFSET_SKEW = 1
+const LITTLE_ENDIAN = true
+const GEOMETRY_NO_POINT = "0100"
+const GEOMETRY_CLAIMS_MORE_POINTS = "010900"
+const PATTERN_GEOMETRY_UNHELD = "01050100"
+const PATTERN_NO_STOP = "010000"
+const PATTERN_STEP_BACK = "0100020001"
+const PATTERN_CLAIMS_MORE_STOPS = "01000500"
+const EXTRA_BYTE = "00"
 
 const shardBytes = fileBytes("shard.bin")
 const indexBytes = fileBytes("index.bin")
@@ -57,13 +66,17 @@ function fileBytes(name) {
   return new Uint8Array(readFileSync(fixtureDirectory + name))
 }
 
+function hexBytes(hex) {
+  return new Uint8Array(Buffer.from(hex, "hex"))
+}
+
 function decodedOf(result) {
   deepStrictEqual(result.kind, PackedOutcome.decoded, "the file is decoded, not " + JSON.stringify(result))
   return result
 }
 
-function refusedWith(result, reason, message) {
-  deepStrictEqual(result, {kind: PackedOutcome.refused, reason}, message)
+function refusal(reason) {
+  return {kind: PackedOutcome.refused, reason}
 }
 
 // The sections of a container, the string table first, each a copy.
@@ -73,7 +86,7 @@ function splitSections(bytes) {
   let offset = HEADER_BYTES
 
   while (offset < bytes.byteLength) {
-    const length = view.getUint32(offset, true)
+    const length = view.getUint32(offset, LITTLE_ENDIAN)
     sections.push(bytes.slice(offset + U32_BYTES, offset + U32_BYTES + length))
     offset += U32_BYTES + length
   }
@@ -81,65 +94,120 @@ function splitSections(bytes) {
   return sections
 }
 
-// The container of `bytes` with the section at `index`, counting the string
-// table as 0, replaced by `section`.
-function withSection(bytes, index, section) {
-  const sections = splitSections(bytes)
-  sections[index] = section
-  return assemble(bytes.slice(0, HEADER_BYTES), sections)
+function sectionBytes(section) {
+  return U32_BYTES + section.length
 }
 
-function assemble(header, sections) {
-  const total = sections.reduce((sum, section) => sum + U32_BYTES + section.length, header.length)
+function assemble({header, sections}) {
+  const sizes = Array.from(sections, sectionBytes)
+  const total = sizes.reduce(sumOf, header.length)
   const assembled = new Uint8Array(total)
   const view = new DataView(assembled.buffer)
   assembled.set(header, 0)
   let offset = header.length
 
   for (const section of sections) {
-    view.setUint32(offset, section.length, true)
+    view.setUint32(offset, section.length, LITTLE_ENDIAN)
     assembled.set(section, offset + U32_BYTES)
-    offset += U32_BYTES + section.length
+    offset += sectionBytes(section)
   }
 
   return assembled
 }
 
+function sumOf(left, right) {
+  return left + right
+}
+
+// The container of `bytes` with the section at `index`, counting the string
+// table as 0, replaced by `section`.
+function withSection({bytes, index, section}) {
+  const sections = splitSections(bytes)
+  sections[index] = section
+  const header = bytes.slice(0, HEADER_BYTES)
+  return assemble({header, sections})
+}
+
 function u32s(values) {
   const bytes = new Uint8Array(values.length * U32_BYTES)
   const view = new DataView(bytes.buffer)
-  values.forEach((value, index) => view.setUint32(index * U32_BYTES, value, true))
+
+  for (const [index, value] of values.entries()) {
+    view.setUint32(index * U32_BYTES, value, LITTLE_ENDIAN)
+  }
+
   return bytes
 }
 
 function readU32s(section) {
   const view = new DataView(section.buffer, section.byteOffset, section.byteLength)
-  return Array.from({length: section.length / U32_BYTES}, (_unused, index) => view.getUint32(index * U32_BYTES, true))
+  const values = []
+
+  for (let offset = 0; offset < section.length; offset += U32_BYTES) {
+    values.push(view.getUint32(offset, LITTLE_ENDIAN))
+  }
+
+  return values
 }
 
-function withBytes(bytes, extra) {
+function withBytes({bytes, extra}) {
   const joined = new Uint8Array(bytes.length + extra.length)
   joined.set(bytes, 0)
   joined.set(extra, bytes.length)
   return joined
 }
 
-function withHeaderField(bytes, offset, value) {
+function withVersion({bytes, version}) {
   const copy = bytes.slice()
-  new DataView(copy.buffer).setUint16(offset, value, true)
+  new DataView(copy.buffer).setUint16(VERSION_OFFSET, version, LITTLE_ENDIAN)
   return copy
 }
 
-// The fixture's two stored forms hold one content.
-async function checkStoredStream() {
-  const stream = fileBytes("shard.bin.gz")
-  const expanded = await expandStream(stream, {expandedByteSizeMax: CONTAINER_EXPANDED_BYTES_MAX})
-  deepStrictEqual(expanded.kind, PackedOutcome.expanded)
-  deepStrictEqual(expanded.bytes, shardBytes, "the gzip stream expands to the shard")
+function dropLast({bytes, count}) {
+  return bytes.slice(0, bytes.length - count)
+}
 
-  const indexStream = fileBytes("index.bin.gz")
-  const expandedIndex = await expandStream(indexStream, {expandedByteSizeMax: CONTAINER_EXPANDED_BYTES_MAX})
-  deepStrictEqual(expandedIndex.bytes, indexBytes, "the gzip stream expands to the index")
+function stopDistance(stop) {
+  return stop.distanceMeters
+}
+
+function stopArrival(stop) {
+  return stop.arrivalSeconds
+}
+
+function stopDeparture(stop) {
+  return stop.departureSeconds
+}
+
+function degreesOf(microdegrees) {
+  return microdegrees / MICRODEGREES_PER_DEGREE
+}
+
+// The fixture's two stored forms hold one content each.
+async function checkStoredStreams() {
+  const options = {expandedByteSizeMax: CONTAINER_EXPANDED_BYTES_MAX}
+  const shardExpanded = await expandStream(fileBytes("shard.bin.gz"), options)
+  deepStrictEqual(shardExpanded.kind, PackedOutcome.expanded)
+  deepStrictEqual(shardExpanded.bytes, shardBytes, "the gzip stream expands to the shard")
+
+  const indexExpanded = await expandStream(fileBytes("index.bin.gz"), options)
+  deepStrictEqual(indexExpanded.bytes, indexBytes, "the gzip stream expands to the index")
+}
+
+function checkExpectedTrip({shard, trip}) {
+  const path = tripPathFromShard(shard, {tripId: trip.id, routeId: ROUTE_ID, serviceDateMs: SERVICE_DATE_MS})
+  const [firstLatitude, firstLongitude] = trip.firstPointMicrodegrees
+  const [lastLatitude, lastLongitude] = trip.lastPointMicrodegrees
+  const lastPoint = path.points[path.points.length - 1]
+  deepStrictEqual(path.points.length, trip.pointCount, trip.id + " point count")
+  deepStrictEqual(path.points[0], [degreesOf(firstLongitude), degreesOf(firstLatitude)])
+  deepStrictEqual(lastPoint, [degreesOf(lastLongitude), degreesOf(lastLatitude)])
+  const distances = Array.from(path.stops, stopDistance)
+  const arrivals = Array.from(path.stops, stopArrival)
+  const departures = Array.from(path.stops, stopDeparture)
+  deepStrictEqual(distances, trip.stopDistancesM, trip.id + " distances")
+  deepStrictEqual(arrivals, trip.arrivalS, trip.id + " arrivals")
+  deepStrictEqual(departures, trip.departureS, trip.id + " departures")
 }
 
 function checkShard() {
@@ -147,35 +215,18 @@ function checkShard() {
   deepStrictEqual(shard.tripCount, expected.shard.tripCount, "the trip count")
 
   for (const trip of expected.shard.trips) {
-    const path = tripPathFromShard(shard, {tripId: trip.id, routeId: ROUTE_ID, serviceDateMs: SERVICE_DATE_MS})
-    const [firstLatitude, firstLongitude] = trip.firstPointMicrodegrees
-    const [lastLatitude, lastLongitude] = trip.lastPointMicrodegrees
-    deepStrictEqual(path.points.length, trip.pointCount, trip.id + " point count")
-    deepStrictEqual(path.points[0], [firstLongitude / MICRODEGREES_PER_DEGREE, firstLatitude / MICRODEGREES_PER_DEGREE])
-    deepStrictEqual(
-      path.points[path.points.length - 1],
-      [lastLongitude / MICRODEGREES_PER_DEGREE, lastLatitude / MICRODEGREES_PER_DEGREE]
-    )
-    deepStrictEqual(path.stops.map((stop) => stop.distanceMeters), trip.stopDistancesM, trip.id + " distances")
-    deepStrictEqual(path.stops.map((stop) => stop.arrivalSeconds), trip.arrivalS, trip.id + " arrivals")
-    deepStrictEqual(path.stops.map((stop) => stop.departureSeconds), trip.departureS, trip.id + " departures")
+    checkExpectedTrip({shard, trip})
   }
 
-  const fromShard = tripPathFromShard(shard, {
-    tripId: loopEvent.trip_id,
-    routeId: loopEvent.route_id,
-    serviceDateMs: loopEvent.service_date_ms
-  })
+  const loopTrip = {tripId: loopEvent.trip_id, routeId: loopEvent.route_id, serviceDateMs: loopEvent.service_date_ms}
+  const fromShard = tripPathFromShard(shard, loopTrip)
   deepStrictEqual(fromShard, decodeTripPath(loopEvent), "the shard's path is the event's decoded path")
   ok(Object.isFrozen(fromShard), "the path is frozen")
   ok(Object.isFrozen(fromShard.points[0]), "a point is frozen")
   ok(Object.isFrozen(fromShard.stops[0]), "a stop is frozen")
 
-  deepStrictEqual(
-    tripPathFromShard(shard, {tripId: "1_none", routeId: ROUTE_ID, serviceDateMs: SERVICE_DATE_MS}),
-    {kind: TripPathLookup.missing},
-    "a trip the shard lacks"
-  )
+  const absent = {tripId: "1_none", routeId: ROUTE_ID, serviceDateMs: SERVICE_DATE_MS}
+  deepStrictEqual(tripPathFromShard(shard, absent), {kind: TripPathLookup.missing}, "a trip the shard lacks")
 }
 
 function checkIndex() {
@@ -183,164 +234,179 @@ function checkIndex() {
   deepStrictEqual(index.routeCount, expected.index.records.length, "the route count")
 
   for (const record of expected.index.records) {
-    deepStrictEqual(
-      index.entryOf(record.routeId),
-      {path: record.path, byteSize: record.byteSize, sha256: record.sha256},
-      "the entry of " + record.routeId
-    )
+    const entry = {path: record.path, byteSize: record.byteSize, sha256: record.sha256}
+    deepStrictEqual(index.entryOf(record.routeId), entry, "the entry of " + record.routeId)
   }
 
   deepStrictEqual(index.entryOf("1_none"), {kind: TripPathLookup.missing}, "a route the index lacks")
 }
 
-function checkShardRefusals() {
-  refusedWith(decodeTripPathShard(indexBytes), PackedRefusal.kindMismatch, "an index as a shard")
-  refusedWith(
-    decodeTripPathShard(withHeaderField(shardBytes, VERSION_OFFSET, VERSION_UNKNOWN)),
-    PackedRefusal.unsupportedVersion,
-    "a version it does not know"
-  )
-  refusedWith(
-    decodeTripPathShard(shardBytes.slice(0, shardBytes.length - 1)),
-    PackedRefusal.truncated,
-    "a cut file"
-  )
-  refusedWith(
-    decodeTripPathShard(withBytes(shardBytes, new Uint8Array([0]))),
-    PackedRefusal.trailingBytes,
-    "bytes after the last section"
-  )
-  refusedWith(
-    decodeTripPathShard(assemble(shardBytes.slice(0, HEADER_BYTES), splitSections(shardBytes).slice(0, 4))),
-    PackedRefusal.sectionCount,
-    "another section count"
-  )
-
-  const geometries = splitSections(shardBytes)[GEOMETRY_SECTION]
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, GEOMETRY_SECTION, withBytes(geometries, new Uint8Array([0])))),
-    PackedRefusal.badSectionSize,
-    "bytes after the last geometry"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, GEOMETRY_SECTION, new Uint8Array([1, 0]))),
-    TripPathRefusal.badIndex,
-    "a geometry of no point"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, GEOMETRY_SECTION, new Uint8Array([1, 9, 0]))),
-    PackedRefusal.truncated,
-    "a geometry that claims more points than its bytes hold"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, PATTERN_SECTION, new Uint8Array([1, 5, 1, 0]))),
-    TripPathRefusal.badIndex,
-    "a pattern that names a geometry the shard lacks"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, PATTERN_SECTION, new Uint8Array([1, 0, 0]))),
-    TripPathRefusal.badIndex,
-    "a pattern of no stop"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, PATTERN_SECTION, new Uint8Array([1, 0, 2, 0, 1]))),
-    TripPathRefusal.badIndex,
-    "a pattern with a stop before the stop before it"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, PATTERN_SECTION, new Uint8Array([1, 0, 5, 0]))),
-    PackedRefusal.truncated,
-    "a pattern that claims more stops than its bytes hold"
-  )
+function shardWithSection({index, section}) {
+  return decodeTripPathShard(withSection({bytes: shardBytes, index, section}))
 }
 
-function checkShardTripRefusals() {
+function shardWithColumns(columns) {
+  return shardWithSection({index: TRIP_SECTION, section: u32s(columns.flat())})
+}
+
+function shardContainerCases() {
+  const geometries = splitSections(shardBytes)[GEOMETRY_SECTION]
+  const times = splitSections(shardBytes)[TIMES_SECTION]
+  const wrongVersion = withVersion({bytes: shardBytes, version: VERSION_UNKNOWN})
+  const sectionsKept = splitSections(shardBytes).slice(0, PATTERN_SECTION)
+  const fewerSections = assemble({header: shardBytes.slice(0, HEADER_BYTES), sections: sectionsKept})
+  const extraByte = hexBytes(EXTRA_BYTE)
+
+  return [
+    {message: "an index as a shard", result: decodeTripPathShard(indexBytes), reason: PackedRefusal.kindMismatch},
+    {message: "an unknown version", result: decodeTripPathShard(wrongVersion), reason: PackedRefusal.unsupportedVersion},
+    {message: "a cut file", result: decodeTripPathShard(dropLast({bytes: shardBytes, count: 1})), reason: PackedRefusal.truncated},
+    {
+      message: "bytes after the last section",
+      result: decodeTripPathShard(withBytes({bytes: shardBytes, extra: extraByte})),
+      reason: PackedRefusal.trailingBytes
+    },
+    {message: "another section count", result: decodeTripPathShard(fewerSections), reason: PackedRefusal.sectionCount},
+    {
+      message: "bytes after the last geometry",
+      result: shardWithSection({index: GEOMETRY_SECTION, section: withBytes({bytes: geometries, extra: extraByte})}),
+      reason: PackedRefusal.badSectionSize
+    },
+    {
+      message: "times past the last trip's",
+      result: shardWithSection({index: TIMES_SECTION, section: withBytes({bytes: times, extra: extraByte})}),
+      reason: PackedRefusal.badSectionSize
+    },
+    {
+      message: "times that stop short",
+      result: shardWithSection({index: TIMES_SECTION, section: dropLast({bytes: times, count: 1})}),
+      reason: PackedRefusal.truncated
+    }
+  ]
+}
+
+function shardWithGeometry(hex) {
+  return shardWithSection({index: GEOMETRY_SECTION, section: hexBytes(hex)})
+}
+
+function shardWithPattern(hex) {
+  return shardWithSection({index: PATTERN_SECTION, section: hexBytes(hex)})
+}
+
+function shardContentCases() {
+  const geometry = shardWithGeometry
+  const pattern = shardWithPattern
+
+  return [
+    {message: "a geometry of no point", result: geometry(GEOMETRY_NO_POINT), reason: TripPathRefusal.badIndex},
+    {message: "a geometry that claims more points than its bytes hold", result: geometry(GEOMETRY_CLAIMS_MORE_POINTS), reason: PackedRefusal.truncated},
+    {message: "a pattern that names a geometry the shard lacks", result: pattern(PATTERN_GEOMETRY_UNHELD), reason: TripPathRefusal.badIndex},
+    {message: "a pattern of no stop", result: pattern(PATTERN_NO_STOP), reason: TripPathRefusal.badIndex},
+    {message: "a pattern with a stop before the stop before it", result: pattern(PATTERN_STEP_BACK), reason: TripPathRefusal.badIndex},
+    {message: "a pattern that claims more stops than its bytes hold", result: pattern(PATTERN_CLAIMS_MORE_STOPS), reason: PackedRefusal.truncated}
+  ]
+}
+
+function shardTripCases() {
   const tripSection = splitSections(shardBytes)[TRIP_SECTION]
   const values = readU32s(tripSection)
   const {tripCount} = expected.shard
-  const [strings, patterns, offsets] = [0, 1, 2].map((block) => values.slice(block * tripCount, (block + 1) * tripCount))
+  const blockOf = (block) => values.slice(block * tripCount, (block + 1) * tripCount)
+  const strings = blockOf(FIRST_BLOCK)
+  const patterns = blockOf(SECOND_BLOCK)
+  const offsets = blockOf(THIRD_BLOCK)
+  const [firstString, secondString] = strings
+  const [firstPattern, secondPattern] = patterns
+  const [firstOffset, secondOffset] = offsets
+  const shortColumn = dropLast({bytes: tripSection, count: U32_BYTES})
 
-  const replaced = (columns) => decodeTripPathShard(withSection(shardBytes, TRIP_SECTION, u32s(columns.flat())))
-
-  refusedWith(
-    replaced([[STRING_INDEX_UNHELD, strings[1]], patterns, offsets]),
-    TripPathRefusal.badIndex,
-    "a trip that names a string the table lacks"
-  )
-  refusedWith(
-    replaced([strings, [PATTERN_INDEX_UNHELD, patterns[1]], offsets]),
-    TripPathRefusal.badIndex,
-    "a trip that names a pattern the shard lacks"
-  )
-  refusedWith(
-    replaced([[strings[0], strings[0]], patterns, offsets]),
-    TripPathRefusal.badIndex,
-    "two trips of one identifier"
-  )
-  refusedWith(
-    replaced([strings, patterns, [offsets[0] + 1, offsets[1]]]),
-    TripPathRefusal.badIndex,
-    "times that start off the run"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, TRIP_SECTION, tripSection.slice(0, tripSection.length - U32_BYTES))),
-    PackedRefusal.badSectionSize,
-    "a trip column that is not three values a trip"
-  )
-
-  const times = splitSections(shardBytes)[TIMES_SECTION]
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, TIMES_SECTION, withBytes(times, new Uint8Array([0])))),
-    PackedRefusal.badSectionSize,
-    "times past the last trip's"
-  )
-  refusedWith(
-    decodeTripPathShard(withSection(shardBytes, TIMES_SECTION, times.slice(0, times.length - 1))),
-    PackedRefusal.truncated,
-    "times that stop short"
-  )
+  return [
+    {
+      message: "a trip that names a string the table lacks",
+      result: shardWithColumns([[STRING_INDEX_UNHELD, secondString], patterns, offsets]),
+      reason: TripPathRefusal.badIndex
+    },
+    {
+      message: "a trip that names a pattern the shard lacks",
+      result: shardWithColumns([strings, [PATTERN_INDEX_UNHELD, secondPattern], offsets]),
+      reason: TripPathRefusal.badIndex
+    },
+    {
+      message: "two trips of one identifier",
+      result: shardWithColumns([[firstString, firstString], patterns, offsets]),
+      reason: TripPathRefusal.badIndex
+    },
+    {
+      message: "times that start off the run",
+      result: shardWithColumns([strings, [firstPattern, secondPattern], [firstOffset + OFFSET_SKEW, secondOffset]]),
+      reason: TripPathRefusal.badIndex
+    },
+    {
+      message: "a trip column that is not three values a trip",
+      result: shardWithSection({index: TRIP_SECTION, section: shortColumn}),
+      reason: PackedRefusal.badSectionSize
+    }
+  ]
 }
 
-function checkIndexRefusals() {
-  refusedWith(decodeTripPathIndex(shardBytes), PackedRefusal.kindMismatch, "a shard as an index")
-  refusedWith(
-    decodeTripPathIndex(withHeaderField(indexBytes, VERSION_OFFSET, VERSION_UNKNOWN)),
-    PackedRefusal.unsupportedVersion,
-    "a version it does not know"
-  )
+function indexWithSection({index, section}) {
+  return decodeTripPathIndex(withSection({bytes: indexBytes, index, section}))
+}
+
+function indexCases() {
   const sections = splitSections(indexBytes)
   const columns = sections[INDEX_COLUMN_SECTION]
   const hashes = sections[INDEX_HASH_SECTION]
-  refusedWith(
-    decodeTripPathIndex(withSection(indexBytes, INDEX_HASH_SECTION, hashes.slice(0, hashes.length - 1))),
-    PackedRefusal.badSectionSize,
-    "a hash section of another length than 32 bytes a route"
-  )
-  refusedWith(
-    decodeTripPathIndex(withSection(indexBytes, INDEX_COLUMN_SECTION, columns.slice(0, columns.length - U32_BYTES))),
-    PackedRefusal.badSectionSize,
-    "a column section of another length than three values a route"
-  )
-
   const values = readU32s(columns)
-  const count = values.length / TRIP_COLUMN_BLOCKS
-  refusedWith(
-    decodeTripPathIndex(withSection(indexBytes, INDEX_COLUMN_SECTION, u32s([STRING_INDEX_UNHELD, ...values.slice(1)]))),
-    TripPathRefusal.badIndex,
-    "a route that names a string the table lacks"
-  )
-  refusedWith(
-    decodeTripPathIndex(withSection(indexBytes, INDEX_COLUMN_SECTION, u32s([values[0], values[0], ...values.slice(2)]))),
-    TripPathRefusal.badIndex,
-    "two records of one route"
-  )
-  ok(hashes.length === count * SHA256_BYTES, "the fixture's hashes are 32 bytes a route")
+  const [firstRoute, ...rest] = values
+  const [, ...afterSecondRoute] = rest
+  const wrongVersion = withVersion({bytes: indexBytes, version: VERSION_UNKNOWN})
+  const unheldRoute = u32s([STRING_INDEX_UNHELD, ...rest])
+  const twiceRoute = u32s([firstRoute, firstRoute, ...afterSecondRoute])
+
+  return [
+    {message: "a shard as an index", result: decodeTripPathIndex(shardBytes), reason: PackedRefusal.kindMismatch},
+    {message: "an unknown version", result: decodeTripPathIndex(wrongVersion), reason: PackedRefusal.unsupportedVersion},
+    {
+      message: "a hash section of another length than 32 bytes a route",
+      result: indexWithSection({index: INDEX_HASH_SECTION, section: dropLast({bytes: hashes, count: 1})}),
+      reason: PackedRefusal.badSectionSize
+    },
+    {
+      message: "a column section of another length than three values a route",
+      result: indexWithSection({index: INDEX_COLUMN_SECTION, section: dropLast({bytes: columns, count: U32_BYTES})}),
+      reason: PackedRefusal.badSectionSize
+    },
+    {
+      message: "a route that names a string the table lacks",
+      result: indexWithSection({index: INDEX_COLUMN_SECTION, section: unheldRoute}),
+      reason: TripPathRefusal.badIndex
+    },
+    {
+      message: "two records of one route",
+      result: indexWithSection({index: INDEX_COLUMN_SECTION, section: twiceRoute}),
+      reason: TripPathRefusal.badIndex
+    }
+  ]
 }
 
-await checkStoredStream()
+function checkRefusals(cases) {
+  for (const {message, result, reason} of cases) {
+    deepStrictEqual(result, refusal(reason), message)
+  }
+}
+
+function checkHashWidth() {
+  const hashes = splitSections(indexBytes)[INDEX_HASH_SECTION]
+  deepStrictEqual(hashes.length, expected.index.records.length * SHA256_BYTES, "the fixture's hashes are 32 bytes a route")
+}
+
+await checkStoredStreams()
 checkShard()
 checkIndex()
-checkShardRefusals()
-checkShardTripRefusals()
-checkIndexRefusals()
+checkRefusals(shardContainerCases())
+checkRefusals(shardContentCases())
+checkRefusals(shardTripCases())
+checkRefusals(indexCases())
+checkHashWidth()
 console.log("trip path shard checks passed")
