@@ -6,15 +6,16 @@ defmodule GobusgoWeb.Mcp.Resource do
   `resources/read`; the endpoint changes for none.
 
   `definition/0` is the resource as `resources/list` shows it: a map with the
-  string keys `"uri"`, `"name"`, `"description"`, and `"mimeType"`. The uri is
-  unique among the resources of the registry and is the order the list
-  answers in.
+  string keys `"uri"`, `"name"`, `"description"`, and `"mimeType"`, and
+  optionally `"_meta"`, a map the list shows and `resources/read` repeats on
+  the content. The uri is unique among the resources of the registry and is
+  the order the list answers in.
 
   `read/0` returns `{:ok, text}`, the resource's text content, or
   `{:error, :unavailable}` while its source holds nothing to read yet, which
   the endpoint answers as an internal error.
   """
 
-  @callback definition() :: %{required(String.t()) => String.t()}
+  @callback definition() :: %{required(String.t()) => String.t() | map()}
   @callback read() :: {:ok, String.t()} | {:error, :unavailable}
 end

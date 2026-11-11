@@ -4,7 +4,7 @@ config :esbuild,
   version: "0.25.5",
   default: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
+      ~w(js/app.js js/trip_app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
@@ -128,7 +128,15 @@ config :gobusgo, GobusgoWeb.Endpoint,
 
 # The modules the MCP endpoint serves, implementing GobusgoWeb.Mcp.Tool and
 # GobusgoWeb.Mcp.Resource.
-config :gobusgo, GobusgoWeb.Mcp, tools: [], resources: []
+config :gobusgo, GobusgoWeb.Mcp,
+  tools: [GobusgoWeb.Mcp.Tools.PlanTrip],
+  resources: [GobusgoWeb.Mcp.Resources.TripApp]
+
+# The endpoint's own tests run against a registry that holds none, and the
+# tests of a tool or a resource configure the one they read.
+if config_env() == :test do
+  config :gobusgo, GobusgoWeb.Mcp, tools: [], resources: []
+end
 
 # The sources run on their schedule everywhere except under test, where no
 # request may leave the machine.

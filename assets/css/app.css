@@ -1401,6 +1401,29 @@ a.inline-target {
   font-size: 0.75rem;
 }
 
+/* The trip planner app, which an AI host renders in a frame of its own: the
+   Trip tab's classes inside a column of its own, with the data credits under it. */
+.mcp-trip-app {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.mcp-trip-heading {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.mcp-trip-credits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 12px;
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
+}
+
 .trip-dot {
   flex: none;
   width: 10px;

@@ -55,6 +55,9 @@ export const GROUP_COUNT_MAX = Object.freeze({
 /** The most recent trips the browser keeps. */
 export const RECENT_TRIP_COUNT_MAX = 8
 
+/** The center a search ranks by before it knows where the rider is: downtown Seattle. */
+export const SEARCH_CENTER_DEFAULT = Object.freeze({lat: 47.6062, lon: -122.3321})
+
 /** The most decoded shards of one kind the session keeps. */
 export const SHARD_CACHE_COUNT_MAX = 16
 

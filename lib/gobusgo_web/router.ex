@@ -19,6 +19,10 @@ defmodule GobusgoWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :public_files do
+    plug GobusgoWeb.PublicCors
+  end
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -52,9 +56,23 @@ defmodule GobusgoWeb.Router do
 
     get "/agencies", AgencyController, :index
     get "/agencies/:id", AgencyController, :show
+  end
+
+  # The manifests an MCP App reads from a sandbox of another origin.
+  scope "/api", GobusgoWeb do
+    pipe_through [:api, :public_files]
+
     get "/routing/manifest", RoutingManifestController, :show
+    head "/routing/manifest", RoutingManifestController, :show
     get "/addresses/manifest", AddressManifestController, :show
+    head "/addresses/manifest", AddressManifestController, :show
     get "/intersections/manifest", IntersectionManifestController, :show
+    head "/intersections/manifest", IntersectionManifestController, :show
+  end
+
+  scope "/api", GobusgoWeb do
+    pipe_through :api
+
     match :*, "/*path", FallbackController, :not_found
   end
 end
