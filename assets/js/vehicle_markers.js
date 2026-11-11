@@ -17,6 +17,8 @@ import {
 import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
+import {TableKind} from "./offline_answers"
+import {isFallbackDue} from "./scheduled_path"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
 import {
@@ -619,8 +621,10 @@ export const VehicleMarkers = {
     this.events = pageEvents(this)
 
     // Whether the markers held are the saved schedule's, which an offline
-    // page sends itself in place of every agency's.
+    // page sends itself in place of every agency's, and the reader of the
+    // straight-line paths of their trips.
     this.isScheduled = false
+    this.fallbackPathOf = null
 
     this.events.handle("vehicle-markers:agency", ({agency_id: agencyId, fetched_at_ms: fetchedAtMs, markers}) => {
       assertCondition(Number.isSafeInteger(fetchedAtMs), `an agency's fetch time ${fetchedAtMs} is a whole number of milliseconds`)
@@ -632,16 +636,29 @@ export const VehicleMarkers = {
       this.updateView(markers)
     })
 
-    // The saved schedule's markers stand where the schedule puts them, on a
-    // clock of their own that no prediction reads.
-    this.events.handle(SCHEDULED_MARKERS_EVENT_NAME, ({markers}) => {
+    // The saved schedule's markers move along their trips' paths on a clock
+    // of their own, the device's, since the schedule is in the device's time.
+    // The first placement takes over from every agency's markers; a later one
+    // follows the placement before it like an agency's fetch.
+    this.events.handle(SCHEDULED_MARKERS_EVENT_NAME, ({markers, fallbackPathOf}) => {
+      const isFirst = !this.isScheduled
       this.isScheduled = true
+      this.fallbackPathOf = fallbackPathOf
       this.markersByAgency = new Map([[SCHEDULED_KEY, markers]])
-      this.resetTracking()
+
+      if (isFirst) {
+        this.resetTracking()
+      }
+
       this.clocks.set(SCHEDULED_KEY, {fetchedAtMs: Date.now(), receivedAtMs: performance.now()})
       this.trackFetch({agencyId: SCHEDULED_KEY, markers})
-      this.drawInSource()
-      this.tier = STILL_TIER
+
+      if (isFirst) {
+        this.drawInSource()
+        this.tier = STILL_TIER
+      }
+
+      this.decideMotion()
       this.draw({isSnapped: false})
       this.updateView(markers)
     })
@@ -651,6 +668,7 @@ export const VehicleMarkers = {
     this.events.whenLive(() => {
       if (this.isScheduled) {
         this.isScheduled = false
+        this.fallbackPathOf = null
         this.markersByAgency = new Map()
         this.resetTracking()
         this.drawInSource()
@@ -1126,8 +1144,44 @@ export const VehicleMarkers = {
   },
 
   // The prepared path of the trip `marker` serves, or missing where the
-  // page holds none.
+  // page holds none: the road path read from the shards, and for a vehicle
+  // of the saved schedule whose trip the shards cannot serve, the straight
+  // lines between its stops.
   pathOf(marker) {
+    const road = this.roadPathOf(marker)
+
+    if (road.kind === PathLookupKind.found) {
+      return road
+    }
+
+    return this.straightPathOf(marker)
+  },
+
+  // The prepared straight-line path of the saved schedule's trip of
+  // `marker`, where its trip takes one, and missing otherwise.
+  straightPathOf(marker) {
+    const isReadable = this.fallbackPathOf !== null
+    const isDue = isReadable && isFallbackDue({marker, files: this.tripPathFiles, nowMs: performance.now()})
+
+    if (!isDue) {
+      return PATH_MISSING
+    }
+
+    const read = this.fallbackPathOf(marker.id)
+
+    if (read.kind !== TableKind.found) {
+      return PATH_MISSING
+    }
+
+    if (!this.preparedPaths.has(read.path)) {
+      this.preparedPaths.set(read.path, preparePath(read.path))
+    }
+
+    return {kind: PathLookupKind.found, path: this.preparedPaths.get(read.path)}
+  },
+
+  // The prepared road path the page holds for the trip of `marker`.
+  roadPathOf(marker) {
     const hasTrip = typeof marker.trip_id === "string"
     const hasDate = Number.isSafeInteger(marker.service_date_ms)
     const isOnTrip = hasTrip && hasDate
@@ -1326,8 +1380,9 @@ export const VehicleMarkers = {
       const marker = byId.get(markerId)
       const tracked = this.tracked.get(markerId)
       const isHeld = marker !== undefined && tracked !== undefined
+      const isReported = isHeld && marker.is_saved_schedule !== true
 
-      if (isHeld) {
+      if (isReported) {
         const tie = reportTie(tracked)
 
         if (tie.kind === TieKind.tie) {
@@ -1369,6 +1424,7 @@ export const VehicleMarkers = {
     }
 
     this.keepPaths(planned.paths)
+    this.keepFallbacks()
   },
 
   // Fetches the manifest and hands the outcome to the files' rules, then
@@ -1421,15 +1477,9 @@ export const VehicleMarkers = {
       const isNewPath = isFound && tracked.path !== lookup.path
 
       if (isNewPath) {
-        const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
-        let anchored = trackedVehicle({tracked, marker, path: lookup.path, atMs})
-
-        if (!this.onCanvas.has(markerId)) {
-          anchored = placedAtFetch({tracked: anchored, atMs})
+        if (this.anchorTo({markerId, marker, path: lookup.path, nowMs})) {
           isPlacedInSource = true
         }
-
-        this.tracked.set(markerId, anchored)
       }
     }
 
@@ -1440,6 +1490,72 @@ export const VehicleMarkers = {
     this.decideMotion()
     const held = Array.from(byId.values())
     this.updateView(held)
+  },
+
+  // Anchors the vehicle of `markerId` again on `path`, the page's
+  // monotonic `nowMs`, and places it at its prediction where the source
+  // draws it; gives whether it did.
+  anchorTo({markerId, marker, path, nowMs}) {
+    const atMs = this.sourceNowMs({agencyId: this.agencyOfMarker.get(markerId), nowMs})
+    const tracked = this.tracked.get(markerId)
+    let anchored = trackedVehicle({tracked, marker, path, atMs})
+    const isInSource = !this.onCanvas.has(markerId)
+
+    if (isInSource) {
+      anchored = placedAtFetch({tracked: anchored, atMs})
+    }
+
+    this.tracked.set(markerId, anchored)
+    return isInSource
+  },
+
+  // Gives the saved schedule's vehicles that show their ties' zoom and have
+  // no path the straight-line path of their trip once the shards cannot
+  // serve it, places those the source draws, and decides the tier again so
+  // they move.
+  keepFallbacks() {
+    if (!this.isScheduled) {
+      return
+    }
+
+    const byId = markersById(this.markersByAgency)
+    const nowMs = performance.now()
+    let isAnchored = false
+    let isPlacedInSource = false
+
+    for (const markerId of this.tiedIds) {
+      const marker = byId.get(markerId)
+      const tracked = this.tracked.get(markerId)
+      const isHeld = marker !== undefined && tracked !== undefined
+
+      if (!isHeld) {
+        continue
+      }
+
+      const isPathed = tracked.path !== null
+
+      if (isPathed) {
+        continue
+      }
+
+      const lookup = this.pathOf(marker)
+
+      if (lookup.kind === PathLookupKind.found) {
+        isAnchored = true
+
+        if (this.anchorTo({markerId, marker, path: lookup.path, nowMs})) {
+          isPlacedInSource = true
+        }
+      }
+    }
+
+    if (isPlacedInSource) {
+      this.draw({isSnapped: false})
+    }
+
+    if (isAnchored) {
+      this.decideMotion()
+    }
   },
 
   // A page hidden moves every marker back to the source and updates

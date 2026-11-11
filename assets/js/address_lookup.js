@@ -335,3 +335,26 @@ export function searchAddress({text, table, near}) {
   const found = {kind: LookupKind.found, query, results}
   return found
 }
+
+/**
+ * The results of the outcomes of `searchAddress` over several counties'
+ * shards, ranked together as one search ranks its own and at most
+ * `RESULT_COUNT_MAX`, so a street that runs across a county line is answered
+ * from the shards of either side. An outcome that found nothing adds
+ * nothing; no outcome that found is an empty list.
+ */
+export function mergedResults(outcomes) {
+  assertCondition(Array.isArray(outcomes), "address lookup: the outcomes are not a list")
+  const candidates = []
+
+  for (const outcome of outcomes) {
+    if (outcome.kind === LookupKind.found) {
+      for (const result of outcome.results) {
+        candidates.push(result)
+      }
+    }
+  }
+
+  candidates.sort(byRank)
+  return candidates.slice(0, RESULT_COUNT_MAX)
+}

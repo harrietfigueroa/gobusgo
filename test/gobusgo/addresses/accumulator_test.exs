@@ -99,7 +99,35 @@ defmodule Gobusgo.Addresses.AccumulatorTest do
              accepted: 1,
              invalid: 5,
              suffix_unsupported: 1,
-             outside_bounds: 1
+             outside_bounds: 1,
+             inactive: 0
+           }
+  end
+
+  test "a record the county marks inactive is counted and left out" do
+    result = finish([record([]), record(house_number: "87", is_active: false)])
+
+    assert result.counts.read == 2
+    assert result.counts.accepted == 1
+    assert result.counts.inactive == 1
+    assert result.address_count == 1
+  end
+
+  test "counts/1 is what the counts of finish/1 would be so far" do
+    accumulator =
+      Enum.reduce(
+        [record([]), record(lat: nil), record(is_active: false)],
+        Accumulator.new(nil),
+        &Accumulator.add(&2, &1)
+      )
+
+    assert Accumulator.counts(accumulator) == %{
+             read: 3,
+             accepted: 1,
+             invalid: 1,
+             suffix_unsupported: 0,
+             outside_bounds: 0,
+             inactive: 1
            }
   end
 

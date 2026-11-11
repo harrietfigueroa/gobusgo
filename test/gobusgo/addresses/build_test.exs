@@ -74,6 +74,16 @@ defmodule Gobusgo.Addresses.BuildTest do
     Build.run(options)
   end
 
+  # The one county's entry of the combined manifest, and its build.
+  defp manifest(server) do
+    case Addresses.manifest(server) do
+      {:ok, %{"counties" => [county]}} -> {:ok, county}
+      :none -> :none
+    end
+  end
+
+  defp built(server), do: Addresses.built(server, :test)
+
   defp stored_files(tmp_dir) do
     tmp_dir
     |> Path.join("addresses/**")
@@ -86,7 +96,7 @@ defmodule Gobusgo.Addresses.BuildTest do
   test "builds the shards, the index, and the manifest that names them", context do
     assert run(context) == {:ok, %{outcome: :built}}
 
-    assert {:ok, manifest} = Addresses.manifest(context.server)
+    assert {:ok, manifest} = manifest(context.server)
     assert manifest["addressCount"] == 4
     assert manifest["streetCount"] == 3
     assert manifest["sourceLastEditAt"] == "2026-11-09T12:00:00Z"
@@ -109,7 +119,7 @@ defmodule Gobusgo.Addresses.BuildTest do
   test "stores an index and shards a reader decodes to the addresses that were accepted",
        %{tmp_dir: tmp_dir} = context do
     run(context)
-    {:ok, manifest} = Addresses.manifest(context.server)
+    {:ok, manifest} = manifest(context.server)
 
     index_stream =
       File.read!(Path.join(tmp_dir, String.trim_leading(manifest["index"]["path"], "/")))
@@ -144,7 +154,7 @@ defmodule Gobusgo.Addresses.BuildTest do
   test "names each file by its prefix and the hash of its stream",
        %{tmp_dir: tmp_dir} = context do
     run(context)
-    {:ok, manifest} = Addresses.manifest(context.server)
+    {:ok, manifest} = manifest(context.server)
 
     for %{"path" => path, "sha256" => sha256} <- [manifest["index"] | manifest["shards"]] do
       assert path =~ ~r{/(addresses|addresses-index)-#{sha256}\.bin\.gz\z}
@@ -154,12 +164,12 @@ defmodule Gobusgo.Addresses.BuildTest do
 
   test "leaves out the addresses outside the bounds and says how many", context do
     run(context)
-    assert {:ok, %{"addressCount" => 4}} = Addresses.manifest(context.server)
+    assert {:ok, %{"addressCount" => 4}} = manifest(context.server)
   end
 
   test "keeps every address with no bounds", context do
     assert {:ok, _outcome} = run(context, bounds: :none)
-    assert {:ok, %{"addressCount" => 5}} = Addresses.manifest(context.server)
+    assert {:ok, %{"addressCount" => 5}} = manifest(context.server)
   end
 
   test "a second run of the same day over the same input builds nothing", context do
@@ -187,16 +197,16 @@ defmodule Gobusgo.Addresses.BuildTest do
       |> Enum.reject(&(&1 =~ "manifest-"))
 
     assert later_names == first_names
-    assert {:ok, %{built_on: ~D[2026-11-11]}} = Addresses.built(context.server)
+    assert {:ok, %{built_on: ~D[2026-11-11]}} = built(context.server)
   end
 
   test "a changed address gives other names and a new manifest", context do
     run(context)
-    {:ok, first} = Addresses.manifest(context.server)
+    {:ok, first} = manifest(context.server)
     changed = List.replace_at(records(), 0, record(house_number: "85", lat: 47.61))
 
     assert run(Map.put(context, :records, changed)) == {:ok, %{outcome: :built}}
-    {:ok, second} = Addresses.manifest(context.server)
+    {:ok, second} = manifest(context.server)
 
     refute second["inputsSha256"] == first["inputsSha256"]
     refute second["shards"] == first["shards"]
@@ -211,7 +221,7 @@ defmodule Gobusgo.Addresses.BuildTest do
     assert run(context, source_options: [records: records(), pages: pages]) ==
              {:ok, %{outcome: :built}}
 
-    assert {:ok, %{"addressCount" => 4}} = Addresses.manifest(context.server)
+    assert {:ok, %{"addressCount" => 4}} = manifest(context.server)
   end
 
   test "a page that failed is an error with its reason and writes nothing", context do
@@ -220,9 +230,9 @@ defmodule Gobusgo.Addresses.BuildTest do
 
     result = run(context, source_options: [records: records(), pages: pages])
 
-    assert result == {:error, {:fetch, failure}}
+    assert result == {:error, {:fetch, :test, failure}}
     assert stored_files(context.tmp_dir) == []
-    assert Addresses.manifest(context.server) == :none
+    assert manifest(context.server) == :none
   end
 
   test "a failed run's log line carries its reason in the message", context do
@@ -231,37 +241,66 @@ defmodule Gobusgo.Addresses.BuildTest do
         run(context, source_options: [answer: {:error, {:transport, :nxdomain}}])
       end)
 
-    assert log =~ "Address shards not built: {:fetch, {:transport, :nxdomain}}"
+    assert log =~ "Address shards not built: {:fetch, :test, {:transport, :nxdomain}}"
   end
 
   test "a failed fetch is an error and keeps the current build", context do
     run(context)
-    {:ok, current} = Addresses.manifest(context.server)
+    {:ok, current} = manifest(context.server)
 
     result = run(context, source_options: [answer: {:error, {:transport, :timeout}}])
 
-    assert result == {:error, {:fetch, {:transport, :timeout}}}
-    assert Addresses.manifest(context.server) == {:ok, current}
+    assert result == {:error, {:fetch, :test, {:transport, :timeout}}}
+    assert manifest(context.server) == {:ok, current}
   end
 
   test "records fewer than the layer's count are an error and write nothing", context do
     result = run(context, source_options: [records: records(), record_count: 6])
 
-    assert result == {:error, {:record_count_differs, 5, 6}}
+    assert result == {:error, {:record_count_differs, :test, 5, 6}}
     assert stored_files(context.tmp_dir) == []
-    assert Addresses.manifest(context.server) == :none
+    assert manifest(context.server) == :none
+  end
+
+  describe "one county" do
+    test "the manifest names the county with its layer's last edit and record count", context do
+      run(context)
+
+      {:ok, manifest} = manifest(context.server)
+      assert manifest["county"] == "test"
+      assert manifest["sourceLastEditAt"] == "2026-11-09T12:00:00Z"
+      assert manifest["recordCount"] == 5
+    end
+
+    test "the manifest is stored under a name that holds the county", context do
+      run(context)
+
+      assert [manifest_file] =
+               context.tmp_dir |> stored_files() |> Enum.filter(&(&1 =~ "/manifest-"))
+
+      assert manifest_file =~ ~r{^addresses/dt=2026-11-10/manifest-test-20261110T}
+    end
+
+    test "a run past the county's deadline is ended, named, with nothing written", context do
+      slow = Stream.map([{:records, records(), 1}], fn page -> Process.sleep(500) && page end)
+      options = [source_options: [records: records(), pages: slow], deadline_ms: 50]
+
+      assert run(context, options) == {:error, {:deadline_exceeded, :test, 50}}
+      assert stored_files(context.tmp_dir) == []
+      assert manifest(context.server) == :none
+    end
   end
 
   test "a failed write is an error and records no manifest", context do
     result = run(context, write_options: [backend: FailingBackend])
 
     assert result == {:error, {:write, :io_failure}}
-    assert Addresses.manifest(context.server) == :none
+    assert manifest(context.server) == :none
   end
 
   test "a build that outgrows its heap cap is killed and records no manifest", context do
     assert run(context, heap_words_max: 2_000) == {:error, :killed}
-    assert Addresses.manifest(context.server) == :none
+    assert manifest(context.server) == :none
     assert stored_files(context.tmp_dir) == []
   end
 
@@ -285,7 +324,7 @@ defmodule Gobusgo.Addresses.BuildTest do
   test "a process started over a stored build holds its manifest and when it was built",
        context do
     run(context)
-    {:ok, manifest} = Addresses.manifest(context.server)
+    {:ok, manifest} = manifest(context.server)
 
     restarted = Module.concat(__MODULE__, "Restarted#{context.line}")
 
@@ -293,21 +332,21 @@ defmodule Gobusgo.Addresses.BuildTest do
       id: :restarted
     )
 
-    assert Addresses.manifest(restarted) == {:ok, manifest}
-    assert {:ok, %{built_on: ~D[2026-11-10], built_at: @now}} = Addresses.built(restarted)
-    assert {:ok, %{inputs_sha256: sha256}} = Addresses.built(restarted)
+    assert manifest(restarted) == {:ok, manifest}
+    assert {:ok, %{built_on: ~D[2026-11-10], built_at: @now}} = built(restarted)
+    assert {:ok, %{inputs_sha256: sha256}} = built(restarted)
     assert Base.encode16(sha256, case: :lower) == manifest["inputsSha256"]
   end
 
   test "a process over no stored build holds no manifest", context do
-    assert Addresses.manifest(context.server) == :none
-    assert Addresses.built(context.server) == :none
+    assert manifest(context.server) == :none
+    assert built(context.server) == :none
   end
 
   test "the newest of two stored builds is the one a start finds", context do
     run(context)
     run(Map.put(context, :now, ~U[2026-11-11 12:00:00Z]))
-    {:ok, newest} = Addresses.manifest(context.server)
+    {:ok, newest} = manifest(context.server)
 
     restarted = Module.concat(__MODULE__, "Restarted#{context.line}")
 
@@ -315,7 +354,7 @@ defmodule Gobusgo.Addresses.BuildTest do
       id: :restarted
     )
 
-    assert Addresses.manifest(restarted) == {:ok, newest}
+    assert manifest(restarted) == {:ok, newest}
     assert newest["builtAt"] == "2026-11-11T12:00:00Z"
   end
 end

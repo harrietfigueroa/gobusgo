@@ -12,7 +12,7 @@
 // files are not saved, so their searches need a connection.
 
 import {loadAddressIndex, loadAddressShard} from "./address_file.js"
-import {LookupKind, searchAddress, shardFor} from "./address_lookup.js"
+import {LookupKind, mergedResults, searchAddress, shardFor} from "./address_lookup.js"
 import {loadIntersectionIndex, loadIntersectionShard} from "./intersection_file.js"
 import {IntersectionLookupKind, planIntersection, searchIntersection} from "./intersection_lookup.js"
 import {IndexKind} from "./offline_bundle.js"
@@ -125,8 +125,43 @@ async function loadIndex({manifestPath, load}) {
   return {kind: SourceKind.ready, index: decodedTable({loaded, path}), directory: directoryOf(path), shards: createShardCache({countMax: SHARD_CACHE_COUNT_MAX})}
 }
 
+async function loadCountyIndex(county) {
+  const path = county.index.path
+  const bytes = await fetchBytes(path)
+  const loaded = await loadAddressIndex(bytes)
+  return {county: county.county, index: decodedTable({loaded, path}), directory: directoryOf(path)}
+}
+
+// The address manifest names each county's build, and each county's index
+// is loaded; a county whose index fails to load is left out, so the others
+// still answer, and the source fails only when every county's does.
+async function loadAddressIndexes() {
+  const manifest = await fetchJson({path: ADDRESS_MANIFEST_PATH, cache: "no-cache"})
+  const pending = Array.from(manifest.counties, loadCountyIndex)
+  const settled = await Promise.allSettled(pending)
+  const counties = []
+
+  for (const outcome of settled) {
+    if (outcome.status === "fulfilled") {
+      counties.push(outcome.value)
+    } else {
+      console.warn("Address index not loaded", outcome.reason)
+    }
+  }
+
+  if (counties.length === 0) {
+    throw new Error("No county's address index loaded")
+  }
+
+  return {kind: SourceKind.ready, counties, shards: createShardCache({countMax: SHARD_CACHE_COUNT_MAX})}
+}
+
 async function loadShard({source, name, load}) {
   const path = source.directory + name
+  return await loadShardAt({source, path, load})
+}
+
+async function loadShardAt({source, path, load}) {
   const cached = source.shards.get(path)
 
   if (cached.kind === ShardCacheKind.cached) {
@@ -283,20 +318,34 @@ export function createSearchFiles() {
 
   async function addressResults({text, near}) {
     const source = sources.addresses
-    const shard = shardFor({index: source.index, text})
+    const pending = []
 
-    if (shard.kind !== LookupKind.found) {
-      return NO_RESULTS
+    for (const county of source.counties) {
+      const shard = shardFor({index: county.index, text})
+
+      if (shard.kind === LookupKind.found) {
+        const path = county.directory + shard.path
+        pending.push(countyOutcome({source, path, text, near}))
+      }
     }
 
-    const table = await loadShard({source, name: shard.path, load: loadAddressShard})
-    const found = searchAddress({text, table, near: [near.lon, near.lat]})
+    const settled = await Promise.allSettled(pending)
+    const outcomes = []
 
-    if (found.kind !== LookupKind.found) {
-      return NO_RESULTS
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        outcomes.push(outcome.value)
+      } else {
+        console.warn("Address shard not loaded", outcome.reason)
+      }
     }
 
-    return found.results
+    return mergedResults(outcomes)
+  }
+
+  async function countyOutcome({source, path, text, near}) {
+    const table = await loadShardAt({source, path, load: loadAddressShard})
+    return searchAddress({text, table, near: [near.lon, near.lat]})
   }
 
   async function intersectionResults({text, near}) {
@@ -356,7 +405,7 @@ export function createSearchFiles() {
   return Object.freeze({
     warm({routingManifestUrl}) {
       start({name: "places", load: loadPlaces})
-      start({name: "addresses", load: () => loadIndex({manifestPath: ADDRESS_MANIFEST_PATH, load: loadAddressIndex})})
+      start({name: "addresses", load: loadAddressIndexes})
       start({name: "intersections", load: () => loadIndex({manifestPath: INTERSECTION_MANIFEST_PATH, load: loadIntersectionIndex})})
       start({name: "stops", load: () => loadStops(routingManifestUrl)})
     },

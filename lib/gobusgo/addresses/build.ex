@@ -5,13 +5,16 @@ defmodule Gobusgo.Addresses.Build do
   @reason_inspect_limit 50
 
   @moduledoc """
-  One run of the address build: reads a county's whole address layer, page
-  by page (`Gobusgo.Addresses.Source`), into the streets the shards hold,
-  and, when what it read is not what the current build holds or the current
-  build is not from today, cuts the streets into shards, writes every file
-  through `Gobusgo.Writer`, and hands the manifest to `Gobusgo.Addresses`.
-  A run that reads another count of records than the layer reports builds
-  nothing.
+  One run of the address build for one county: reads the county's whole
+  address layer, page by page (`Gobusgo.Addresses.Source`), into the streets
+  its shards hold, and, when what it read is not what the county's current
+  build holds or that build is not from today, cuts the streets into
+  shards, writes the county's files and its manifest through
+  `Gobusgo.Writer`, and hands the manifest to `Gobusgo.Addresses`. A fetch
+  or page that fails, records read that differ in count from the layer's,
+  or a run past the county's deadline end the run with the county's current
+  files in place, the other counties' untouched, and the reason names the
+  county.
 
   The streets are cut into shards by `Gobusgo.Addresses.Shards`, each at
   most #{@shard_bytes_max} bytes as `Gobusgo.Addresses.Format` writes it,
@@ -54,9 +57,10 @@ defmodule Gobusgo.Addresses.Build do
   ## Options
 
     * `:server` (required): the `Gobusgo.Addresses` process.
-    * `:source`: the `Gobusgo.Addresses.Source` module. Defaults to
-      `Gobusgo.Addresses.Source.King`.
+    * `:source` (required): the county's `Gobusgo.Addresses.Source` module.
     * `:source_options`: options for the source's `fetch/1`.
+    * `:deadline_ms`: how long the run may take before it is ended.
+      Defaults to the source's `run_deadline_ms/0`.
     * `:bounds`: `{:bounds, bounds}` to keep the positions inside `bounds`
       or `:none` for every position. Defaults to the bounds of the basemap's
       manifest, or `:none` where the base directory holds none.
@@ -110,8 +114,9 @@ defmodule Gobusgo.Addresses.Build do
     options =
       Keyword.validate!(options, [
         :server,
-        source: Gobusgo.Addresses.Source.King,
+        :source,
         source_options: [],
+        deadline_ms: nil,
         bounds: nil,
         clock: &DateTime.utc_now/0,
         write_options: [],
@@ -125,25 +130,48 @@ defmodule Gobusgo.Addresses.Build do
     finish(outcome, %{started_ms: started_ms, options: options})
   end
 
+  @doc """
+  The counties the address shards are built from, each with the options of
+  its `fetch/1`, in the order their builds run.
+  """
+  @spec sources() :: [{module(), keyword()}, ...]
+  def sources do
+    [
+      {Gobusgo.Addresses.Source.King, []},
+      {Gobusgo.Addresses.Source.Pierce, []},
+      {Gobusgo.Addresses.Source.Snohomish, []}
+    ]
+  end
+
   defp fetch_and_build(options, now) do
     source = Keyword.fetch!(options, :source)
-    fetch_started_ms = System.monotonic_time(:millisecond)
+    county = source.name()
+    started_ms = System.monotonic_time(:millisecond)
+    deadline_ms = deadline_ms(options, source)
 
     case source.fetch(Keyword.fetch!(options, :source_options)) do
       {:ok, layer} ->
-        fetch_ms = System.monotonic_time(:millisecond) - fetch_started_ms
-
         build_in_process(%{
           options: options,
           now: now,
+          county: county,
           layer: layer,
           bounds: bounds(options),
-          current: Addresses.built(Keyword.fetch!(options, :server)),
-          fetch_ms: fetch_ms
+          current: Addresses.built(Keyword.fetch!(options, :server), county),
+          deadline_ms: deadline_ms,
+          deadline_at_ms: started_ms + deadline_ms,
+          fetch_ms: System.monotonic_time(:millisecond) - started_ms
         })
 
       {:error, reason} ->
-        {:failed, {:fetch, reason}}
+        {:failed, {:fetch, county, reason}}
+    end
+  end
+
+  defp deadline_ms(options, source) do
+    case Keyword.fetch!(options, :deadline_ms) do
+      nil -> source.run_deadline_ms()
+      deadline_ms -> deadline_ms
     end
   end
 
@@ -199,7 +227,15 @@ defmodule Gobusgo.Addresses.Build do
         max_heap_size: heap_cap(heap_words_max)
       ])
 
-    {result, heap_words_peak} = await(%{tag: tag, pid: pid, monitor: monitor, peak: 0})
+    {result, heap_words_peak} =
+      await(%{
+        tag: tag,
+        pid: pid,
+        monitor: monitor,
+        peak: 0,
+        deadline_at_ms: input.deadline_at_ms
+      })
+
     Process.demonitor(monitor, [:flush])
 
     receive do
@@ -210,18 +246,31 @@ defmodule Gobusgo.Addresses.Build do
 
     case result do
       {:ok, outcome} -> annotate(outcome, %{heap_words_peak: heap_words_peak})
+      :deadline -> {:failed, {:deadline_exceeded, input.county, input.deadline_ms}}
       {:exit, :killed} -> {:killed, %{heap_words_max: heap_words_max}}
       {:exit, reason} -> exit(reason)
     end
   end
 
+  # Past the deadline the build process is killed and its exit awaited, so
+  # the run ends with the process gone.
   defp await(%{tag: tag, pid: pid, monitor: monitor, peak: peak} = state) do
     receive do
       {^tag, outcome} -> {{:ok, outcome}, peak}
       {:DOWN, ^monitor, :process, ^pid, reason} -> {{:exit, reason}, peak}
     after
       @sample_interval_ms ->
-        await(%{state | peak: max(peak, heap_words(pid))})
+        is_past_deadline = System.monotonic_time(:millisecond) >= state.deadline_at_ms
+
+        if is_past_deadline do
+          Process.exit(pid, :kill)
+
+          receive do
+            {:DOWN, ^monitor, :process, ^pid, _reason} -> {:deadline, peak}
+          end
+        else
+          await(%{state | peak: max(peak, heap_words(pid))})
+        end
     end
   end
 
@@ -237,24 +286,30 @@ defmodule Gobusgo.Addresses.Build do
 
   defp annotate(other, _extra), do: other
 
-  defp build(input) do
+  defp build(%{county: county, layer: layer} = input) do
     build_started_ms = System.monotonic_time(:millisecond)
+    accumulator = Accumulator.new(bounds_value(input.bounds))
 
-    case read_pages(input.layer.pages, Accumulator.new(bounds_value(input.bounds))) do
+    case read_pages(layer.pages, accumulator) do
       {:read, accumulator, request_count} ->
         read_ms = System.monotonic_time(:millisecond) - build_started_ms
+        read_count = Accumulator.counts(accumulator).read
 
-        decide(
-          Map.merge(input, %{
-            result: Accumulator.finish(accumulator),
-            request_count: request_count,
-            read_ms: read_ms,
-            build_started_ms: build_started_ms
-          })
-        )
+        if read_count == layer.record_count do
+          decide(
+            Map.merge(input, %{
+              result: Accumulator.finish(accumulator),
+              request_count: request_count,
+              read_ms: read_ms,
+              build_started_ms: build_started_ms
+            })
+          )
+        else
+          {:failed, {:record_count_differs, county, read_count, layer.record_count}}
+        end
 
       {:failed, reason} ->
-        {:failed, {:fetch, reason}}
+        {:failed, {:fetch, county, reason}}
     end
   end
 
@@ -269,27 +324,24 @@ defmodule Gobusgo.Addresses.Build do
     end)
   end
 
-  defp decide(%{result: result, layer: layer} = input) do
+  defp decide(%{result: result} = input) do
     today = DateTime.to_date(input.now)
 
     summary = %{
       counts: result.counts,
       street_count: length(result.streets),
       address_count: result.address_count,
+      county: input.county,
+      record_count: input.layer.record_count,
       request_count: input.request_count,
       fetch_ms: input.fetch_ms,
       read_ms: input.read_ms
     }
 
-    cond do
-      result.counts.read != layer.record_count ->
-        {:failed, {:record_count_differs, result.counts.read, layer.record_count}}
-
-      unchanged?(input.current, %{sha256: result.sha256, today: today}) ->
-        {:unchanged, summary}
-
-      true ->
-        write_files(Map.put(input, :summary, summary))
+    if unchanged?(input.current, %{sha256: result.sha256, today: today}) do
+      {:unchanged, summary}
+    else
+      write_files(Map.put(input, :summary, summary))
     end
   end
 
@@ -324,10 +376,15 @@ defmodule Gobusgo.Addresses.Build do
          :ok <-
            write_manifest(manifest, %{
              directory: directory,
+             county: input.county,
              now: now,
              write_options: write_options
            }) do
-      :ok = Addresses.record(Keyword.fetch!(options, :server), manifest.record)
+      :ok =
+        Addresses.record(
+          Keyword.fetch!(options, :server),
+          Map.put(manifest.record, :county, input.county)
+        )
 
       {:built,
        Map.merge(input.summary, %{
@@ -398,7 +455,9 @@ defmodule Gobusgo.Addresses.Build do
 
     body = %{
       "builtAt" => DateTime.to_iso8601(built_at),
+      "county" => Atom.to_string(input.county),
       "sourceLastEditAt" => DateTime.to_iso8601(input.layer.last_edit_at),
+      "recordCount" => input.layer.record_count,
       "inputsSha256" => Base.encode16(inputs_sha256, case: :lower),
       "addressCount" => input.result.address_count,
       "streetCount" => length(input.result.streets),
@@ -415,10 +474,16 @@ defmodule Gobusgo.Addresses.Build do
   defp file_entry(%{destination: destination, stored: stored}),
     do: Packed.file_entry("/" <> destination, stored)
 
-  defp write_manifest(manifest, %{directory: directory, now: now, write_options: write_options}) do
+  defp write_manifest(manifest, %{
+         directory: directory,
+         county: county,
+         now: now,
+         write_options: write_options
+       }) do
     destination =
       Addresses.manifest_destination(%{
         directory: directory,
+        county: county,
         built_at: now,
         inputs_sha256: manifest.record.inputs_sha256
       })
@@ -470,11 +535,14 @@ defmodule Gobusgo.Addresses.Build do
     counts = details.counts
 
     [
+      county: details.county,
+      record_count: details.record_count,
       read_count: counts.read,
       accepted_count: counts.accepted,
       invalid_count: counts.invalid,
       suffix_unsupported_count: counts.suffix_unsupported,
       outside_bounds_count: counts.outside_bounds,
+      inactive_count: counts.inactive,
       street_count: details.street_count,
       address_count: details.address_count,
       shard_count: Map.get(details, :shard_count, 0),

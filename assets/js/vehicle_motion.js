@@ -18,11 +18,16 @@ import {
   drawCorrected,
   pathBearingDegrees,
   predictPosition,
-  reportBefore
+  reportBefore,
+  scheduledAnchor
 } from "./vehicle_prediction.js"
 
-/** How a vehicle is drawn: predicted along its trip, at its last report, or where the fetch puts it. */
-export const MotionPlanKind = Object.freeze({predicted: "predicted", atReport: "atReport", asFetched: "asFetched"})
+/**
+ * How a vehicle is drawn: predicted along its trip, scheduled along its
+ * trip for a vehicle of the saved schedule, at its last report, or where the
+ * fetch puts it.
+ */
+export const MotionPlanKind = Object.freeze({predicted: "predicted", scheduled: "scheduled", atReport: "atReport", asFetched: "asFetched"})
 
 /** Whether a vehicle names a trip whose path the page asks for. */
 export const PathTripKind = Object.freeze({trip: "trip", none: "none"})
@@ -113,11 +118,23 @@ function atPoint(position) {
 }
 
 /**
- * How `marker`, as the server sends it, is drawn: predicted from its
- * report for a reported vehicle on a trip, at its report for a stale one
- * or a reported one on no trip, and where the fetch puts it otherwise.
+ * How `marker`, as the server sends it or as the saved schedule places it,
+ * is drawn: scheduled along its trip's path for a marker the saved schedule
+ * places on a trip, predicted from its report for a reported vehicle on a
+ * trip, at its report for a stale one or a reported one on no trip, and
+ * where the fetch puts it otherwise.
  */
 export function motionPlan(marker) {
+  const isSavedSchedule = marker.is_saved_schedule === true
+  const hasSavedTrip = typeof marker.trip_id === "string"
+  const isScheduled = isSavedSchedule && hasSavedTrip
+
+  if (isScheduled) {
+    const {route_id: routeId, trip_id: tripId, service_date_ms: serviceDateMs} = marker
+    const position = Object.freeze([marker.lon, marker.lat])
+    return Object.freeze({kind: MotionPlanKind.scheduled, position, routeId, tripId, serviceDateMs})
+  }
+
   const hasReport = marker.report !== null
   const hasTrip = typeof marker.trip_id === "string"
   const hasDate = Number.isSafeInteger(marker.service_date_ms)
@@ -142,6 +159,27 @@ function predictedOf(tracked) {
   return tracked !== null && tracked.plan.kind === MotionPlanKind.predicted
 }
 
+// The state of a vehicle of the saved schedule after a placement, or after
+// its path arrives, at `atMs`: with a path it is anchored at the schedule's
+// distance along it, and with none it stands where the placement puts it. A
+// vehicle drawn before meets the new anchor with a correction.
+function scheduledVehicle({tracked, plan, path, atMs}) {
+  if (path === null) {
+    return Object.freeze({plan, path: null, previousReport: null, anchor: null, correction: SETTLED, drawn: atPoint(plan.position)})
+  }
+
+  const anchor = scheduledAnchor({path, atMs})
+  const prediction = predictPosition({path, anchor, atMs})
+  let correction = SETTLED
+
+  if (tracked !== null) {
+    correction = beginCorrection({drawn: tracked.drawn, prediction, atMs})
+  }
+
+  const drawn = drawCorrected({path, correction, prediction, atMs})
+  return Object.freeze({plan, path, previousReport: null, anchor, correction, drawn})
+}
+
 /**
  * The state of a vehicle after a fetch gives `marker`, or after its path,
  * `path`, prepared, or null for none, arrives, at `atMs`. A new report or a
@@ -151,6 +189,10 @@ function predictedOf(tracked) {
  */
 export function trackedVehicle({tracked, marker, path, atMs}) {
   const plan = motionPlan(marker)
+
+  if (plan.kind === MotionPlanKind.scheduled) {
+    return scheduledVehicle({tracked, plan, path, atMs})
+  }
 
   if (plan.kind !== MotionPlanKind.predicted) {
     return Object.freeze({plan, path: null, previousReport: null, anchor: null, correction: SETTLED, drawn: atPoint(plan.position)})
@@ -193,7 +235,7 @@ export function trackedVehicle({tracked, marker, path, atMs}) {
 
 /** The state of a vehicle drawn at `atMs`, with `drawn` where it stands then. */
 export function drawnVehicle({tracked, atMs}) {
-  if (tracked.plan.kind !== MotionPlanKind.predicted) {
+  if (tracked.anchor === null) {
     return tracked
   }
 
@@ -208,7 +250,7 @@ export function drawnVehicle({tracked, atMs}) {
  * there from where it stood.
  */
 export function placedAtFetch({tracked, atMs}) {
-  if (tracked.plan.kind !== MotionPlanKind.predicted) {
+  if (tracked.anchor === null) {
     return tracked
   }
 
@@ -231,7 +273,7 @@ function isSamePosition(source, target) {
  * `atMs` with a correction from there.
  */
 export function resumedOnCanvas({tracked, sourcePosition, atMs}) {
-  if (tracked.plan.kind !== MotionPlanKind.predicted) {
+  if (tracked.anchor === null) {
     return tracked
   }
 
@@ -247,10 +289,13 @@ export function resumedOnCanvas({tracked, sourcePosition, atMs}) {
   return drawnVehicle({tracked: resumed, atMs})
 }
 
-/** Whether the vehicle moves between fetches: a predicted one along its path. */
+/**
+ * Whether the vehicle moves between fetches: a predicted one along its
+ * path, and a scheduled one along the path its schedule gives.
+ */
 export function isAnimated(tracked) {
-  const isPredicted = tracked.plan.kind === MotionPlanKind.predicted
-  const isAlongPath = isPredicted && tracked.anchor.kind === PredictionKind.alongPath
+  const isAnchored = tracked.anchor !== null
+  const isAlongPath = isAnchored && tracked.anchor.kind === PredictionKind.alongPath
   return isAlongPath
 }
 
@@ -268,6 +313,7 @@ export function markerPositionKind(tracked) {
       return MarkerPositionKind.lastReport
     case MotionPlanKind.atReport:
       return MarkerPositionKind.lastReport
+    case MotionPlanKind.scheduled:
     case MotionPlanKind.asFetched:
       return MarkerPositionKind.fetched
     default:
@@ -275,12 +321,30 @@ export function markerPositionKind(tracked) {
   }
 }
 
+function scheduledPathTrip({routeId, tripId, serviceDateMs}) {
+  const hasRoute = typeof routeId === "string" && routeId !== ""
+  const hasDate = Number.isSafeInteger(serviceDateMs)
+  const isNamed = hasRoute && hasDate
+
+  if (!isNamed) {
+    return NO_TRIP
+  }
+
+  const trip = Object.freeze({tripId, routeId, serviceDateMs})
+  return Object.freeze({kind: PathTripKind.trip, trip})
+}
+
 /**
- * The trip whose path a predicted vehicle is drawn along, with its
- * `tripId`, `routeId`, and `serviceDateMs`, or none for a vehicle that is
- * not predicted or names no route.
+ * The trip whose path a predicted or scheduled vehicle is drawn along, with
+ * its `tripId`, `routeId`, and `serviceDateMs`, or none for a vehicle that
+ * is neither, names no route, or is scheduled on a date whose snapshot is
+ * not saved.
  */
 export function pathTrip(tracked) {
+  if (tracked.plan.kind === MotionPlanKind.scheduled) {
+    return scheduledPathTrip(tracked.plan)
+  }
+
   if (tracked.plan.kind !== MotionPlanKind.predicted) {
     return NO_TRIP
   }

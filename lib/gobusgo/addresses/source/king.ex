@@ -30,6 +30,10 @@ defmodule Gobusgo.Addresses.Source.King do
   @impl Gobusgo.Addresses.Source
   def name, do: :king
 
+  # About 1.5 times the 1,782 s a full read took on 2026-11-11.
+  @impl Gobusgo.Addresses.Source
+  def run_deadline_ms, do: 2_700_000
+
   @impl Gobusgo.Addresses.Source
   def fetch(options) when is_list(options) do
     layer_url = Keyword.get(options, :layer_url, @layer_url)

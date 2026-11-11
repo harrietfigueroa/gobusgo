@@ -10,8 +10,8 @@
 
 import {deepStrictEqual, fail, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
+import {distanceMeters} from "../../assets/js/math/geodesy.js"
 import {TableKind} from "../../assets/js/offline_answers.js"
-import {DecodeKind, decodeConnections, decodePositions, decodeTrips} from "../../assets/js/routing_snapshot.js"
 import {
   ARRIVAL_COUNT_MAX,
   ARRIVAL_HORIZON_SECONDS,
@@ -21,7 +21,8 @@ import {
   scheduledArrivals,
   scheduledMarkers
 } from "../../assets/js/scheduled_service.js"
-import {seconds, snapshotOf} from "./routing_timetable.js"
+import {seconds} from "./routing_timetable.js"
+import {found, savedOf} from "./saved_timetable.js"
 
 // 2026-11-08 at midnight in Seattle, eight hours after midnight UTC, past
 // the change of daylight saving time, so the next date starts a day later.
@@ -34,7 +35,8 @@ const MINUTE_MS = 60 * 1000
 const HOUR_SECONDS = 60 * 60
 const MARKER_COLOR = "#9ca3af"
 const MARKER_COUNT_MAX = 3000
-const EVERY_ROUTE = Object.freeze({kind: KeptKind.every})
+const MICRODEGREES_PER_DEGREE = 1000000
+const EVERY_ROUTE =Object.freeze({kind: KeptKind.every})
 
 // S1 is 1.1 km south of S2, and S3 750 m east of S2.
 const SOUTH_LAT_MICRODEGREES = 47600000
@@ -44,51 +46,6 @@ const EAST_LON_MICRODEGREES = -122290000
 const S1 = [SOUTH_LAT_MICRODEGREES, WEST_LON_MICRODEGREES]
 const S2 = [NORTH_LAT_MICRODEGREES, WEST_LON_MICRODEGREES]
 const S3 = [NORTH_LAT_MICRODEGREES, EAST_LON_MICRODEGREES]
-
-function found(table) {
-  return {kind: TableKind.found, table}
-}
-
-function decoded(result) {
-  deepStrictEqual(result.kind, DecodeKind.decoded, "a fixture file decodes")
-  return result.records
-}
-
-function indexesOf(stopIds) {
-  const indexes = new Map()
-
-  for (const [index, stopId] of stopIds.entries()) {
-    indexes.set(stopId, index)
-  }
-
-  return indexes
-}
-
-function decodeChunk(buffer) {
-  return decoded(decodeConnections(buffer))
-}
-
-// The saved snapshot of `fixture` as the page reads it from the bundle,
-// with `names`, a names table or missing, and every chunk decoded.
-function savedOf({fixture, names}) {
-  const snapshot = snapshotOf(fixture)
-  const {entry, filesByPath, stopIds} = snapshot
-  const tripsBuffer = filesByPath.get(entry.files.trips.path)
-  const positionsBuffer = filesByPath.get(entry.files.positions.path)
-  const trips = decoded(decodeTrips(tripsBuffer))
-  const positions = decoded(decodePositions(positionsBuffer))
-
-  return {
-    serviceDate: entry.serviceDate,
-    serviceDayStartMs: entry.serviceDayStartMs,
-    connectionChunks: entry.connectionChunks,
-    stopIndexes: indexesOf(stopIds),
-    trips: found(trips),
-    positions: found(positions),
-    names,
-    connections: Array.from(snapshot.files.connectionChunks, decodeChunk)
-  }
-}
 
 function clockMs({dayStartMs, clockText}) {
   return dayStartMs + seconds(clockText) * SECOND_MS
@@ -206,10 +163,23 @@ deepStrictEqual(
     next_stop: "Second · 5 min",
     status: "scheduled",
     location_age: "No location reported",
-    real_time: "No"
+    real_time: "No",
+    trip_id: "A1",
+    service_date_ms: DAY_START_MS,
+    is_saved_schedule: true
   },
-  "a trip between two stops is placed on the straight line between them by the time"
+  "a trip between two stops is placed on the straight line between them by the time, and names its trip and date"
 )
+
+const savedDateCases = [
+  [{snapshots: [today], nowMs: todayAt("24:00"), id: LATE_ID}, DAY_START_MS, "a trip past midnight runs on the date it started"],
+  [{snapshots: [tomorrow, today], nowMs: tomorrowAt("00:15"), id: LATE_ID}, DAY_START_MS, "the previous date's trip names that date's start when its snapshot is saved"],
+  [{snapshots: [tomorrow], nowMs: tomorrowAt("00:15"), id: LATE_ID}, null, "the previous date's trip names no date when its snapshot is not saved"]
+]
+
+for (const [options, expected, message] of savedDateCases) {
+  deepStrictEqual(markerAt(options).service_date_ms, expected, message)
+}
 
 const placementCases = [
   [{snapshots: [today], nowMs: todayAt("08:05"), id: B1_ID}, {lat: 47.6075, lon: -122.2925, nextStop: "First · 15 min"}, "a trip a quarter of the way along its hop is a quarter of the way between the stops"],
@@ -422,5 +392,60 @@ function arrivalsAtNoTime() {
 }
 
 throws(arrivalsAtNoTime, AssertionError, "the arrivals' time is a number")
+
+function fallbackAt({snapshots, nowMs, id}) {
+  const placed = markersAt({snapshots, nowMs})
+  return placed.fallbackPathOf(id)
+}
+
+function pointOfStop(microdegrees) {
+  const [latMicrodegrees, lonMicrodegrees] = microdegrees
+  return [lonMicrodegrees / MICRODEGREES_PER_DEGREE, latMicrodegrees / MICRODEGREES_PER_DEGREE]
+}
+
+const firstHopMeters = distanceMeters(pointOfStop(S1), pointOfStop(S2))
+const secondHopMeters = distanceMeters(pointOfStop(S2), pointOfStop(S3))
+
+deepStrictEqual(
+  fallbackAt({snapshots: [today], nowMs: todayAt("08:05"), id: A1_ID}),
+  {
+    kind: TableKind.found,
+    path: {
+      tripId: "A1",
+      serviceDateMs: DAY_START_MS,
+      points: [pointOfStop(S1), pointOfStop(S2), pointOfStop(S3)],
+      stops: [
+        {distanceMeters: 0, arrivalSeconds: seconds("08:00"), departureSeconds: seconds("08:00")},
+        {distanceMeters: firstHopMeters, arrivalSeconds: seconds("08:10"), departureSeconds: seconds("08:12")},
+        {distanceMeters: firstHopMeters + secondHopMeters, arrivalSeconds: seconds("08:20"), departureSeconds: seconds("08:20")}
+      ]
+    }
+  },
+  "a trip with no saved path has the straight lines between its stops, with its scheduled times, in the shape a path is prepared from"
+)
+
+const previousDatePath = fallbackAt({snapshots: [tomorrow], nowMs: tomorrowAt("00:15"), id: LATE_ID})
+deepStrictEqual(
+  [previousDatePath.kind, previousDatePath.path.serviceDateMs, previousDatePath.path.stops[0].arrivalSeconds],
+  [TableKind.found, NEXT_DAY_START_MS, seconds("00:10")],
+  "a previous date's trip has its fallback in the frame of the snapshot that places it"
+)
+
+deepStrictEqual(fallbackAt({snapshots: [today], nowMs: todayAt("08:05"), id: "scheduled/no-such-trip"}), {kind: TableKind.missing}, "a marker the placement did not make has no fallback")
+
+// SKIP calls at U, which has no known position, between S1 and S3.
+const skipFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  positions: {S1, S3},
+  trips: [{id: "SKIP", route: "R1", stopTimes: [["S1", "08:00"], ["S3", "08:10"], ["U", "08:20"], ["S1", "08:30"]]}]
+}
+const skipSaved = savedOf({fixture: skipFixture, names: {kind: TableKind.missing}})
+const skipPath = fallbackAt({snapshots: [skipSaved], nowMs: todayAt("08:05"), id: "scheduled/2026-11-08/SKIP"})
+deepStrictEqual(
+  [skipPath.kind, skipPath.path.points],
+  [TableKind.found, [pointOfStop(S1), pointOfStop(S3), pointOfStop(S1)]],
+  "a stop with no known position is left out of the fallback"
+)
 
 console.log("scheduled service: every case passed")

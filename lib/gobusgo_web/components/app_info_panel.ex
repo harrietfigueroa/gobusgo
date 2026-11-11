@@ -525,13 +525,22 @@ defmodule GobusgoWeb.AppInfoPanel do
           Map data © OpenStreetMap contributors, under the Open Database License, from a
           Protomaps build.
         </p>
-        <p :for={source <- @address_sources} id="app-info-address-source">
-          Street addresses are from {source.operator}'s "{source.layer}" layer, under the <a
-            href={source.terms.url}
-            class="underline"
-            rel="noopener"
-          >{source.terms.name}</a>. {source.summary}
-        </p>
+        <div
+          :for={source <- @address_sources}
+          id={"app-info-address-source-#{source.id}"}
+          class="flex flex-col gap-2"
+        >
+          <p>
+            Street addresses are from {source.operator}'s "{source.layer}" layer, under the <a
+              href={source.terms.url}
+              class="underline"
+              rel="noopener"
+            >{source.terms.name}</a>. {source.summary}
+          </p>
+          <p :for={disclaimer <- source.disclaimers}>
+            <span class="font-semibold">{disclaimer.title}.</span> {disclaimer.text}
+          </p>
+        </div>
         <p id="app-info-intersection-source">
           Street intersections are © {@intersection_source.credit}, under the <a
             href={@intersection_source.license.url}

@@ -18,6 +18,7 @@ import {assertCondition} from "./assert.js"
 import {lerp} from "./math/interpolation.js"
 import {TableKind, savedRouteName} from "./offline_answers.js"
 import {POSITION_UNKNOWN_MICRODEGREES} from "./routing_snapshot.js"
+import {connectionsByTrip, fallbackPath} from "./scheduled_path.js"
 
 /** How often an offline page places its markers and writes its arrivals again. */
 export const SCHEDULE_REFRESH_MS = 10 * 1000
@@ -125,6 +126,26 @@ function runKeyOf({snapshot, trip}) {
   }
 
   return `${snapshot.serviceDate}/${trip.id}`
+}
+
+// The start of the service day `trip` runs on, in milliseconds: its
+// snapshot's own, or for a run of the previous date the start of that date's
+// snapshot among `snapshots`, found, or missing where that snapshot is not
+// saved.
+function runStartOf({snapshots, snapshot, trip}) {
+  if (trip.serviceDayOffset !== PREVIOUS_DATE_OFFSET) {
+    return {kind: TableKind.found, startMs: snapshot.serviceDayStartMs}
+  }
+
+  const serviceDate = previousDate(snapshot.serviceDate)
+
+  for (const saved of snapshots) {
+    if (saved.serviceDate === serviceDate) {
+      return {kind: TableKind.found, startMs: saved.serviceDayStartMs}
+    }
+  }
+
+  return {kind: TableKind.missing}
 }
 
 // Whether `snapshot` can be read for trips at `nowMs`: its trips are saved
@@ -319,7 +340,7 @@ function headsignOf({names, trip}) {
   return {kind: TableKind.missing}
 }
 
-function markerOf({snapshot, trip, runKey, point, placement, timeS, color}) {
+function markerOf({snapshot, trip, runKey, runStart, point, placement, timeS, color}) {
   const {routeId} = snapshot.trips.table[trip]
   const {names} = snapshot
   const savedHeadsign = headsignOf({names, trip})
@@ -328,6 +349,12 @@ function markerOf({snapshot, trip, runKey, point, placement, timeS, color}) {
 
   if (savedHeadsign.kind === TableKind.found) {
     headsign = savedHeadsign.headsign
+  }
+
+  let serviceDateMs = null
+
+  if (runStart.kind === TableKind.found) {
+    serviceDateMs = runStart.startMs
   }
 
   return {
@@ -344,7 +371,10 @@ function markerOf({snapshot, trip, runKey, point, placement, timeS, color}) {
     next_stop: nextStopText({names, stop: placement.nextStop, offsetS: placement.nextArrivalS - timeS}),
     status: SCHEDULED_STATUS,
     location_age: NO_LOCATION_REPORTED,
-    real_time: REAL_TIME_NO
+    real_time: REAL_TIME_NO,
+    trip_id: snapshot.trips.table[trip].id,
+    service_date_ms: serviceDateMs,
+    is_saved_schedule: true
   }
 }
 
@@ -363,7 +393,7 @@ function connectionOf({snapshot, chunks, indexes, trip}) {
 // Adds the markers of `snapshot` to `placed`, keyed by run, skipping the
 // runs a snapshot read before placed, and gives the count of running trips
 // it could not place for a stop with no known position.
-function placeSnapshot({snapshot, nowMs, kept, color, placed}) {
+function placeSnapshot({snapshots, snapshot, nowMs, kept, color, placed}) {
   const timeS = secondsOfDay({snapshot, nowMs})
   const {latestChunk, latestIndex, nextChunk, nextIndex} = tripConnections({snapshot, timeS})
   const trips = snapshot.trips.table
@@ -399,10 +429,46 @@ function placeSnapshot({snapshot, nowMs, kept, color, placed}) {
       continue
     }
 
-    placed.set(runKey, markerOf({snapshot, trip, runKey, point, placement, timeS, color}))
+    const runStart = runStartOf({snapshots, snapshot, trip: record})
+    const marker = markerOf({snapshot, trip, runKey, runStart, point, placement, timeS, color})
+    placed.set(runKey, {marker, snapshot, trip})
   }
 
   return unplacedCount
+}
+
+// The fallback path of the marker of `markerId` among `origins`, the snapshot
+// and trip index each marker was placed from, found once and kept; the
+// connections of a snapshot are grouped by trip the first time one of its
+// markers asks.
+function fallbackPathReaderOf(origins) {
+  const groupedBySnapshot = new Map()
+  const paths = new Map()
+
+  return function fallbackPathOf(markerId) {
+    if (paths.has(markerId)) {
+      return paths.get(markerId)
+    }
+
+    let read = {kind: TableKind.missing}
+
+    if (origins.has(markerId)) {
+      const {snapshot, trip} = origins.get(markerId)
+
+      if (!groupedBySnapshot.has(snapshot)) {
+        groupedBySnapshot.set(snapshot, connectionsByTrip(snapshot))
+      }
+
+      const connections = groupedBySnapshot.get(snapshot).get(trip)
+
+      if (connections !== undefined) {
+        read = fallbackPath({snapshot, trip, connections})
+      }
+    }
+
+    paths.set(markerId, read)
+    return read
+  }
 }
 
 /**
@@ -410,7 +476,10 @@ function placeSnapshot({snapshot, nowMs, kept, color, placed}) {
  * order given, on the routes `kept` keeps, each in `color`: at most
  * `countMax`, with `droppedCount` past the bound and `unplacedCount` for the
  * running trips at a stop with no known position. A trip both dates hold is
- * placed once, from the first snapshot that places it.
+ * placed once, from the first snapshot that places it. Each marker names its
+ * `trip_id` and the `service_date_ms` its run starts on, null where that
+ * date's snapshot is not saved, and `fallbackPathOf(markerId)` gives the
+ * path of straight lines between the stops of its trip, found or missing.
  */
 export function scheduledMarkers({snapshots, nowMs, kept, color, countMax}) {
   assertTime(nowMs)
@@ -421,14 +490,22 @@ export function scheduledMarkers({snapshots, nowMs, kept, color, countMax}) {
 
   for (const snapshot of snapshots) {
     if (isPlaceable({snapshot, nowMs})) {
-      unplacedCount += placeSnapshot({snapshot, nowMs, kept, color, placed})
+      unplacedCount += placeSnapshot({snapshots, snapshot, nowMs, kept, color, placed})
     }
   }
 
   const all = Array.from(placed.values())
-  const markers = all.slice(0, countMax)
-  assertCondition(markers.length <= countMax, `the markers are bounded: ${markers.length}`)
-  return {markers, droppedCount: all.length - markers.length, unplacedCount}
+  const bounded = all.slice(0, countMax)
+  assertCondition(bounded.length <= countMax, `the markers are bounded: ${bounded.length}`)
+  const markers = []
+  const origins = new Map()
+
+  for (const {marker, snapshot, trip} of bounded) {
+    markers.push(marker)
+    origins.set(marker.id, {snapshot, trip})
+  }
+
+  return {markers, droppedCount: all.length - markers.length, unplacedCount, fallbackPathOf: fallbackPathReaderOf(origins)}
 }
 
 // The headsign `headsign` as a stop's arrival shows it on `routeId`, as the
