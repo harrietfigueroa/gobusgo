@@ -25,6 +25,10 @@ const SECOND_MS = 1000
 const MINUTE_MS = 60 * 1000
 const WALK_SECONDS = 170
 const LATE_MINUTES = 2
+const HALVING_DIVISOR = 2
+const ARRIVE_INDEX = 3
+const BOARD_INDEX = 2
+const DUE_LEAD_SECONDS = 5
 const EARLY_MINUTES = 3
 
 function seconds(clock) {
@@ -47,13 +51,21 @@ const BOARD_36 = {lat: 47.63, lon: -122.33}
 const END_36 = {lat: 47.64, lon: -122.34}
 const DESTINATION = {lat: 47.65, lon: -122.35}
 
+function kindOf(label) {
+  return label.kind
+}
+
+function textOf(label) {
+  return label.text
+}
+
 function coordinate(position) {
   return [position.lon, position.lat]
 }
 
 // The middle of the line a walk draws between two positions.
 function midpoint({from, to}) {
-  return {lat: (from.lat + to.lat) / 2, lon: (from.lon + to.lon) / 2}
+  return {lat: (from.lat + to.lat) / HALVING_DIVISOR, lon: (from.lon + to.lon) / HALVING_DIVISOR}
 }
 
 // A walk from the rider's position, a ride, a walk to another stop, a
@@ -133,19 +145,19 @@ deepStrictEqual(labelsOf({journey: changing, live: SCHEDULED}), [
 // where the ride ends, as the timeline has none.
 {
   const labels = labelsOf({journey: direct, live: {kind: LiveKind.scheduled, routeId: "1_7"}})
-  const kinds = Array.from(labels, (label) => label.kind)
+  const kinds = Array.from(labels, kindOf)
   deepStrictEqual(kinds, [LabelKind.leave, LabelKind.walk, LabelKind.board, LabelKind.arrive])
-  deepStrictEqual(labels[3], labelAt({kind: LabelKind.arrive, text: "Arrive 9:14 am", position: END_36}))
+  deepStrictEqual(labels[ARRIVE_INDEX], labelAt({kind: LabelKind.arrive, text: "Arrive 9:14 am", position: END_36}))
 }
 
 // A journey that only walks has its leave, its walks, and its arrival, and
 // no boarding.
 {
   const labels = labelsOf({journey: walkOnly, live: NO_RIDE})
-  const kinds = Array.from(labels, (label) => label.kind)
+  const kinds = Array.from(labels, kindOf)
   deepStrictEqual(kinds, [LabelKind.leave, LabelKind.walk, LabelKind.walk, LabelKind.arrive])
   deepStrictEqual(labels[0].text, "Leave 8:44 am")
-  deepStrictEqual(labels[3].text, "Arrive 8:50 am")
+  deepStrictEqual(labels[ARRIVE_INDEX].text, "Arrive 8:50 am")
 }
 
 // A live late first bus moves the leave time, the first boarding and its
@@ -154,29 +166,29 @@ deepStrictEqual(labelsOf({journey: changing, live: SCHEDULED}), [
 {
   const live = {kind: LiveKind.live, latenessS: LATE_MINUTES * MINUTE_SECONDS, routeId: "1_e"}
   const labels = labelsOf({journey: changing, live})
-  const texts = Array.from(labels, (label) => label.text)
+  const texts = Array.from(labels, textOf)
   deepStrictEqual(texts, ["Leave 8:41 am", "3 min", "E 8:44 am +2", "Get off 8:53 am", "3 min", "36 8:56 am", "Get off 9:02 am", "3 min", "Arrive 9:07 am"])
 }
 
 // A live early first bus reads as early.
 {
   const live = {kind: LiveKind.live, latenessS: -EARLY_MINUTES * MINUTE_SECONDS, routeId: "1_e"}
-  const texts = Array.from(labelsOf({journey: changing, live}), (label) => label.text)
-  deepStrictEqual(texts[2], "E 8:39 am -3")
+  const texts = Array.from(labelsOf({journey: changing, live}), textOf)
+  deepStrictEqual(texts[BOARD_INDEX], "E 8:39 am -3")
 }
 
 // A live bus within half a minute of its schedule reads as on time.
 {
   const live = {kind: LiveKind.live, latenessS: 20, routeId: "1_e"}
-  const texts = Array.from(labelsOf({journey: changing, live}), (label) => label.text)
-  deepStrictEqual(texts[2], "E 8:42 am on time")
+  const texts = Array.from(labelsOf({journey: changing, live}), textOf)
+  deepStrictEqual(texts[BOARD_INDEX], "E 8:42 am on time")
 }
 
 // A stop with no known position leaves out the labels that stand on it.
 {
   const unplaced = {...changing, stopPositions: {...changing.stopPositions, "1_1121": undefined}}
   const labels = labelsOf({journey: unplaced, live: SCHEDULED})
-  const texts = Array.from(labels, (label) => label.text)
+  const texts = Array.from(labels, textOf)
   deepStrictEqual(texts.includes("Get off 8:51 am"), false)
   deepStrictEqual(texts.includes("E 8:42 am"), true)
 }
@@ -208,7 +220,7 @@ deepStrictEqual(yourBusLabel({chosen: chosenOf({journey: changing, live: SCHEDUL
 
 // Under a minute away reads as due, and a bus past its boarding stop has
 // no label.
-deepStrictEqual(yourBusLabel({chosen: chosenOf({journey: changing, live: SCHEDULED, nowMs: atMs("08:42") - 5 * SECOND_MS})}).text, "Your bus · due")
+deepStrictEqual(yourBusLabel({chosen: chosenOf({journey: changing, live: SCHEDULED, nowMs: atMs("08:42") - DUE_LEAD_SECONDS * SECOND_MS})}).text, "Your bus · due")
 deepStrictEqual(yourBusLabel({chosen: chosenOf({journey: changing, live: SCHEDULED, nowMs: atMs("08:42") + MINUTE_MS})}), {kind: YourBusLabelKind.none})
 
 // A journey that only walks has no bus.

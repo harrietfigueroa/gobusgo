@@ -1,7 +1,6 @@
 // The selected journey on the map: each ride a line in its route's color
 // over a casing, each walk a dashed line, and a point at each end, and the
-// labels of its times, which the chosen journey of `chosen_journey.js`
-// holds. Its layers stand over the route lines and under the stops and the
+// labels of its times. Its layers stand over the route lines and under the stops and the
 // vehicles, so a label gives way to a vehicle's badge and chevron as the
 // badges give way to each other, are added to each map the basemap
 // announces, and are added again in the map's theme once a style set anew

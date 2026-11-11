@@ -20,7 +20,7 @@ export const LabelKind = Object.freeze({leave: "leave", walk: "walk", board: "bo
 export const YourBusLabelKind = Object.freeze({label: "label", none: "none"})
 
 const SECOND_MS = 1000
-const MINUTE_MS = 60 * SECOND_MS
+const MINUTE_MS = 60 * 1000
 const SEPARATOR = " · "
 const ON_TIME_TEXT = "on time"
 const DUE_TEXT = "due"
@@ -78,6 +78,55 @@ function boardText({leg, names, timeText, isFirstLive, live}) {
   return text
 }
 
+// The coordinates of each leg of the journey, in order, and every one of
+// them in the order taken.
+function journeyPoints({journey, origin}) {
+  const originCoordinates = []
+
+  if (origin !== null) {
+    originCoordinates.push([origin.lon, origin.lat])
+  }
+
+  const coordinatesByLeg = []
+  const points = []
+
+  for (const leg of journey.legs) {
+    const coordinates = legCoordinates({journey, leg, origin: originCoordinates})
+    coordinatesByLeg.push(coordinates)
+
+    for (const coordinate of coordinates) {
+      points.push(coordinate)
+    }
+  }
+
+  return {coordinatesByLeg, points}
+}
+
+// A ride's boarding label and, where another leg follows, its getting off.
+// Only the first ride's times move with the first bus.
+function rideLabels({journey, leg, isLast, isFirstRide, chosen, startMs}) {
+  const {live, names, timeZone} = chosen
+  let shiftMs = 0
+
+  if (isFirstRide) {
+    shiftMs = liveShiftMs(live)
+  }
+
+  const departedText = clockText({ms: startMs + leg.departureS * SECOND_MS + shiftMs, timeZone})
+  const arrivedText = clockText({ms: startMs + leg.arrivalS * SECOND_MS + shiftMs, timeZone})
+  const isFirstLive = isFirstRide && live.kind === LiveKind.live
+  const text = boardText({leg, names, timeText: departedText, isFirstLive, live})
+  const labels = stopLabels({journey, stopId: leg.fromStopId, kind: LabelKind.board, text})
+
+  if (!isLast) {
+    for (const placed of stopLabels({journey, stopId: leg.toStopId, kind: LabelKind.alight, text: `Get off ${arrivedText}`})) {
+      labels.push(placed)
+    }
+  }
+
+  return labels
+}
+
 /**
  * The labels of the journey `chosen` holds, in the order taken, each
  * `{kind, text, coordinate}` with a LabelKind member and a `[lon, lat]`:
@@ -90,31 +139,11 @@ function boardText({leg, names, timeText, isFirstLive, live}) {
  * scheduled. A label whose position the journey does not know is left out.
  */
 export function journeyLabels({chosen}) {
-  const {journey, live, serviceDayStartsMs, timeZone, names, origin} = chosen
+  const {journey, live, serviceDayStartsMs, timeZone, origin} = chosen
   const startMs = serviceDayStartsMs[journey.serviceDate]
   assertCondition(Number.isInteger(startMs), "journey labels: no start for the service date " + journey.serviceDate)
   const shiftMs = liveShiftMs(live)
-  const originCoordinates = []
-
-  if (origin !== null) {
-    originCoordinates.push([origin.lon, origin.lat])
-  }
-
-  const legCoordinatesByIndex = []
-  const points = []
-
-  for (const leg of journey.legs) {
-    const coordinates = legCoordinates({journey, leg, origin: originCoordinates})
-    legCoordinatesByIndex.push(coordinates)
-
-    for (const coordinate of coordinates) {
-      points.push(coordinate)
-    }
-  }
-
-  function timeOf(seconds) {
-    return clockText({ms: startMs + seconds * SECOND_MS, timeZone})
-  }
+  const {coordinatesByLeg, points} = journeyPoints({journey, origin})
 
   function shiftedTimeOf(seconds) {
     return clockText({ms: startMs + seconds * SECOND_MS + shiftMs, timeZone})
@@ -133,25 +162,10 @@ export function journeyLabels({chosen}) {
   for (const [index, leg] of journey.legs.entries()) {
     switch (leg.kind) {
       case LegKind.ride: {
-        let departedText = timeOf(leg.departureS)
-        let arrivedText = timeOf(leg.arrivalS)
+        const isLast = index === lastIndex
 
-        if (isFirstRide) {
-          departedText = shiftedTimeOf(leg.departureS)
-          arrivedText = shiftedTimeOf(leg.arrivalS)
-        }
-
-        const isFirstLive = isFirstRide && live.kind === LiveKind.live
-        const text = boardText({leg, names, timeText: departedText, isFirstLive, live})
-
-        for (const placed of stopLabels({journey, stopId: leg.fromStopId, kind: LabelKind.board, text})) {
+        for (const placed of rideLabels({journey, leg, isLast, isFirstRide, chosen, startMs})) {
           labels.push(placed)
-        }
-
-        if (index < lastIndex) {
-          for (const placed of stopLabels({journey, stopId: leg.toStopId, kind: LabelKind.alight, text: `Get off ${arrivedText}`})) {
-            labels.push(placed)
-          }
         }
 
         isFirstRide = false
@@ -160,7 +174,7 @@ export function journeyLabels({chosen}) {
       case LegKind.walk:
       case LegKind.walkFromPosition:
       case LEG_KIND_TO_POINT:
-        for (const placed of walkLabels({coordinates: legCoordinatesByIndex[index], leg})) {
+        for (const placed of walkLabels({coordinates: coordinatesByLeg[index], leg})) {
           labels.push(placed)
         }
 
