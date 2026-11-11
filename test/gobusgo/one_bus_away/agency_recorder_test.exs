@@ -99,6 +99,23 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
     [backend: RecordingPublisher, recipient: self(), result: result]
   end
 
+  # A log capture holds the lines of every process, so a recorder that another
+  # test runs at the same time adds its own. Each line a recording logs carries
+  # the request identifier in its metadata, and the lines that name this
+  # test's identifier are the ones its recording wrote.
+  defp capture_own_log(metadata, options \\ [], fun) do
+    metadata_keys =
+      case metadata do
+        :all -> :all
+        keys -> [:request_id | keys]
+      end
+
+    log = capture_log([metadata: metadata_keys] ++ options, fun)
+    lines = String.split(log, "\n")
+    own_lines = Enum.filter(lines, &String.contains?(&1, "request_id=#{@request_id}"))
+    Enum.join(own_lines, "\n")
+  end
+
   defp written_content do
     assert_received {:written, %{content: stored}}
     stored |> :zlib.gunzip() |> JSON.decode!()
@@ -176,7 +193,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
     test "logs the destination at info" do
       log =
-        capture_log([level: :info, metadata: [:destination]], fn ->
+        capture_own_log([:destination], [level: :info], fn ->
           assert {:ok, _recorded} = record()
         end)
 
@@ -227,7 +244,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       stub_fixture("server_error", 500)
 
       log =
-        capture_log([metadata: [:stage, :request_id]], fn ->
+        capture_own_log([:stage], fn ->
           assert {:error, {:fetch, _reason}} = record()
         end)
 
@@ -263,7 +280,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       write_options = [backend: RefusingBackend, recipient: self(), reason: :storage_full]
 
       log =
-        capture_log([metadata: [:stage]], fn ->
+        capture_own_log([:stage], fn ->
           assert {:error, {:write, :storage_full}} = record(write_options: write_options)
         end)
 
@@ -333,7 +350,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
 
     test "logs a recording without its event once, as a warning with the reason" do
       log =
-        capture_log([metadata: :all], fn ->
+        capture_own_log([:reason], fn ->
           assert {:ok, _recorded} = record(publish_options: publish_options({:error, :timeout}))
         end)
 
@@ -376,7 +393,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       stub_body(~s({"code": 400, "currentTime": 1, "text": "bad key #{@api_key}", "version": 2}))
 
       log =
-        capture_log([metadata: :all], fn ->
+        capture_own_log(:all, fn ->
           refute inspect(record(), limit: :infinity) =~ @api_key
         end)
 
