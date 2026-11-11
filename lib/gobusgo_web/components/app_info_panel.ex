@@ -504,7 +504,7 @@ defmodule GobusgoWeb.AppInfoPanel do
   attr :agencies, :list, required: true
 
   defp credits(assigns) do
-    assigns = assign(assigns, terms: AppInfo.terms())
+    assigns = assign(assigns, terms: AppInfo.terms(), address_sources: AppInfo.address_sources())
 
     ~H"""
     <section id="app-info-credits" class="flex flex-col gap-2">
@@ -518,6 +518,13 @@ defmodule GobusgoWeb.AppInfoPanel do
         <p>
           Map data © OpenStreetMap contributors, under the Open Database License, from a
           Protomaps build.
+        </p>
+        <p :for={source <- @address_sources} id="app-info-address-source">
+          Street addresses are from {source.operator}'s "{source.layer}" layer, under the <a
+            href={source.terms.url}
+            class="underline"
+            rel="noopener"
+          >{source.terms.name}</a>. {source.summary}
         </p>
       </.more>
     </section>

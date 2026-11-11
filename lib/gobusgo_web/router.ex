@@ -51,6 +51,7 @@ defmodule GobusgoWeb.Router do
     get "/agencies", AgencyController, :index
     get "/agencies/:id", AgencyController, :show
     get "/routing/manifest", RoutingManifestController, :show
+    get "/addresses/manifest", AddressManifestController, :show
     match :*, "/*path", FallbackController, :not_found
   end
 end

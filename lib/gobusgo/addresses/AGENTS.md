@@ -1,0 +1,109 @@
+# Address shards
+
+`lib/gobusgo/addresses.ex` and this directory build the street address index the Trip tab searches in the browser (GOB-361, decided by the measurements of GOB-354): King County's address points, normalized, grouped by street, cut into shards by the prefix of the street's name, and published through `Gobusgo.Writer` as files named by the SHA-256 of their content. What a rider types never leaves the device: the page fetches the index and the one shard its street's name selects. No page reads the files yet.
+
+## Files
+
+- `addresses.ex` is the process that holds the manifest and the schedule of the build: it finds the newest stored manifest after a start, answers `manifest/1` and `built/1`, takes a build's manifest with `record/2`, and decides with `due?/1` whether a build is due.
+- `normalize.ex` is the street normalizer, pure. `assets/js/address_normalize.js` holds the same rules for the browser; both read `test/fixtures/addresses/normalize.json` and must reach one result for each case, checked by `test/gobusgo/addresses/normalize_test.exs` and `node test/scripts/address_normalize_check.mjs`.
+- `rows.ex` is the packed row of one address, pure. `accumulator.ex` collects a county's records into streets of packed rows and hashes the result, pure. `shards.ex` cuts the streets into shards, pure. `csv.ex` is the streaming CSV reader, pure.
+- `source.ex` is the behavior contract of a county: how to fetch its whole layer into a file and how to read the file's rows as records. `source/king.ex` is King County's. `arc_gis.ex` reads the ArcGIS services a county's export comes through, and `http.ex` is the bounded request they share.
+- `format.ex` is the encoder and decoder of the two kinds, shard and index, on `Gobusgo.Packed`, and implements `Gobusgo.Packed.Kind`. Pure. `assets/js/address_file.js` is the browser's decoder, checked by `node test/scripts/address_file_check.mjs`; the lookup that uses it is GOB-362 and is not built yet.
+- `build.ex` is one run of the build.
+
+## Source: King County
+
+"Addresses in King County" is item `5aa0a3c77428491da8d73e9d069c10f6` of the county's open data portal, a FeatureServer layer at `https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/ADDRESS_POINT_642/FeatureServer/0`. It holds one point per address point of the county, 675,399 on 2026-11-10, and the county maintains it weekly (its last edit was 2026-11-09). The terms are King County's, at <https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights> — checked 2026-11-10: copying, distributing, and using the information are allowed, a sale of it needs a written agreement, and it is provided as is with no warranty. They state no attribution requirement; the application credits the county in the info panel anyway (`GobusgoWeb.AppInfo.address_sources/0`).
+
+The integration reads these fields of the export: `HouseNum` (a number, optionally a space and one letter, as `"920 B"`), `PreDir`, `StreetName`, `SufType`, `SufDir`, `POSTALCTYNAME`, `LAT`, and `LON`. `LAT` and `LON` are WGS 84 degrees, so the server needs no projection library. A record is one distinct number, street, and postal city, at the mean of the positions of the points that share them.
+
+## The download
+
+A county's layer is fetched as the one-file export of the ArcGIS Hub, not in pages of 100 items, since the export is one file with a size bound and a deadline on its request (decided in GOB-354). `Gobusgo.Addresses.Source.King.fetch/2`:
+
+1. reads the layer's last edit, `editingInfo.lastEditDate` in milliseconds, from `<layer>?f=json`, and its record count from `<layer>/query?where=1=1&returnCountOnly=true&f=json` (<https://developers.arcgis.com/rest/services-reference/enterprise/layer-feature-service/> and <https://developers.arcgis.com/rest/services-reference/enterprise/query-feature-service-layer/> — checked 2026-11-10);
+2. asks the Hub for the export with `GET https://hub.arcgis.com/api/download/v1/items/<item>/csv?layers=0&redirect=false` and asks again every 10 seconds, at most 18 times, until the answer, a `200` JSON object, has `status` `"Completed"` and a `resultUrl`. Esri has not published this API (a search of its documentation on 2026-11-10 found no reference for it), so the contract is what it answered that day: `400` `Downloads are not supported for this item.` for an item that cannot be downloaded, `404` `Layer does not exist.` for a layer the item lacks, and a `status` of `"Failed"` for a failed export. A status other than `"Completed"` and `"Failed"` is read as not ready yet;
+3. follows `resultUrl`, which answers `302` to a signed address of the blob store under `*.az.arcgis.com`, at most three redirects and only to an `https` address under `arcgis.com`, and never logs an address, since the signature is a credential;
+4. checks the headers of the blob before it writes any of the body: `x-ms-meta-lasteditdate` and `x-ms-meta-recordcount` are the layer's last edit and record count when the export was made (<https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties> — checked 2026-11-10). An export whose last edit is older than the layer's, or whose count is not the layer's, is stale, and so is one with no such headers;
+5. streams the body to a file in a directory of the build's own, at most 512 MiB of it (the export was 243 MB on 2026-11-10, 242,668,090 bytes), with a deadline of 900 seconds on the request and no retry, since the scheduler's backoff repeats a failed build.
+
+A stale export is a known outcome, returned as `{:stale, details}` and logged as `Address export stale` at `warning`; the build keeps the current files. A file read to its end that holds a different count of records from the layer's fails the build.
+
+The export file is deleted when the run ends.
+
+## Normalization
+
+`Gobusgo.Addresses.Normalize` and `assets/js/address_normalize.js` normalize a street so the name a county publishes and the name a rider types reach one key. A county's fields are joined into one line and parsed as typed text, so a county that writes "WEST" in the name and a rider who types "W" reach one street:
+
+- text is upper case with punctuation dropped; `&`, `/`, `@`, `#`, and `,` are tokens of their own; at most 24 tokens are read;
+- a suffix directional and a type are read from the end and a prefix directional from the start, each only while a name token remains; directionals and types become their USPS Publication 28 abbreviations (<https://pe.usps.com/text/pub28/28apc_002.htm> — checked 2026-11-10); "NORTH EAST" merges to NE only where two tokens follow it;
+- Pierce County's compound types, ST CT, AVE CT, ST PL, AVE PL, ST LP, LN CIR, LN RD, and LN CT, stay one type, and its "LP" is LOOP, so adding Pierce County needs no change here (GOB-363);
+- a numbered name is its digits and ordinal suffix: "12", "12th", and "twelfth" are 12TH; a number of more than nine digits is left as it is;
+- a unit is dropped from a typed query: APT, UNIT, STE, SUITE, BLDG, FL, RM, SPC, LOT, #, and NO, with the token after each.
+
+A bare number is an ordinal wherever it stands in a name, so "SR 520" reads as "SR 520TH" on both sides and still reaches one key.
+
+## Records, streets, and memory
+
+`Gobusgo.Addresses.Accumulator` keeps a street's addresses as a binary of fixed 13-byte rows (`Gobusgo.Addresses.Rows`): the house number as `u32`, a letter suffix as one byte, and the position as two `i32` microdegrees. A county's rows are gathered per street, in a tail of at most 256 rows that is packed into a chunk when it fills, so the 654,000 addresses of King County are a few binaries per street and no term per address. A record is counted and left out when its house number is not a whole number with at most one letter (a "1/2" is `suffix_unsupported`), when its street name is empty, when its position is not on the globe, or when its position is outside the bounds. The bounds are the union of the bounds of the archives of the basemap's manifest, `<GOBUSGO_DATA_DIR>/basemap/manifest.json`. With no manifest the build keeps every position and says so in no log; a development directory has none, and production has one.
+
+The build runs in a process of its own with `fullsweep_after: 0` and a heap cap of `:heap_words_max`, killed and logged as `Address shard build killed` at `error` when it outgrows it. While it waits, the run samples that process's heap and logs the peak as `heap_words_peak`.
+
+## Shards and files
+
+`Gobusgo.Addresses.Shards` groups the streets by the normalized street name with its spaces removed, and splits a group by the next letter until the group's encoded content is at most 131,072 bytes before compression (`Gobusgo.Addresses.Build.shard_bytes_max/0`). The bound is on the encoded size, measured by encoding each candidate group with `Gobusgo.Addresses.Format.encode_shard/1`, except a group whose `Gobusgo.Addresses.Format.shard_bytes_min/1`, 4 bytes an address, is already over the bound, which is split without being encoded. A name that equals a prefix that was split further stays in a shard named by the prefix and `$`. A group whose names all continue with one letter descends without a shard of its own, and a group at 32 letters, or one name over the bound, is a shard as large as it is.
+
+A file is a packed container (`lib/gobusgo/packed/AGENTS.md`) named `<prefix>-<SHA-256 of its gzip stream>.bin.gz` by `Gobusgo.Packed.destination/1`, `addresses` for a shard and `addresses-index` for the index, and stored through the writer at `addresses/dt=<build date>/<name>` with `reader_keep_seconds` of a year, so a reader may keep it for a year. The SHA-256 is the entry's `sha256` and the stream's bytes are its `byteSize`. The index's entries hold each shard's prefix, its file name, size, and hash and no directory, so the same shards give the same index and the same names on every day, and a shard is stored beside the index.
+
+## The kinds
+
+Both files are packed containers (`lib/gobusgo/packed/AGENTS.md`, GOB-369), version 1, written and read by `Gobusgo.Addresses.Format`. Kind 3, prefix `addresses`, is a shard; kind 4, prefix `addresses-index`, is the index. The header's record count is the count of streets in a shard and of shards in the index.
+
+A shard holds one record per street, a street being the addresses of one normalized street in one postal city, in the order of the street's name key, and 8 sections after the string table:
+
+1. names, a `u32` column of the string index of each street's normalized name;
+2. prefix directionals, a `u32` column of string indexes, the empty string for none;
+3. types, a `u32` column of string indexes;
+4. suffix directionals, a `u32` column of string indexes;
+5. postal cities, a `u32` column of string indexes;
+6. numbers: per street a varint count of addresses, at least one, then per address the varint difference of its house number from the one before it, the first from 0, so numbers do not decrease within a street (a repeated number with another letter has difference 0);
+7. suffixes, a `u8` column of one byte per address in street order, 0 for none or the ASCII code of an upper case letter;
+8. positions: per street a path of the container, one point per address, latitude and longitude in microdegrees, each point a zigzag varint difference from the one before it, the first from (0, 0).
+
+The string table interns each street's name, prefix directional, type, suffix directional, and city in that order, by first use, so a type or city used by many streets is stored once. The index holds one record per shard, in the order of their prefixes, and 4 sections: prefixes, a `u32` column of string indexes, ending in `$` for the shard of the streets named by the prefix alone; paths, a `u32` column of string indexes, the shard's file name relative to the directory the index is in; byte sizes, a `u32` column of the sizes of the shards' gzip streams; and digests, 32 bytes a shard, the SHA-256 of that stream.
+
+String columns are `u32`, where a `u16` would fit the shards the build keeps, because `Gobusgo.Addresses.Shards` measures groups of streets before it splits them, and a group of a county with more streets than King's holds more than 65,535 strings. A shard holds no prefix: the index names it.
+
+The columns and the container's varints are laid out so a browser reads a shard in one pass over typed arrays, with no object per address. `assets/js/address_file.js` decodes a shard into `{streetCount, strings, names, preDirections, types, sufDirections, cities, addressStarts, numbers, suffixes, positions}`: `strings` is every string of the file, decoded eagerly; the five street columns are `Uint32Array`s of indexes into it; street `s` holds addresses `addressStarts[s]` up to `addressStarts[s + 1]`, a `Uint32Array` of `streetCount + 1` starts; `numbers` is a `Uint32Array` of house numbers, `suffixes` a `Uint8Array`, and `positions` an `Int32Array` of latitude and longitude in turn. It decodes an index into `{shardCount, prefixes, paths, byteSizes, sha256s}`: arrays of strings, a `Uint32Array`, and an array of lower case hexadecimal digests. `loadAddressShard` and `loadAddressIndex` expand a fetched gzip stream first. Each returns `{kind: "decoded", table}` or `{kind: "refused", reason}`, never a throw. The lookup that reads these tables is GOB-362; no page reads them yet.
+
+A reader refuses another version, the other kind, another section count, a string index past the table, a column of another length, numbers whose counts run past their section or that leave bytes after the last street, or whose sum passes 32 bits, a suffix that is not 0 or a letter, a path of another length than its street's addresses, a position outside the globe, and a digest section of another length, each as a value (`AddressFileRefusal` and the container's own reasons; the Elixir names are `:bad_string_index`, `:bad_numbers`, `:bad_suffix`, and `:count_mismatch` beside the container's). A shard expands to at most `Gobusgo.Addresses.Format.expanded_bytes_max(:shard)`, 1 MiB, and an index to at most `expanded_bytes_max(:index)`, 1 MiB; `ADDRESS_SHARD_EXPANDED_BYTES_MAX` and `ADDRESS_INDEX_EXPANDED_BYTES_MAX` repeat them in JavaScript, and a test reads the JavaScript constants and compares them. A shard the build writes is within the bound by `Format.assert_expanded_size/2`; one over it, which only a street name whose streets encode to more than 1 MiB gives, stops the build.
+
+`mix gobusgo.packed.decode <file> --kind-module Gobusgo.Addresses.Format` prints a shard or an index as JSON.
+
+### Fixtures
+
+`test/fixtures/addresses/v1/` holds `shard.bin`, `shard.bin.gz`, `index.bin`, `index.bin.gz`, and `expected.json`, written by `Gobusgo.Test.AddressFixture` with `MIX_ENV=test mix run --no-start test/scripts/address_fixtures.exs`. The shard holds five streets: letter suffixes and a repeated number, two streets of one name in two postal cities, a multibyte city, negative longitudes, a street at the corners of the globe with no postal city, and a street of one address with the largest house number the build accepts. The index holds the empty prefix, a prefix that a longer prefix extends, the `$` own-name mark, a multibyte prefix, and a size at 32 bits. ExUnit compares each expanded file to the encoder's output byte for byte and each gzip file by its content, and `node test/scripts/address_file_check.mjs` decodes both forms to `expected.json` and checks each refusal. A change to a kind's columns raises its version and writes `v2/` beside `v1/`.
+
+## Manifest
+
+`GET /api/addresses/manifest` answers the manifest from `Gobusgo.Addresses` (`lib/gobusgo_web/AGENTS.md`). It holds `builtAt`, `sourceLastEditAt`, `inputsSha256`, `addressCount`, `streetCount`, `index` (`path`, `byteSize`, `sha256`), and `shards`, each with the same three fields and its `prefix`. The manifest is stored last, after every file it names, at `addresses/dt=<build date>/manifest-<build time>-<inputsSha256>.json`, so a start finds the newest build by its newest manifest and a build that fails half way leaves no manifest naming a missing file.
+
+## Schedule and refresh
+
+`Gobusgo.Addresses.spec/1` is the scheduler that checks every hour whether a build is due. A build is due when there is none, at any time, or when the current build is from an earlier UTC date and the hour has reached 10, so the build runs once a day at a fixed slot, and a start that finds a stored build downloads and builds nothing. A start with no stored build builds at once.
+
+A build whose input hashes to the current build's, and whose current build is from today, builds nothing and logs `Address shards unchanged`. The hash is of the streets after the bounds are applied, the normalized key, the city, and the rows, so a change to any of them, or to the bounds, changes it. Otherwise it writes every file again under the build date, which keeps every file the manifest names inside the seven days the bucket and `Gobusgo.RetentionPolicy` keep (`GOB-365` holds the lifecycle rule and the CloudFront behavior). The application starts the build wherever the sources are scheduled.
+
+## Measurements
+
+A real King County build on 2026-11-10 with no basemap bounds, so every position stayed: 675,399 records read, 674,833 accepted, 566 left out as `suffix_unsupported`, 653,863 distinct addresses on 17,012 streets, in 104 shards. The shards' gzip streams total 2,686,584 bytes, at a median of 17,999, a 90th percentile of 59,924, and a maximum of 82,121 bytes; before compression they total 4,175,649 bytes, at a median of 27,602, a 90th percentile of 95,152, and a maximum of 129,410 against the bound of 131,072. The index is 9,191 bytes compressed. The build took 54.6 s: 11.3 s to fetch the export, 41.4 s to read it, and 1.8 s to cut and write. Its process peaked at 10.7 million heap words, 86 MiB, the BEAM's total memory at 254.5 MiB, and `mix run` at a maximum resident size of 589 MiB (`/usr/bin/time -l`), under the 700 MiB threshold of the start-memory check. `Format.shard_bytes_min/1` lets the split pass over the encoding of the groups that are certainly too large: the same build without it peaked at 15.4 million heap words and 364 MiB of BEAM memory, and at 886 MiB of resident size.
+
+`mix gobusgo.start_memory --image gobusgo:local` passed at a peak of 522 MiB against the fixture, with the address process and its scheduler in the application; the container has no network, so the build's download fails there and that run does not cover a real build's memory.
+
+## Logs
+
+One line per run, at the decision point: `Address shards built` and `Address shards unchanged` at `info`, `Address export stale` at `warning`, and `Address shards not built` and `Address shard build killed` at `error`. Each carries counts and times as properties (records read, accepted, and left out by cause, streets, addresses, shards, bytes, and the time of each step) and never an address of the download. `Address manifest discovery failed` is logged at `warning` by the process when a start cannot read a stored manifest.
+
+## Adding a county
+
+A county is a module that implements `Gobusgo.Addresses.Source`: its `fetch/2`, which writes the layer to a file and says when it was last edited and how many records it has, and its `records/1`, which reads the file as records. Normalization, grouping, sharding, and writing are shared. Pierce and Snohomish counties are the next two (GOB-363); Snohomish's export has served a stale copy, so its source pages the FeatureServer or checks the export's count and last edit as King's does.

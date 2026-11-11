@@ -40,6 +40,11 @@ defmodule GobusgoWeb.Endpoint do
   current file and the license notice beside it, `NOTICE.txt` as UTF-8 text,
   have to be revalidated on every use.
 
+  The locally stored address shard files are served under `/addresses`,
+  from the address directory, as the gzip streams they are stored as.
+  Each file's name holds the SHA-256 of its stream, so a cache may keep it
+  for `Gobusgo.Addresses.reader_keep_seconds/0`, a year, as immutable.
+
   The locally stored shared vehicle files are served under
   `/shared-vehicles`, from the shared vehicle directory, as the gzip
   streams they are stored as. Each file's name holds a hash of its
@@ -76,6 +81,8 @@ defmodule GobusgoWeb.Endpoint do
   @places_manifest_name "manifest.json"
   @places_notice_name "NOTICE.txt"
   @places_cache_seconds Gobusgo.Places.Publication.reader_keep_seconds()
+  @addresses_path "/addresses"
+  @addresses_cache_seconds Gobusgo.Addresses.reader_keep_seconds()
   @shared_vehicles_path "/shared-vehicles"
   # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
   # so a cache keeps a shared vehicle file a minute, well inside them.
@@ -157,6 +164,12 @@ defmodule GobusgoWeb.Endpoint do
     cache_control_for_etags: "public, max-age=#{@routing_cache_seconds}, immutable"
 
   plug Plug.Static,
+    at: @addresses_path,
+    from: {__MODULE__, :addresses_dir, []},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=#{@addresses_cache_seconds}, immutable"
+
+  plug Plug.Static,
     at: @shared_vehicles_path,
     from: {__MODULE__, :shared_vehicles_dir, []},
     gzip: false,
@@ -193,6 +206,13 @@ defmodule GobusgoWeb.Endpoint do
   @spec basemap_dir() :: String.t()
   def basemap_dir do
     {:ok, %{dir: dir}} = Gobusgo.Config.basemap()
+    dir
+  end
+
+  @doc "The directory the locally stored address shard files are served from."
+  @spec addresses_dir() :: String.t()
+  def addresses_dir do
+    {:ok, %{dir: dir}} = Gobusgo.Config.addresses()
     dir
   end
 

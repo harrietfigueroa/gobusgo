@@ -1,6 +1,6 @@
 # Application core
 
-`lib/gobusgo/` holds the OTP application and what the sources, the views, and the pages share: settings, cadences and schedulers, the demand registry, usage records, storage, the publisher, the filter contract, the basemap extraction, and the start-memory check. This file also holds the data flow every dataset follows. The integrations have area files of their own beside their code: `one_bus_away/`, `gbfs/`, `routing/`, `s3/`, and `vendor_assets/`.
+`lib/gobusgo/` holds the OTP application and what the sources, the views, and the pages share: settings, cadences and schedulers, the demand registry, usage records, storage, the publisher, the filter contract, the basemap extraction, and the start-memory check. This file also holds the data flow every dataset follows. The integrations have area files of their own beside their code: `one_bus_away/`, `gbfs/`, `routing/`, `addresses/`, `s3/`, and `vendor_assets/`.
 
 ## Files
 
@@ -15,6 +15,7 @@
 - `compression.ex` names the destinations that hold compressed content, those ending in `.gz`, and encodes and decodes gzip with a bound on the expanded size; it is pure.
 - `retention.ex`, `cleanup.ex`, and `retention_policy.ex` delete stored content past its retention.
 - `publisher.ex` is the backend-neutral contract for publishing records to topics, where a record with an empty value is a tombstone; `publisher/in_process.ex` is its in-process backend, which calls a subscriber per topic and stores nothing.
+- `addresses.ex` holds the manifest of the address shards and the schedule of their build, and `addresses/` builds them from the counties' address points; read `addresses/AGENTS.md`.
 - `cloud_event.ex` encodes a CloudEvent 1.0 in structured mode and turns it into a publisher record.
 - `canonical_json.ex` encodes compact JSON with sorted keys, the encoding of every stored file's content and every published event.
 - `filter.ex` is the filter contract every kind of record shares, and is pure.
@@ -69,7 +70,7 @@ A write may name `reader_keep_seconds`, how long a reader that fetches the conte
 
 `Gobusgo.Cleanup` is one bounded run that deletes each rule's expired content, the oldest day first, at most 20,000 deletions, and logs one line: `Stored content cleanup finished` at `info`, `Stored content cleanup finished degraded` at `warning` when a deletion or a discovery failed, or `Stored content cleanup failed` at `error`, with the counts and whether a backlog is left.
 
-The retention of each dataset (decided in GOB-203, the tile archives in GOB-217, the shared vehicle files in GOB-258): one day for vehicle and arrival responses, three days for route schedule responses, 30 days for agency, route, and route path responses, three days for usage records, two days for tile archives, two days for routing snapshot files, and one day for shared vehicle files and their published files, as a backstop to the ten minutes `Gobusgo.Gbfs.VehicleStatusRetention` keeps both.
+The retention of each dataset (decided in GOB-203, the tile archives in GOB-217, the shared vehicle files in GOB-258): one day for vehicle and arrival responses, three days for route schedule responses, 30 days for agency, route, and route path responses, three days for usage records, two days for tile archives, two days for routing snapshot files, seven days for the address shard files and their manifests (GOB-361), and one day for shared vehicle files and their published files, as a backstop to the ten minutes `Gobusgo.Gbfs.VehicleStatusRetention` keeps both.
 
 With a bucket configured the hourly cleanup is not scheduled: the bucket's lifecycle rules, in the infrastructure repository, hold the retention of what is in S3 with the same days, kept the same by hand (an open decision in the root file).
 
@@ -105,6 +106,6 @@ Processed data is held in the in-memory views alone, and the application needs n
 
 The OneBusAway datasets, their topics, keys, views, cadences, and the arrivals of the open stops (GOB-158) are in `one_bus_away/AGENTS.md`. GBFS vehicle types take the flow with no recorder, since they are fetched again on their slot (GOB-257), and GBFS shared vehicles take the whole flow from a source that runs only while a page shows them (GOB-256); both are in `gbfs/AGENTS.md`. The routing snapshots are built from the views (`routing/AGENTS.md`), and the route and stop tile archive from the views (`lib/gobusgo_web/AGENTS.md`).
 
-Raw responses, usage records, the route and stop tile archives, the routing snapshot files, the places file and its manifest under `places/`, and the shared vehicle files published to the browser are the only stored files (the archives decided in GOB-217, the published files in GOB-258). Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it, so an old places file stays until it is removed by hand (`lib/gobusgo/places/AGENTS.md`). An S3 mock is not part of the design.
+Raw responses, usage records, the route and stop tile archives, the routing snapshot files, the places file and its manifest under `places/`, the address shard files, and the shared vehicle files published to the browser are the only stored files (the archives decided in GOB-217, the published files in GOB-258). Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it, so an old places file stays until it is removed by hand (`lib/gobusgo/places/AGENTS.md`). An S3 mock is not part of the design.
 
 Production uses production services, and local runs never touch production endpoints: configuration selects the target. GOB-19 holds the trigger definition and names the issues that hold the rest of the data flow's decisions.

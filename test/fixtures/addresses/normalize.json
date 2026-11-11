@@ -1,0 +1,1596 @@
+{
+  "fields": [
+    {
+      "input": {
+        "preDirection": "N",
+        "name": "12TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "N",
+        "name": "12TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "N 12TH AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "WALLINGFORD",
+        "type": "AVE",
+        "sufDirection": "N"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "WALLINGFORD",
+        "type": "AVE",
+        "sufDirection": "N"
+      },
+      "key": "WALLINGFORD AVE N"
+    },
+    {
+      "input": {
+        "preDirection": "SW",
+        "name": "LISABEULA",
+        "type": "RD",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "SW",
+        "name": "LISABEULA",
+        "type": "RD",
+        "sufDirection": ""
+      },
+      "key": "SW LISABEULA RD"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "PIKE",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "PIKE",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "PIKE ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "4TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "4TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "4TH AVE"
+    },
+    {
+      "input": {
+        "preDirection": "NE",
+        "name": "8TH",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "NE",
+        "name": "8TH",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "NE 8TH ST"
+    },
+    {
+      "input": {
+        "preDirection": "WEST",
+        "name": "MAIN",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "W",
+        "name": "MAIN",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "W MAIN ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "WEST",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "WEST",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "WEST AVE"
+    },
+    {
+      "input": {
+        "preDirection": "N",
+        "name": "WEST",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "N",
+        "name": "WEST",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "N WEST AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "119TH",
+        "type": "DRIVE",
+        "sufDirection": "SOUTHEAST"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "119TH",
+        "type": "DR",
+        "sufDirection": "SE"
+      },
+      "key": "119TH DR SE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "119TH",
+        "type": "DR",
+        "sufDirection": "SE"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "119TH",
+        "type": "DR",
+        "sufDirection": "SE"
+      },
+      "key": "119TH DR SE"
+    },
+    {
+      "input": {
+        "preDirection": "NORTH EAST",
+        "name": "45TH",
+        "type": "STREET",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "NE",
+        "name": "45TH",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "NE 45TH ST"
+    },
+    {
+      "input": {
+        "preDirection": "NORTH",
+        "name": "WEST",
+        "type": "AVENUE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "N",
+        "name": "WEST",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "N WEST AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "112TH",
+        "type": "ST CT",
+        "sufDirection": "E"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "112TH",
+        "type": "ST CT",
+        "sufDirection": "E"
+      },
+      "key": "112TH ST CT E"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "112TH",
+        "type": "ST",
+        "sufDirection": "CT E"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "112TH",
+        "type": "ST CT",
+        "sufDirection": "E"
+      },
+      "key": "112TH ST CT E"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "34TH",
+        "type": "AVE PL",
+        "sufDirection": "SW"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "34TH",
+        "type": "AVE PL",
+        "sufDirection": "SW"
+      },
+      "key": "34TH AVE PL SW"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "9TH",
+        "type": "LN CIR",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "9TH",
+        "type": "LN CIR",
+        "sufDirection": ""
+      },
+      "key": "9TH LN CIR"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "50TH",
+        "type": "LN RD",
+        "sufDirection": "E"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "50TH",
+        "type": "LN RD",
+        "sufDirection": "E"
+      },
+      "key": "50TH LN RD E"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "20TH",
+        "type": "LN CT",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "20TH",
+        "type": "LN CT",
+        "sufDirection": ""
+      },
+      "key": "20TH LN CT"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "130TH",
+        "type": "ST LP",
+        "sufDirection": "NW"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "130TH",
+        "type": "ST LOOP",
+        "sufDirection": "NW"
+      },
+      "key": "130TH ST LOOP NW"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "BEACH",
+        "type": "LP",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "BEACH",
+        "type": "LOOP",
+        "sufDirection": ""
+      },
+      "key": "BEACH LOOP"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "CASCADE",
+        "type": "LOOP",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "CASCADE",
+        "type": "LOOP",
+        "sufDirection": ""
+      },
+      "key": "CASCADE LOOP"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "TWELFTH",
+        "type": "AVENUE",
+        "sufDirection": "SOUTH"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "12TH",
+        "type": "AVE",
+        "sufDirection": "S"
+      },
+      "key": "12TH AVE S"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "1",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "1ST",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "1ST ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "22",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "22ND",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "22ND AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "113",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "113TH",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "113TH ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "11",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "11TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "11TH AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "FIRST",
+        "type": "AVE",
+        "sufDirection": "S"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "1ST",
+        "type": "AVE",
+        "sufDirection": "S"
+      },
+      "key": "1ST AVE S"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "TWENTIETH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "20TH",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "20TH AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "103RD",
+        "type": "PL",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "103RD",
+        "type": "PL",
+        "sufDirection": ""
+      },
+      "key": "103RD PL"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "A",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "A",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "A"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "AVENUE A",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "AVENUE A",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "AVENUE A"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "ST",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "ST",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": ""
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "O'BRIEN",
+        "type": "WAY",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "OBRIEN",
+        "type": "WAY",
+        "sufDirection": ""
+      },
+      "key": "OBRIEN WAY"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "MT. BAKER",
+        "type": "BLVD",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "MT BAKER",
+        "type": "BLVD",
+        "sufDirection": ""
+      },
+      "key": "MT BAKER BLVD"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "MARTIN LUTHER KING JR",
+        "type": "WAY",
+        "sufDirection": "S"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "MARTIN LUTHER KING JR",
+        "type": "WAY",
+        "sufDirection": "S"
+      },
+      "key": "MARTIN LUTHER KING JR WAY S"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "ST. CLAIR",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "ST CLAIR",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "ST CLAIR ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "DE-LA-CRUZ",
+        "type": "RD",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "DE LA CRUZ",
+        "type": "RD",
+        "sufDirection": ""
+      },
+      "key": "DE LA CRUZ RD"
+    },
+    {
+      "input": {
+        "preDirection": "e",
+        "name": "main",
+        "type": "street",
+        "sufDirection": "w"
+      },
+      "street": {
+        "preDirection": "E",
+        "name": "MAIN",
+        "type": "ST",
+        "sufDirection": "W"
+      },
+      "key": "E MAIN ST W"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "ALKI",
+        "type": "AVENUE",
+        "sufDirection": "SOUTHWEST"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "ALKI",
+        "type": "AVE",
+        "sufDirection": "SW"
+      },
+      "key": "ALKI AVE SW"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "NE",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "NE",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "NE ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "BROADWAY",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "BROADWAY",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "BROADWAY"
+    },
+    {
+      "input": {
+        "preDirection": "S",
+        "name": "",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "S",
+        "type": "ST",
+        "sufDirection": ""
+      },
+      "key": "S ST"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "VIEW",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "VIEW",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "VIEW"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "ROCKEFELLER",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "ROCKEFELLER",
+        "type": "AVE",
+        "sufDirection": ""
+      },
+      "key": "ROCKEFELLER AVE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "PARK",
+        "type": "PL",
+        "sufDirection": "NE"
+      },
+      "street": {
+        "preDirection": "",
+        "name": "PARK",
+        "type": "PL",
+        "sufDirection": "NE"
+      },
+      "key": "PARK PL NE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "INTERNATIONAL",
+        "type": "BLVD",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "INTERNATIONAL",
+        "type": "BLVD",
+        "sufDirection": ""
+      },
+      "key": "INTERNATIONAL BLVD"
+    }
+  ],
+  "queries": [
+    {
+      "text": "85 Pike St",
+      "parsed": {
+        "kind": "address",
+        "number": 85,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PIKE",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1200 12th Ave S",
+      "parsed": {
+        "kind": "address",
+        "number": 1200,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "12TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "400 Broad St, Seattle",
+      "parsed": {
+        "kind": "address",
+        "number": 400,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "BROAD",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "SEATTLE",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1000 4th Ave",
+      "parsed": {
+        "kind": "address",
+        "number": 1000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "600 Fourth Avenue, Seattle WA 98104",
+      "parsed": {
+        "kind": "address",
+        "number": 600,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "SEATTLE",
+        "zip": "98104"
+      }
+    },
+    {
+      "text": "325 9th Ave",
+      "parsed": {
+        "kind": "address",
+        "number": 325,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "9TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "2401 Utah Ave S",
+      "parsed": {
+        "kind": "address",
+        "number": 2401,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "UTAH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "305 Harrison St",
+      "parsed": {
+        "kind": "address",
+        "number": 305,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HARRISON",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "3800 Montlake Blvd NE",
+      "parsed": {
+        "kind": "address",
+        "number": 3800,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "MONTLAKE",
+          "type": "BLVD",
+          "sufDirection": "NE"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1410 NE Campus Pkwy",
+      "parsed": {
+        "kind": "address",
+        "number": 1410,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "NE",
+          "name": "CAMPUS",
+          "type": "PKWY",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1301 5th Ave Ste 2200",
+      "parsed": {
+        "kind": "address",
+        "number": 1301,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "5TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "500 pine",
+      "parsed": {
+        "kind": "address",
+        "number": 500,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PINE",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1200 twelfth avenue south",
+      "parsed": {
+        "kind": "address",
+        "number": 1200,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "12TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "4500 Rainier Ave S",
+      "parsed": {
+        "kind": "address",
+        "number": 4500,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "RAINIER",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "6000 California Ave SW",
+      "parsed": {
+        "kind": "address",
+        "number": 6000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "CALIFORNIA",
+          "type": "AVE",
+          "sufDirection": "SW"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "10500 NE 8th St, Bellevue",
+      "parsed": {
+        "kind": "address",
+        "number": 10500,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "NE",
+          "name": "8TH",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "BELLEVUE",
+        "zip": ""
+      }
+    },
+    {
+      "text": "450 110th Ave NE",
+      "parsed": {
+        "kind": "address",
+        "number": 450,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "110TH",
+          "type": "AVE",
+          "sufDirection": "NE"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "17801 International Blvd",
+      "parsed": {
+        "kind": "address",
+        "number": 17801,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "INTERNATIONAL",
+          "type": "BLVD",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1055 S Grady Way, Renton",
+      "parsed": {
+        "kind": "address",
+        "number": 1055,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "S",
+          "name": "GRADY",
+          "type": "WAY",
+          "sufDirection": ""
+        },
+        "locality": "RENTON",
+        "zip": ""
+      }
+    },
+    {
+      "text": "220 4th Ave S, Kent",
+      "parsed": {
+        "kind": "address",
+        "number": 220,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "KENT",
+        "zip": ""
+      }
+    },
+    {
+      "text": "25 W Main St, Auburn",
+      "parsed": {
+        "kind": "address",
+        "number": 25,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "W",
+          "name": "MAIN",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "AUBURN",
+        "zip": ""
+      }
+    },
+    {
+      "text": "33325 8th Ave S",
+      "parsed": {
+        "kind": "address",
+        "number": 33325,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "8TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "123 5th Ave, Kirkland",
+      "parsed": {
+        "kind": "address",
+        "number": 123,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "5TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "KIRKLAND",
+        "zip": ""
+      }
+    },
+    {
+      "text": "15670 NE 85th St",
+      "parsed": {
+        "kind": "address",
+        "number": 15670,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "NE",
+          "name": "85TH",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "3000 Rockefeller Ave, Everett",
+      "parsed": {
+        "kind": "address",
+        "number": 3000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "ROCKEFELLER",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "EVERETT",
+        "zip": ""
+      }
+    },
+    {
+      "text": "19100 44th Ave W",
+      "parsed": {
+        "kind": "address",
+        "number": 19100,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "44TH",
+          "type": "AVE",
+          "sufDirection": "W"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "747 Market St, Tacoma",
+      "parsed": {
+        "kind": "address",
+        "number": 747,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "MARKET",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "TACOMA",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1911 Pacific Ave",
+      "parsed": {
+        "kind": "address",
+        "number": 1911,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PACIFIC",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "99999 Aurora Ave N",
+      "parsed": {
+        "kind": "address",
+        "number": 99999,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "AURORA",
+          "type": "AVE",
+          "sufDirection": "N"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "120 Nonexistent Ln",
+      "parsed": {
+        "kind": "address",
+        "number": 120,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "NONEXISTENT",
+          "type": "LN",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "4th & Pike",
+      "parsed": {
+        "kind": "intersection",
+        "first": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "",
+          "sufDirection": ""
+        },
+        "second": {
+          "preDirection": "",
+          "name": "PIKE",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "Pine and 3rd",
+      "parsed": {
+        "kind": "intersection",
+        "first": {
+          "preDirection": "",
+          "name": "PINE",
+          "type": "",
+          "sufDirection": ""
+        },
+        "second": {
+          "preDirection": "",
+          "name": "3RD",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "4th ave",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "pike st, seattle",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "PIKE",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "SEATTLE",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1200 12th Ave S Apt 3",
+      "parsed": {
+        "kind": "address",
+        "number": 1200,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "12TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "500 Pine St #4",
+      "parsed": {
+        "kind": "address",
+        "number": 500,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PINE",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "500 pine st unit 12, Seattle, WA 98101",
+      "parsed": {
+        "kind": "address",
+        "number": 500,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PINE",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "SEATTLE",
+        "zip": "98101"
+      }
+    },
+    {
+      "text": "920 B Main St",
+      "parsed": {
+        "kind": "address",
+        "number": 920,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "B MAIN",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "920b main st",
+      "parsed": {
+        "kind": "address",
+        "number": 920,
+        "numberSuffix": "B",
+        "street": {
+          "preDirection": "",
+          "name": "MAIN",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1 Main",
+      "parsed": {
+        "kind": "address",
+        "number": 1,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "MAIN",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "main st",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "MAIN",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1200 TWELFTH AVE SOUTH, SEATTLE WA",
+      "parsed": {
+        "kind": "address",
+        "number": 1200,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "12TH",
+          "type": "AVE",
+          "sufDirection": "S"
+        },
+        "locality": "SEATTLE",
+        "zip": ""
+      }
+    },
+    {
+      "text": "100 north east 45th street",
+      "parsed": {
+        "kind": "address",
+        "number": 100,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "NE",
+          "name": "45TH",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "55 W Mercer Pl, 98119",
+      "parsed": {
+        "kind": "address",
+        "number": 55,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "W",
+          "name": "MERCER",
+          "type": "PL",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": "98119"
+      }
+    },
+    {
+      "text": "7 O'Brien Way",
+      "parsed": {
+        "kind": "address",
+        "number": 7,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "OBRIEN",
+          "type": "WAY",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "12 a",
+      "parsed": {
+        "kind": "address",
+        "number": 12,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "A",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "   ",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "85 pike st, Kent, WA, 98032",
+      "parsed": {
+        "kind": "address",
+        "number": 85,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "PIKE",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "KENT",
+        "zip": "98032"
+      }
+    },
+    {
+      "text": "300 1st ave n bldg 2",
+      "parsed": {
+        "kind": "address",
+        "number": 300,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "1ST",
+          "type": "AVE",
+          "sufDirection": "N"
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "1301 5th Ave Suite 2200, Seattle",
+      "parsed": {
+        "kind": "address",
+        "number": 1301,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "5TH",
+          "type": "AVE",
+          "sufDirection": ""
+        },
+        "locality": "SEATTLE",
+        "zip": ""
+      }
+    },
+    {
+      "text": "pike/4th",
+      "parsed": {
+        "kind": "intersection",
+        "first": {
+          "preDirection": "",
+          "name": "PIKE",
+          "type": "",
+          "sufDirection": ""
+        },
+        "second": {
+          "preDirection": "",
+          "name": "4TH",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "3rd @ pine",
+      "parsed": {
+        "kind": "intersection",
+        "first": {
+          "preDirection": "",
+          "name": "3RD",
+          "type": "",
+          "sufDirection": ""
+        },
+        "second": {
+          "preDirection": "",
+          "name": "PINE",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "400 Broad St, SEATAC",
+      "parsed": {
+        "kind": "address",
+        "number": 400,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "BROAD",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "SEATAC",
+        "zip": ""
+      }
+    }
+  ]
+}
