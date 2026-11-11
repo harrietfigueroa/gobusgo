@@ -18,6 +18,17 @@ const pikePlace = {name: "Pike Place Market", detail: "Market", lat: 47.6094, lo
 const pikeCrossing = {label: "PIKE ST & 3RD AVE", lat: 47.6107, lon: -122.3372}
 const pikeAddress = {label: "85 PIKE ST, SEATTLE", city: "SEATTLE", lat: 47.6091, lon: -122.3407}
 
+const TWO_STOPS_COUNT = 2
+const EXTRA_STOP_COUNT = 4
+
+function kindOf(group) {
+  return group.kind
+}
+
+function stopAt(_unused, index) {
+  return {stopId: `1_${index}`, name: `Stop ${index}`, code: String(index)}
+}
+
 function resolveTo(found) {
   return resolution({text: "pike", end: TripEnd.to, found})
 }
@@ -40,13 +51,15 @@ deepStrictEqual(resolveTo({...none, addresses: [pikeAddress]}).kind, ResolutionK
 // Two results of one kind are a choice, with their group.
 const twoStops = resolveTo({...none, stops: [westlake, {stopId: "1_75404", name: "Westlake Station", code: "75404"}]})
 deepStrictEqual(twoStops.kind, ResolutionKind.choices, "two stops are a choice")
-deepStrictEqual(twoStops.groups.map((group) => group.kind), [GroupKind.stops], "the choice's groups")
-deepStrictEqual(twoStops.groups[0].options.length, 2, "both stops are offered")
+const twoStopsKinds = Array.from(twoStops.groups, kindOf)
+deepStrictEqual(twoStopsKinds, [GroupKind.stops], "the choice's groups")
+deepStrictEqual(twoStops.groups[0].options.length, TWO_STOPS_COUNT, "both stops are offered")
 
 // Results of several kinds are a choice, in the list's group order, and a credited group sets the credit.
 const several = resolveTo({places: [pikePlace], addresses: [pikeAddress], intersections: [pikeCrossing], stops: [westlake]})
 deepStrictEqual(several.kind, ResolutionKind.choices, "four kinds are a choice")
-deepStrictEqual(several.groups.map((group) => group.kind), [GroupKind.places, GroupKind.addresses, GroupKind.intersections, GroupKind.stops], "the groups' order")
+const severalKinds = Array.from(several.groups, kindOf)
+deepStrictEqual(severalKinds, [GroupKind.places, GroupKind.addresses, GroupKind.intersections, GroupKind.stops], "the groups' order")
 deepStrictEqual(several.isCredited, true, "places and intersections carry the credit")
 deepStrictEqual(twoStops.isCredited, false, "stops alone carry no credit")
 
@@ -54,7 +67,7 @@ deepStrictEqual(twoStops.isCredited, false, "stops alone carry no credit")
 deepStrictEqual(resolveTo(none), {kind: ResolutionKind.none}, "no result")
 
 // A group is bounded as the search's list is, so a long result list stays bounded.
-const manyStops = Array.from({length: GROUP_COUNT_MAX[GroupKind.stops] + 4}, (_, index) => ({stopId: `1_${index}`, name: `Stop ${index}`, code: String(index)}))
+const manyStops = Array.from({length: GROUP_COUNT_MAX[GroupKind.stops] + EXTRA_STOP_COUNT}, stopAt)
 const bounded = resolveTo({...none, stops: manyStops})
 deepStrictEqual(bounded.groups[0].options.length, GROUP_COUNT_MAX[GroupKind.stops], "the stop group's bound")
 

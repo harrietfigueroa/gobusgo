@@ -1,9 +1,8 @@
 // Checks the parts of the trip router's shell that need no snapshot: the
 // manifest's fetch, which puts the origin in front of its path and answers
 // each failure as a value, what each of the router's answers says to the
-// rider, and the two tables read from a manifest. The journeys themselves are
-// the router's and are checked by `routing_journeys_check.mjs`. A stand-in
-// replaces `fetch`, so nothing leaves the machine. Run it with `node
+// rider, and the two tables read from a manifest. A stand-in for `fetch`
+// keeps every request on the machine. Run it with `node
 // test/scripts/trip_route_check.mjs`; it exits non-zero on the first case that
 // differs.
 
@@ -38,36 +37,48 @@ function stubFetch(response) {
   }
 }
 
+// The outcome of fetching the manifest over a stand-in that answers `response`; the warning a network fault logs is muted.
+async function manifestOutcomeOf({response, origin}) {
+  const warn = console.warn
+  console.warn = noWarning
+  stubFetch(response)
+  const outcome = await fetchManifest({origin, path: PATH})
+  console.warn = warn
+  return outcome
+}
+
+function noWarning() {
+  console.log("trip_route_check: a warning was muted")
+}
+
 function jsonResponse(body, init) {
   return new Response(JSON.stringify(body), {headers: {"content-type": "application/json"}, ...init})
 }
 
 // The manifest is fetched from the origin, revalidated, and read as JSON.
-stubFetch(jsonResponse(manifest))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: FetchKind.fetched, manifest}, "a manifest")
+const fetched = await manifestOutcomeOf({response: jsonResponse(manifest), origin: ORIGIN})
+deepStrictEqual(fetched, {kind: FetchKind.fetched, manifest}, "a manifest")
 deepStrictEqual(requests[0].address, ORIGIN + PATH, "the manifest's address holds the origin")
 deepStrictEqual(requests[0].options.cache, "no-cache", "the manifest is revalidated")
 deepStrictEqual(requests[0].options.headers, {accept: "application/json"}, "the manifest is asked for as JSON")
 
 // With no origin the path is the page's own.
-stubFetch(jsonResponse(manifest))
-await fetchManifest({origin: "", path: PATH})
+await manifestOutcomeOf({response: jsonResponse(manifest), origin: ""})
 deepStrictEqual(requests[1].address, PATH, "a page's own path")
 
 // Each failure is a value that names the manifest.
-stubFetch(new Response("", {status: 503}))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: PATH}, "an unavailable manifest")
-stubFetch(new Response("", {status: 503, headers: {[NOT_SAVED_HEADER.name]: NOT_SAVED_HEADER.value}}))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: JourneysKind.failed, reason: FailureReason.notSaved, path: PATH}, "a manifest the worker did not save")
-stubFetch(jsonResponse({snapshots: "none"}))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: JourneysKind.failed, reason: FailureReason.refused, path: PATH}, "a body with no snapshot list")
-stubFetch(jsonResponse(null))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: JourneysKind.failed, reason: FailureReason.refused, path: PATH}, "a body that is null")
-const warn = console.warn
-console.warn = () => {}
-stubFetch(new TypeError("Failed to fetch"))
-deepStrictEqual(await fetchManifest({origin: ORIGIN, path: PATH}), {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: PATH}, "a network fault")
-console.warn = warn
+const failures = [
+  {name: "an unavailable manifest", response: new Response("", {status: 503}), reason: FailureReason.fetchFailed},
+  {name: "a manifest the worker did not save", response: new Response("", {status: 503, headers: {[NOT_SAVED_HEADER.name]: NOT_SAVED_HEADER.value}}), reason: FailureReason.notSaved},
+  {name: "a body with no snapshot list", response: jsonResponse({snapshots: "none"}), reason: FailureReason.refused},
+  {name: "a body that is null", response: jsonResponse(null), reason: FailureReason.refused},
+  {name: "a network fault", response: new TypeError("Failed to fetch"), reason: FailureReason.fetchFailed},
+]
+
+for (const {name, response, reason} of failures) {
+  const outcome = await manifestOutcomeOf({response, origin: ORIGIN})
+  deepStrictEqual(outcome, {kind: JourneysKind.failed, reason, path: PATH}, name)
+}
 
 // The tables read from the manifest.
 deepStrictEqual(serviceDayStartsOf(manifest), {"2026-11-08": 1000, "2026-11-09": 2000}, "the days' starts")

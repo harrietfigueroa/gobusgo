@@ -30,7 +30,7 @@ function endOptionsOf(groups) {
 /**
  * What the search says of the end `end`, `TripEnd.from` or `TripEnd.to`, for
  * `text`, the rider's non-empty words, given `found`, the results of the
- * search as `where_to_files.js` returns them. A ResolutionKind member:
+ * search, `{places, addresses, intersections, stops}`. A ResolutionKind member:
  * `resolved` with the one `option` and its `end`, the value the planner
  * takes; `choices` with `groups`, the list's groups of options in its order,
  * each option's `choice.end` the end choosing it sets; or `none`.

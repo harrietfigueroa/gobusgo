@@ -18,16 +18,21 @@ export const InputKind = Object.freeze({found: "found", refused: "refused"})
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const LEAVING_NOW = Object.freeze({mode: TimeMode.now, day: DayChoice.today, clockText: ""})
 
+const MODE_NAMES = Object.freeze(Object.values(TimeMode))
+const DAY_NAMES = Object.freeze(Object.values(DayChoice))
+const NO_ARGUMENTS = Object.freeze({})
+
 function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  const isObject = typeof value === "object" && value !== null
+  return isObject && !Array.isArray(value)
 }
 
 function isModeName(mode) {
-  return Object.values(TimeMode).includes(mode)
+  return MODE_NAMES.includes(mode)
 }
 
 function isDayName(day) {
-  return Object.values(DayChoice).includes(day)
+  return DAY_NAMES.includes(day)
 }
 
 function refused(field) {
@@ -95,11 +100,12 @@ function whenOf(value) {
 /**
  * The arguments in the params of a `ui/notifications/tool-input`
  * notification, which the host sends with the complete arguments of the
- * call, or the value that `tripInput` refuses for params of another shape.
+ * call, or an empty object, which `tripInput` refuses, for params of another
+ * shape.
  */
 export function toolInputArguments(params) {
   if (!isRecord(params)) {
-    return undefined
+    return NO_ARGUMENTS
   }
 
   return params.arguments
@@ -108,11 +114,12 @@ export function toolInputArguments(params) {
 /**
  * The arguments in the params of a `ui/notifications/tool-result`
  * notification, a tool result whose `structuredContent` `plan_trip` fills
- * with the arguments unchanged, or the value that `tripInput` refuses.
+ * with the arguments unchanged, or an empty object, which `tripInput`
+ * refuses, for params of another shape.
  */
 export function toolResultArguments(params) {
   if (!isRecord(params)) {
-    return undefined
+    return NO_ARGUMENTS
   }
 
   return params.structuredContent

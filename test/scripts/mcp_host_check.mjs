@@ -24,6 +24,17 @@ import {
   updateModelContext,
 } from "../../assets/js/mcp_host.js"
 
+const MESSAGES_AFTER_ANSWER = 2
+const UNKNOWN_ID = 999
+
+function delayOf(entry) {
+  return entry.delayMs
+}
+
+function messageOf(entry) {
+  return entry.message
+}
+
 // A window the app posts to, which records what it is sent.
 function fakeParent() {
   const posted = []
@@ -97,7 +108,7 @@ function setup() {
   answer(initialize.id, result)
   const outcome = await connecting
   deepStrictEqual(outcome, {kind: OutcomeKind.answered, result}, "the host's initialize result")
-  deepStrictEqual(parent.posted.length, 2, "initialized follows the answer")
+  deepStrictEqual(parent.posted.length, MESSAGES_AFTER_ANSWER, "initialized follows the answer")
   deepStrictEqual(parent.posted[1].message, {jsonrpc: "2.0", method: HostMethod.initialized, params: {}}, "the initialized notification")
 }
 
@@ -106,7 +117,8 @@ function setup() {
   const {parent, host, send} = setup()
   const connecting = host.connect()
   send({jsonrpc: "2.0", id: parent.posted[0].message.id, error: {code: -32000, message: "no"}})
-  deepStrictEqual(await connecting, {kind: OutcomeKind.refused, message: "no"}, "a refused initialize")
+  const refusedOutcome = await connecting
+  deepStrictEqual(refusedOutcome, {kind: OutcomeKind.refused, message: "no"}, "a refused initialize")
   deepStrictEqual(parent.posted.length, 1, "no initialized after a refusal")
 }
 
@@ -114,9 +126,12 @@ function setup() {
 {
   const {timers, host} = setup()
   const connecting = host.connect()
-  deepStrictEqual(Array.from(timers.scheduled.values()).map((entry) => entry.delayMs), [HOST_REQUEST_TIMEOUT_MS], "the request's timeout")
+  const entries = Array.from(timers.scheduled.values())
+  const delays = Array.from(entries, delayOf)
+  deepStrictEqual(delays, [HOST_REQUEST_TIMEOUT_MS], "the request's timeout")
   timers.fireAll()
-  deepStrictEqual(await connecting, {kind: OutcomeKind.timedOut}, "a timed-out initialize")
+  const timedOut = await connecting
+  deepStrictEqual(timedOut, {kind: OutcomeKind.timedOut}, "a timed-out initialize")
 }
 
 // The host's notifications reach the handler registered for their method, with their params.
@@ -141,7 +156,7 @@ function setup() {
   deepStrictEqual(seen, [], "a notification from another window")
 }
 
-// update-model-context and message are requests, each answered by its id.
+// Update-model-context and message are requests, each answered by its id.
 {
   const {parent, host, answer, send} = setup()
   const structuredContent = {schema: "gobusgo.journey", version: 1}
@@ -159,8 +174,10 @@ function setup() {
   // The answers arrive out of order and each finds its request.
   send({jsonrpc: "2.0", id: message.id, error: {code: -32000, message: "Message sending denied"}})
   answer(update.id, {})
-  deepStrictEqual(await messaging, {kind: OutcomeKind.refused, message: "Message sending denied"}, "a refused message")
-  deepStrictEqual(await updating, {kind: OutcomeKind.answered, result: {}}, "an answered context update")
+  const messageOutcome = await messaging
+  const updateOutcome = await updating
+  deepStrictEqual(messageOutcome, {kind: OutcomeKind.refused, message: "Message sending denied"}, "a refused message")
+  deepStrictEqual(updateOutcome, {kind: OutcomeKind.answered, result: {}}, "an answered context update")
 }
 
 // An answer after the timeout, or to no request, is dropped.
@@ -168,9 +185,10 @@ function setup() {
   const {parent, host, timers, answer} = setup()
   const updating = updateModelContext({host, structuredContent: {}})
   timers.fireAll()
-  deepStrictEqual(await updating, {kind: OutcomeKind.timedOut}, "a timed-out context update")
+  const timedOutUpdate = await updating
+  deepStrictEqual(timedOutUpdate, {kind: OutcomeKind.timedOut}, "a timed-out context update")
   answer(parent.posted[0].message.id, {})
-  answer(999, {})
+  answer(UNKNOWN_ID, {})
 }
 
 // The requests the host makes of the app: ping and teardown are answered with an empty result, and any other is method not found.
@@ -179,7 +197,8 @@ function setup() {
   send({jsonrpc: "2.0", id: 7, method: HostMethod.ping})
   send({jsonrpc: "2.0", id: 8, method: HostMethod.resourceTeardown, params: {reason: "done"}})
   send({jsonrpc: "2.0", id: 9, method: "ui/unknown"})
-  deepStrictEqual(parent.posted.map((entry) => entry.message), [
+  const answers = Array.from(parent.posted, messageOf)
+  deepStrictEqual(answers, [
     {jsonrpc: "2.0", id: 7, result: {}},
     {jsonrpc: "2.0", id: 8, result: {}},
     {jsonrpc: "2.0", id: 9, error: {code: -32601, message: "Method not found: ui/unknown"}},

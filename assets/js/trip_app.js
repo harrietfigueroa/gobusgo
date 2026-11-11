@@ -33,6 +33,8 @@ const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const LOCATION_TEXT = "My location"
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const PROTOCOL_PREFIX = /^https?:\/\//
+// The focus key of no element: every element's key is non-empty.
+const NO_FOCUS_KEY = ""
 
 // The kinds of what an end of the trip is while the app resolves it.
 const EndStateKind = Object.freeze({waiting: "waiting", loading: "loading", resolved: "resolved", choices: "choices", none: "none", locating: "locating"})
@@ -49,6 +51,16 @@ function endTextOf(end) {
     default:
       return unreachable(end.kind, "trip app: an end of unknown kind")
   }
+}
+
+const END_ORDER = Object.freeze([TripEnd.from, TripEnd.to])
+
+function sentText(isSent) {
+  if (isSent) {
+    return "Sent to your assistant."
+  }
+
+  return "Your assistant did not take the journey."
 }
 
 function dayText(day) {
@@ -81,11 +93,11 @@ function focusedKey(container) {
     return focused.dataset.focusKey
   }
 
-  return undefined
+  return NO_FOCUS_KEY
 }
 
 function refocus({container, key}) {
-  if (key === undefined) {
+  if (key === NO_FOCUS_KEY) {
     return
   }
 
@@ -183,7 +195,12 @@ function endElement({end, state, isLocationOffered, handlers}) {
       break
     }
     case EndStateKind.choices:
-      section.append(element({tag: "p", className: "trip-note", text: `“${state.text}” matches several places. Choose one.`}), ...choiceElements({end, state, onChoose: handlers.onChoose}))
+      section.append(element({tag: "p", className: "trip-note", text: `“${state.text}” matches several places. Choose one.`}))
+
+      for (const choice of choiceElements({end, state, onChoose: handlers.onChoose})) {
+        section.append(choice)
+      }
+
       break
     case EndStateKind.none:
       section.append(element({tag: "p", className: "trip-note", text: `Nothing matches “${state.text}”. Try other words.`}))
@@ -192,13 +209,18 @@ function endElement({end, state, isLocationOffered, handlers}) {
       unreachable(state.kind, "trip app: an end state of unknown kind")
   }
 
-  const isSearching = state.isEditing || state.kind === EndStateKind.choices || state.kind === EndStateKind.none
+  const isUnsettled = state.kind === EndStateKind.choices || state.kind === EndStateKind.none
+  const isSearching = state.isEditing || isUnsettled
 
   if (isSearching) {
     section.append(searchForm({end, text: state.text, onSearch: handlers.onSearch}))
   }
 
-  if (isSearching && isLocationOffered && end === TripEnd.from) {
+  const isLocationStart = isLocationOffered && end === TripEnd.from
+
+  const isLocationButtonShown = isSearching && isLocationStart
+
+  if (isLocationButtonShown) {
     const locate = button({className: "panel-detail-action", text: "Use my location"})
     locate.dataset.focusKey = "locate"
     locate.addEventListener("click", () => { handlers.onLocate() })
@@ -267,10 +289,10 @@ export function startTripApp({root, origin, host}) {
     const state = app.ends[end]
 
     if (state.kind === EndStateKind.resolved) {
-      return state.end
+      return {kind: EndStateKind.resolved, end: state.end}
     }
 
-    return null
+    return {kind: EndStateKind.loading}
   }
 
   // Plans the trip once both ends are resolved; an answer to an earlier plan is dropped.
@@ -279,14 +301,18 @@ export function startTripApp({root, origin, host}) {
     const planNumber = app.planCount
     app.chosen = {kind: "none"}
     app.plan = {kind: "idle"}
-    const from = resolvedEnd(TripEnd.from)
-    const to = resolvedEnd(TripEnd.to)
+    const fromEnd = resolvedEnd(TripEnd.from)
+    const toEnd = resolvedEnd(TripEnd.to)
+    const isFromResolved = fromEnd.kind === EndStateKind.resolved
+    const isBothResolved = isFromResolved && toEnd.kind === EndStateKind.resolved
 
-    if (from === null || to === null) {
+    if (!isBothResolved) {
       render()
       return
     }
 
+    const from = fromEnd.end
+    const to = toEnd.end
     const query = queryOf({from, to})
 
     if (query.kind !== QueryKind.ready) {
@@ -410,10 +436,8 @@ export function startTripApp({root, origin, host}) {
 
     if (app.chosen.kind === "sending") {
       note.textContent = "Sending the journey to your assistant."
-    } else if (app.chosen.kind === "sent" && app.chosen.isSent) {
-      note.textContent = "Sent to your assistant."
     } else if (app.chosen.kind === "sent") {
-      note.textContent = "Your assistant did not take the journey."
+      note.textContent = sentText(app.chosen.isSent)
     }
 
     return note
@@ -423,9 +447,14 @@ export function startTripApp({root, origin, host}) {
     const focused = focusedKey(root)
     const heading = element({tag: "h1", className: "mcp-trip-heading", text: "Trip planner"})
     const when = element({tag: "p", className: "trip-window", text: whenText(app.input.when)})
-    const ends = [TripEnd.from, TripEnd.to].map((end) => endElement({end, state: app.ends[end], isLocationOffered: app.isLocationOffered, handlers}))
     const rows = rowsShown()
-    root.replaceChildren(heading, ...ends, when, statusElement(rows), journeysElement(rows), chosenElement())
+    root.replaceChildren(heading)
+
+    for (const end of END_ORDER) {
+      root.append(endElement({end, state: app.ends[end], isLocationOffered: app.isLocationOffered, handlers}))
+    }
+
+    root.append(when, statusElement(rows), journeysElement(rows), chosenElement())
     refocus({container: root, key: focused})
   }
 
@@ -525,7 +554,10 @@ async function main() {
 
   applyTheme(connected.result.hostContext)
 
-  if (isLocationGranted(connected.result.hostCapabilities) && "geolocation" in navigator) {
+  const isGranted = isLocationGranted(connected.result.hostCapabilities)
+  const isLocatable = isGranted && "geolocation" in navigator
+
+  if (isLocatable) {
     planner.offerLocation()
   }
 

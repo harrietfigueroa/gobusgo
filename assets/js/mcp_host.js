@@ -28,7 +28,6 @@ export const HostMethod = Object.freeze({
   sizeChanged: "ui/notifications/size-changed",
   toolInput: "ui/notifications/tool-input",
   toolResult: "ui/notifications/tool-result",
-  toolCancelled: "ui/notifications/tool-cancelled",
   hostContextChanged: "ui/notifications/host-context-changed",
   resourceTeardown: "ui/resource-teardown",
   ping: "ping",
@@ -48,7 +47,8 @@ export const ThemeKind = Object.freeze({named: "named", none: "none"})
 const METHOD_NOT_FOUND_CODE = -32601
 
 function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  const isObject = typeof value === "object" && value !== null
+  return isObject && !Array.isArray(value)
 }
 
 /** A request message with `id`, `method`, and `params`. */
@@ -118,12 +118,11 @@ export function incomingOf(data) {
  * `timers` has `setTimeout` and `clearTimeout`, handed in so a check
  * controls time.
  *
- * `onNotification(method, handler)` registers a handler for a notification
- * before `connect` is called, since the host sends the first one as soon as
- * the app says it is initialized. `connect()` resolves on
+ * A handler for a notification is registered before the connection is made,
+ * since the host sends the first one as soon as the app says it is
+ * initialized. The connection resolves on
  * `{kind: OutcomeKind.answered, result}`, the host's initialize result, with
- * its `hostContext` and `hostCapabilities`, or the failure. `request` and
- * `notify` send what the app asks of the host.
+ * its `hostContext` and `hostCapabilities`, or the failure.
  */
 export function createHost({target, events, appInfo, timers}) {
   const pending = new Map()
@@ -150,7 +149,9 @@ export function createHost({target, events, appInfo, timers}) {
   }
 
   function answerRequest({id, method}) {
-    if (method === HostMethod.ping || method === HostMethod.resourceTeardown) {
+    const isAnswerable = method === HostMethod.ping || method === HostMethod.resourceTeardown
+
+    if (isAnswerable) {
       post(resultMessage({id, result: {}}))
       return
     }
@@ -255,7 +256,9 @@ export function themeOf(hostContext) {
     return {kind: ThemeKind.none}
   }
 
-  if (hostContext.theme === "light" || hostContext.theme === "dark") {
+  const isNamed = hostContext.theme === "light" || hostContext.theme === "dark"
+
+  if (isNamed) {
     return {kind: ThemeKind.named, theme: hostContext.theme}
   }
 

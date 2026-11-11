@@ -59,8 +59,9 @@ for (const {name, value, expected} of cases) {
 // and the tool result holds them under `structuredContent`.
 deepStrictEqual(toolInputArguments({arguments: {from: "A", to: "B"}}), {from: "A", to: "B"}, "tool input arguments")
 deepStrictEqual(toolResultArguments({content: [], structuredContent: {from: "A", to: "B"}}), {from: "A", to: "B"}, "tool result structured content")
-deepStrictEqual(toolInputArguments(undefined), undefined, "tool input with no params")
-deepStrictEqual(toolResultArguments("text"), undefined, "tool result with params of another shape")
-deepStrictEqual(tripInput(toolInputArguments(undefined)), refused("from"), "no params refuse from")
+deepStrictEqual(toolInputArguments(undefined), {}, "tool input with no params")
+deepStrictEqual(toolResultArguments("text"), {}, "tool result with params of another shape")
+const noArguments = toolInputArguments(undefined)
+deepStrictEqual(tripInput(noArguments), refused("from"), "no params refuse from")
 
 console.log(`mcp_trip_input_check: ${cases.length} cases passed`)
