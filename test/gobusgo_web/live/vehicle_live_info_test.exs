@@ -356,6 +356,33 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     end
   end
 
+  describe "the info panel's places license" do
+    test "names the places file's license among the licenses" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert view |> text("#app-info-places-license") |> String.trim() ==
+               "Places: ODbL 1.0, © OpenStreetMap contributors"
+    end
+
+    test "links the license, the copyright page, and the places manifest" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      hrefs =
+        view
+        |> element("#app-info-places-license-links")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("a")
+        |> LazyHTML.attribute("href")
+
+      assert hrefs == [
+               "https://opendatacommons.org/licenses/odbl/1-0/",
+               "https://www.openstreetmap.org/copyright",
+               "/places/manifest.json"
+             ]
+    end
+  end
+
   describe "the info panel's shared scooters and bikes" do
     test "credits Lime with a link to its Public GBFS Terms" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")

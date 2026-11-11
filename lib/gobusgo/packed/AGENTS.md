@@ -21,8 +21,8 @@ The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/packed_c
 | Number | Kind | Prefix | Defined by |
 | --- | --- | --- | --- |
 | 0 | fixture | `fixture` | this area's fixtures and tests, never published |
-| 1 | trip path shard | `trip-paths` | GOB-357 |
-| 2 | trip path index | `trip-paths-index` | GOB-357 |
+| 1 | trip path shard | `trip-paths` | GOB-357, `lib/gobusgo/routing/AGENTS.md` |
+| 2 | trip path index | `trip-paths-index` | GOB-357, `lib/gobusgo/routing/AGENTS.md` |
 | 3 | address shard | `addresses` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
 | 4 | address index | `addresses-index` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
 | 5 | places | `places` | GOB-366, `lib/gobusgo/places/AGENTS.md` |
@@ -53,4 +53,4 @@ A reader expands under a bound. `Gobusgo.Packed.expand/2` returns `{:error, :too
 
 ## Mix task
 
-`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format`, `Gobusgo.Addresses.Format`, and `Gobusgo.Intersections.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`, `lib/gobusgo/intersections/AGENTS.md`). A refused file exits with the reason.
+`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format`, `Gobusgo.Routing.TripPathShard`, `Gobusgo.Routing.TripPathIndex`, `Gobusgo.Addresses.Format`, and `Gobusgo.Intersections.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/routing/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`, `lib/gobusgo/intersections/AGENTS.md`). A refused file exits with the reason.
