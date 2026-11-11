@@ -3,8 +3,9 @@
 // lacks, one index fetch per date, one shard fetch per route and at most four
 // fetches in flight, the least recently used shard leaving past the bound, a
 // file of another size than the manifest names refused, a failed or timed-out
-// fetch retried and then given up, and the fallback for each of a date with
-// no entry, a route with no shard, and a trip its shard lacks. Each case runs
+// fetch retried and then given up, and a trip held back as missing, until its
+// retry time, for each of a date with no entry, a route with no shard, and a
+// trip its shard lacks. Each case runs
 // the pure functions over the shared shard and index fixtures and plain
 // manifests, with times as plain numbers. Run it with
 // `node test/scripts/trip_path_files_check.mjs`; it exits non-zero on the
@@ -23,6 +24,8 @@ import {
   INDEX_COUNT_MAX,
   MANIFEST_RETRY_MS,
   ManifestOutcomeKind,
+  MISSING_PATH_RETRY_MS,
+  MISSING_TRIP_COUNT_MAX,
   SHARD_COUNT_MAX,
   SHARD_FAILURE_COUNT_MAX,
   SHARD_FETCH_PARALLEL_MAX,
@@ -74,6 +77,10 @@ function planAt({files, trips, nowMs}) {
   return planTripPathFiles({files, cache: empty, trips, nowMs})
 }
 
+function isHeldBack({files, trip}) {
+  return files.missingUntilMs.has(tripPathKey(trip))
+}
+
 function plan(files, trips) {
   return planAt({files, trips, nowMs: START_MS})
 }
@@ -117,6 +124,10 @@ function tripOfRouteAt(_unused, index) {
   return tripOfRoute(index)
 }
 
+function unindexedTripAt(_unused, index) {
+  return {tripId: `1_u${index}`, routeId: `1_not_in_index_${index}`, serviceDateMs: SERVICE_DATE_MS}
+}
+
 function dateAt(_unused, index) {
   return SERVICE_DATE_MS + index * DATE_STEP_MS
 }
@@ -129,21 +140,17 @@ function fetchSummary(fetch) {
   return [fetch.kind, fetch.path, fetch.serviceDateMs]
 }
 
-function isLoopTrip(trip) {
-  return trip.tripId === loopTrip.tripId
-}
-
 // No manifest: the first plan asks for it once and holds the trips.
 const first = plan(emptyTripPathFiles(), [loopTrip])
 deepStrictEqual(first.manifest.ask, true, "the manifest is asked for first")
 deepStrictEqual(first.manifest.etag, "", "a first ask names no etag")
-deepStrictEqual([first.fallback.length, first.paths.length, first.fetches.length], [0, 0, 0], "a trip waits for the manifest")
+deepStrictEqual([isHeldBack({files: first.files, trip: loopTrip}), first.paths.length, first.fetches.length], [false, 0, 0], "a trip waits for the manifest")
 deepStrictEqual(planAt({files: first.files, trips: [loopTrip], nowMs: START_MS + STEP_MS}).manifest.ask, false, "the manifest is not asked for while an ask runs")
 
-// A failed ask sends the trips to the fallback and is repeated after its retry time.
+// A failed ask leaves the trips with no path and is repeated after its retry time.
 const askFailed = manifestFetched({files: first.files, outcome: {kind: ManifestOutcomeKind.failed}, nowMs: START_MS})
 const afterFailure = planAt({files: askFailed, trips: [loopTrip], nowMs: START_MS + STEP_MS})
-deepStrictEqual(afterFailure.fallback, [loopTrip], "a trip goes to the fallback with no manifest")
+ok(isHeldBack({files: afterFailure.files, trip: loopTrip}), "a trip is held back with no manifest")
 deepStrictEqual(afterFailure.manifest.ask, false, "a failed ask waits its retry time")
 deepStrictEqual(planAt({files: askFailed, trips: [loopTrip], nowMs: START_MS + MANIFEST_RETRY_MS}).manifest.ask, true, "a failed ask is repeated at its retry time")
 
@@ -160,29 +167,36 @@ const shardPlan = plan(withIndex, [loopTrip, absentTrip])
 deepStrictEqual(shardPlan.fetches.length, 1, "one shard fetch for two trips of one route")
 deepStrictEqual(shardPlan.fetches[0].kind, FileKind.shard, "the fetch is a shard's")
 deepStrictEqual(shardPlan.fetches[0].routeId, ROUTE_ID, "the shard is the route's")
-deepStrictEqual(shardPlan.fallback, [], "trips wait for the shard")
+ok(!isHeldBack({files: shardPlan.files, trip: loopTrip}), "trips wait for the shard")
 
-// A route the index lacks goes to the fallback at once.
-deepStrictEqual(plan(withIndex, [unindexedTrip]).fallback, [unindexedTrip], "a route with no shard goes to the fallback")
+// A route the index lacks is held back at once.
+ok(isHeldBack({files: plan(withIndex, [unindexedTrip]).files, trip: unindexedTrip}), "a route with no shard is held back")
 
-// With the shard, the trip is read from it and never sent to the server; a trip it lacks goes to the fallback.
+// With the shard, the trip is read from it; a trip it lacks is held back.
 const held = withLoopShard()
 const served = plan(held, [loopTrip, absentTrip])
 deepStrictEqual(served.paths.length, 1, "the shard serves its trip")
 deepStrictEqual(served.paths[0], tripPathFromShard(decodeTripPathShard(shardBytes).shard, loopTrip), "the path is the shard's")
-deepStrictEqual(served.fallback, [absentTrip], "a trip its shard lacks goes to the fallback")
-ok(!served.fallback.some(isLoopTrip), "a trip found in a shard is never sent to the server")
+ok(isHeldBack({files: served.files, trip: absentTrip}), "a trip its shard lacks is held back")
+ok(!isHeldBack({files: served.files, trip: loopTrip}), "a trip found in a shard is not held back")
 deepStrictEqual(served.fetches, [], "a held shard is not fetched again")
 
 // A trip the path cache holds is left out.
 const cache = new Map([[tripPathKey(loopTrip), {}]])
 const cached = planTripPathFiles({files: held, cache, trips: [loopTrip, absentTrip], nowMs: START_MS})
-deepStrictEqual([cached.paths.length, cached.fallback], [0, [absentTrip]], "a cached trip is left out")
+deepStrictEqual([cached.paths.length, isHeldBack({files: cached.files, trip: loopTrip})], [0, false], "a cached trip is left out")
 
-// A date with no entry goes to the fallback and asks for the manifest again at most once per retry time.
+// A trip held back is left out until its retry time and decided again then.
+const heldBack = planAt({files: served.files, trips: [absentTrip], nowMs: START_MS + MISSING_PATH_RETRY_MS - STEP_MS})
+deepStrictEqual(heldBack.files.missingUntilMs, served.files.missingUntilMs, "a held back trip is not decided again before its retry time")
+const decidedAgain = planAt({files: served.files, trips: [absentTrip], nowMs: START_MS + MISSING_PATH_RETRY_MS})
+const decidedAgainUntilMs = Array.from(decidedAgain.files.missingUntilMs.values())
+deepStrictEqual(decidedAgainUntilMs, [START_MS + MISSING_PATH_RETRY_MS + MISSING_PATH_RETRY_MS], "a trip is held back again for a full retry time")
+
+// A date with no entry is held back and asks for the manifest again at most once per retry time.
 const otherDay = {...loopTrip, serviceDateMs: OTHER_DATE_MS}
 const missingDate = planAt({files: held, trips: [otherDay], nowMs: START_MS + MANIFEST_RETRY_MS - STEP_MS})
-deepStrictEqual(missingDate.fallback, [otherDay], "a date with no entry goes to the fallback")
+ok(isHeldBack({files: missingDate.files, trip: otherDay}), "a date with no entry is held back")
 deepStrictEqual(missingDate.manifest.ask, false, "the manifest is not asked for again before its retry time")
 const reAsk = planAt({files: held, trips: [otherDay], nowMs: START_MS + MANIFEST_RETRY_MS})
 deepStrictEqual(reAsk.manifest, {ask: true, etag: '"e1"'}, "the manifest is revalidated with its etag at the retry time")
@@ -196,10 +210,10 @@ const replaced = manifestFetched({files: unchanged, outcome: changed(newIndexMan
 deepStrictEqual(plan(replaced, [loopTrip]).paths.length, 0, "a date whose index changed drops its shards")
 deepStrictEqual(plan(replaced, [loopTrip]).fetches[0].kind, FileKind.index, "and fetches the new index")
 
-// A date whose snapshot has no trip paths goes to the fallback.
+// A date whose snapshot has no trip paths is held back.
 const noPathsManifest = {snapshots: [{serviceDayStartMs: SERVICE_DATE_MS, files: {}}]}
 const noPaths = manifestFetched({files: emptyTripPathFiles(), outcome: changed(noPathsManifest), nowMs: START_MS})
-deepStrictEqual(plan(noPaths, [loopTrip]).fallback, [loopTrip], "a date with no index file goes to the fallback")
+ok(isHeldBack({files: plan(noPaths, [loopTrip]).files, trip: loopTrip}), "a date with no index file is held back")
 
 // A body that is not a manifest counts as a failure, and the manifest holds at most three dates.
 const notManifest = manifestFetched({files: emptyTripPathFiles(), outcome: changed({snapshots: "x"}), nowMs: START_MS})
@@ -222,14 +236,16 @@ let stubbed = withStubIndex()
 const lruCount = SHARD_COUNT_MAX + EXTRA_ROUTE_COUNT
 
 for (let step = 0; step < lruCount; step += 1) {
-  const stepPlan = planAt({files: stubbed, trips: [tripOfRoute(step)], nowMs: START_MS + step})
+  // Each step is a retry time after the one before, so the trips it held back are decided again.
+  const stepMs = START_MS + step * MISSING_PATH_RETRY_MS
+  const stepPlan = planAt({files: stubbed, trips: [tripOfRoute(step)], nowMs: stepMs})
   stubbed = stepPlan.files
 
   for (const fetch of stepPlan.fetches) {
-    stubbed = fileFetched({files: stubbed, fetch, outcome: expandedOutcome(shardBytes), nowMs: START_MS + step})
+    stubbed = fileFetched({files: stubbed, fetch, outcome: expandedOutcome(shardBytes), nowMs: stepMs})
   }
 
-  stubbed = planAt({files: stubbed, trips: [tripOfRoute(0)], nowMs: START_MS + step}).files
+  stubbed = planAt({files: stubbed, trips: [tripOfRoute(0)], nowMs: stepMs}).files
 }
 
 deepStrictEqual(stubbed.shards.size, SHARD_COUNT_MAX, "the shards held are bounded")
@@ -254,12 +270,12 @@ for (let failure = 1; failure <= SHARD_FAILURE_COUNT_MAX; failure += 1) {
   const waiting = planAt({files: flaky, trips: [flakyTrip], nowMs: nowMs + FILE_RETRY_MS - STEP_MS})
 
   if (failure < SHARD_FAILURE_COUNT_MAX) {
-    deepStrictEqual([waiting.fetches.length, waiting.fallback.length], [0, 0], `failure ${failure} waits its retry time`)
+    deepStrictEqual([waiting.fetches.length, isHeldBack({files: waiting.files, trip: flakyTrip})], [0, false], `failure ${failure} waits its retry time`)
   }
 }
 
 const givenUp = planAt({files: flaky, trips: [flakyTrip], nowMs: START_MS + LATER_RETRY_COUNT * FILE_RETRY_MS})
-deepStrictEqual(givenUp.fallback, [flakyTrip], "a file that failed three times sends its trips to the fallback")
+ok(isHeldBack({files: givenUp.files, trip: flakyTrip}), "a file that failed three times leaves its trips with no path")
 deepStrictEqual(givenUp.fetches, [], "and is not fetched again")
 
 // A file that does not decode counts as a failure.
@@ -267,6 +283,12 @@ const badPlan = plan(withStubIndex(), [flakyTrip])
 const bad = fileFetched({files: badPlan.files, fetch: badPlan.fetches[0], outcome: expandedOutcome(new Uint8Array(NOT_A_CONTAINER_BYTE_COUNT)), nowMs: START_MS})
 deepStrictEqual(planAt({files: bad, trips: [flakyTrip], nowMs: START_MS + STEP_MS}).fetches, [], "a file that does not decode waits its retry time")
 deepStrictEqual(bad.shards.get(`${SERVICE_DATE_MS}/1_r0`).kind, "failed", "a file that does not decode is failed")
+
+// The trips held back are bounded, the earliest leaving first.
+const unindexedTrips = Array.from({length: MISSING_TRIP_COUNT_MAX + EXTRA_ROUTE_COUNT}, unindexedTripAt)
+const overflowed = plan(withIndex, unindexedTrips)
+deepStrictEqual(overflowed.files.missingUntilMs.size, MISSING_TRIP_COUNT_MAX, "the trips held back are bounded")
+ok(!isHeldBack({files: overflowed.files, trip: unindexedTrips[0]}), "the trip held back earliest leaves first")
 
 // A time that is not a number is a programmer error.
 throws(planAtNoTime, AssertionError, "a time that is not a number")

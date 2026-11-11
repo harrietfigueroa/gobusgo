@@ -25,8 +25,6 @@ defmodule Gobusgo.Application do
   alias Gobusgo.OneBusAway.RouteScheduleView
   alias Gobusgo.OneBusAway.Sources
   alias Gobusgo.OneBusAway.StopView
-  alias Gobusgo.OneBusAway.TripPathCache
-  alias Gobusgo.OneBusAway.TripPathsServed
   alias Gobusgo.OneBusAway.VehicleBatch
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.RetentionPolicy
@@ -34,7 +32,7 @@ defmodule Gobusgo.Application do
   alias Gobusgo.Scheduler
   alias Gobusgo.Usage
 
-  @ingestion_task_count_max 13
+  @ingestion_task_count_max 12
   @restart_count_max 3
   @restart_window_seconds 5
 
@@ -66,12 +64,6 @@ defmodule Gobusgo.Application do
   @vehicle_situation_view_agency_count_max 64
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
-  # The trip path cache holds the paths of 2,000 trips, which 2,000 King
-  # County Metro paths of 2026-11-09 fill with 1.2 MiB of table and 2.3 MiB
-  # of path text. Two builds run at once, each capped at its own heap.
-  @trip_path_cache_trip_count_max 2_000
-  @trip_path_builder_count_max 2
-
   # The shared vehicle view holds the newest fetch of each GBFS system.
   @vehicle_status_view_system_count_max 8
   # The vehicle type view is a fetch view of each GBFS system's vehicle
@@ -95,9 +87,6 @@ defmodule Gobusgo.Application do
          {:ok, _shared_vehicle_tiles} <- Config.shared_vehicle_tiles(),
          {:ok, _revision} <- Config.revision(),
          {:ok, _donation_url} <- Config.donation_url() do
-      # The count of served path requests starts before any page can serve one.
-      :ok = TripPathsServed.init()
-
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.
@@ -127,9 +116,6 @@ defmodule Gobusgo.Application do
              stop_count_max: @stop_view_stop_count_max},
             {RouteScheduleView,
              name: RouteScheduleView, route_count_max: @route_path_view_route_count_max},
-            {TripPathCache, name: TripPathCache, trip_count_max: @trip_path_cache_trip_count_max},
-            {Task.Supervisor,
-             name: Gobusgo.OneBusAway.TripPathBuilders, max_children: @trip_path_builder_count_max},
             {FetchView,
              name: @arrival_view,
              pubsub: Gobusgo.PubSub,
@@ -181,8 +167,7 @@ defmodule Gobusgo.Application do
                 gbfs_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++
-                address_specs(scheduled) ++
-                trip_paths_specs(scheduled) ++ cleanup_specs(scheduled, storage)
+                address_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
           ]
 
@@ -245,10 +230,6 @@ defmodule Gobusgo.Application do
 
   defp routing_specs(false), do: []
 
-  # The count of served path requests is logged wherever the sources are
-  # scheduled, which is where a node serves pages.
-  defp trip_paths_specs(true), do: [TripPathsServed.log_spec()]
-  defp trip_paths_specs(false), do: []
   # The address shards are built wherever the sources are scheduled. The
   # county's export is a public download, so the build needs no setting.
   defp address_specs(true), do: [Gobusgo.Addresses.spec(server: Gobusgo.Addresses)]
