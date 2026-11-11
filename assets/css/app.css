@@ -836,6 +836,21 @@ a.inline-target {
   display: none;
 }
 
+/* The strip stands aside while the Trip tab's panel shows, which the
+   panel's card already says: always from `md` up, and on a phone while the
+   sheet is expanded or dragged. A collapsed sheet shows it over every tab. */
+@media (width < 48rem) {
+  .panel-sheet:is([data-expanded="true"], [data-dragging]):has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
+    display: none;
+  }
+}
+
+@media (width >= 48rem) {
+  .panel-sheet:has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
+    display: none;
+  }
+}
+
 .trip-strip-top {
   display: flex;
   align-items: center;

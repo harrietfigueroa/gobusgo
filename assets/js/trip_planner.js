@@ -520,7 +520,7 @@ export const TripPlanner = {
     // Whether an edit of the rider's filter ended the trip's filter, which
     // takes the strip away until a journey is selected again.
     this.isStripEnded = false
-    // The strip's view, or null on a page with no strip element.
+    // The strip's view, written into the element the page renders for it.
     this.stripView = this.buildStrip()
     // The end the search box searches for, the text typed since it took
     // focus, the options the list shows, and the search whose results the

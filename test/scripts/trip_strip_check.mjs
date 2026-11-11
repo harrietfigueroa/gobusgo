@@ -91,6 +91,10 @@ function stripOf({journey, live}) {
   return tripStrip({card, live, names, serviceDayStartsMs, timeZone: TIME_ZONE})
 }
 
+function kindOf(segment) {
+  return segment.kind
+}
+
 function lateArrival({tripId, scheduledClock}) {
   const scheduledMs = atMs(scheduledClock)
   return {route: "E", color: "#1D4ED8", headsign: "Aurora Village", minutes: 0, time_ms: scheduledMs + LATE_MINUTES * MINUTE_MS, predicted: true, trip_id: tripId, scheduled_ms: scheduledMs}
@@ -110,7 +114,7 @@ function lateArrival({tripId, scheduledClock}) {
   deepStrictEqual(strip.firstStepText, "Walk to 3rd Ave & Pike St")
   deepStrictEqual(strip.nextStepTexts, ["Board 7 at 3rd Ave & Pike St, 8:48 am, 2 min late", "Arrive at S Jackson St & 20th Pl S"])
   deepStrictEqual(strip.sentence, "Trip: Leave in 7 min, Arrive 9:16 am. 7 2 min late. Walk to 3rd Ave & Pike St.")
-  const segmentKinds = Array.from(strip.segments, (segment) => segment.kind)
+  const segmentKinds = Array.from(strip.segments, kindOf)
   deepStrictEqual(segmentKinds, [SegmentKind.walk, SegmentKind.ride])
 }
 
