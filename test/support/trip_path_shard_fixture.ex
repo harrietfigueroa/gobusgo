@@ -141,8 +141,8 @@ defmodule Gobusgo.Test.TripPathShardFixture do
     %{
       "id" => trip.id,
       "pointCount" => length(trip.points),
-      "firstPointMicrodegrees" => [first_latitude, first_longitude],
-      "lastPointMicrodegrees" => [last_latitude, last_longitude],
+      "firstPointE5" => [first_latitude, first_longitude],
+      "lastPointE5" => [last_latitude, last_longitude],
       "stopDistancesM" => Enum.map(trip.stops, & &1.distance_m),
       "arrivalS" => Enum.map(trip.stops, & &1.arrival_s),
       "departureS" => Enum.map(trip.stops, & &1.departure_s)

@@ -31,7 +31,7 @@ const fixtureDirectory = fileURLToPath(new URL("../fixtures/routing/trip-paths-v
 const loopDirectory = fileURLToPath(new URL("../fixtures/one_bus_away/trip_path/", import.meta.url))
 const expected = JSON.parse(readFileSync(fixtureDirectory + "expected.json", "utf-8"))
 const {event: loopEvent} = JSON.parse(readFileSync(loopDirectory + "encoded_loop.json", "utf-8"))
-const MICRODEGREES_PER_DEGREE = 1_000_000
+const E5_PER_DEGREE = 100_000
 const ROUTE_ID = "1_7994"
 const SERVICE_DATE_MS = 1_794_211_200_000
 const VERSION_OFFSET = 4
@@ -179,8 +179,8 @@ function stopDeparture(stop) {
   return stop.departureSeconds
 }
 
-function degreesOf(microdegrees) {
-  return microdegrees / MICRODEGREES_PER_DEGREE
+function degreesOf(e5) {
+  return e5 / E5_PER_DEGREE
 }
 
 // The fixture's two stored forms hold one content each.
@@ -196,8 +196,8 @@ async function checkStoredStreams() {
 
 function checkExpectedTrip({shard, trip}) {
   const path = tripPathFromShard(shard, {tripId: trip.id, routeId: ROUTE_ID, serviceDateMs: SERVICE_DATE_MS})
-  const [firstLatitude, firstLongitude] = trip.firstPointMicrodegrees
-  const [lastLatitude, lastLongitude] = trip.lastPointMicrodegrees
+  const [firstLatitude, firstLongitude] = trip.firstPointE5
+  const [lastLatitude, lastLongitude] = trip.lastPointE5
   const lastPoint = path.points[path.points.length - 1]
   deepStrictEqual(path.points.length, trip.pointCount, trip.id + " point count")
   deepStrictEqual(path.points[0], [degreesOf(firstLongitude), degreesOf(firstLatitude)])

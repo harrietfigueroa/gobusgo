@@ -16,7 +16,6 @@ defmodule Gobusgo.Routing.TripPathShardTest do
   alias Gobusgo.Test.TripPathShardFixture
 
   @fixture_directory TripPathShardFixture.directory()
-  @microdegrees_per_e5 10
 
   defp fixture_bytes(name), do: @fixture_directory |> Path.join(name) |> File.read!()
 
@@ -75,7 +74,7 @@ defmodule Gobusgo.Routing.TripPathShardTest do
       assert Enum.map(decoded(), & &1.id) == ["1_1137791", "1_1137792"]
     end
 
-    test "holds each trip's points as the whole microdegrees of the path's points" do
+    test "holds each trip's points as the integers of the path's polyline" do
       input = TripPathShardFixture.input()
       %{paths: paths} = TripPath.build_route(input)
       {:ok, %{points: encoded}} = Map.fetch!(paths, "1_1137791")
@@ -88,9 +87,6 @@ defmodule Gobusgo.Routing.TripPathShardTest do
         |> Enum.chunk_every(2)
         |> Enum.scan({0, 0}, fn [latitude, longitude], {latitude_before, longitude_before} ->
           {latitude_before + latitude, longitude_before + longitude}
-        end)
-        |> Enum.map(fn {latitude, longitude} ->
-          {latitude * @microdegrees_per_e5, longitude * @microdegrees_per_e5}
         end)
 
       assert points == cumulative

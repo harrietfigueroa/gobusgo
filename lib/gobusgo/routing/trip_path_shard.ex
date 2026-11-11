@@ -3,7 +3,8 @@ defmodule Gobusgo.Routing.TripPathShard do
   @version 1
   @section_count 4
   @build_trip_count_max 100
-  @coordinate_scale 10
+  @latitude_e5_max 9_000_000
+  @longitude_e5_max 18_000_000
   @u32_max 4_294_967_295
 
   @moduledoc """
@@ -15,7 +16,8 @@ defmodule Gobusgo.Routing.TripPathShard do
   of `Gobusgo.Routing.TripPathIndex` names the route. Everything here is
   pure; `lib/gobusgo/routing/AGENTS.md` holds the format.
 
-  A geometry is a distinct sequence of points, a pattern is a geometry with
+  A geometry is a distinct sequence of points in the polyline's own unit,
+  1e-5 degrees, a pattern is a geometry with
   the distance of each stop along it, and a trip is a pattern with its own
   stop times. Two stop sequences that follow one polyline share a
   geometry, and two that also stand at the same distances share a pattern.
@@ -31,7 +33,6 @@ defmodule Gobusgo.Routing.TripPathShard do
   alias Gobusgo.OneBusAway.TripPath
   alias Gobusgo.Packed
   alias Gobusgo.Packed.Columns
-  alias Gobusgo.Packed.Positions
   alias Gobusgo.Packed.StringTable
   alias Gobusgo.Packed.Varint
   alias Gobusgo.Polyline
@@ -39,10 +40,10 @@ defmodule Gobusgo.Routing.TripPathShard do
   @typedoc "One stop time of a trip, as `Gobusgo.OneBusAway.CompactSchedule.stop_times/2` returns it."
   @type stop_time :: TripPath.stop_time()
 
-  @typedoc "A trip decoded: its path in microdegrees and its stops' distances and times."
+  @typedoc "A trip decoded: its path in 1e-5 degrees and its stops' distances and times."
   @type decoded_trip :: %{
           id: String.t(),
-          points: [Positions.point()],
+          points: [{integer(), integer()}],
           stops: [%{distance_m: integer(), arrival_s: integer(), departure_s: integer()}]
         }
 
@@ -165,7 +166,7 @@ defmodule Gobusgo.Routing.TripPathShard do
 
       :error ->
         geometry_index = map_size(state.geometry_of_points)
-        geometry = points |> microdegree_points() |> Positions.encode_path()
+        geometry = encode_geometry(points)
 
         {geometry_index,
          %{
@@ -233,20 +234,18 @@ defmodule Gobusgo.Routing.TripPathShard do
     encoded
   end
 
-  # The path's points as whole microdegrees: the encoded format's integers
-  # are at five decimal places, so each is times ten, with no float.
-  defp microdegree_points(encoded_points) do
-    {:ok, numbers} = Polyline.decode_integers(encoded_points)
+  # A geometry is a varint count of points, then the zigzag varint latitude
+  # and longitude steps of each, the first from (0, 0): the integers the
+  # encoded polyline holds, with no change of unit, since every coordinate is
+  # a whole number of 1e-5 degrees and a finer unit only adds bits.
+  defp encode_geometry(encoded_points) do
+    {:ok, steps} = Polyline.decode_integers(encoded_points)
+    Assert.condition(rem(length(steps), 2) == 0, "a point holds a latitude and a longitude")
 
-    {points, _last} =
-      numbers
-      |> Enum.chunk_every(2)
-      |> Enum.map_reduce({0, 0}, fn [latitude_step, longitude_step], {latitude, longitude} ->
-        point = {latitude + latitude_step, longitude + longitude_step}
-        {{elem(point, 0) * @coordinate_scale, elem(point, 1) * @coordinate_scale}, point}
-      end)
-
-    points
+    [
+      Varint.encode(div(length(steps), 2)),
+      for(step <- steps, do: Varint.encode(Varint.zigzag(step)))
+    ]
   end
 
   # The distance since the stop before in meters of each stop, the first
@@ -327,13 +326,40 @@ defmodule Gobusgo.Routing.TripPathShard do
 
   defp decode_geometries(section) do
     with {:ok, count, rest} <- Varint.decode(section),
-         {:ok, geometries, <<>>} <- decode_each(rest, count, &Positions.decode_path/1),
+         {:ok, geometries, <<>>} <- decode_each(rest, count, &decode_geometry/1),
          false <- Enum.member?(geometries, []) do
       {:ok, List.to_tuple(geometries)}
     else
       true -> {:error, :bad_index}
       {:ok, _geometries, _rest} -> {:error, :bad_section_size}
       {:error, _reason} = refusal -> refusal
+    end
+  end
+
+  defp decode_geometry(binary) do
+    with {:ok, count, rest} <- Varint.decode(binary) do
+      if count * 2 <= byte_size(rest) do
+        decode_points(rest, count, {0, 0}, [])
+      else
+        {:error, :truncated}
+      end
+    end
+  end
+
+  defp decode_points(rest, 0, _last, points), do: {:ok, Enum.reverse(points), rest}
+
+  defp decode_points(binary, remaining, {latitude, longitude}, points) do
+    with {:ok, latitude_zigzag, after_latitude} <- Varint.decode(binary),
+         {:ok, longitude_zigzag, after_longitude} <- Varint.decode(after_latitude) do
+      point =
+        {latitude + Varint.unzigzag(latitude_zigzag),
+         longitude + Varint.unzigzag(longitude_zigzag)}
+
+      if abs(elem(point, 0)) <= @latitude_e5_max and abs(elem(point, 1)) <= @longitude_e5_max do
+        decode_points(after_longitude, remaining - 1, point, [point | points])
+      else
+        {:error, :bad_position}
+      end
     end
   end
 

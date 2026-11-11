@@ -41,7 +41,9 @@ const TRIP_INDEX_MISSING = -1
 const SHARD_SECTION = Object.freeze({geometries: 0, patterns: 1, trips: 2, times: 3})
 const INDEX_SECTION = Object.freeze({columns: 0, hashes: 1})
 const SHA256_BYTES = 32
-const MICRODEGREES_PER_DEGREE = 1_000_000
+const E5_PER_DEGREE = 100_000
+const LATITUDE_E5_MAX = 9_000_000
+const LONGITUDE_E5_MAX = 18_000_000
 const LATITUDE_AT = 0
 const LONGITUDE_AT = 1
 const POINT_VALUES = 2
@@ -55,6 +57,52 @@ function refused(reason) {
 
 function sectionRestFrom({section, offset}) {
   return {offset, byteLength: section.offset + section.byteLength - offset}
+}
+
+// The geometry at `cursor`: a varint count of points, then the zigzag varint
+// latitude and longitude steps of each, the first from (0, 0), in units of
+// 1e-5 degrees. Returns `{refusal, points}`: `refusal` is null or the reason
+// the geometry is refused, and `points` an Int32Array of latitude and
+// longitude in turn, empty on a refusal.
+function readGeometry(cursor) {
+  const empty = new Int32Array(0)
+  const count = cursor.readVarint()
+
+  if (cursor.refusal !== null) {
+    return {refusal: cursor.refusal, points: empty}
+  }
+
+  const valueCount = count * POINT_VALUES
+
+  // Each point takes at least two bytes, so a larger count is cut short.
+  if (valueCount > cursor.remaining()) {
+    return {refusal: PackedRefusal.truncated, points: empty}
+  }
+
+  const points = new Int32Array(valueCount)
+  let latitude = 0
+  let longitude = 0
+
+  for (let index = 0; index < count; index += 1) {
+    latitude += unzigzag(cursor.readVarint())
+    longitude += unzigzag(cursor.readVarint())
+
+    if (cursor.refusal !== null) {
+      return {refusal: cursor.refusal, points: empty}
+    }
+
+    const isLatitudeOut = Math.abs(latitude) > LATITUDE_E5_MAX
+    const isPointOut = isLatitudeOut || Math.abs(longitude) > LONGITUDE_E5_MAX
+
+    if (isPointOut) {
+      return {refusal: PackedRefusal.badPosition, points: empty}
+    }
+
+    points[index * POINT_VALUES + LATITUDE_AT] = latitude
+    points[index * POINT_VALUES + LONGITUDE_AT] = longitude
+  }
+
+  return {refusal: null, points}
 }
 
 // The geometries of `section`: each one's start, every path checked. A
@@ -76,13 +124,13 @@ function scanGeometries({view, section}) {
 
   for (let index = 0; index < count; index += 1) {
     offsets[index] = cursor.offset
-    const path = cursor.readPath()
+    const geometry = readGeometry(cursor)
 
-    if (cursor.refusal !== null) {
-      return refused(cursor.refusal)
+    if (geometry.refusal !== null) {
+      return refused(geometry.refusal)
     }
 
-    if (path.length === 0) {
+    if (geometry.points.length === 0) {
       return refused(TripPathRefusal.badIndex)
     }
   }
@@ -314,16 +362,14 @@ function pointsOf({shard, geometryIndex}) {
   const offset = shard.geometryOffsets[geometryIndex]
   const section = sectionRestFrom({section: shard.geometrySection, offset})
   const cursor = new SectionCursor({view: shard.view, section})
-  const path = cursor.readPath()
-  assertCondition(cursor.refusal === null, "the shard's geometries were checked when it was decoded")
+  const geometry = readGeometry(cursor)
+  assertCondition(geometry.refusal === null, "the shard's geometries were checked when it was decoded")
+  const path = geometry.points
   const points = []
 
-  // Microdegrees over a million is the same quotient as the encoded format's
-  // five-place integers over a hundred thousand, so a point is the number
-  // `decodeTripPath` finds, bit for bit.
   for (let index = 0; index < path.length; index += POINT_VALUES) {
-    const latitude = path[index + LATITUDE_AT] / MICRODEGREES_PER_DEGREE
-    const longitude = path[index + LONGITUDE_AT] / MICRODEGREES_PER_DEGREE
+    const latitude = path[index + LATITUDE_AT] / E5_PER_DEGREE
+    const longitude = path[index + LONGITUDE_AT] / E5_PER_DEGREE
     points.push(Object.freeze([longitude, latitude]))
   }
 
