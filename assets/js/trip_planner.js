@@ -17,7 +17,6 @@
 // application and are never parsed as HTML.
 
 import {unreachable} from "./assert"
-import {chipElements} from "./route_chips"
 import {FetchKind, FailureReason, FromKind, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
@@ -51,6 +50,11 @@ import {
 } from "./trip_plan"
 import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys"
 import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
+import {SORT_LABELS, SegmentKind, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
+import {TRIP_HOLDER as TRIP_STOP_HOLDER, holdStop, releaseStop} from "./stop_holds"
+import {liveDot} from "./stop_arrivals"
+import {startArrivalTicker} from "./arrival_ticker"
+import {chipTextColor} from "./route_chip_color"
 import {createSearchFiles} from "./where_to_files"
 import {CHANGE_EVENT_NAME as FAVORITE_CHANGE_EVENT_NAME, storedFavorites} from "./favorite_stop"
 import {COLLAPSE_EVENT_NAME, OPEN_EVENT_NAME} from "./panel_sheet"
@@ -66,12 +70,12 @@ const NAMES_EVENT_NAME = "trip:names"
 const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
 const FILTER_ENDED_EVENT_NAME = "trip:filter-ended"
+const ARRIVALS_EVENT_NAME = "stop-arrivals:arrivals"
 const MANIFEST_TIMEOUT_MS = 20 * 1000
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const SEARCH_LABELS = Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
 const EMPTY_FROM_TEXT = "Choose a start"
 const LOCATION_TEXT = "My location"
-const CHIP_COUNT_MAX = 1
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
 const NO_NAMES = Object.freeze({stops: {}, routes: {}})
 const LISTBOX_ID = "trip-suggestions"
@@ -295,27 +299,91 @@ function endOfStored(stored) {
   }
 }
 
-// The line that sums up a row: a chip per ride and a text per walk, with
-// the changes after them.
-function summaryElement(row) {
-  const summary = element({tag: "span", className: "trip-journey-summary"})
+// The bar of a card: a segment per walk, wait, and ride, each as wide as it
+// takes, a ride in its route's color with its name. It is drawn for the
+// eye alone; the text beside it says the same.
+function barElement(segments) {
+  const bar = element({tag: "span", className: "trip-bar"})
+  bar.setAttribute("aria-hidden", "true")
 
-  for (const [index, part] of row.summary.entries()) {
-    if (index > 0) {
-      summary.append(element({tag: "span", className: "trip-journey-separator", text: "›"}))
+  for (const segment of segments) {
+    const part = element({tag: "span", className: `trip-bar-segment trip-bar-${segment.kind}`})
+    part.style.flexGrow = String(segment.durationS)
+
+    if (segment.kind === SegmentKind.ride) {
+      part.textContent = segment.name
+      part.style.backgroundColor = segment.color
+      part.style.color = chipTextColor(segment.color)
     }
 
+    bar.append(part)
+  }
+
+  return bar
+}
+
+// What the bar shows, as text: each ride's route and each walk, in order.
+function summaryText(row) {
+  const parts = []
+
+  for (const part of row.summary) {
     if (part.kind === "ride") {
-      for (const chip of chipElements({chips: [part.chip], countMax: CHIP_COUNT_MAX, emptyText: ""})) {
-        summary.append(chip)
-      }
+      parts.push(`route ${part.chip.name}`)
     } else {
-      summary.append(element({tag: "span", className: "trip-journey-walk", text: part.text}))
+      parts.push(part.text)
     }
   }
 
-  summary.append(element({tag: "span", className: "trip-journey-changes", text: row.changesText}))
-  return summary
+  return parts.join(", ")
+}
+
+// A journey's card: when to leave and when it arrives, the bar, and the
+// first bus's live lateness, with the live dot, or that it is scheduled.
+function cardElement(card) {
+  const item = button({className: "trip-journey"})
+  item.dataset.journeyIndex = String(card.order)
+  const heading = element({tag: "span", className: "trip-journey-heading"})
+  heading.append(element({tag: "strong", className: "trip-journey-lead", text: card.leadText}))
+  heading.append(element({tag: "span", className: "trip-journey-arrive", text: card.arriveText}))
+  const summary = element({tag: "span", className: HIDDEN_TEXT_CLASS_NAME, text: summaryText(card.row)})
+  const detail = element({tag: "span", className: "trip-journey-detail"})
+
+  if (card.isLive) {
+    detail.append(liveDot())
+  }
+
+  detail.append(element({tag: "span", className: "trip-journey-status", text: card.detailText}))
+  const badge = element({tag: "span", className: "trip-journey-badge", text: card.row.badgeText})
+  badge.classList.toggle("trip-journey-marked", card.row.isMarked)
+  detail.append(badge)
+  item.append(heading, barElement(card.segments), summary, detail)
+  return item
+}
+
+// The index of the journey whose card has the focus, or none.
+function focusedJourneyIndex(container) {
+  const focused = document.activeElement
+  const isInside = focused !== null && container.contains(focused)
+  const isCard = isInside && focused.dataset.journeyIndex !== undefined
+
+  if (isCard) {
+    return focused.dataset.journeyIndex
+  }
+
+  return ""
+}
+
+// Gives the focus back to the card of `index`, written anew.
+function refocusJourney({container, index}) {
+  if (index === "") {
+    return
+  }
+
+  const card = container.querySelector(`[data-journey-index="${index}"]`)
+
+  if (card !== null) {
+    card.focus()
+  }
 }
 
 function keepFocusCallback(event) {
@@ -380,6 +448,13 @@ export const TripPlanner = {
     this.manifestUrl = this.el.dataset.manifestUrl
     this.nameCountMax = Number(this.el.dataset.nameCountMax)
     this.routeCountMax = Number(this.el.dataset.routeCountMax)
+    this.openCountMax = Number(this.el.dataset.openCountMax)
+    // The sort the cards stand in, the stops held open for the live times
+    // of the journeys' first rides, and the latest arrivals of each.
+    this.sort = SortKind.soonest
+    this.liveStops = new Set()
+    this.shownByStop = {}
+    this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
     this.searchFiles = createSearchFiles()
     this.events = pageEvents(this)
@@ -395,8 +470,14 @@ export const TripPlanner = {
     window.addEventListener(END_EVENT_NAME, this.onEnd)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.events.handle(FILTER_ENDED_EVENT_NAME, () => { this.isFilterSent = false })
-    // A page that is live again holds no trip's filter, and is sent it again.
-    this.events.whenLive(() => { this.resendFilter() })
+    this.events.handle(ARRIVALS_EVENT_NAME, (shown) => { this.liveArrivals(shown) })
+    // A page that is live again holds no trip's filter and none of the
+    // stops held for the live times, and is sent both again.
+    this.events.whenLive(() => {
+      this.resendFilter()
+      this.resendLiveStops()
+    })
+    this.stopTicker = startArrivalTicker(() => { this.tickCards() })
     this.takeHandedEnds()
     this.startFromLocation()
   },
@@ -514,9 +595,85 @@ export const TripPlanner = {
     this.clearButton = button({className: "panel-detail-action trip-clear", text: "Clear trip"})
     this.clearButton.addEventListener("click", () => { this.clear() })
 
-    this.el.replaceChildren(search, this.buildWhen(), this.status, this.windowLine, this.journeysElement, this.clearButton)
+    this.el.replaceChildren(search, this.buildWhen(), this.status, this.windowLine, this.buildSorts(), this.journeysElement, this.clearButton)
     this.writeEnds()
     this.writeWhen()
+  },
+
+  // The sorts of the journey list, as a group of toggle buttons shown with
+  // the journeys.
+  buildSorts() {
+    this.sortsElement = element({tag: "div", className: "trip-sorts"})
+    this.sortsElement.setAttribute("role", "group")
+    this.sortsElement.setAttribute("aria-label", "Sort journeys")
+    this.sortsElement.hidden = true
+    this.sortButtons = {}
+
+    for (const sort of Object.values(SortKind)) {
+      const sortButton = button({className: "trip-sort", text: SORT_LABELS[sort]})
+      sortButton.setAttribute("aria-pressed", String(sort === this.sort))
+      sortButton.addEventListener("click", () => { this.setSort(sort) })
+      this.sortButtons[sort] = sortButton
+      this.sortsElement.append(sortButton)
+    }
+
+    return this.sortsElement
+  },
+
+  setSort(sort) {
+    this.sort = sort
+
+    for (const [kind, sortButton] of Object.entries(this.sortButtons)) {
+      sortButton.setAttribute("aria-pressed", String(kind === sort))
+    }
+
+    if (this.shown !== null) {
+      this.writeJourneys(this.rows())
+    }
+  },
+
+  // Holds the boarding stops of the journeys' first rides open, within the
+  // page's budget of open stops, so their live arrivals move the cards.
+  holdLiveStops() {
+    const stopIds = liveStopIds({journeys: this.shown.journeys, countMax: this.openCountMax})
+
+    for (const stopId of stopIds) {
+      this.liveStops.add(stopId)
+      holdStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+  },
+
+  releaseLiveStops() {
+    for (const stopId of this.liveStops) {
+      releaseStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+
+    this.liveStops = new Set()
+    this.shownByStop = {}
+  },
+
+  resendLiveStops() {
+    for (const stopId of this.liveStops) {
+      holdStop({pushEvent: this.push, stopId, holder: TRIP_STOP_HOLDER})
+    }
+  },
+
+  // An answer for a stop the cards hold moves the cards with it.
+  liveArrivals(shown) {
+    const isHeld = this.liveStops.has(shown.stop_id)
+    const isShowing = isHeld && this.shown !== null
+
+    if (isShowing) {
+      this.shownByStop = {...this.shownByStop, [shown.stop_id]: shown}
+      this.writeJourneys(this.rows())
+    }
+  },
+
+  // The cards count down between answers.
+  tickCards() {
+    if (this.shown !== null) {
+      this.writeJourneys(this.rows())
+    }
   },
 
   // The switch of when the trip is for, as a group of toggle buttons, and
@@ -946,6 +1103,8 @@ export const TripPlanner = {
     this.shown = null
     this.windowLine.replaceChildren()
     this.journeysElement.replaceChildren()
+    this.sortsElement.hidden = true
+    this.releaseLiveStops()
     this.tripMap.clear()
 
     if (this.isFilterSent) {
@@ -1122,10 +1281,12 @@ export const TripPlanner = {
     this.names = NO_NAMES
     const rows = this.rows()
     this.selectedIndex = rows.findIndex(isMarkedRow)
+    this.sortsElement.hidden = false
     this.writeJourneys(rows)
     this.selectJourney({index: this.selectedIndex, rows})
     this.announceJourneys(rows)
     this.requestNames()
+    this.holdLiveStops()
   },
 
   // The status line says, out of sight, what the list that appeared holds,
@@ -1172,26 +1333,28 @@ export const TripPlanner = {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const {journeys, planned, nowMs, serviceDayStartsMs} = this.shown
     this.windowLine.textContent = windowText({journeys, planned, nowMs, serviceDayStartsMs, timeZone})
+    const focusedIndex = focusedJourneyIndex(this.journeysElement)
+    const cards = []
+
+    for (const [order, row] of rows.entries()) {
+      const live = firstRideLive({journey: row.journey, shownByStop: this.shownByStop, serviceDayStartsMs})
+      cards.push(journeyCard({row, order, live, nowMs: Date.now(), serviceDayStartsMs, names: this.names, timeZone}))
+    }
+
     const items = []
 
-    for (const [index, row] of rows.entries()) {
-      const item = button({className: "trip-journey"})
+    for (const card of sortedCards({cards, sort: this.sort})) {
+      const index = card.order
+      const item = cardElement(card)
       const isSelected = index === this.selectedIndex
       item.setAttribute("aria-pressed", String(isSelected))
-
-      const heading = element({tag: "span", className: "trip-journey-heading"})
-      heading.append(element({tag: "strong", className: "trip-journey-times", text: row.timesText}))
-      const badge = element({tag: "span", className: "trip-journey-badge", text: row.badgeText})
-      badge.classList.toggle("trip-journey-marked", row.isMarked)
-      heading.append(badge)
-      item.append(heading, summaryElement(row))
       item.addEventListener("click", () => { this.selectJourney({index, rows: this.rows()}) })
       items.push(item)
 
       if (isSelected) {
         const stepsElement = element({tag: "ol", className: "trip-journey-steps"})
 
-        for (const step of row.steps) {
+        for (const step of card.row.steps) {
           stepsElement.append(element({tag: "li", className: "", text: step}))
         }
 
@@ -1200,6 +1363,7 @@ export const TripPlanner = {
     }
 
     this.journeysElement.replaceChildren(fragmentOf(items))
+    refocusJourney({container: this.journeysElement, index: focusedIndex})
   },
 
   // Selects the journey at `index`: its steps in the list, its drawing on
@@ -1247,6 +1411,8 @@ export const TripPlanner = {
     window.removeEventListener(END_EVENT_NAME, this.onEnd)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
+    this.stopTicker()
+    this.releaseLiveStops()
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})
     releasePosition({holder: SEARCH_HOLDER})

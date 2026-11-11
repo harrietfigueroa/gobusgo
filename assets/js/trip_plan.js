@@ -216,10 +216,13 @@ function absoluteMs({serviceDayStartsMs, serviceDate, seconds}) {
   return startMs + seconds * SECOND_MS
 }
 
-// The seconds a journey leaves at: the time a journey arriving by a time
-// was found to leave at, or else its first ride's departure less the walks
-// before it, or its arrival less its walks for a journey with no ride.
-function leaveS(journey) {
+/**
+ * The seconds from its service day's start a journey leaves at: the time a
+ * journey arriving by a time was found to leave at, or else its first
+ * ride's departure less the walks before it, or its arrival less its walks
+ * for a journey with no ride.
+ */
+export function journeyLeaveS(journey) {
   if (journey.departureS !== undefined) {
     return journey.departureS
   }
@@ -524,7 +527,7 @@ export function journeyRows({journeys, nowMs, serviceDayStartsMs, names, timeZon
       return clockText({ms, timeZone})
     }
 
-    const startS = leaveS(journey)
+    const startS = journeyLeaveS(journey)
     const leaveMs = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds: startS})
     const day = dayWords({ms: leaveMs, nowMs, timeZone})
     const leaveClockText = clockOf(startS)
@@ -608,7 +611,7 @@ function latestDepartureMs({journeys, serviceDayStartsMs}) {
   let latestMs = Number.NEGATIVE_INFINITY
 
   for (const journey of journeys) {
-    const departureMs = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds: leaveS(journey)})
+    const departureMs = absoluteMs({serviceDayStartsMs, serviceDate: journey.serviceDate, seconds: journeyLeaveS(journey)})
     latestMs = Math.max(latestMs, departureMs)
   }
 
