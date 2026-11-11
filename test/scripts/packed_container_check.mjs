@@ -19,6 +19,7 @@ import {
   PackedKind,
   PackedOutcome,
   PackedRefusal,
+  packedFileName,
   SectionCursor,
   UNKNOWN_MICRODEGREES,
   decodeContainer,
@@ -245,5 +246,16 @@ const oneAxisView = new DataView(oneAxisBytes.buffer)
 const oneAxisSection = {offset: 0, byteLength: oneAxisBytes.length}
 const oneAxis = openPositions({view: oneAxisView, section: oneAxisSection, count: 1})
 deepStrictEqual(oneAxis, refusal(PackedRefusal.badPosition))
+
+const SHA256_BYTES = 32
+const FILE_NAME_SHA256 = "ab".repeat(SHA256_BYTES)
+deepStrictEqual(
+  packedFileName({kind: PackedKind.addressShard, sha256: FILE_NAME_SHA256}),
+  `addresses-${FILE_NAME_SHA256}.bin.gz`,
+)
+deepStrictEqual(
+  packedFileName({kind: PackedKind.addressIndex, sha256: FILE_NAME_SHA256}),
+  `addresses-index-${FILE_NAME_SHA256}.bin.gz`,
+)
 
 console.log("packed container: the fixture decodes to expected.json")

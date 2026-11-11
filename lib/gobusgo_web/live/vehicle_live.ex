@@ -182,6 +182,7 @@ defmodule GobusgoWeb.VehicleLive do
   alias Gobusgo.OneBusAway.DemandKey
   alias Gobusgo.OneBusAway.FetchView
   alias Gobusgo.OneBusAway.StopView
+  alias Gobusgo.OneBusAway.TripPathsServed
   alias Gobusgo.OneBusAway.VehicleView
   alias Gobusgo.Usage
   alias GobusgoWeb.AppInfoPanel
@@ -541,6 +542,8 @@ defmodule GobusgoWeb.VehicleLive do
 
   @impl Phoenix.LiveView
   def handle_async(:trip_paths, {:ok, {:ok, served}}, socket) do
+    :ok = TripPathsServed.record(length(served.paths) + length(served.missing))
+
     {:noreply, push_trip_paths(socket, TripPaths.event(served))}
   end
 
@@ -807,6 +810,7 @@ defmodule GobusgoWeb.VehicleLive do
       data-statuses={JSON.encode!(VehicleMarkers.statuses())}
       data-motion={JSON.encode!(vehicle_motion())}
       data-glyph-zoom-min={VehicleMarkers.glyph_zoom_min()}
+      data-manifest-url={routing_manifest_url()}
       hidden
     >
     </div>

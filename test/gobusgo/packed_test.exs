@@ -190,6 +190,13 @@ defmodule Gobusgo.PackedTest do
       assert stored.sha256 == :crypto.hash(:sha256, stored.stream) |> Base.encode16(case: :lower)
     end
 
+    test "the file name is the kind's prefix, the hash, and the container's suffix" do
+      sha256 = String.duplicate("ab", 32)
+
+      assert Packed.file_name(%{kind: 3, sha256: sha256}) == "addresses-#{sha256}.bin.gz"
+      assert Packed.file_name(%{kind: 4, sha256: sha256}) == "addresses-index-#{sha256}.bin.gz"
+    end
+
     test "the destination names the kind's prefix and the hash" do
       stored = Packed.stored(PackedFixture.encode())
 
