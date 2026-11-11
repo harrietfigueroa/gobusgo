@@ -143,6 +143,16 @@ const strategyCases = [
     strategy: {kind: StrategyKind.savedFile, path: "/tiles/route-stops/dt=2026-11-08/route-stops-1.pmtiles", cache: CacheRole.offlineSchedules}
   },
   {
+    name: "the places file, from the saved bundle first",
+    request: {method: "GET", url: ORIGIN + "/places/places-abcd.bin.gz", mode: "cors"},
+    strategy: {kind: StrategyKind.savedFile, path: "/places/places-abcd.bin.gz", cache: CacheRole.offlineSchedules}
+  },
+  {
+    name: "the places manifest, left to the network",
+    request: {method: "GET", url: ORIGIN + "/places/manifest.json", mode: "cors"},
+    strategy: {kind: StrategyKind.untouched}
+  },
+  {
     name: "a path that starts like the tiles' directory",
     request: {method: "GET", url: ORIGIN + "/tilesets", mode: "cors"},
     strategy: {kind: StrategyKind.untouched}

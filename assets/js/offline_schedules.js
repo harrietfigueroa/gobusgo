@@ -19,6 +19,7 @@ import {
   BUNDLE_MANIFEST_PATH,
   INDEX_PATH,
   IndexKind,
+  NO_PLACES_FILE,
   OFFLINE_SCHEDULES_CACHE_NAME,
   PlanKind,
   SettingKind,
@@ -27,6 +28,8 @@ import {
   TRIP_PATH_INDEX_EXPANDED_BYTES_MAX,
   bundleStatus,
   bundleWithTripPaths,
+  keptPlacesFile,
+  placesFileOf,
   planBundle,
   savedIndex,
   stalePaths,
@@ -40,6 +43,7 @@ import {storedSettings} from "./stored_settings"
 import {decodeTripPathIndex, indexEntries} from "./trip_path_shard"
 
 const MANIFEST_PATH = "/api/routing/manifest"
+const PLACES_MANIFEST_PATH = "/places/manifest.json"
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const IDLE_TIMEOUT_MS = 10 * 1000
 const MEBIBYTE_BYTES = 1024 * 1024
@@ -146,13 +150,17 @@ async function storeFile({cache, path, byteSize, signal}) {
   return true
 }
 
-// The files of `plan`, each with the size the manifest gives it where it
-// gives one, which is the trip path indexes' alone.
+// The files of `plan`, each with the size a manifest gives it where it
+// gives one, which is the trip path indexes' and the places file's.
 function filesOf(plan) {
   const sizes = new Map()
 
   for (const index of plan.tripPathIndexes) {
     sizes.set(index.path, index.byteSize)
+  }
+
+  for (const file of plan.sizedFiles) {
+    sizes.set(file.path, file.byteSize)
   }
 
   const files = []
@@ -211,6 +219,35 @@ async function storeFiles({cache, files, signal}) {
   return {kind: SaveKind.saved}
 }
 
+// The places file the places manifest names, which the bundle saves for
+// the Trip tab's search, or none where the server publishes none. A
+// manifest that cannot be fetched, as offline, keeps the places file the
+// saved bundle holds, so a save offline deletes nothing it cannot fetch
+// again.
+async function currentPlacesFile({cache, signal}) {
+  try {
+    const response = await fetch(PLACES_MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
+
+    if (!response.ok) {
+      return NO_PLACES_FILE
+    }
+
+    const placesManifest = await response.json()
+    return placesFileOf(placesManifest.file)
+  } catch (error) {
+    console.warn("Places manifest not fetched; the saved places file is kept", error)
+    const saved = await readIndex(cache)
+    const isFound = saved.kind === IndexKind.found
+    const hasPlacesPath = isFound && typeof saved.index.placesPath === "string"
+
+    if (hasPlacesPath) {
+      return keptPlacesFile(saved.index.placesPath)
+    }
+
+    return NO_PLACES_FILE
+  }
+}
+
 async function save(signal) {
   const manifestResponse = await fetch(MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
 
@@ -219,13 +256,13 @@ async function save(signal) {
   }
 
   const manifest = await manifestResponse.json()
-  const plan = planBundle({manifest, nowMs: Date.now(), tileArchivePath: tileArchivePath()})
+  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
+  const placesFile = await currentPlacesFile({cache, signal})
+  const plan = planBundle({manifest, nowMs: Date.now(), tileArchivePath: tileArchivePath(), placesFile})
 
   if (plan.kind === PlanKind.nothingToSave) {
     return {kind: SaveKind.nothingToSave}
   }
-
-  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
 
   const tablesOutcome = await storeFiles({cache, files: filesOf(plan), signal})
 

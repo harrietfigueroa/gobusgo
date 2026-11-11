@@ -32,6 +32,9 @@ export const TRIP_HOLDER = "trip"
 /** The holder name of the location button, in Following and Located. */
 export const FOLLOW_HOLDER = "follow"
 
+/** The holder name of the Trip tab's search, which ranks its results by the rider's position while its list is open. */
+export const SEARCH_HOLDER = "search"
+
 const WatchKind = Object.freeze({idle: "idle", watching: "watching"})
 const IDLE = Object.freeze({kind: WatchKind.idle})
 const UNAVAILABLE = Object.freeze({kind: OutcomeKind.unavailable})

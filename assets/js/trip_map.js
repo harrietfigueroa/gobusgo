@@ -34,6 +34,9 @@ const FIT_ZOOM_MAX = 16
 const lineLayout = {"line-cap": "round", "line-join": "round"}
 const EMPTY_COLLECTION = Object.freeze({type: "FeatureCollection", features: []})
 
+/** The kinds of a read of the map's center. */
+export const CenterKind = Object.freeze({center: "center", none: "none"})
+
 const isRide = ["==", ["get", "kind"], FeatureKind.ride]
 const isWalk = ["==", ["get", "kind"], FeatureKind.walk]
 const isEnd = ["in", ["get", "kind"], ["literal", [FeatureKind.origin, FeatureKind.destination]]]
@@ -158,10 +161,21 @@ export function createTripMap() {
     window.removeEventListener(RESTYLED_EVENT_NAME, onRestyled)
   }
 
+  // The map's center in degrees, or none before a map has loaded.
+  function center() {
+    if (map === null) {
+      return {kind: CenterKind.none}
+    }
+
+    const {lat, lng} = map.getCenter()
+    return {kind: CenterKind.center, lat, lon: lng}
+  }
+
   return {
     show,
     clear() { show(EMPTY_COLLECTION) },
     fit,
+    center,
     destroy
   }
 }
