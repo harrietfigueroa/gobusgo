@@ -538,6 +538,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       assign(assigns,
         app_license: AppInfo.app_license(),
         components: AppInfo.components(),
+        places_license: AppInfo.places_license(),
         revision: revision
       )
 
@@ -552,6 +553,19 @@ defmodule GobusgoWeb.AppInfoPanel do
         <p>The page also uses:</p>
         <ul class="list-disc pl-5">
           <li :for={component <- @components}>{component.name}: {component.license}</li>
+        </ul>
+        <p>The places file is offered under:</p>
+        <ul class="list-disc pl-5">
+          <li>
+            <span id="app-info-places-license">
+              {@places_license.name}: {@places_license.license}
+            </span>
+            <ul id="app-info-places-license-links" class="list-disc pl-5">
+              <li :for={link <- @places_license.links}>
+                <a href={link.url} class="underline" rel="noopener">{link.text}</a>
+              </li>
+            </ul>
+          </li>
         </ul>
       </.more>
     </section>
