@@ -20,7 +20,8 @@ import {readSavedIndex} from "./offline_schedules.js"
 import {PackedOutcome} from "./packed_container.js"
 import {loadPlaceFile} from "./place_file.js"
 import {buildPlaceIndex, searchPlaces} from "./place_search.js"
-import {DecodeKind, decodePositions, decodeStops} from "./routing_snapshot.js"
+import {DecodeKind, decodePositions, decodeStops, decodeTrips} from "./routing_snapshot.js"
+import {headsignsByTrip} from "./journey_timeline.js"
 import {decodeNames, expandNames} from "./routing_names.js"
 import {ServiceDateKind, serviceDateAt} from "./routing_journeys.js"
 import {GROUP_COUNT_MAX, GroupKind, SHARD_CACHE_COUNT_MAX, ShardCacheKind, buildStopIndex, createShardCache, placeDetail, searchStops} from "./where_to.js"
@@ -172,6 +173,24 @@ function settledValue(outcome) {
   return outcome.value
 }
 
+async function loadJourneyNames(entry) {
+  const trips = await fetchTable({path: entry.files.trips.path, decode: decodeTrips})
+  const stopIds = await fetchTable({path: entry.files.stops.path, decode: decodeStops})
+  const names = await decodedNames({entry, stopCount: stopIds.length})
+  const headsigns = headsignsByTrip({trips, tripHeadsigns: names.tripHeadsigns})
+  const stops = {}
+
+  for (const [index, stopId] of stopIds.entries()) {
+    const name = names.stopNames[index]
+
+    if (typeof name === "string") {
+      stops[stopId] = {name, code: names.stopCodes[index]}
+    }
+  }
+
+  return {headsigns, stops}
+}
+
 async function decodedNames({entry, stopCount}) {
   const bytes = await fetchBytes(entry.files.names.path)
   const expanded = await expandNames(bytes.buffer)
@@ -223,6 +242,7 @@ function placeResult({table, match}) {
 export function createSearchFiles() {
   const sources = {places: IDLE, addresses: IDLE, intersections: IDLE, stops: IDLE}
   const snapshots = new Map()
+  const journeyNames = new Map()
 
   // Starts `load` for the source `name` once, and keeps what it gives.
   function start({name, load}) {
@@ -365,5 +385,23 @@ export function createSearchFiles() {
     },
 
     snapshotStops,
+
+    /**
+     * Resolves on the names of a manifest entry's journeys, read from its
+     * stops, trips, and names files once per entry: `headsigns`, as
+     * `headsignsByTrip` keys them, and `stops`, each stop's name and code
+     * by identifier, in the shape the page's names answer has.
+     */
+    journeyNames({entry}) {
+      const path = entry.files.trips.path
+
+      if (!journeyNames.has(path)) {
+        const loading = loadJourneyNames(entry)
+        journeyNames.set(path, loading)
+        loading.catch(() => { journeyNames.delete(path) })
+      }
+
+      return journeyNames.get(path)
+    },
   })
 }
