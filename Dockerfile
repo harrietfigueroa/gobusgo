@@ -37,6 +37,9 @@ COPY lib lib
 # serves them; the rest of priv/static is built here.
 COPY priv/static/manifest.webmanifest priv/static/manifest.webmanifest
 COPY priv/static/icons priv/static/icons
+# GobusgoWeb.OpenApiController reads the public OpenAPI document when it
+# compiles, so the document is needed here and not in the running image.
+COPY priv/openapi.json priv/openapi.json
 RUN mix compile
 
 # Downloads the vendored front-end packages that assets/vendor.lock.json pins
