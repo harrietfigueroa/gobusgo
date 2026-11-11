@@ -337,6 +337,20 @@
   border-radius: var(--surface-radius);
 }
 
+/* The row of the chosen journey's first bus is outlined and says "Your bus"
+   in text, so the mark never rests on color alone. */
+.arrival-rows .arrival-row-yours {
+  border-color: var(--panel-sheet-selected-color);
+  outline: 1px solid var(--panel-sheet-selected-color);
+}
+
+.arrival-yours {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--panel-sheet-selected-color);
+}
+
 .arrival-headsign {
   flex: 1;
   min-width: 0;
@@ -1003,6 +1017,27 @@ a.inline-target {
 .panel-detail-action:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+/* The line at the top of a stop's view that says what the chosen journey
+   does at the stop. It is a control of a finger's height that opens the
+   Trip tab, outlined in the selected color as the first bus's row is. */
+.panel-detail-trip {
+  display: block;
+  width: 100%;
+  min-height: var(--close-button-hit-size);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 2px solid var(--panel-sheet-selected-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel-detail-trip[hidden] {
+  display: none;
 }
 
 /* The stop view's header: pills of the stop's code and direction, and the
@@ -1840,6 +1875,7 @@ a.inline-target {
 .panel-sheet-handle:focus-visible,
 .panel-sheet-back:focus-visible,
 .panel-detail-action:focus-visible,
+.panel-detail-trip:focus-visible,
 .panel-detail-favorite:focus-visible,
 .favorite-stop-name:focus-visible,
 .favorite-stop-move:focus-visible,

@@ -7,6 +7,7 @@ import {unreachable} from "./assert.js"
 import {appendSpaced, chipElements} from "./route_chips.js"
 import {arrivalsKey} from "./stop_text.js"
 import {appendMessage} from "./message.js"
+import {YourBusKind} from "./journey_stop_marks.js"
 
 const ARRIVALS_WAITING = "Waiting for this stop's arrivals"
 const ARRIVALS_NONE = "No arrivals soon"
@@ -17,6 +18,10 @@ const ARRIVALS_NEED_CONNECTION = Object.freeze({headline: "Live arrivals need a 
 const LIVE_LABEL = "live time"
 const ROWS_CLASS_NAME = "arrival-rows"
 const ROW_CLASS_NAME = "arrival-row"
+const YOURS_ROW_CLASS_NAME = "arrival-row arrival-row-yours"
+const YOURS_CLASS_NAME = "arrival-yours"
+const YOURS_TEXT = "Your bus"
+const NO_ROW_INDEX = -1
 const HEADSIGN_CLASS_NAME = "arrival-headsign"
 const TIME_CLASS_NAME = "arrival-time"
 const LIVE_TIME_CLASS_NAME = "arrival-time arrival-time-live"
@@ -181,10 +186,15 @@ function chipOf({route, color}) {
  * `tagName`: its route's chip, its headsign, and how soon, a live time in
  * bold with the live dot beside it.
  */
-function arrivalRowElement({row, tagName}) {
+function arrivalRowElement({row, tagName, isYours}) {
   const {route, color, headsign, time, isLive} = row
   const element = document.createElement(tagName)
   element.className = ROW_CLASS_NAME
+
+  if (isYours) {
+    element.className = YOURS_ROW_CLASS_NAME
+  }
+
   const children = chipElements({chips: chipOf({route, color}), countMax: 1, emptyText: ""})
 
   let headsignText = ""
@@ -194,6 +204,10 @@ function arrivalRowElement({row, tagName}) {
   }
 
   children.push(textElement({tagName: "span", className: HEADSIGN_CLASS_NAME, text: headsignText}))
+
+  if (isYours) {
+    children.push(textElement({tagName: "span", className: YOURS_CLASS_NAME, text: YOURS_TEXT}))
+  }
 
   let timeClassName = TIME_CLASS_NAME
 
@@ -240,8 +254,10 @@ function keyElement(shown) {
 // a list, and the key under them comes `withKey`. The stylesheet shows the
 // server's arrivals while the page is connected and the note that they need
 // a connection while it is offline; the saved schedules' arrivals are shown
-// whatever the connection, with no note.
-export function writeArrivals({element, shown, withKey}) {
+// whatever the connection, with no note. `yourBus`, a `yourBusRow` answer,
+// names the row of the chosen journey's first bus, which says "Your bus" in
+// text beside its headsign.
+export function writeArrivals({element, shown, withKey, yourBus}) {
   element.replaceChildren()
   const isScheduled = isScheduledShown(shown)
   let className = NEEDS_CONNECTION_CLASS_NAME
@@ -258,8 +274,10 @@ export function writeArrivals({element, shown, withKey}) {
     const list = document.createElement("ul")
     list.className = `${ROWS_CLASS_NAME} ${className}`
 
-    for (const row of rows.rows) {
-      list.append(arrivalRowElement({row, tagName: "li"}))
+    const yourIndex = yourBusIndexOf(yourBus)
+
+    for (const [index, row] of rows.rows.entries()) {
+      list.append(arrivalRowElement({row, tagName: "li", isYours: index === yourIndex}))
     }
 
     element.append(list)
@@ -276,6 +294,15 @@ export function writeArrivals({element, shown, withKey}) {
     appendMessage({element: note, message: ARRIVALS_NEED_CONNECTION})
     element.append(note)
   }
+}
+
+// The index of the row `yourBus` names; no index a row has where it names none.
+function yourBusIndexOf(yourBus) {
+  if (yourBus.kind === YourBusKind.row) {
+    return yourBus.index
+  }
+
+  return NO_ROW_INDEX
 }
 
 function classedParagraph({text, className}) {

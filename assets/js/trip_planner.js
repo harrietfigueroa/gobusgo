@@ -54,6 +54,7 @@ import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCa
 import {barElement} from "./journey_bar"
 import {tripStrip} from "./trip_strip"
 import {createStripView} from "./trip_strip_view"
+import {clearChosenJourney, setChosenJourney} from "./chosen_journey"
 import {TimelineRowKind, timelineRows} from "./journey_timeline"
 import {TRIP_HOLDER as TRIP_STOP_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {liveDot} from "./stop_arrivals"
@@ -695,13 +696,20 @@ export const TripPlanner = {
     return createStripView({host, onOpen, onEnd: () => { this.endTrip() }})
   },
 
+  // Takes the strip away and tells the stop details view that no journey is
+  // chosen.
+  hideStrip() {
+    this.stripView.hide()
+    clearChosenJourney()
+  },
+
   // The rider's edit of the filter ended the trip's filter, and the strip
   // with it.
   endFilter() {
     this.isFilterSent = false
     this.isStripEnded = true
 
-    this.stripView.hide()
+    this.hideStrip()
   },
 
   // End trip leaves the strip that held focus, so focus moves to the Trip
@@ -723,14 +731,16 @@ export const TripPlanner = {
     const isStripOff = this.isStripEnded || isCardMissing
 
     if (isStripOff) {
-      this.stripView.hide()
+      this.hideStrip()
       return
     }
 
     const {serviceDayStartsMs} = this.shown
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const live = lives[card.order]
-    this.stripView.write(tripStrip({card, live, names: this.names, serviceDayStartsMs, timeZone}))
+    const strip = tripStrip({card, live, names: this.names, serviceDayStartsMs, timeZone})
+    this.stripView.write(strip)
+    setChosenJourney({journey: card.row.journey, live, leadText: strip.leadText, arriveText: strip.arriveText, serviceDayStartsMs, timeZone})
   },
 
   // The sorts of the journey list, as a group of toggle buttons shown with
@@ -1240,7 +1250,7 @@ export const TripPlanner = {
     this.releaseLiveStops()
     this.tripMap.clear()
 
-    this.stripView.hide()
+    this.hideStrip()
 
     if (this.isFilterSent) {
       this.events.push({name: CLEAR_EVENT_NAME, payload: {}})
@@ -1667,7 +1677,7 @@ export const TripPlanner = {
     this.stopTicker()
     this.releaseLiveStops()
 
-    this.stripView.hide()
+    this.hideStrip()
 
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})

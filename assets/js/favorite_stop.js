@@ -1,6 +1,7 @@
 import {FAVORITE_HOLDER, holdStop, releaseStop} from "./stop_holds"
 import {isNextArrivalLive, liveDot, nextArrivalText, writeArrivals} from "./stop_arrivals"
 import {shownAt} from "./arrival_countdown"
+import {NO_YOUR_BUS} from "./journey_stop_marks"
 import {startArrivalTicker} from "./arrival_ticker"
 import {tripEndButtons} from "./trip_ends"
 import {FavoriteChangeKind, storedSettings} from "./stored_settings"
@@ -90,7 +91,7 @@ function moveFavorite({stopId, index}) {
 // `nowMs`: its first arrivals still to come.
 function writeEntryArrivals({entry, nowMs}) {
   const shown = shownAt({shown: entry.shown, nowMs, countMax: ARRIVAL_COUNT_MAX})
-  writeArrivals({element: entry.arrivalsElement, shown, withKey: false})
+  writeArrivals({element: entry.arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS})
 }
 
 function iconButton({text, label, className}) {
@@ -148,7 +149,7 @@ function entryOf({favorite, callbacks}) {
 
   const arrivalsElement = document.createElement("div")
   const shown = {status: "waiting"}
-  writeArrivals({element: arrivalsElement, shown, withKey: false})
+  writeArrivals({element: arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS})
   element.append(header, arrivalsElement, actions)
 
   return {element, arrivalsElement, shown, up, down}

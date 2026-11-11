@@ -73,12 +73,20 @@ export function liveStopIds({journeys, countMax}) {
   return stopIds
 }
 
+/**
+ * Whether `arrival` is of the ride's trip near the ride's scheduled
+ * departure, `departureMs`, whether its time is predicted or scheduled.
+ */
+export function isRideRun({arrival, tripId, departureMs}) {
+  const isTrip = arrival.trip_id === tripId
+  const isNear = Math.abs(arrival.scheduled_ms - departureMs) <= MATCH_TOLERANCE_MS
+  return isTrip && isNear
+}
+
 // Whether `arrival` is the predicted arrival of the ride's trip near the
 // ride's scheduled departure, `departureMs`.
 function isRideArrival({arrival, tripId, departureMs}) {
-  const isTrip = arrival.trip_id === tripId
-  const isNear = Math.abs(arrival.scheduled_ms - departureMs) <= MATCH_TOLERANCE_MS
-  const isRun = isTrip && isNear
+  const isRun = isRideRun({arrival, tripId, departureMs})
   return isRun && arrival.predicted === true
 }
 
