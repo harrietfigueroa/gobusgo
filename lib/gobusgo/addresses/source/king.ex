@@ -1,97 +1,76 @@
 defmodule Gobusgo.Addresses.Source.King do
-  @item_id "5aa0a3c77428491da8d73e9d069c10f6"
   @layer_url "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/ADDRESS_POINT_642/FeatureServer/0"
-  @export_file_name "king-addresses.csv"
-  @read_bytes 65_536
-  @columns %{
-    house_number: "HouseNum",
-    pre_direction: "PreDir",
-    name: "StreetName",
-    type: "SufType",
-    suf_direction: "SufDir",
-    city: "POSTALCTYNAME",
-    lat: "LAT",
-    lon: "LON"
+  @fields %{
+    house_number: "ADDR_HN",
+    pre_direction: "ADDR_PD",
+    name: "ADDR_SN",
+    type: "ADDR_ST",
+    suf_direction: "ADDR_SD",
+    city: "POSTALCTYNAME"
   }
 
   @moduledoc """
-  King County's "Addresses in King County" layer, item `#{@item_id}` of the
-  county's open data portal, as the one-file CSV export of the ArcGIS Hub
-  (`Gobusgo.Addresses.HubExport`). Read `lib/gobusgo/addresses/AGENTS.md`
+  King County's "Addresses in King County" layer, read in pages from its
+  FeatureServer at `#{@layer_url}`. Read `lib/gobusgo/addresses/AGENTS.md`
   before changing it.
 
-  The export's rows carry the position as `LAT` and `LON` in WGS 84, so the
-  server needs no projection. A house number may hold a letter after a space
-  (`"920 B"`).
+  A record holds the fields #{@fields |> Map.values() |> Enum.sort() |> Enum.join(", ")}
+  and its point in WGS 84. A house number may hold a letter after a space
+  (`"920 B"`), and a field the layer leaves empty is the empty string.
+
+  Options: `:layer_url`, and those of `Gobusgo.Addresses.ArcGis`.
   """
 
   @behaviour Gobusgo.Addresses.Source
 
-  alias Gobusgo.Addresses.Csv
-  alias Gobusgo.Addresses.HubExport
+  alias Gobusgo.Addresses.ArcGis
+
+  @out_fields @fields |> Map.values() |> Enum.sort()
 
   @impl Gobusgo.Addresses.Source
   def name, do: :king
 
   @impl Gobusgo.Addresses.Source
-  def fetch(%{directory: directory, bytes_max: bytes_max}, options) when is_list(options) do
-    HubExport.fetch(
-      %{
-        item_id: @item_id,
-        layer_url: Keyword.get(options, :layer_url, @layer_url),
-        path: Path.join(directory, @export_file_name),
-        bytes_max: bytes_max
-      },
-      options
-    )
+  def fetch(options) when is_list(options) do
+    layer_url = Keyword.get(options, :layer_url, @layer_url)
+
+    with {:ok, layer} <- ArcGis.layer_status(layer_url, options),
+         {:ok, pages} <-
+           ArcGis.pages(
+             %{layer_url: layer_url, out_fields: @out_fields, record_count: layer.record_count},
+             options
+           ) do
+      {:ok,
+       %{
+         last_edit_at: layer.last_edit_at,
+         record_count: layer.record_count,
+         pages: Stream.map(pages, &page/1)
+       }}
+    end
   end
 
-  @impl Gobusgo.Addresses.Source
-  def records(path) when is_binary(path) do
-    rows = path |> File.stream!(@read_bytes) |> Csv.rows()
+  defp page({:features, features, request_count}),
+    do: {:records, Enum.map(features, &record/1), request_count}
 
-    Stream.transform(rows, :header, fn
-      header, :header -> {[], column_indexes(header)}
-      row, indexes -> {[record(row, indexes)], indexes}
-    end)
-  end
+  defp page({:failed, _reason} = failure), do: failure
 
-  defp column_indexes(header) do
-    positions = header |> Enum.with_index() |> Map.new()
-
-    Map.new(@columns, fn {field, column} ->
-      case Map.fetch(positions, column) do
-        {:ok, index} ->
-          {field, index}
-
-        :error ->
-          raise Gobusgo.Assert.AssertionError, message: "the export has no #{column} column"
-      end
-    end)
-  end
-
-  defp record(row, indexes) do
-    fields = List.to_tuple(row)
-
+  defp record(%{attributes: attributes, lat: lat, lon: lon}) do
     %{
-      house_number: text(fields, indexes.house_number),
-      pre_direction: text(fields, indexes.pre_direction),
-      name: text(fields, indexes.name),
-      type: text(fields, indexes.type),
-      suf_direction: text(fields, indexes.suf_direction),
-      city: text(fields, indexes.city),
-      lat: degrees(fields, indexes.lat),
-      lon: degrees(fields, indexes.lon)
+      house_number: text(attributes, @fields.house_number),
+      pre_direction: text(attributes, @fields.pre_direction),
+      name: text(attributes, @fields.name),
+      type: text(attributes, @fields.type),
+      suf_direction: text(attributes, @fields.suf_direction),
+      city: text(attributes, @fields.city),
+      lat: lat,
+      lon: lon
     }
   end
 
-  defp text(fields, index) when index < tuple_size(fields), do: elem(fields, index)
-  defp text(_fields, _index), do: ""
-
-  defp degrees(fields, index) do
-    case Float.parse(text(fields, index)) do
-      {degrees, ""} -> degrees
-      _other -> nil
+  defp text(attributes, field) do
+    case Map.fetch!(attributes, field) do
+      nil -> ""
+      value -> value
     end
   end
 end

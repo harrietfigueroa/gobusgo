@@ -1,229 +1,207 @@
 defmodule Gobusgo.Addresses.FeaturePages do
   @page_size 100
-  @attempt_count_max 3
-  @retry_base_ms 500
-  @retry_delay_ms_max 30_000
-  @features_bytes_max 4_194_304
+  @record_count_max 2_000_000
+  @transient_statuses [408, 429]
+  @server_error_statuses 500..599
+  @order_field "OBJECTID"
+  @wgs84_wkid 4326
 
   @moduledoc """
-  The pages of an ArcGIS FeatureServer layer, as a lazy stream. Read
-  `lib/gobusgo/addresses/AGENTS.md` before changing it.
+  The rules of reading a FeatureServer layer in pages of #{@page_size}
+  records. Read `lib/gobusgo/addresses/AGENTS.md` before changing it.
 
-  `stream/2` queries the layer's `query` endpoint for #{@page_size} features
-  at a time, in the order of their `OBJECTID`, each query asking for the
-  features above the last `OBJECTID` the page before it held, with the
-  coordinates in WGS 84 (`outSR=4326`), so the layer needs no projection
-  here and no page reads a deep offset
-  (<https://developers.arcgis.com/rest/services-reference/enterprise/query-feature-service-layer/>
-  — checked 2026-11-10). The #{@page_size} is the style guide's ceiling for
-  one request; the services allow 2,000.
+  Everything here is pure: the offsets of a layer's pages, the query of one
+  page, the reading of the page the service answers, which failures are
+  transient, and the delay before a retry. `Gobusgo.Addresses.ArcGis.pages/2`
+  makes the requests.
 
-  The stream emits one element per page, `{:page, features}` for a page that
-  holds features, or `{:error, reason}` once and then ends. No request is
-  made until the stream is read, one request at a time, and a stream is
-  never read past `request.page_count_max` pages: a layer that needs more
-  ends with `{:error, :page_count_exceeded}`.
-
-  A request is retried up to #{@attempt_count_max} attempts in all, only for
-  a failure the service marks transient: a network fault, a deadline, a
-  status of 408, 429, or 5xx, or an error object whose `code` is one of
-  those, which ArcGIS answers with a `200`. The delay before a retry doubles
-  from `:retry_base_ms` (default #{@retry_base_ms}) with jitter, and a
-  `Retry-After` header in seconds replaces it, at most
-  #{@retry_delay_ms_max} ms. Every other failure is a value:
-
-    * `{:unexpected_status, status}`: a status the service does not document
-    * `{:service_error, code}`: an error object with a code that is not transient
-    * `{:malformed, path}`: a body of another shape, a page with no `OBJECTID`
-    * `:no_progress`: a full page whose `OBJECTID`s do not rise past the last
-    * `{:transport, reason}`, `:deadline_exceeded`, `:body_too_large`: as
-      `Gobusgo.Addresses.Http` reports them, after the attempts
-
-  Options: `:plug`, as `Gobusgo.Addresses.Http`; `:retry_base_ms`.
+  A page is asked for by `resultOffset` and `resultRecordCount`, ordered by
+  `#{@order_field}`, with the positions in WGS 84 (`outSR=#{@wgs84_wkid}`),
+  so the records of one count, read at every offset, are each read once.
   """
 
-  alias Gobusgo.Addresses.Http
+  alias Gobusgo.Assert
   alias Gobusgo.Schema
 
-  @type request :: %{
-          url: String.t(),
-          out_fields: [String.t(), ...],
-          page_count_max: pos_integer()
+  @type feature :: %{
+          attributes: %{String.t() => String.t() | nil},
+          lat: float() | nil,
+          lon: float() | nil
         }
 
-  @type feature :: %{String.t() => term()}
-
   @type error ::
-          Http.error()
-          | {:unexpected_status, pos_integer()}
-          | {:service_error, integer()}
+          {:service_error, integer()}
           | {:malformed, String.t()}
-          | :no_progress
-          | :page_count_exceeded
+          | {:page_too_large, pos_integer()}
 
-  @page_schema {:map,
-                %{
-                  "features" =>
-                    {:list,
-                     {:map,
-                      %{
-                        "attributes" => {:map, %{"OBJECTID" => :integer}},
-                        "geometry" => {:optional, {:nullable, {:map, %{}}}}
-                      }}},
-                  "exceededTransferLimit" => {:optional, :boolean}
-                }}
   @error_schema {:map, %{"error" => {:map, %{"code" => :integer}}}}
+  @geometry_schema {:optional, {:nullable, {:map, %{"x" => :number, "y" => :number}}}}
 
-  @doc "The count of features one request asks for."
+  @doc "The most records one request asks for."
   @spec page_size() :: pos_integer()
   def page_size, do: @page_size
 
+  @doc "The most records a layer may report, which bounds the pages of a run."
+  @spec record_count_max() :: pos_integer()
+  def record_count_max, do: @record_count_max
+
   @doc """
-  The lazy stream of the pages of the layer whose `query` address is
-  `request.url`, with the attribute fields `request.out_fields`, which name
-  `OBJECTID`.
+  The offsets of the pages that hold `record_count` records, the first 0 and
+  each #{@page_size} after the one before it, or
+  `{:error, {:record_count_too_large, record_count}}` past
+  #{@record_count_max} records.
   """
-  @spec stream(request(), keyword()) :: Enumerable.t({:page, [feature()]} | {:error, error()})
-  def stream(
-        %{url: url, out_fields: out_fields, page_count_max: page_count_max} = request,
-        options
-      )
-      when is_binary(url) and is_list(out_fields) and is_integer(page_count_max) and
-             page_count_max > 0 and is_list(options) do
-    true = "OBJECTID" in out_fields
-
-    Stream.resource(
-      fn -> %{last: 0, pages_left: page_count_max, done: false} end,
-      fn
-        %{done: true} = state -> {:halt, state}
-        state -> next_page(request, state, options)
-      end,
-      fn _state -> :ok end
-    )
-  end
-
-  defp next_page(_request, %{pages_left: 0} = state, _options) do
-    {[{:error, :page_count_exceeded}], %{state | done: true}}
-  end
-
-  defp next_page(request, state, options) do
-    case fetch(request, state.last, options) do
-      {:ok, []} ->
-        {[], %{state | done: true}}
-
-      {:ok, features} ->
-        advance(features, state)
-
-      {:error, _reason} = failure ->
-        {[failure], %{state | done: true}}
-    end
-  end
-
-  defp advance(features, state) do
-    last = features |> Enum.map(& &1["attributes"]["OBJECTID"]) |> Enum.max()
-
-    cond do
-      last <= state.last ->
-        {[{:error, :no_progress}], %{state | done: true}}
-
-      length(features) < @page_size ->
-        {[{:page, features}], %{state | last: last, done: true}}
-
-      true ->
-        {[{:page, features}], %{state | last: last, pages_left: state.pages_left - 1}}
-    end
-  end
-
-  defp fetch(request, last, options) do
-    query =
-      URI.encode_query(%{
-        "where" => "OBJECTID>#{last}",
-        "outFields" => Enum.join(request.out_fields, ","),
-        "outSR" => "4326",
-        "orderByFields" => "OBJECTID",
-        "resultRecordCount" => Integer.to_string(@page_size),
-        "returnGeometry" => "true",
-        "f" => "json"
-      })
-
-    attempt(%{
-      url: request.url <> "?" <> query,
-      attempts_left: @attempt_count_max,
-      delay_ms: Keyword.get(options, :retry_base_ms, @retry_base_ms),
-      options: options
-    })
-  end
-
-  defp attempt(%{url: url, options: options} = state) do
-    outcome =
-      case Http.get_json(%{url: url, bytes_max: @features_bytes_max}, options) do
-        {:ok, %{status: 200, body: body}} -> decode(body)
-        {:ok, %{status: status} = response} -> {:status, status, response.retry_after}
-        {:error, _reason} = failure -> failure
-      end
-
-    case outcome do
-      {:ok, features} ->
-        {:ok, features}
-
-      other ->
-        retry_or_fail(other, state)
-    end
-  end
-
-  defp retry_or_fail(outcome, %{attempts_left: attempts_left} = state) do
-    {reason, retry_after} = classify(outcome)
-
-    if transient?(reason) and attempts_left > 1 do
-      Process.sleep(delay_ms(state.delay_ms, retry_after))
-      attempt(%{state | attempts_left: attempts_left - 1, delay_ms: state.delay_ms * 2})
+  @spec offsets(non_neg_integer()) ::
+          {:ok, Enumerable.t(non_neg_integer())}
+          | {:error, {:record_count_too_large, pos_integer()}}
+  def offsets(record_count) when is_integer(record_count) and record_count >= 0 do
+    if record_count <= @record_count_max do
+      {:ok, Range.new(0, record_count - 1, @page_size)}
     else
-      {:error, reason}
+      {:error, {:record_count_too_large, record_count}}
     end
   end
 
-  defp classify({:status, status, retry_after}), do: {{:unexpected_status, status}, retry_after}
-  defp classify({:error, reason}), do: {reason, nil}
+  @doc """
+  The address of the page at `query.offset` of the layer at
+  `query.layer_url`, holding the fields `query.out_fields` and each record's
+  point.
+  """
+  @spec query_url(%{layer_url: String.t(), out_fields: [String.t()], offset: non_neg_integer()}) ::
+          String.t()
+  def query_url(%{
+        layer_url: layer_url,
+        out_fields: [_field | _rest] = out_fields,
+        offset: offset
+      })
+      when is_binary(layer_url) and is_integer(offset) and offset >= 0 do
+    # https://developers.arcgis.com/rest/services-reference/enterprise/query-feature-service-layer/
+    # (`resultOffset`, `resultRecordCount` up to the layer's `maxRecordCount`,
+    # `orderByFields`, `outFields`, `returnGeometry`, `outSR`) — checked
+    # 2026-11-11
+    query =
+      URI.encode_query(
+        [
+          {"where", "1=1"},
+          {"outFields", Enum.join(out_fields, ",")},
+          {"returnGeometry", "true"},
+          {"outSR", Integer.to_string(@wgs84_wkid)},
+          {"orderByFields", @order_field},
+          {"resultOffset", Integer.to_string(offset)},
+          {"resultRecordCount", Integer.to_string(@page_size)},
+          {"f", "json"}
+        ],
+        :rfc3986
+      )
 
-  defp transient?({:transport, _reason}), do: true
-  defp transient?(:deadline_exceeded), do: true
-  defp transient?({:unexpected_status, status}), do: transient_code?(status)
-  defp transient?({:service_error, code}), do: transient_code?(code)
-  defp transient?(_reason), do: false
-
-  defp transient_code?(code), do: code == 408 or code == 429 or (code >= 500 and code <= 599)
-
-  # The computed delay is jittered between half and all of itself.
-  defp delay_ms(computed_ms, nil) do
-    half_ms = Integer.floor_div(computed_ms, 2)
-    half_ms + :rand.uniform(max(computed_ms - half_ms, 1)) - 1
+    layer_url <> "/query?" <> query
   end
 
-  defp delay_ms(computed_ms, retry_after) do
-    case Integer.parse(retry_after) do
-      {seconds, ""} when seconds >= 0 -> min(seconds * 1_000, @retry_delay_ms_max)
-      _unparsed -> delay_ms(computed_ms, nil)
-    end
-  end
+  @doc """
+  The features of a page's JSON `body`, in the order the service sent them,
+  each with the fields `out_fields` as text or `nil` and its point's
+  latitude and longitude, `nil` for a feature with no point.
 
-  defp decode(body) do
+  The service answers a failed query with `200` and a body of
+  `{"error": {"code": code}}`, which is `{:error, {:service_error, code}}`.
+  """
+  @spec decode_page(binary(), [String.t()]) :: {:ok, [feature()]} | {:error, error()}
+  def decode_page(body, [_field | _rest] = out_fields) when is_binary(body) do
     case JSON.decode(body) do
-      {:ok, decoded} -> check(decoded)
+      {:ok, decoded} -> page(decoded, out_fields)
       {:error, _reason} -> {:error, {:malformed, "root"}}
     end
   end
 
-  defp check(decoded) do
-    case Schema.mismatch(decoded, @error_schema) do
-      nil -> {:error, {:service_error, decoded["error"]["code"]}}
-      _no_error -> check_page(decoded)
+  defp page(decoded, out_fields) do
+    attributes_schema = {:map, Map.new(out_fields, &{&1, {:optional, {:nullable, :string}}})}
+
+    page_schema =
+      {:map,
+       %{
+         "features" =>
+           {:list, {:map, %{"attributes" => attributes_schema, "geometry" => @geometry_schema}}}
+       }}
+
+    cond do
+      Schema.mismatch(decoded, @error_schema) == nil ->
+        {:error, {:service_error, decoded["error"]["code"]}}
+
+      (mismatch = Schema.mismatch(decoded, page_schema)) != nil ->
+        {:error, {:malformed, Schema.format_path(mismatch.path)}}
+
+      length(decoded["features"]) > @page_size ->
+        {:error, {:page_too_large, length(decoded["features"])}}
+
+      true ->
+        {:ok, Enum.map(decoded["features"], &feature(&1, out_fields))}
     end
   end
 
-  defp check_page(decoded) do
-    case Schema.mismatch(decoded, @page_schema) do
-      nil -> {:ok, decoded["features"]}
-      %{path: path} -> {:error, {:malformed, Schema.format_path(path)}}
+  defp feature(%{"attributes" => attributes} = decoded, out_fields) do
+    point = Map.get(decoded, "geometry")
+    fields = Map.new(out_fields, &{&1, Map.get(attributes, &1)})
+
+    case point do
+      %{"x" => x, "y" => y} -> %{attributes: fields, lat: y / 1, lon: x / 1}
+      nil -> %{attributes: fields, lat: nil, lon: nil}
+    end
+  end
+
+  @doc """
+  Whether a failure is transient and the request is asked for again: a
+  network fault, a deadline, and the statuses 408, 429, and 5xx, whether as
+  the response's status or as the code of the service's error object.
+  """
+  @spec transient?(term()) :: boolean()
+  def transient?({:unexpected_status, status}), do: transient_status?(status)
+  def transient?({:service_error, code}), do: transient_status?(code)
+  def transient?({:transport, _reason}), do: true
+  def transient?(:deadline_exceeded), do: true
+  def transient?(_failure), do: false
+
+  defp transient_status?(status),
+    do: status in @transient_statuses or status in @server_error_statuses
+
+  @doc """
+  The delay before the retry that follows attempt `attempt_index`, counted
+  from 0: `base_ms` doubled for each attempt up to `cap_ms`, times `jitter`,
+  a share from 0 to 1. A `retry_after_ms` the service sent replaces it, up to
+  `cap_ms`.
+  """
+  @spec retry_delay_ms(%{
+          attempt_index: non_neg_integer(),
+          base_ms: non_neg_integer(),
+          cap_ms: non_neg_integer(),
+          retry_after_ms: non_neg_integer() | nil,
+          jitter: float()
+        }) :: non_neg_integer()
+  def retry_delay_ms(%{attempt_index: attempt_index, cap_ms: cap_ms} = delay)
+      when is_integer(attempt_index) and attempt_index >= 0 do
+    Assert.condition(delay.jitter >= 0.0, "jitter must be at least 0, got: #{delay.jitter}")
+    Assert.condition(delay.jitter <= 1.0, "jitter must be at most 1, got: #{delay.jitter}")
+
+    case delay.retry_after_ms do
+      nil ->
+        doubled_ms = min(delay.base_ms * Integer.pow(2, attempt_index), cap_ms)
+        trunc(doubled_ms * delay.jitter)
+
+      retry_after_ms ->
+        min(retry_after_ms, cap_ms)
+    end
+  end
+
+  @doc """
+  The milliseconds a `Retry-After` header of whole seconds names, or `nil`
+  for no header or another form.
+  """
+  @spec retry_after_ms(String.t() | nil) :: non_neg_integer() | nil
+  def retry_after_ms(nil), do: nil
+
+  def retry_after_ms(header) when is_binary(header) do
+    case Integer.parse(header) do
+      {seconds, ""} when seconds >= 0 -> seconds * 1_000
+      _other -> nil
     end
   end
 end

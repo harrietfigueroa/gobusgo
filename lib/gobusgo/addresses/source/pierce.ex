@@ -1,149 +1,87 @@
 defmodule Gobusgo.Addresses.Source.Pierce do
   @item_id "c8361c8247da4430922e4439da8513c8"
   @layer_url "https://services2.arcgis.com/1UvBaQ5y1ubjUPmd/arcgis/rest/services/Address_Points/FeatureServer/0"
-  @file_name "pierce-addresses.csv"
-  @read_bytes 65_536
-  @page_count_max 5_000
   @active_status "ACTIVE"
-  @out_fields [
-    "OBJECTID",
-    "HouseNumber",
-    "PrefixDirectional",
-    "StreetName",
-    "StreetType",
-    "PostDirectional",
-    "City",
-    "Status"
-  ]
-  @columns %{
+  @fields %{
     house_number: "HouseNumber",
     pre_direction: "PrefixDirectional",
     name: "StreetName",
     type: "StreetType",
     suf_direction: "PostDirectional",
     city: "City",
-    status: "Status",
-    lon: "x",
-    lat: "y"
+    status: "Status"
   }
 
   @moduledoc """
   Pierce County's "Address_Points" layer, item `#{@item_id}` of the county's
-  open geospatial data portal, read by paging its FeatureServer on
-  `services2.arcgis.com` with `Gobusgo.Addresses.PagedLayer`, at most
-  #{@page_count_max} pages, since production reaches only hosts with an
-  IPv6 address and the Hub's export host has none. Read
+  open geospatial data portal, read in pages from its FeatureServer at
+  `#{@layer_url}`, a host that publishes an IPv6 address. Read
   `lib/gobusgo/addresses/AGENTS.md` before changing it.
 
-  The layer is in State Plane South (EPSG 2927). The query asks for the
-  geometry in WGS 84, written to the file's `x` (longitude) and `y`
-  (latitude) columns, so the server needs no projection.
+  A record holds the fields #{@fields |> Map.values() |> Enum.sort() |> Enum.join(", ")}
+  and its point, which the layer keeps in State Plane South (EPSG 2927) and
+  the query asks for in WGS 84. A field the layer leaves `null` is the empty
+  string.
 
   A record whose `Status` is `#{@active_status}` is an address. Any other
   status, which the county gives to a temporary point on a vacant parcel, is
   read with `is_active: false`, so the accumulator counts it and leaves it
   out, and the count of records read stays the layer's.
+
+  Options: `:layer_url`, and those of `Gobusgo.Addresses.ArcGis`.
   """
 
   @behaviour Gobusgo.Addresses.Source
 
-  alias Gobusgo.Addresses.Csv
-  alias Gobusgo.Addresses.PagedLayer
+  alias Gobusgo.Addresses.ArcGis
+
+  @out_fields @fields |> Map.values() |> Enum.sort()
 
   @impl Gobusgo.Addresses.Source
   def name, do: :pierce
 
   @impl Gobusgo.Addresses.Source
-  def fetch(%{directory: directory, bytes_max: bytes_max}, options) when is_list(options) do
-    PagedLayer.fetch(
-      %{
-        layer_url: Keyword.get(options, :layer_url, @layer_url),
-        path: Path.join(directory, @file_name),
-        bytes_max: bytes_max,
-        out_fields: @out_fields,
-        columns: file_columns(),
-        row: &row/1,
-        page_count_max: @page_count_max
-      },
-      options
-    )
+  def fetch(options) when is_list(options) do
+    layer_url = Keyword.get(options, :layer_url, @layer_url)
+
+    with {:ok, layer} <- ArcGis.layer_status(layer_url, options),
+         {:ok, pages} <-
+           ArcGis.pages(
+             %{layer_url: layer_url, out_fields: @out_fields, record_count: layer.record_count},
+             options
+           ) do
+      {:ok,
+       %{
+         last_edit_at: layer.last_edit_at,
+         record_count: layer.record_count,
+         pages: Stream.map(pages, &page/1)
+       }}
+    end
   end
 
-  defp file_columns do
-    [
-      @columns.house_number,
-      @columns.pre_direction,
-      @columns.name,
-      @columns.type,
-      @columns.suf_direction,
-      @columns.city,
-      @columns.status,
-      @columns.lon,
-      @columns.lat
-    ]
-  end
+  defp page({:features, features, request_count}),
+    do: {:records, Enum.map(features, &record/1), request_count}
 
-  defp row(%{"attributes" => attributes} = feature) do
-    [
-      PagedLayer.attribute_text(attributes, "HouseNumber"),
-      PagedLayer.attribute_text(attributes, "PrefixDirectional"),
-      PagedLayer.attribute_text(attributes, "StreetName"),
-      PagedLayer.attribute_text(attributes, "StreetType"),
-      PagedLayer.attribute_text(attributes, "PostDirectional"),
-      PagedLayer.attribute_text(attributes, "City"),
-      PagedLayer.attribute_text(attributes, "Status"),
-      PagedLayer.coordinate_text(feature, "x"),
-      PagedLayer.coordinate_text(feature, "y")
-    ]
-  end
+  defp page({:failed, _reason} = failure), do: failure
 
-  @impl Gobusgo.Addresses.Source
-  def records(path) when is_binary(path) do
-    rows = path |> File.stream!(@read_bytes) |> Csv.rows()
-
-    Stream.transform(rows, :header, fn
-      header, :header -> {[], column_indexes(header)}
-      row, indexes -> {[record(row, indexes)], indexes}
-    end)
-  end
-
-  defp column_indexes(header) do
-    positions = header |> Enum.with_index() |> Map.new()
-
-    Map.new(@columns, fn {field, column} ->
-      case Map.fetch(positions, column) do
-        {:ok, index} ->
-          {field, index}
-
-        :error ->
-          raise Gobusgo.Assert.AssertionError, message: "the file has no #{column} column"
-      end
-    end)
-  end
-
-  defp record(row, indexes) do
-    fields = List.to_tuple(row)
-
+  defp record(%{attributes: attributes, lat: lat, lon: lon}) do
     %{
-      house_number: text(fields, indexes.house_number),
-      pre_direction: text(fields, indexes.pre_direction),
-      name: text(fields, indexes.name),
-      type: text(fields, indexes.type),
-      suf_direction: text(fields, indexes.suf_direction),
-      city: text(fields, indexes.city),
-      lat: degrees(fields, indexes.lat),
-      lon: degrees(fields, indexes.lon),
-      is_active: text(fields, indexes.status) == @active_status
+      house_number: text(attributes, @fields.house_number),
+      pre_direction: text(attributes, @fields.pre_direction),
+      name: text(attributes, @fields.name),
+      type: text(attributes, @fields.type),
+      suf_direction: text(attributes, @fields.suf_direction),
+      city: text(attributes, @fields.city),
+      lat: lat,
+      lon: lon,
+      is_active: text(attributes, @fields.status) == @active_status
     }
   end
 
-  defp text(fields, index) when index < tuple_size(fields), do: elem(fields, index)
-  defp text(_fields, _index), do: ""
-
-  defp degrees(fields, index) do
-    case Float.parse(text(fields, index)) do
-      {degrees, ""} -> degrees
-      _other -> nil
+  defp text(attributes, field) do
+    case Map.fetch!(attributes, field) do
+      nil -> ""
+      value -> value
     end
   end
 end

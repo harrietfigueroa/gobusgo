@@ -1,232 +1,189 @@
 defmodule Gobusgo.Addresses.FeaturePagesTest do
-  # Drives stream/2 against a plug that answers as an ArcGIS FeatureServer
-  # layer's query endpoint over a table of feature rows, and reads what the
-  # query asked for from the requests the plug receives. No request leaves
-  # the machine.
+  # Checks the pure rules of paging a FeatureServer layer: the offsets a
+  # record count gives, the query of one page, the reading of a page the
+  # service answered (two pages recorded from King County's layer on
+  # 2026-11-11), which failures are transient, and the delay before a retry.
   use ExUnit.Case, async: true
-
-  import Plug.Conn
 
   alias Gobusgo.Addresses.FeaturePages
 
-  @layer_url "https://services6.arcgis.com/test/arcgis/rest/services/Layer/FeatureServer/0"
+  @pages Path.expand("../../fixtures/addresses/king_pages", __DIR__)
+  @layer_url "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/ADDRESS_POINT_642/FeatureServer/0"
+  @out_fields ["ADDR_HN", "ADDR_PD", "ADDR_SN", "ADDR_ST", "ADDR_SD", "POSTALCTYNAME"]
 
-  defp feature(object_id) do
-    %{
-      "attributes" => %{"OBJECTID" => object_id, "Name" => "N#{object_id}"},
-      "geometry" => %{"x" => -122.0, "y" => 47.0}
-    }
-  end
+  defp recorded(name), do: File.read!(Path.join(@pages, name))
 
-  # A layer of `object_ids`, which answers each query as ArcGIS does: the
-  # first `resultRecordCount` rows above the `OBJECTID` the `where` names,
-  # with `exceededTransferLimit` while more rows remain. `script`, when
-  # given, is called with the request number first and may answer in its place.
-  defp plug(%{object_ids: object_ids, requests: requests} = layer) do
-    fn conn ->
-      conn = fetch_query_params(conn)
-      number = Agent.get_and_update(requests, &{&1 + 1, &1 + 1})
-      Agent.update(layer.log, &(&1 ++ [conn.query_params]))
-
-      case Map.get(layer, :script, fn _number, _conn -> :default end).(number, conn) do
-        :default ->
-          "OBJECTID>" <> last = conn.query_params["where"]
-          size = String.to_integer(conn.query_params["resultRecordCount"])
-          above = Enum.filter(object_ids, &(&1 > String.to_integer(last)))
-          page = Enum.take(above, size)
-
-          body = %{"features" => Enum.map(page, &feature/1)}
-
-          body =
-            if length(above) > size, do: Map.put(body, "exceededTransferLimit", true), else: body
-
-          send_resp(conn, 200, JSON.encode!(body))
-
-        {status, body, headers} ->
-          conn =
-            Enum.reduce(headers, conn, fn {name, value}, conn ->
-              put_resp_header(conn, name, value)
-            end)
-
-          send_resp(conn, status, body)
-      end
-    end
-  end
-
-  defp start_layer(object_ids, extra \\ %{}) do
-    {:ok, requests} = Agent.start_link(fn -> 0 end)
-    {:ok, log} = Agent.start_link(fn -> [] end)
-    layer = Map.merge(%{object_ids: object_ids, requests: requests, log: log}, extra)
-    %{plug: plug(layer), requests: requests, log: log}
-  end
-
-  defp request(overrides \\ %{}) do
-    Map.merge(
-      %{
-        url: @layer_url <> "/query",
-        out_fields: ["OBJECTID", "Name"],
-        page_count_max: 50
-      },
-      overrides
-    )
-  end
-
-  defp collect(layer, request \\ request(), options \\ []) do
-    options = Keyword.merge([plug: layer.plug, retry_base_ms: 0], options)
-    request |> FeaturePages.stream(options) |> Enum.to_list()
-  end
-
-  defp object_ids(events) do
-    for {:page, features} <- events, feature <- features, do: feature["attributes"]["OBJECTID"]
-  end
-
-  test "reads a layer in pages of 100 by the last OBJECTID, in order" do
-    layer = start_layer(Enum.to_list(1..250))
-    events = collect(layer)
-
-    assert object_ids(events) == Enum.to_list(1..250)
-    assert Enum.map(events, fn {:page, features} -> length(features) end) == [100, 100, 50]
-
-    queries = Agent.get(layer.log, & &1)
-    assert Enum.map(queries, & &1["where"]) == ["OBJECTID>0", "OBJECTID>100", "OBJECTID>200"]
-
-    for query <- queries do
-      assert query["resultRecordCount"] == "100"
-      assert query["outSR"] == "4326"
-      assert query["orderByFields"] == "OBJECTID"
-      assert query["returnGeometry"] == "true"
-      assert query["outFields"] == "OBJECTID,Name"
-      assert query["f"] == "json"
-    end
-  end
-
-  test "pages over OBJECTIDs with gaps by the last one seen" do
-    layer = start_layer([5, 900, 901, 5000])
-    assert layer |> collect() |> object_ids() == [5, 900, 901, 5000]
-  end
-
-  test "a layer of a whole number of pages ends on the empty page after it" do
-    layer = start_layer(Enum.to_list(1..200))
-    events = collect(layer)
-
-    assert object_ids(events) == Enum.to_list(1..200)
-    assert Agent.get(layer.requests, & &1) == 3
-  end
-
-  test "an empty layer has no page" do
-    layer = start_layer([])
-    assert collect(layer) == []
-  end
-
-  test "is lazy: no request is made until the stream is read" do
-    layer = start_layer(Enum.to_list(1..250))
-    stream = FeaturePages.stream(request(), plug: layer.plug, retry_base_ms: 0)
-
-    assert Agent.get(layer.requests, & &1) == 0
-    assert [{:page, _features}] = Enum.take(stream, 1)
-    assert Agent.get(layer.requests, & &1) == 1
-  end
-
-  test "a layer with more pages than the bound is an error after the last page it may read" do
-    layer = start_layer(Enum.to_list(1..1_000))
-    events = collect(layer, request(%{page_count_max: 3}))
-
-    assert length(object_ids(events)) == 300
-    assert List.last(events) == {:error, :page_count_exceeded}
-  end
-
-  describe "transient failures" do
-    for {name, answer} <- [
-          {"a 503", {503, "", []}},
-          {"a 429", {429, "", []}},
-          {"a 408", {408, "", []}},
-          {"an error object with a 503 code", {200, ~s({"error":{"code":503}}), []}}
+  describe "offsets/1" do
+    for {record_count, offsets} <- [
+          {0, []},
+          {1, [0]},
+          {100, [0]},
+          {101, [0, 100]},
+          {199, [0, 100]},
+          {200, [0, 100]},
+          {675_399, :last_675_300}
         ] do
-      test "#{name} is retried and the page follows" do
-        answer = unquote(Macro.escape(answer))
+      test "#{record_count} records are read from offsets #{inspect(offsets)}" do
+        assert {:ok, offsets} = FeaturePages.offsets(unquote(record_count))
 
-        script = fn
-          1, _conn -> answer
-          _number, _conn -> :default
-        end
+        case unquote(offsets) do
+          :last_675_300 ->
+            assert Enum.count(offsets) == 6_754
+            assert Enum.at(offsets, -1) == 675_300
 
-        layer = start_layer([1, 2], %{script: script})
-
-        assert layer |> collect() |> object_ids() == [1, 2]
-        assert Agent.get(layer.requests, & &1) == 2
-      end
-    end
-
-    test "honors a Retry-After header in place of the computed delay" do
-      script = fn
-        1, _conn -> {429, "", [{"retry-after", "0"}]}
-        _number, _conn -> :default
-      end
-
-      layer = start_layer([1], %{script: script})
-
-      assert layer |> collect(request(), retry_base_ms: 60_000) |> object_ids() == [1]
-    end
-
-    test "gives up after three attempts at one page and says so" do
-      layer = start_layer([1], %{script: fn _number, _conn -> {503, "", []} end})
-
-      assert collect(layer) == [{:error, {:unexpected_status, 503}}]
-      assert Agent.get(layer.requests, & &1) == 3
-    end
-
-    test "a transport fault is retried" do
-      layer = start_layer([1])
-      {:ok, attempts} = Agent.start_link(fn -> 0 end)
-
-      flaky = fn conn ->
-        if Agent.get_and_update(attempts, &{&1, &1 + 1}) == 0 do
-          Req.Test.transport_error(conn, :econnrefused)
-        else
-          layer.plug.(conn)
+          expected ->
+            assert Enum.to_list(offsets) == expected
         end
       end
+    end
 
-      assert layer |> Map.put(:plug, flaky) |> collect() |> object_ids() == [1]
+    test "a record count past the bound on pages is refused" do
+      count = FeaturePages.record_count_max() + 1
+      assert FeaturePages.offsets(count) == {:error, {:record_count_too_large, count}}
     end
   end
 
-  describe "failures that are not transient" do
-    for {name, answer, expected} <- [
-          {"a 404", {404, "", []}, {:error, {:unexpected_status, 404}}},
-          {"a 400", {400, "", []}, {:error, {:unexpected_status, 400}}},
-          {"an error object with a 400 code", {200, ~s({"error":{"code":400}}), []},
-           {:error, {:service_error, 400}}},
-          {"a body that is no feature list", {200, ~s({"unrelated":true}), []},
-           {:error, {:malformed, "features"}}},
-          {"a body that is no JSON", {200, "<html>", []}, {:error, {:malformed, "root"}}}
-        ] do
-      test "#{name} is a value, and is asked for once" do
-        answer = unquote(Macro.escape(answer))
-        layer = start_layer([1], %{script: fn _number, _conn -> answer end})
+  describe "query_url/1" do
+    test "asks for one page of the named fields in WGS 84, ordered by the object ID" do
+      url = FeaturePages.query_url(%{layer_url: @layer_url, out_fields: @out_fields, offset: 300})
+      %URI{path: path, query: query} = URI.parse(url)
 
-        assert collect(layer) == [unquote(Macro.escape(expected))]
-        assert Agent.get(layer.requests, & &1) == 1
+      assert path ==
+               "/Ej0PsM5Aw677QF1W/arcgis/rest/services/ADDRESS_POINT_642/FeatureServer/0/query"
+
+      assert URI.decode_query(query) == %{
+               "where" => "1=1",
+               "outFields" => Enum.join(@out_fields, ","),
+               "returnGeometry" => "true",
+               "outSR" => "4326",
+               "orderByFields" => "OBJECTID",
+               "resultOffset" => "300",
+               "resultRecordCount" => "100",
+               "f" => "json"
+             }
+    end
+  end
+
+  describe "decode_page/2" do
+    test "reads a full page's features in the order the service sent them" do
+      assert {:ok, features} = FeaturePages.decode_page(recorded("offset_0.json"), @out_fields)
+      assert length(features) == 100
+
+      assert hd(features) == %{
+               attributes: %{
+                 "ADDR_HN" => "14243",
+                 "ADDR_PD" => "SW",
+                 "ADDR_SN" => "LISABEULA",
+                 "ADDR_ST" => "RD",
+                 "ADDR_SD" => nil,
+                 "POSTALCTYNAME" => "VASHON"
+               },
+               lon: -122.51961713056957,
+               lat: 47.40517878141594
+             }
+    end
+
+    test "reads the layer's last page, which is short" do
+      assert {:ok, features} =
+               FeaturePages.decode_page(recorded("offset_675300.json"), @out_fields)
+
+      assert length(features) == 99
+    end
+
+    test "a feature with no geometry has no position" do
+      body = ~s({"features":[{"attributes":{"ADDR_HN":"1"},"geometry":null}]})
+
+      assert {:ok, [%{lat: nil, lon: nil}]} = FeaturePages.decode_page(body, ["ADDR_HN"])
+    end
+
+    test "an error object the service answers with a 200 is the error's code" do
+      body = ~s({"error":{"code":503,"message":"Service Unavailable","details":[]}})
+      assert FeaturePages.decode_page(body, @out_fields) == {:error, {:service_error, 503}}
+    end
+
+    for {name, body, path} <- [
+          {"a body that is no JSON", "<html>", "root"},
+          {"a page with no features", ~s({"fields":[]}), "features"},
+          {"a field that is no text", ~s({"features":[{"attributes":{"ADDR_HN":1}}]}),
+           "features.0.attributes.ADDR_HN"}
+        ] do
+      test "#{name} is malformed" do
+        assert FeaturePages.decode_page(unquote(body), ["ADDR_HN"]) ==
+                 {:error, {:malformed, unquote(path)}}
       end
     end
 
-    test "a feature with no OBJECTID is a malformed answer" do
-      body = JSON.encode!(%{"features" => [%{"attributes" => %{"Name" => "x"}}]})
-      layer = start_layer([1], %{script: fn _number, _conn -> {200, body, []} end})
+    test "a page of more features than were asked for is refused" do
+      feature = ~s({"attributes":{"ADDR_HN":"1"}})
+      body = ~s({"features":[#{Enum.map_join(1..101, ",", fn _index -> feature end)}]})
 
-      assert collect(layer) == [{:error, {:malformed, "features.0.attributes.OBJECTID"}}]
+      assert FeaturePages.decode_page(body, ["ADDR_HN"]) == {:error, {:page_too_large, 101}}
+    end
+  end
+
+  describe "transient?/1" do
+    for failure <- [
+          {:unexpected_status, 408},
+          {:unexpected_status, 429},
+          {:unexpected_status, 500},
+          {:unexpected_status, 503},
+          {:service_error, 504},
+          {:transport, :timeout},
+          :deadline_exceeded
+        ] do
+      test "#{inspect(failure)} is transient" do
+        assert FeaturePages.transient?(unquote(Macro.escape(failure)))
+      end
     end
 
-    test "a page whose OBJECTIDs do not rise past the last is an error rather than a loop" do
-      body =
-        JSON.encode!(%{
-          "features" => List.duplicate(feature(0), 100),
-          "exceededTransferLimit" => true
-        })
+    for failure <- [
+          {:unexpected_status, 400},
+          {:unexpected_status, 404},
+          {:service_error, 400},
+          {:malformed, "features"},
+          {:page_too_large, 101},
+          :body_too_large
+        ] do
+      test "#{inspect(failure)} is not transient" do
+        refute FeaturePages.transient?(unquote(Macro.escape(failure)))
+      end
+    end
+  end
 
-      layer = start_layer([1], %{script: fn _number, _conn -> {200, body, []} end})
+  describe "retry_delay_ms/1" do
+    defp delay(overrides) do
+      FeaturePages.retry_delay_ms(
+        Map.merge(
+          %{attempt_index: 0, base_ms: 1_000, cap_ms: 16_000, retry_after_ms: nil, jitter: 1.0},
+          Map.new(overrides)
+        )
+      )
+    end
 
-      assert collect(layer) == [{:error, :no_progress}]
+    test "doubles from the base with each attempt, up to the cap" do
+      assert Enum.map(0..5, &delay(attempt_index: &1)) ==
+               [1_000, 2_000, 4_000, 8_000, 16_000, 16_000]
+    end
+
+    test "jitter takes a share of the delay" do
+      assert delay(attempt_index: 1, jitter: 0.5) == 1_000
+      assert delay(attempt_index: 1, jitter: 0.0) == 0
+    end
+
+    test "a Retry-After the service sends replaces the computed delay" do
+      assert delay(attempt_index: 0, retry_after_ms: 7_000) == 7_000
+    end
+
+    test "a Retry-After past the cap waits the cap" do
+      assert delay(attempt_index: 0, retry_after_ms: 600_000) == 16_000
+    end
+  end
+
+  describe "retry_after_ms/1" do
+    for {header, expected} <- [{"3", 3_000}, {"0", 0}, {nil, nil}, {"soon", nil}] do
+      test "#{inspect(header)} is #{inspect(expected)}" do
+        assert FeaturePages.retry_after_ms(unquote(header)) == unquote(expected)
+      end
     end
   end
 end

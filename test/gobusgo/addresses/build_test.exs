@@ -58,16 +58,20 @@ defmodule Gobusgo.Addresses.BuildTest do
     ]
   end
 
+  # `source_options:` in `overrides` is the options of the one county a run
+  # reads; `sources:` names the counties outright.
   defp run(%{server: server, tmp_dir: tmp_dir} = context, overrides \\ []) do
+    {source_options, overrides} =
+      Keyword.pop(overrides, :source_options, records: Map.get(context, :records, records()))
+
     options =
       Keyword.merge(
         [
           server: server,
-          sources: [{AddressSource, [records: Map.get(context, :records, records())]}],
+          sources: [{AddressSource, source_options}],
           bounds: {:bounds, @bounds},
           clock: fn -> Map.get(context, :now, @now) end,
-          write_options: [base_dir: tmp_dir],
-          work_directory: Path.join(tmp_dir, "work")
+          write_options: [base_dir: tmp_dir]
         ],
         overrides
       )
@@ -203,44 +207,116 @@ defmodule Gobusgo.Addresses.BuildTest do
     refute second["shards"] == first["shards"]
   end
 
-  test "a stale export keeps the current build and writes nothing", context do
-    run(context)
-    before = stored_files(context.tmp_dir)
-    {:ok, current} = Addresses.manifest(context.server)
+  test "reads the records of every page", context do
+    pages = [
+      {:records, Enum.take(records(), 2), 1},
+      {:records, Enum.drop(records(), 2), 2}
+    ]
 
-    stale = %{
-      reason: :export_older_than_layer,
-      layer_last_edit_at: ~U[2026-11-10 08:00:00Z],
-      layer_record_count: 5
-    }
+    assert run(context, source_options: [records: records(), pages: pages]) ==
+             {:ok, %{outcome: :built}}
 
-    result =
-      run(Map.put(context, :now, ~U[2026-11-11 12:00:00Z]),
-        sources: [{AddressSource, [answer: {:stale, stale}]}]
-      )
+    assert {:ok, %{"addressCount" => 4}} = Addresses.manifest(context.server)
+  end
 
-    assert result == {:ok, %{outcome: :stale}}
-    assert stored_files(context.tmp_dir) == before
-    assert Addresses.manifest(context.server) == {:ok, current}
+  test "a page that failed is an error with its reason and writes nothing", context do
+    failure = {:page, 100, {:unexpected_status, 403}}
+    pages = [{:records, Enum.take(records(), 2), 1}, {:failed, failure}]
+
+    result = run(context, source_options: [records: records(), pages: pages])
+
+    assert result == {:error, {:fetch, :test, failure}}
+    assert stored_files(context.tmp_dir) == []
+    assert Addresses.manifest(context.server) == :none
+  end
+
+  test "a failed run's log line carries its reason in the message", context do
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        run(context, source_options: [answer: {:error, {:transport, :nxdomain}}])
+      end)
+
+    assert log =~ "Address shards not built: {:fetch, :test, {:transport, :nxdomain}}"
   end
 
   test "a failed fetch is an error and keeps the current build", context do
     run(context)
     {:ok, current} = Addresses.manifest(context.server)
 
-    result =
-      run(context, sources: [{AddressSource, [answer: {:error, {:transport, :timeout}}]}])
+    result = run(context, source_options: [answer: {:error, {:transport, :timeout}}])
 
     assert result == {:error, {:fetch, :test, {:transport, :timeout}}}
     assert Addresses.manifest(context.server) == {:ok, current}
   end
 
   test "records fewer than the layer's count are an error and write nothing", context do
-    result = run(context, sources: [{AddressSource, [records: records(), record_count: 6]}])
+    result = run(context, source_options: [records: records(), record_count: 6])
 
     assert result == {:error, {:record_count_differs, :test, 5, 6}}
     assert stored_files(context.tmp_dir) == []
     assert Addresses.manifest(context.server) == :none
+  end
+
+  describe "several counties" do
+    defp county_records do
+      [
+        record(name: "MARKET", house_number: "747", city: "TACOMA", lat: 47.2557, lon: -122.4419),
+        record(name: "PIKE", house_number: "85")
+      ]
+    end
+
+    defp two_counties(second_options) do
+      [
+        sources: [
+          {AddressSource, [records: records()]},
+          {AddressSourceTwo, second_options}
+        ]
+      ]
+    end
+
+    test "reads every county into one build, a street two counties share being one street",
+         context do
+      assert run(context, two_counties(records: county_records())) == {:ok, %{outcome: :built}}
+
+      {:ok, manifest} = Addresses.manifest(context.server)
+      assert manifest["addressCount"] == 5
+      assert manifest["streetCount"] == 4
+    end
+
+    test "the manifest names each county with its layer's last edit and count, the newest edit first among them",
+         context do
+      run(context, two_counties(records: county_records()))
+
+      {:ok, manifest} = Addresses.manifest(context.server)
+
+      assert manifest["sources"] == [
+               %{"name" => "test", "lastEditAt" => "2026-11-09T12:00:00Z", "recordCount" => 5},
+               %{"name" => "test_two", "lastEditAt" => "2026-11-10T12:00:00Z", "recordCount" => 2}
+             ]
+
+      assert manifest["sourceLastEditAt"] == "2026-11-10T12:00:00Z"
+    end
+
+    test "a county whose records differ from its layer's count fails the run, named", context do
+      result = run(context, two_counties(records: county_records(), record_count: 3))
+
+      assert result == {:error, {:record_count_differs, :test_two, 2, 3}}
+      assert stored_files(context.tmp_dir) == []
+    end
+
+    test "a county whose fetch fails ends the run, named, with nothing written", context do
+      result = run(context, two_counties(answer: {:error, {:transport, :timeout}}))
+
+      assert result == {:error, {:fetch, :test_two, {:transport, :timeout}}}
+      assert stored_files(context.tmp_dir) == []
+    end
+
+    test "a page of a later county that fails ends the run, named", context do
+      failure = {:page, 0, {:unexpected_status, 500}}
+      options = [records: county_records(), pages: [{:failed, failure}]]
+
+      assert run(context, two_counties(options)) == {:error, {:fetch, :test_two, failure}}
+    end
   end
 
   test "a failed write is an error and records no manifest", context do
@@ -254,107 +330,6 @@ defmodule Gobusgo.Addresses.BuildTest do
     assert run(context, heap_words_max: 2_000) == {:error, :killed}
     assert Addresses.manifest(context.server) == :none
     assert stored_files(context.tmp_dir) == []
-  end
-
-  describe "with more than one source" do
-    defp second_records do
-      [
-        record(name: "MARKET", house_number: "747", city: "TACOMA", lat: 47.25, lon: -122.44),
-        record(name: "PINE", house_number: "504", lat: 47.6098, lon: -122.3423),
-        record(house_number: "99", is_active: false)
-      ]
-    end
-
-    defp two_sources(first_options \\ [], second_options \\ []) do
-      [
-        {AddressSource, Keyword.merge([records: records()], first_options)},
-        {AddressSourceTwo, Keyword.merge([records: second_records()], second_options)}
-      ]
-    end
-
-    test "publishes one set of files that holds the addresses of both", context do
-      assert run(context, sources: two_sources()) == {:ok, %{outcome: :built}}
-
-      assert {:ok, manifest} = Addresses.manifest(context.server)
-      assert manifest["addressCount"] == 6
-      assert manifest["streetCount"] == 4
-    end
-
-    test "names each source, its last edit, and its count of records in the manifest, and the newest edit as the build's",
-         context do
-      sources = two_sources([], last_edit_at: ~U[2026-11-10 06:00:00Z])
-
-      run(context, sources: sources)
-      {:ok, manifest} = Addresses.manifest(context.server)
-
-      assert manifest["sourceLastEditAt"] == "2026-11-10T06:00:00Z"
-
-      assert manifest["sources"] == [
-               %{"name" => "test", "lastEditAt" => "2026-11-09T12:00:00Z", "recordCount" => 5},
-               %{"name" => "test_two", "lastEditAt" => "2026-11-10T06:00:00Z", "recordCount" => 3}
-             ]
-    end
-
-    test "the order of the sources does not change what is built", context do
-      run(context, sources: two_sources())
-      {:ok, first} = Addresses.manifest(context.server)
-
-      reversed = Enum.reverse(two_sources())
-      run(Map.put(context, :now, ~U[2026-11-11 12:00:00Z]), sources: reversed)
-      {:ok, second} = Addresses.manifest(context.server)
-
-      assert second["inputsSha256"] == first["inputsSha256"]
-
-      assert Enum.map(second["shards"], & &1["sha256"]) ==
-               Enum.map(first["shards"], & &1["sha256"])
-    end
-
-    test "a stale export of the second source keeps the current build and writes nothing",
-         context do
-      run(context, sources: two_sources())
-      before = stored_files(context.tmp_dir)
-      {:ok, current} = Addresses.manifest(context.server)
-
-      stale = %{
-        reason: :export_older_than_layer,
-        layer_last_edit_at: ~U[2026-11-10 08:00:00Z],
-        layer_record_count: 3
-      }
-
-      result =
-        run(Map.put(context, :now, ~U[2026-11-11 12:00:00Z]),
-          sources: two_sources([], answer: {:stale, stale})
-        )
-
-      assert result == {:ok, %{outcome: :stale}}
-      assert stored_files(context.tmp_dir) == before
-      assert Addresses.manifest(context.server) == {:ok, current}
-    end
-
-    test "a failed fetch of the second source is an error that names it and keeps the build",
-         context do
-      run(context, sources: two_sources())
-      {:ok, current} = Addresses.manifest(context.server)
-
-      result =
-        run(context, sources: two_sources([], answer: {:error, {:transport, :timeout}}))
-
-      assert result == {:error, {:fetch, :test_two, {:transport, :timeout}}}
-      assert Addresses.manifest(context.server) == {:ok, current}
-    end
-
-    test "a count of records that differs from the second source's layer is an error that names it",
-         context do
-      result = run(context, sources: two_sources([], record_count: 4))
-
-      assert result == {:error, {:record_count_differs, :test_two, 3, 4}}
-      assert Addresses.manifest(context.server) == :none
-    end
-
-    test "deletes every export when the run ends", context do
-      run(context, sources: two_sources())
-      refute File.exists?(Path.join(context.tmp_dir, "work"))
-    end
   end
 
   test "the heap cap counts the binaries a process references" do
@@ -372,11 +347,6 @@ defmodule Gobusgo.Addresses.BuildTest do
       )
 
     assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
-  end
-
-  test "deletes the export when the run ends", context do
-    run(context)
-    refute File.exists?(Path.join(context.tmp_dir, "work"))
   end
 
   test "a process started over a stored build holds its manifest and when it was built",

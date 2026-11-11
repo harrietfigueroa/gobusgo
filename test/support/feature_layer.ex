@@ -1,12 +1,11 @@
 defmodule Gobusgo.Test.FeatureLayer do
   @moduledoc """
   A plug that answers as an ArcGIS FeatureServer layer answers: its
-  description with `lastEditDate`, its count, and pages of its features
-  above the `OBJECTID` a `where` names, with `exceededTransferLimit` on a
-  page that leaves features after it. Each request is sent to `test_pid` as
-  `{:request, request_path, query_params}` and its host as `{:host, host}`.
-  `script`, given the connection,
-  answers `{status, body}` in place of the layer, or `:default`.
+  description with `lastEditDate`, its count, and the page of its features
+  at a `resultOffset`, at most `resultRecordCount` long. Each request is sent
+  to `test_pid` as `{:request, host, request_path, query_params}`. `script`,
+  given the connection, answers `{status, body}` in place of the layer, or
+  `:default`.
   """
 
   import Plug.Conn
@@ -24,8 +23,7 @@ defmodule Gobusgo.Test.FeatureLayer do
   def plug(%{test_pid: test_pid, script: script} = layer) do
     fn conn ->
       conn = fetch_query_params(conn)
-      send(test_pid, {:request, conn.request_path, conn.query_params})
-      send(test_pid, {:host, conn.host})
+      send(test_pid, {:request, conn.host, conn.request_path, conn.query_params})
 
       case script.(conn) do
         :default -> answer(conn, layer)
@@ -46,14 +44,13 @@ defmodule Gobusgo.Test.FeatureLayer do
       %{"returnCountOnly" => "true"} ->
         send_resp(conn, 200, JSON.encode!(%{"count" => length(features)}))
 
-      %{"where" => "OBJECTID>" <> last, "resultRecordCount" => size} ->
-        last_object_id = String.to_integer(last)
-        above = Enum.filter(features, &(&1["attributes"]["OBJECTID"] > last_object_id))
-        page = Enum.take(above, String.to_integer(size))
-        send_resp(conn, 200, JSON.encode!(page_body(page, length(above) > length(page))))
+      %{"resultOffset" => offset, "resultRecordCount" => size} ->
+        page =
+          features
+          |> Enum.drop(String.to_integer(offset))
+          |> Enum.take(String.to_integer(size))
+
+        send_resp(conn, 200, JSON.encode!(%{"features" => page}))
     end
   end
-
-  defp page_body(page, true), do: %{"features" => page, "exceededTransferLimit" => true}
-  defp page_body(page, false), do: %{"features" => page}
 end

@@ -1,9 +1,10 @@
 defmodule Gobusgo.Test.AddressSource do
   @moduledoc """
   A `Gobusgo.Addresses.Source` for tests of the build whose records come
-  from the options of `fetch/2`: `:records`, written to the file as an Erlang
-  term, and `:answer`, which replaces the fetch's answer with a stale export
-  or an error.
+  from the options of `fetch/1`: `:records`, handed over as one page,
+  `:record_count`, the count the layer reports, by default that of the
+  records, `:pages`, which replaces the pages, and `:answer`, which replaces
+  the fetch's answer with an error.
   """
 
   @behaviour Gobusgo.Addresses.Source
@@ -12,35 +13,29 @@ defmodule Gobusgo.Test.AddressSource do
   def name, do: :test
 
   @impl Gobusgo.Addresses.Source
-  def fetch(%{directory: directory}, options) do
-    case Keyword.get(options, :answer, :export) do
-      :export ->
+  def fetch(options) do
+    case Keyword.get(options, :answer, :layer) do
+      :layer ->
         records = Keyword.fetch!(options, :records)
-        path = Path.join(directory, "records.term")
-        content = :erlang.term_to_binary(records)
-        File.write!(path, content)
 
         {:ok,
          %{
-           path: path,
-           last_edit_at: Keyword.get(options, :last_edit_at, ~U[2026-11-09 12:00:00Z]),
+           last_edit_at: ~U[2026-11-09 12:00:00Z],
            record_count: Keyword.get(options, :record_count, length(records)),
-           byte_count: byte_size(content)
+           pages: Keyword.get(options, :pages, [{:records, records, 1}])
          }}
 
       other ->
         other
     end
   end
-
-  @impl Gobusgo.Addresses.Source
-  def records(path), do: path |> File.read!() |> :erlang.binary_to_term() |> List.wrap()
 end
 
 defmodule Gobusgo.Test.AddressSourceTwo do
   @moduledoc """
-  A second `Gobusgo.Test.AddressSource` under another name, so a test of the
-  build can give it two counties.
+  A second county for tests of a build over several, named `:test_two`,
+  whose `fetch/1` takes the options of `Gobusgo.Test.AddressSource` and
+  reports its layer as last edited a day later.
   """
 
   @behaviour Gobusgo.Addresses.Source
@@ -49,8 +44,10 @@ defmodule Gobusgo.Test.AddressSourceTwo do
   def name, do: :test_two
 
   @impl Gobusgo.Addresses.Source
-  defdelegate fetch(request, options), to: Gobusgo.Test.AddressSource
-
-  @impl Gobusgo.Addresses.Source
-  defdelegate records(path), to: Gobusgo.Test.AddressSource
+  def fetch(options) do
+    case Gobusgo.Test.AddressSource.fetch(options) do
+      {:ok, layer} -> {:ok, %{layer | last_edit_at: ~U[2026-11-10 12:00:00Z]}}
+      other -> other
+    end
+  end
 end
