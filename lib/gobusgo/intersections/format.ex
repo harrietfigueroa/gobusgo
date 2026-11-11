@@ -3,7 +3,7 @@ defmodule Gobusgo.Intersections.Format do
   @index_kind 7
   @version 1
   @shard_section_count 4
-  @index_section_count 4
+  @index_section_count 3
   @shard_expanded_bytes_max 1_048_576
   @index_expanded_bytes_max 1_048_576
   @digest_bytes 32
@@ -29,10 +29,12 @@ defmodule Gobusgo.Intersections.Format do
 
   A crossing is stored under both of its streets. The index holds one record
   per shard, in the order of their prefixes, and #{@index_section_count}
-  sections after the string table: prefixes, paths, byte sizes, and digests
-  of #{@digest_bytes} bytes, as the address index holds them
-  (`Gobusgo.Addresses.Format`). `expanded_bytes_max/1` bounds the expanded
-  size a reader accepts of each kind.
+  sections after the string table: prefixes, byte sizes, and digests of
+  #{@digest_bytes} bytes, as the address index holds them
+  (`Gobusgo.Addresses.Format`). The index holds no file names: a shard's
+  file is in the directory of the index, named by `Gobusgo.Packed.file_name/1`
+  from its kind and digest. `expanded_bytes_max/1` bounds the expanded size a
+  reader accepts of each kind.
   """
 
   @behaviour Gobusgo.Packed.Kind
@@ -57,7 +59,6 @@ defmodule Gobusgo.Intersections.Format do
 
   @type index_entry :: %{
           prefix: String.t(),
-          name: String.t(),
           byte_size: non_neg_integer(),
           sha256: String.t()
         }
@@ -213,8 +214,8 @@ defmodule Gobusgo.Intersections.Format do
 
   @doc """
   The expanded container of `entries`, one per shard in the order of their
-  prefixes: the `prefix`, the file `name`, the `byte_size` of the stored
-  gzip stream, and its `sha256` as 64 lower case hexadecimal digits.
+  prefixes: the `prefix`, the `byte_size` of the stored gzip stream, and its
+  `sha256` as 64 lower case hexadecimal digits.
   """
   @spec encode_index([index_entry(), ...]) :: binary()
   def encode_index([_entry | _rest] = entries) do
@@ -222,9 +223,6 @@ defmodule Gobusgo.Intersections.Format do
       Enum.map_reduce(entries, StringTable.new(), fn entry, table ->
         StringTable.intern(table, entry.prefix)
       end)
-
-    {paths, table} =
-      Enum.map_reduce(entries, table, fn entry, table -> StringTable.intern(table, entry.name) end)
 
     expanded =
       Packed.encode(%{
@@ -234,7 +232,6 @@ defmodule Gobusgo.Intersections.Format do
         strings: StringTable.strings(table),
         sections: [
           Columns.encode(:u32, prefixes),
-          Columns.encode(:u32, paths),
           Columns.encode(:u32, Enum.map(entries, & &1.byte_size)),
           Enum.map(entries, &digest/1)
         ]
@@ -279,16 +276,14 @@ defmodule Gobusgo.Intersections.Format do
   end
 
   defp read_index(%{record_count: count, strings: strings, sections: sections}) do
-    [prefixes, paths, byte_sizes, digests] = sections
+    [prefixes, byte_sizes, digests] = sections
 
     with {:ok, prefix_texts} <- text_column(%{section: prefixes, count: count, strings: strings}),
-         {:ok, path_texts} <- text_column(%{section: paths, count: count, strings: strings}),
          {:ok, sizes} <- Columns.decode(:u32, byte_sizes, count),
          {:ok, sha256s} <- read_digests(digests, count) do
       entries =
-        for {prefix, name, byte_size, sha256} <-
-              Enum.zip([prefix_texts, path_texts, sizes, sha256s]) do
-          %{prefix: prefix, name: name, byte_size: byte_size, sha256: sha256}
+        for {prefix, byte_size, sha256} <- Enum.zip([prefix_texts, sizes, sha256s]) do
+          %{prefix: prefix, byte_size: byte_size, sha256: sha256}
         end
 
       {:ok, %{entries: entries}}
@@ -342,7 +337,7 @@ defmodule Gobusgo.Intersections.Format do
   defp entry_description(entry) do
     %{
       "prefix" => entry.prefix,
-      "path" => entry.name,
+      "path" => Packed.file_name(%{kind: @shard_kind, sha256: entry.sha256}),
       "byteSize" => entry.byte_size,
       "sha256" => entry.sha256
     }

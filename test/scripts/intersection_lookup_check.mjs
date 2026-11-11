@@ -30,7 +30,7 @@ import {
   planIntersection,
   searchIntersection,
 } from "../../assets/js/intersection_lookup.js"
-import {PackedOutcome, PackedRefusal} from "../../assets/js/packed_container.js"
+import {PackedKind, PackedOutcome, PackedRefusal, packedFileName} from "../../assets/js/packed_container.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/intersections/v1/", import.meta.url))
 const HEADER_BYTES = 16
@@ -62,6 +62,9 @@ const MAIN_LATITUDE_FARTHEST = 47.5
 const MAIN_AT_FIRST_LATITUDES = Object.freeze([MAIN_LATITUDE_MIDDLE, MAIN_LATITUDE_FARTHEST, MAIN_LATITUDE_NEAREST])
 const MAIN_AT_FIRST_NEAREST_FIRST = Object.freeze([MAIN_LATITUDE_NEAREST, MAIN_LATITUDE_MIDDLE, MAIN_LATITUDE_FARTHEST])
 const ZEROED_COUNT_SKIP = 2
+const EMPTY_PREFIX_SHARD = 0
+const OWN_NAME_SHARD = 1
+const EXTENDED_PREFIX_SHARD = 2
 const MANY_CROSSING_COUNT = 7
 const LATITUDE_STEP = 0.01
 const RESULT_COUNT_MAX = 5
@@ -283,6 +286,9 @@ function checkIndexRefusals() {
   expectRefusal({label: "a prefix past the string table", result: decodeIntersectionIndex(prefixPast), reason: IntersectionFileRefusal.badStringIndex})
 
   const shortDigests = indexWith({section: IntersectionIndexSection.digests, replacement: new Array(DIGEST_BYTES).fill(0)})
+  const names = decodeIntersectionIndex(indexBytes).table.paths
+  deepStrictEqual(names, expected.index.paths, "the file names the digests make")
+  strictEqual(names[0], packedFileName({kind: PackedKind.intersectionShard, sha256: expected.index.sha256s[0]}))
   expectRefusal({label: "digests of another length", result: decodeIntersectionIndex(shortDigests), reason: PackedRefusal.badSectionSize})
 }
 
@@ -331,7 +337,7 @@ function checkPlans() {
   for (const text of TYPED_PLANS) {
     const plan = planOf(text)
     strictEqual(plan.kind, IntersectionLookupKind.plan, text)
-    strictEqual(plan.path, "intersections-a.bin.gz", `${text} is in the shard of the empty prefix`)
+    strictEqual(plan.path, expected.index.paths[EMPTY_PREFIX_SHARD], `${text} is in the shard of the empty prefix`)
   }
 
   const pine = planOf("Pine and 3rd")
@@ -339,10 +345,10 @@ function checkPlans() {
   deepStrictEqual(pine.query.second, {preDirection: "", name: "3RD", type: "", sufDirection: ""})
 
   const ownName = planOf("Pike & 3rd")
-  deepStrictEqual([ownName.prefix, ownName.path], ["PIKE$", "intersections-b.bin.gz"], "a street named by the prefix alone")
+  deepStrictEqual([ownName.prefix, ownName.path], ["PIKE$", expected.index.paths[OWN_NAME_SHARD]], "a street named by the prefix alone")
 
   const longer = planOf("Pikeville Rd & Main")
-  deepStrictEqual([longer.prefix, longer.path], ["PIKE", "intersections-c.bin.gz"], "a street a prefix extends")
+  deepStrictEqual([longer.prefix, longer.path], ["PIKE", expected.index.paths[EXTENDED_PREFIX_SHARD]], "a street a prefix extends")
 
   const multibyte = planOf("École Rd & 3rd")
   strictEqual(multibyte.prefix, "ÉCOLE", "a multibyte prefix")

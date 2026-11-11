@@ -1,8 +1,9 @@
 defmodule Gobusgo.Intersections.Publication do
   @directory "intersections"
-  @manifest_destination "intersections/manifest.json"
+  @manifest_prefix "intersections/manifest-"
+  @manifest_time_format "%Y%m%dT%H%M%SZ"
   @reader_keep_seconds 31_536_000
-  @shard_bytes_max 131_072
+  @shard_bytes_max Gobusgo.Addresses.Build.shard_bytes_max()
   @license_name "Open Database License 1.0"
   @license_url "https://opendatacommons.org/licenses/odbl/1-0/"
   @attribution "© OpenStreetMap contributors"
@@ -12,12 +13,13 @@ defmodule Gobusgo.Intersections.Publication do
   names them.
 
   `Gobusgo.Addresses.Shards` cuts the streets into shards at most
-  #{@shard_bytes_max} bytes before compression. Each shard and the index are
+  #{@shard_bytes_max} bytes before compression, the bound of the address
+  shards (`Gobusgo.Addresses.Build.shard_bytes_max/0`). Each shard and the index are
   containers of `Gobusgo.Intersections.Format`, each one gzip stream at
   `#{@directory}/<prefix>-<SHA-256 of the stream>.bin.gz`, stored with a
   reader keep time of #{@reader_keep_seconds} seconds, since its name holds
-  its hash. Only after every file is stored is `#{@manifest_destination}`
-  written, canonical JSON:
+  its hash. Only after every file is stored is the manifest written, at
+  `#{@manifest_prefix}<UTC build time>-<SHA-256 of the index>.json`, canonical JSON:
 
       {"attribution": ..., "builtAt": ..., "index": {"byteSize": ..., "path": ..., "sha256": ...},
        "intersectionCount": ..., "license": {"name": ..., "url": ...}, "shards": [...],
@@ -26,13 +28,15 @@ defmodule Gobusgo.Intersections.Publication do
   A path is the URL path of the file, `/` and its destination, and a shard
   entry holds its `prefix` beside the three fields. The files are a derivative
   database of OpenStreetMap and are offered under the ODbL, which the
-  manifest names. The manifest changes with every build, so the previous one
-  is deleted before the new one is written; a reader that asks between the
-  two finds none. Nothing deletes a file: an earlier build's files stay
-  until they are removed by hand.
+  manifest names. A writer stores a destination once, so each build's
+  manifest has a name of its own and the reader takes the newest by name
+  (`manifest/1`); the manifests of earlier builds are deleted only after the
+  new one is stored, so a reader that asks at any moment finds one. Nothing
+  deletes a data file: an earlier build's files stay until they are removed
+  by hand.
 
-  The writer's options are `:write_options` and the deleter's
-  `:delete_options`.
+  The writer's options are `:write_options`, the deleter's `:delete_options`,
+  and the reader's, which discovery uses, `:read_options`.
   """
 
   alias Gobusgo.Addresses.Shards
@@ -43,6 +47,7 @@ defmodule Gobusgo.Intersections.Publication do
   alias Gobusgo.Intersections.Format
   alias Gobusgo.Intersections.Streets
   alias Gobusgo.Packed
+  alias Gobusgo.Reader
   alias Gobusgo.Writer
 
   @type request :: %{
@@ -66,9 +71,34 @@ defmodule Gobusgo.Intersections.Publication do
   @spec directory() :: String.t()
   def directory, do: @directory
 
-  @doc "The destination of the manifest."
-  @spec manifest_destination() :: String.t()
-  def manifest_destination, do: @manifest_destination
+  @doc "The prefix of every manifest's destination."
+  @spec manifest_prefix() :: String.t()
+  def manifest_prefix, do: @manifest_prefix
+
+  @doc "The destination of the manifest of a build made at `built_at` whose index has the SHA-256 `index_sha256`."
+  @spec manifest_destination(%{built_at: DateTime.t(), index_sha256: String.t()}) :: String.t()
+  def manifest_destination(%{built_at: built_at, index_sha256: index_sha256})
+      when is_binary(index_sha256) do
+    time = Calendar.strftime(built_at, @manifest_time_format)
+    "#{@manifest_prefix}#{time}-#{index_sha256}.json"
+  end
+
+  @doc """
+  The newest stored manifest's content, or the reason there is none:
+  `{:error, :not_found}` where no build is stored. `options` are the
+  reader's.
+  """
+  @spec manifest(keyword()) :: {:ok, binary()} | {:error, Gobusgo.Reader.error_reason()}
+  def manifest(options) when is_list(options) do
+    request = %{prefix: @manifest_prefix, limit: 1, order: :descending, cursor: nil}
+
+    with {:ok, %{destinations: destinations}} <- Reader.discover(request, options) do
+      case destinations do
+        [newest | _older] -> Reader.read(newest, options)
+        [] -> {:error, :not_found}
+      end
+    end
+  end
 
   @doc "How long a reader may keep a file without asking again."
   @spec reader_keep_seconds() :: pos_integer()
@@ -92,14 +122,18 @@ defmodule Gobusgo.Intersections.Publication do
     index_file = index_file(Enum.map(shard_files, & &1.entry))
     files = shard_files ++ [index_file]
 
-    manifest =
-      manifest(%{request: request, shard_files: shard_files, index_file: index_file})
+    content =
+      manifest_content(%{request: request, shard_files: shard_files, index_file: index_file})
+
+    destination =
+      manifest_destination(%{built_at: request.built_at, index_sha256: index_file.stored.sha256})
 
     with :ok <- write_all(files, Keyword.get(options, :write_options, [])),
-         :ok <- replace_manifest(manifest, options) do
+         :ok <- write_manifest(%{destination: destination, content: content}, options),
+         :ok <- delete_older_manifests(destination, options) do
       {:ok,
        %{
-         manifest_destination: @manifest_destination,
+         manifest_destination: destination,
          shard_count: length(shard_files),
          shard_byte_sizes: Enum.map(shard_files, & &1.stored.byte_size),
          shard_expanded_byte_sizes: Enum.map(shard_files, &byte_size(&1.content)),
@@ -116,7 +150,6 @@ defmodule Gobusgo.Intersections.Publication do
 
     Map.put(file, :entry, %{
       prefix: prefix,
-      name: Path.basename(file.destination),
       byte_size: file.stored.byte_size,
       sha256: file.stored.sha256
     })
@@ -145,8 +178,9 @@ defmodule Gobusgo.Intersections.Publication do
   The manifest of `input.index_file` and `input.shard_files`, the files
   `publish/2` builds, as canonical JSON text.
   """
-  @spec manifest(%{request: request(), shard_files: [map()], index_file: map()}) :: binary()
-  def manifest(%{request: request, shard_files: shard_files, index_file: index_file}) do
+  @spec manifest_content(%{request: request(), shard_files: [map()], index_file: map()}) ::
+          binary()
+  def manifest_content(%{request: request, shard_files: shard_files, index_file: index_file}) do
     CanonicalJson.encode(%{
       "attribution" => @attribution,
       "builtAt" => DateTime.to_iso8601(request.built_at),
@@ -179,22 +213,48 @@ defmodule Gobusgo.Intersections.Publication do
     end)
   end
 
-  defp replace_manifest(manifest, options) do
-    delete = %{destination: @manifest_destination, within: @directory <> "/"}
+  # A manifest of the same name names the same index, so one already there is stored.
+  defp write_manifest(%{destination: destination, content: content}, options) do
+    request = %{destination: destination, content: content}
 
-    with :ok <- delete_manifest(Deleter.delete(delete, Keyword.get(options, :delete_options, []))),
-         :ok <-
-           Writer.write(
-             %{destination: @manifest_destination, content: manifest},
-             Keyword.get(options, :write_options, [])
-           ) do
-      :ok
-    else
+    case Writer.write(request, Keyword.get(options, :write_options, [])) do
+      :ok -> :ok
+      {:error, :already_exists} -> :ok
       {:error, reason} -> {:error, {:write_manifest, reason}}
     end
   end
 
-  defp delete_manifest(:ok), do: :ok
-  defp delete_manifest({:error, :not_found}), do: :ok
-  defp delete_manifest({:error, _reason} = failure), do: failure
+  # The manifests are listed oldest first, at most one page of them: a build
+  # leaves one, so a listing that does not fit a page is a fault.
+  defp delete_older_manifests(current, options) do
+    request = %{
+      prefix: @manifest_prefix,
+      limit: Reader.discovery_limit_max(),
+      order: :ascending,
+      cursor: nil
+    }
+
+    with {:ok, %{destinations: destinations, cursor: cursor}} <-
+           Reader.discover(request, Keyword.get(options, :read_options, [])),
+         true <- is_nil(cursor) do
+      delete_all(Enum.reject(destinations, &(&1 == current)), options)
+    else
+      false -> {:error, {:delete_manifests, :too_many_manifests}}
+      {:error, reason} -> {:error, {:delete_manifests, reason}}
+    end
+  end
+
+  defp delete_all(destinations, options) do
+    delete_options = Keyword.get(options, :delete_options, [])
+
+    Enum.reduce_while(destinations, :ok, fn destination, :ok ->
+      request = %{destination: destination, within: @directory <> "/"}
+
+      case Deleter.delete(request, delete_options) do
+        :ok -> {:cont, :ok}
+        {:error, :not_found} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:delete_manifests, reason}}}
+      end
+    end)
+  end
 end

@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Gobusgo.Intersections.BuildTest do
     extract_path = Path.join(tmp_dir, "washington.osm.pbf")
     File.write!(extract_path, Enum.join(IntersectionOpl.lines(), "\n") <> "\n")
 
-    for backend <- [Gobusgo.Writer.LocalFile, Gobusgo.Deleter.LocalFile] do
+    for backend <- [Gobusgo.Writer.LocalFile, Gobusgo.Deleter.LocalFile, Gobusgo.Reader.LocalFile] do
       configured = Application.get_env(:gobusgo, backend)
       Application.put_env(:gobusgo, backend, base_dir: Path.join(tmp_dir, "data"))
       on_exit(fn -> Application.put_env(:gobusgo, backend, configured) end)
@@ -77,8 +77,10 @@ defmodule Mix.Tasks.Gobusgo.Intersections.BuildTest do
   } do
     Build.run(["--extract", extract_path, "--bounds", "47,-123,48,-122"])
 
-    manifest =
-      tmp_dir |> Path.join("data/intersections/manifest.json") |> File.read!() |> JSON.decode!()
+    [manifest_path] =
+      tmp_dir |> Path.join("data/intersections/manifest-*.json") |> Path.wildcard()
+
+    manifest = manifest_path |> File.read!() |> JSON.decode!()
 
     assert manifest["intersectionCount"] == 2
     assert manifest["streetCount"] == 3

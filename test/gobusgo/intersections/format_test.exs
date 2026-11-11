@@ -13,7 +13,7 @@ defmodule Gobusgo.Intersections.FormatTest do
 
   @directory IntersectionFixture.directory()
   @shard_expectation %{kind: 6, versions: [1], section_count: 4}
-  @index_expectation %{kind: 7, versions: [1], section_count: 4}
+  @index_expectation %{kind: 7, versions: [1], section_count: 3}
 
   defp fixture(name), do: File.read!(Path.join(@directory, name))
 
@@ -166,12 +166,12 @@ defmodule Gobusgo.Intersections.FormatTest do
     end
 
     test "refuses a digest section of another length" do
-      assert Format.decode_index(index_with(3, <<1, 2, 3>>)) == {:error, :bad_section_size}
+      assert Format.decode_index(index_with(2, <<1, 2, 3>>)) == {:error, :bad_section_size}
     end
 
     test "asserts a digest of 64 hexadecimal digits" do
       assert_raise Gobusgo.Assert.AssertionError, fn ->
-        Format.encode_index([%{prefix: "", name: "a", byte_size: 1, sha256: "abc"}])
+        Format.encode_index([%{prefix: "", byte_size: 1, sha256: "abc"}])
       end
     end
   end

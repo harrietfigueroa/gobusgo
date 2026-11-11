@@ -24,8 +24,8 @@ defmodule GobusgoWeb.IntersectionManifestControllerTest do
     :ok
   end
 
-  defp store(tmp_dir, content) do
-    path = Path.join(tmp_dir, "intersections/manifest.json")
+  defp store(tmp_dir, content, name \\ "manifest-20261110T220000Z-aa.json") do
+    path = Path.join(tmp_dir, "intersections/" <> name)
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, content)
   end
@@ -76,6 +76,15 @@ defmodule GobusgoWeb.IntersectionManifestControllerTest do
       |> get("/api/intersections/manifest")
 
     assert conn.status == 200
+  end
+
+  test "answers the newest of the stored manifests", %{tmp_dir: tmp_dir} do
+    newer = %{@manifest | "builtAt" => "2026-11-11T22:00:00Z"}
+    store(tmp_dir, JSON.encode!(@manifest))
+    store(tmp_dir, JSON.encode!(newer), "manifest-20261111T220000Z-bb.json")
+
+    conn = get(build_conn(), "/api/intersections/manifest")
+    assert json_response(conn, 200) == newer
   end
 
   test "answers 503 for content that is not the manifest a build writes", %{tmp_dir: tmp_dir} do

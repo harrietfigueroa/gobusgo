@@ -19,11 +19,12 @@ import {
   decodeContainer,
   expandStream,
   openColumn,
+  packedFileName,
 } from "./packed_container.js"
 
 const INTERSECTION_FILE_VERSION = 1
 const SHARD_SECTION_COUNT = 4
-const INDEX_SECTION_COUNT = 4
+const INDEX_SECTION_COUNT = 3
 const DIGEST_BYTES = 32
 const COORDINATE_COUNT = 2
 const BYTES_PER_MEBIBYTE = 1024 * 1024
@@ -49,9 +50,8 @@ export const IntersectionShardSection = Object.freeze({
 /** The sections of the index kind after the string table, in order. */
 export const IntersectionIndexSection = Object.freeze({
   prefixes: 0,
-  paths: 1,
-  byteSizes: 2,
-  digests: 3,
+  byteSizes: 1,
+  digests: 2,
 })
 
 /** The reasons the kinds refuse a file for, beside the container's own. */
@@ -244,16 +244,21 @@ function hexOf({view, offset}) {
   return text
 }
 
+function shardFileName(sha256) {
+  return packedFileName({kind: PackedKind.intersectionShard, sha256})
+}
+
 /**
  * The shards of `bytes`, the expanded container of an index:
  * `{kind: "decoded", table}`, where `table` is `{shardCount, prefixes,
  * paths, byteSizes, sha256s}`, one entry per shard in the order of their
- * prefixes: `prefixes` and `paths` are arrays of strings, a prefix ending in
- * `$` for the shard of the streets named by the prefix alone, and a path
- * relative to the index's directory; `byteSizes` is a `Uint32Array` of the
- * sizes of the shards' gzip streams; `sha256s` is an array of the streams'
- * SHA-256 as lower case hexadecimal. A refusal has the reasons of
- * `decodeIntersectionShard`.
+ * prefixes: `prefixes` is an array of strings, a prefix ending in `$` for the
+ * shard of the streets named by the prefix alone; `byteSizes` is a
+ * `Uint32Array` of the sizes of the shards' gzip streams; `sha256s` is an
+ * array of the streams' SHA-256 as lower case hexadecimal; and `paths` is the
+ * file name of each shard, which the index does not hold: `packedFileName`
+ * names it from the digest, in the index's directory. A refusal has the
+ * reasons of `decodeIntersectionShard`.
  */
 export function decodeIntersectionIndex(bytes) {
   const container = decodeContainer(bytes, {
@@ -269,10 +274,9 @@ export function decodeIntersectionIndex(bytes) {
   const shardCount = container.header.recordCount
 
   const prefixes = stringIndexes({container, index: IntersectionIndexSection.prefixes, count: shardCount})
-  const paths = stringIndexes({container, index: IntersectionIndexSection.paths, count: shardCount})
   const sizes = column({container, index: IntersectionIndexSection.byteSizes, type: ColumnType.u32, count: shardCount})
   const digests = container.sections[IntersectionIndexSection.digests]
-  const refusal = firstRefusal([prefixes, paths, sizes])
+  const refusal = firstRefusal([prefixes, sizes])
 
   if (refusal.kind === PackedOutcome.refused) {
     return refusal
@@ -294,7 +298,7 @@ export function decodeIntersectionIndex(bytes) {
   const table = {
     shardCount,
     prefixes: Array.from(prefixes.indexes, (index) => strings[index]),
-    paths: Array.from(paths.indexes, (index) => strings[index]),
+    paths: Array.from(sha256s, shardFileName),
     byteSizes,
     sha256s,
   }

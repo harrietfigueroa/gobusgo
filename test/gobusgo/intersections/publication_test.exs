@@ -8,6 +8,7 @@ defmodule Gobusgo.Intersections.PublicationTest do
   alias Gobusgo.Intersections.Format
   alias Gobusgo.Intersections.Publication
   alias Gobusgo.Packed
+  alias Gobusgo.Reader
   alias Gobusgo.Test.IntersectionFixture
   alias Gobusgo.Writer
 
@@ -26,13 +27,17 @@ defmodule Gobusgo.Intersections.PublicationTest do
 
   defp options(tmp_dir) do
     [
+      read_options: [backend: Reader.LocalFile, base_dir: tmp_dir],
       write_options: [backend: Writer.LocalFile, base_dir: tmp_dir],
       delete_options: [backend: Deleter.LocalFile, base_dir: tmp_dir]
     ]
   end
 
+  defp manifest_files(tmp_dir),
+    do: tmp_dir |> Path.join("intersections/manifest-*.json") |> Path.wildcard() |> Enum.sort()
+
   defp manifest(tmp_dir) do
-    tmp_dir |> Path.join("intersections/manifest.json") |> File.read!() |> JSON.decode!()
+    tmp_dir |> manifest_files() |> List.last() |> File.read!() |> JSON.decode!()
   end
 
   defp expand(tmp_dir, path, kind) do
@@ -56,7 +61,8 @@ defmodule Gobusgo.Intersections.PublicationTest do
     assert {:ok, %{entries: entries}} = Format.decode_index(content)
     assert length(entries) == published.shard_count
 
-    {_stream, shard} = expand(tmp_dir, "/intersections/" <> hd(entries).name, :shard)
+    name = Packed.file_name(%{kind: Format.shard_kind(), sha256: hd(entries).sha256})
+    {_stream, shard} = expand(tmp_dir, "/intersections/" <> name, :shard)
     assert {:ok, %{streets: [%{key: "3RD AVE"} | _rest]}} = Format.decode_shard(shard)
   end
 
@@ -68,7 +74,10 @@ defmodule Gobusgo.Intersections.PublicationTest do
     {:ok, %{entries: entries}} = Format.decode_index(content)
 
     assert Enum.map(manifest["shards"], &{&1["prefix"], Path.basename(&1["path"]), &1["sha256"]}) ==
-             Enum.map(entries, &{&1.prefix, &1.name, &1.sha256})
+             Enum.map(entries, fn entry ->
+               name = Packed.file_name(%{kind: Format.shard_kind(), sha256: entry.sha256})
+               {entry.prefix, name, entry.sha256}
+             end)
   end
 
   test "states the counts, the source, and the license in the manifest", %{tmp_dir: tmp_dir} do
@@ -127,21 +136,40 @@ defmodule Gobusgo.Intersections.PublicationTest do
     assert total == 1_200
   end
 
-  test "replaces the manifest of an earlier build and keeps the earlier files", %{
-    tmp_dir: tmp_dir
-  } do
+  defp later_request do
+    %{request(Enum.take(IntersectionFixture.streets(), 2)) | built_at: ~U[2026-11-11 22:00:00Z]}
+  end
+
+  test "keeps one manifest, the newest, and the earlier files", %{tmp_dir: tmp_dir} do
     assert {:ok, _first} = Publication.publish(request(), options(tmp_dir))
     first = manifest(tmp_dir)
 
-    assert {:ok, _second} =
-             Publication.publish(
-               request(Enum.take(IntersectionFixture.streets(), 2)),
-               options(tmp_dir)
-             )
+    assert {:ok, second} = Publication.publish(later_request(), options(tmp_dir))
 
-    second = manifest(tmp_dir)
-    assert second["index"]["path"] != first["index"]["path"]
+    assert manifest_files(tmp_dir) == [Path.join(tmp_dir, second.manifest_destination)]
+    assert manifest(tmp_dir)["index"]["path"] != first["index"]["path"]
     assert File.exists?(Path.join(tmp_dir, first["index"]["path"]))
+  end
+
+  test "names a manifest by the build time and the index's hash", %{tmp_dir: tmp_dir} do
+    assert {:ok, published} = Publication.publish(request(), options(tmp_dir))
+    sha256 = manifest(tmp_dir)["index"]["sha256"]
+
+    assert published.manifest_destination ==
+             "intersections/manifest-20261110T220000Z-#{sha256}.json"
+  end
+
+  test "reads the newest manifest through the reader", %{tmp_dir: tmp_dir} do
+    assert Publication.manifest(options(tmp_dir)[:read_options]) == {:error, :not_found}
+    assert {:ok, _first} = Publication.publish(request(), options(tmp_dir))
+    assert {:ok, _second} = Publication.publish(later_request(), options(tmp_dir))
+
+    assert {:ok, content} = Publication.manifest(options(tmp_dir)[:read_options])
+    assert JSON.decode!(content)["builtAt"] == "2026-11-11T22:00:00Z"
+  end
+
+  test "cuts shards at the address shards' bound" do
+    assert Publication.shard_bytes_max() == Gobusgo.Addresses.Build.shard_bytes_max()
   end
 
   test "publishes the same build twice", %{tmp_dir: tmp_dir} do

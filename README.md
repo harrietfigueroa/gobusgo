@@ -473,7 +473,7 @@ The intersection files are the files of street crossings, such as "4th & Pike", 
 
    `--bounds south,west,north,east` replaces the manifest's bounds, and is required where there is no manifest. The task prints the counts of what it read and kept, the time of each step, and the sizes of the files it stored. It peaked at 295 MB on a development machine.
 
-2. It stores `intersections/intersections-<SHA-256>.bin.gz` for each shard and the index, and then `intersections/manifest.json`, under `<GOBUSGO_DATA_DIR>`, and with a bucket configured in the bucket. Check that the server serves the manifest and a file:
+2. It stores `intersections/intersections-<SHA-256>.bin.gz` for each shard and the index, and then the manifest, `intersections/manifest-<build time>-<SHA-256 of the index>.json`, under `<GOBUSGO_DATA_DIR>`, and with a bucket configured in the bucket. It deletes the manifests of earlier builds only after the new one is stored. Check that the server serves the manifest and a file:
 
    ```sh
    curl --silent http://127.0.0.1:4000/api/intersections/manifest

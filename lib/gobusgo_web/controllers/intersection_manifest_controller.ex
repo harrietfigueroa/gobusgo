@@ -3,8 +3,9 @@ defmodule GobusgoWeb.IntersectionManifestController do
 
   @moduledoc """
   Serves the manifest of the published intersection files, which a build
-  stores through `Gobusgo.Writer` at `Gobusgo.Intersections.Publication.manifest_destination/0`
-  and this controller reads through `Gobusgo.Reader` on every request, so it
+  stores through `Gobusgo.Writer` under a name of its own per build. The
+  controller reads the newest of them through `Gobusgo.Reader`
+  (`Gobusgo.Intersections.Publication.manifest/1`) on every request, so it
   serves whichever backend the application stores through.
 
   The manifest names the files by hashes that never change content, so it is
@@ -21,7 +22,6 @@ defmodule GobusgoWeb.IntersectionManifestController do
   require Logger
 
   alias Gobusgo.Intersections.Publication
-  alias Gobusgo.Reader
   alias Gobusgo.Schema
   alias GobusgoWeb.Problem
 
@@ -42,7 +42,7 @@ defmodule GobusgoWeb.IntersectionManifestController do
   end
 
   defp read do
-    with {:ok, body} <- Reader.read(Publication.manifest_destination()),
+    with {:ok, body} <- Publication.manifest([]),
          {:ok, decoded} <- decode(body),
          nil <- Schema.mismatch(decoded, @manifest_schema) do
       {:ok, body}

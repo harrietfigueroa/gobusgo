@@ -16,6 +16,7 @@ defmodule Gobusgo.Test.IntersectionFixture do
   alias Gobusgo.Intersections.Format
   alias Gobusgo.Intersections.Names
   alias Gobusgo.Intersections.Streets
+  alias Gobusgo.Packed
 
   @directory Path.expand("../fixtures/intersections/v1", __DIR__)
 
@@ -35,10 +36,10 @@ defmodule Gobusgo.Test.IntersectionFixture do
   ]
 
   @index_entries [
-    %{prefix: "", name: "intersections-a.bin.gz", byte_size: 4_096, sha256: "a"},
-    %{prefix: "PIKE$", name: "intersections-b.bin.gz", byte_size: 1, sha256: "b"},
-    %{prefix: "PIKE", name: "intersections-c.bin.gz", byte_size: 4_294_967_295, sha256: "c"},
-    %{prefix: "ÉCOLE", name: "intersections-d.bin.gz", byte_size: 131_072, sha256: "d"}
+    %{prefix: "", byte_size: 4_096, sha256: "a"},
+    %{prefix: "PIKE$", byte_size: 1, sha256: "b"},
+    %{prefix: "PIKE", byte_size: 4_294_967_295, sha256: "c"},
+    %{prefix: "ÉCOLE", byte_size: 131_072, sha256: "d"}
   ]
 
   @doc "The directory the fixture files are in."
@@ -100,7 +101,8 @@ defmodule Gobusgo.Test.IntersectionFixture do
     %{
       "shardCount" => length(entries),
       "prefixes" => Enum.map(entries, & &1.prefix),
-      "paths" => Enum.map(entries, & &1.name),
+      "paths" =>
+        Enum.map(entries, &Packed.file_name(%{kind: Format.shard_kind(), sha256: &1.sha256})),
       "byteSizes" => Enum.map(entries, & &1.byte_size),
       "sha256s" => Enum.map(entries, & &1.sha256)
     }
