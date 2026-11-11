@@ -1,8 +1,11 @@
 // Checks the application's engine against the hand-written journeys of the
 // fixture file: each case's timetable is written as snapshot files and
 // loaded into the engine, and every query's frontier, read back as readable
-// legs, must equal the expected one. Run it with `node test/fixtures.mjs`
-// from the experiment directory; it exits non-zero on the first mismatch.
+// legs, must equal the expected one. A query that arrives by a time is also
+// checked against the forward scan: leaving at its latest departure arrives
+// by the time, and leaving a second later does not. Run it with
+// `node test/fixtures.mjs` from the experiment directory; it exits non-zero
+// on the first mismatch.
 
 import {readFileSync} from "node:fs"
 import {deepStrictEqual} from "node:assert/strict"
@@ -50,6 +53,64 @@ function readable({frontier, snapshot}) {
   return result
 }
 
+// A frontier arriving by a time, each journey with when it leaves.
+function readableArrivingBy({frontier, snapshot}) {
+  const leaving = readable({frontier, snapshot})
+  const result = []
+
+  for (const [index, journey] of leaving.entries()) {
+    result.push({depart: clock(frontier[index].departureS), ...journey})
+  }
+
+  return result
+}
+
+function earliestArrivalS(frontier) {
+  let earliestS = Number.POSITIVE_INFINITY
+
+  for (const journey of frontier) {
+    earliestS = Math.min(earliestS, journey.arrivalS)
+  }
+
+  return earliestS
+}
+
+// The forward scan agrees with the latest departure: from it a journey
+// arrives by the time, and from a second later none does.
+function checkAgainstForward({engine, routed, frontier, label}) {
+  const latestS = frontier[frontier.length - 1].departureS
+  const atLatest = engine.route({origin: routed.origin, target: routed.target, departureS: latestS})
+  const afterLatest = engine.route({origin: routed.origin, target: routed.target, departureS: latestS + 1})
+  deepStrictEqual(earliestArrivalS(atLatest) <= routed.arrivalS, true, label + ", forward from the latest departure")
+  deepStrictEqual(earliestArrivalS(afterLatest) > routed.arrivalS, true, label + ", forward from a second later")
+}
+
+function checkLeaving({engine, snapshot, query, label}) {
+  const routed = {
+    origin: {kind: OriginKind.stop, stop: snapshot.stopIndex.get(query.from)},
+    target: snapshot.stopIndex.get(query.to),
+    departureS: seconds(query.depart),
+  }
+
+  const frontier = engine.route(routed)
+  deepStrictEqual(readable({frontier, snapshot}), query.expected, label)
+}
+
+function checkArrivingBy({engine, snapshot, query, label}) {
+  const routed = {
+    origin: {kind: OriginKind.stop, stop: snapshot.stopIndex.get(query.from)},
+    target: snapshot.stopIndex.get(query.to),
+    arrivalS: seconds(query.arriveBy),
+  }
+
+  const frontier = engine.routeArrivingBy(routed)
+  deepStrictEqual(readableArrivingBy({frontier, snapshot}), query.expected, label)
+
+  if (frontier.length > 0) {
+    checkAgainstForward({engine, routed, frontier, label})
+  }
+}
+
 let checked = 0
 
 for (const fixture of fixtures.cases) {
@@ -57,15 +118,14 @@ for (const fixture of fixtures.cases) {
   const engine = loadEngine({files: snapshot.files, minimumTransferS: TRANSFER_S_MIN})
 
   for (const query of fixture.queries) {
-    const routed = {
-      origin: {kind: OriginKind.stop, stop: snapshot.stopIndex.get(query.from)},
-      target: snapshot.stopIndex.get(query.to),
-      departureS: seconds(query.depart),
+    const label = fixture.name + ", " + query.from + " to " + query.to
+
+    if (query.arriveBy === undefined) {
+      checkLeaving({engine, snapshot, query, label: label + " leaving at " + query.depart})
+    } else {
+      checkArrivingBy({engine, snapshot, query, label: label + " arriving by " + query.arriveBy})
     }
 
-    const frontier = engine.route(routed)
-    const label = fixture.name + ", " + query.from + " to " + query.to + " at " + query.depart
-    deepStrictEqual(readable({frontier, snapshot}), query.expected, label)
     checked += 1
   }
 }

@@ -1,11 +1,14 @@
 {
-  "formatNote": "Each case is a timetable and queries with their expected Pareto frontiers, written by hand. A stop time is [stop, time] or [stop, arrival, departure], times as HH:MM from the start of the service day, past 24:00 after midnight. A leg is 'ride TRIP FROM HH:MM TO HH:MM' or 'walk FROM TO SECONDS'. Every case uses a minimum transfer of 120 seconds.",
+  "formatNote": "Each case is a timetable and queries with their expected Pareto frontiers, written by hand. A stop time is [stop, time] or [stop, arrival, departure], times as HH:MM from the start of the service day, past 24:00 after midnight. A query leaves at 'depart' and its frontier is over arrival and changes, or arrives by 'arriveBy' and its frontier is over departure and changes, each journey with the time it leaves and arrives. A leg is 'ride TRIP FROM HH:MM TO HH:MM' or 'walk FROM TO SECONDS'. Every case uses a minimum transfer of 120 seconds.",
   "cases": [
     {
       "name": "a direct ride stays aboard through the stops between",
       "trips": [{"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"], ["C", "08:20"]]}],
       "queries": [
-        {"from": "A", "to": "C", "depart": "07:55", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["ride T1 A 08:00 C 08:20"]}]}
+        {"from": "A", "to": "C", "depart": "07:55", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["ride T1 A 08:00 C 08:20"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:25", "expected": [{"depart": "08:00", "arrive": "08:20", "changes": 0, "legs": ["ride T1 A 08:00 C 08:20"]}]},
+        {"from": "B", "to": "C", "arriveBy": "08:20", "expected": [{"depart": "08:10", "arrive": "08:20", "changes": 0, "legs": ["ride T1 B 08:10 C 08:20"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:19", "expected": []}
       ]
     },
     {
@@ -15,7 +18,8 @@
         {"id": "T2", "stopTimes": [["B", "08:15"], ["C", "08:30"]]}
       ],
       "queries": [
-        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T2 B 08:15 C 08:30"]}]}
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T2 B 08:15 C 08:30"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:30", "expected": [{"depart": "08:00", "arrive": "08:30", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T2 B 08:15 C 08:30"]}]}
       ]
     },
     {
@@ -26,7 +30,9 @@
         {"id": "T3", "stopTimes": [["B", "08:20"], ["C", "08:35"]]}
       ],
       "queries": [
-        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:35", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T3 B 08:20 C 08:35"]}]}
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:35", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T3 B 08:20 C 08:35"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:40", "expected": [{"depart": "08:00", "arrive": "08:35", "changes": 1, "legs": ["ride T1 A 08:00 B 08:10", "ride T3 B 08:20 C 08:35"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:30", "expected": []}
       ]
     },
     {
@@ -35,7 +41,9 @@
       "stops": ["D"],
       "queries": [
         {"from": "A", "to": "D", "depart": "07:00", "expected": []},
-        {"from": "B", "to": "A", "depart": "07:00", "expected": []}
+        {"from": "B", "to": "A", "depart": "07:00", "expected": []},
+        {"from": "A", "to": "D", "arriveBy": "23:00", "expected": []},
+        {"from": "B", "to": "A", "arriveBy": "23:00", "expected": []}
       ]
     },
     {
@@ -45,7 +53,9 @@
         {"id": "T2", "stopTimes": [["A", "08:30"], ["B", "08:40"]]}
       ],
       "queries": [
-        {"from": "A", "to": "B", "depart": "08:01", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride T2 A 08:30 B 08:40"]}]}
+        {"from": "A", "to": "B", "depart": "08:01", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride T2 A 08:30 B 08:40"]}]},
+        {"from": "A", "to": "B", "arriveBy": "08:39", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 B 08:10"]}]},
+        {"from": "A", "to": "B", "arriveBy": "08:45", "expected": [{"depart": "08:30", "arrive": "08:40", "changes": 0, "legs": ["ride T2 A 08:30 B 08:40"]}]}
       ]
     },
     {
@@ -78,7 +88,8 @@
         {"id": "Y1", "stopTimes": [["A", "08:01"], ["C", "08:40"]]}
       ],
       "queries": [
-        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride Y1 A 08:01 C 08:40"]}]}
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["ride Y1 A 08:01 C 08:40"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:40", "expected": [{"depart": "08:01", "arrive": "08:40", "changes": 0, "legs": ["ride Y1 A 08:01 C 08:40"]}]}
       ]
     },
     {
@@ -90,7 +101,10 @@
       "queries": [
         {"from": "A", "to": "C", "depart": "23:45", "expected": []},
         {"from": "B", "to": "C", "depart": "00:00", "expected": [{"arrive": "00:40", "changes": 0, "legs": ["ride OWL B 00:20 C 00:40"]}]},
-        {"from": "A", "to": "B", "depart": "23:45", "expected": [{"arrive": "24:10", "changes": 0, "legs": ["ride LATE A 23:50 B 24:10"]}]}
+        {"from": "A", "to": "B", "depart": "23:45", "expected": [{"arrive": "24:10", "changes": 0, "legs": ["ride LATE A 23:50 B 24:10"]}]},
+        {"from": "A", "to": "C", "arriveBy": "25:00", "expected": []},
+        {"from": "B", "to": "C", "arriveBy": "00:45", "expected": [{"depart": "00:20", "arrive": "00:40", "changes": 0, "legs": ["ride OWL B 00:20 C 00:40"]}]},
+        {"from": "A", "to": "B", "arriveBy": "24:15", "expected": [{"depart": "23:50", "arrive": "24:10", "changes": 0, "legs": ["ride LATE A 23:50 B 24:10"]}]}
       ]
     },
     {
@@ -103,7 +117,10 @@
       "queries": [
         {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["walk A B 300", "ride T1 B 08:10 C 08:20"]}]},
         {"from": "B", "to": "F", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 1, "legs": ["ride T1 B 08:10 C 08:20", "walk C E 240", "ride T2 E 08:28 F 08:40"]}]},
-        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:05", "changes": 0, "legs": ["walk A B 300"]}]}
+        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:05", "changes": 0, "legs": ["walk A B 300"]}]},
+        {"from": "A", "to": "C", "arriveBy": "08:20", "expected": [{"depart": "08:05", "arrive": "08:20", "changes": 0, "legs": ["walk A B 300", "ride T1 B 08:10 C 08:20"]}]},
+        {"from": "B", "to": "F", "arriveBy": "08:40", "expected": [{"depart": "08:10", "arrive": "08:40", "changes": 1, "legs": ["ride T1 B 08:10 C 08:20", "walk C E 240", "ride T2 E 08:28 F 08:40"]}]},
+        {"from": "A", "to": "B", "arriveBy": "08:10", "expected": [{"depart": "08:05", "arrive": "08:10", "changes": 0, "legs": ["walk A B 300"]}]}
       ]
     },
     {
@@ -114,7 +131,10 @@
       "queries": [
         {"from": "B", "to": "D", "depart": "08:00", "expected": []},
         {"from": "A", "to": "C", "depart": "08:00", "expected": []},
-        {"from": "A", "to": "D", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 0, "legs": ["ride T1 A 08:00 D 08:30"]}]}
+        {"from": "A", "to": "D", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 0, "legs": ["ride T1 A 08:00 D 08:30"]}]},
+        {"from": "B", "to": "D", "arriveBy": "09:00", "expected": []},
+        {"from": "A", "to": "C", "arriveBy": "09:00", "expected": []},
+        {"from": "A", "to": "D", "arriveBy": "09:00", "expected": [{"depart": "08:00", "arrive": "08:30", "changes": 0, "legs": ["ride T1 A 08:00 D 08:30"]}]}
       ]
     },
     {
@@ -126,7 +146,9 @@
       "walks": [["X", "Y", 180], ["Z", "X", 240]],
       "queries": [
         {"from": "A", "to": "Y", "depart": "08:00", "expected": [{"arrive": "08:13", "changes": 0, "legs": ["ride R1 A 08:00 X 08:10", "walk X Y 180"]}]},
-        {"from": "A", "to": "X", "depart": "08:00", "expected": [{"arrive": "08:08", "changes": 0, "legs": ["ride R2 A 08:01 Z 08:04", "walk Z X 240"]}]}
+        {"from": "A", "to": "X", "depart": "08:00", "expected": [{"arrive": "08:08", "changes": 0, "legs": ["ride R2 A 08:01 Z 08:04", "walk Z X 240"]}]},
+        {"from": "A", "to": "Y", "arriveBy": "08:13", "expected": [{"depart": "08:00", "arrive": "08:13", "changes": 0, "legs": ["ride R1 A 08:00 X 08:10", "walk X Y 180"]}]},
+        {"from": "A", "to": "X", "arriveBy": "08:10", "expected": [{"depart": "08:01", "arrive": "08:08", "changes": 0, "legs": ["ride R2 A 08:01 Z 08:04", "walk Z X 240"]}]}
       ]
     },
     {
@@ -136,7 +158,27 @@
       ],
       "queries": [
         {"from": "B", "to": "C", "depart": "08:12", "expected": [{"arrive": "08:25", "changes": 0, "legs": ["ride T1 B 08:15 C 08:25"]}]},
-        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 B 08:10"]}]}
+        {"from": "A", "to": "B", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 B 08:10"]}]},
+        {"from": "B", "to": "C", "arriveBy": "08:25", "expected": [{"depart": "08:15", "arrive": "08:25", "changes": 0, "legs": ["ride T1 B 08:15 C 08:25"]}]},
+        {"from": "A", "to": "B", "arriveBy": "08:12", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 B 08:10"]}]}
+      ]
+    },
+    {
+      "name": "a ride's walk is taken where a walk from the origin reached its stop sooner",
+      "trips": [{"id": "R", "stopTimes": [["O", "08:00"], ["S", "08:08"]]}],
+      "walks": [["O", "S", 300], ["S", "T", 120]],
+      "queries": [
+        {"from": "O", "to": "T", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["ride R O 08:00 S 08:08", "walk S T 120"]}]},
+        {"from": "O", "to": "T", "arriveBy": "08:10", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["ride R O 08:00 S 08:08", "walk S T 120"]}]}
+      ]
+    },
+    {
+      "name": "a ride's walk is taken where a walk to the target leaves its stop later",
+      "trips": [{"id": "R", "stopTimes": [["S", "08:02"], ["T", "08:10"]]}],
+      "walks": [["O", "S", 120], ["S", "T", 300]],
+      "queries": [
+        {"from": "O", "to": "T", "arriveBy": "08:10", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["walk O S 120", "ride R S 08:02 T 08:10"]}]},
+        {"from": "O", "to": "T", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["walk O S 120", "ride R S 08:02 T 08:10"]}]}
       ]
     }
   ]
