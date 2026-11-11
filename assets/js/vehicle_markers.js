@@ -558,7 +558,7 @@ export const VehicleMarkers = {
     this.manifestUrl = this.el.dataset.manifestUrl
     this.isDestroyed = false
     // The label beside the chosen journey's first bus.
-    this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME})
+    this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME, onLabel: (label) => { this.markYourBus(label) }})
     this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
 
     this.onVisibilityChange = () => { this.visibilityChanged() }
@@ -719,6 +719,7 @@ export const VehicleMarkers = {
     const canvas = map.getCanvas()
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
     this.overlay.markSelected(this.viewMarkerId)
+    this.overlay.markYourBus(this.yourBus.current())
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -904,6 +905,15 @@ export const VehicleMarkers = {
 
   // Marks the vehicle the view shows, in the layers and on the canvas,
   // and unmarks every other.
+  // Gives the label of the first bus to the canvas, which writes it beside
+  // that vehicle while it draws it; the map's layer labels the vehicle in the
+  // source.
+  markYourBus(label) {
+    if (this.overlay !== null) {
+      this.overlay.markYourBus(label)
+    }
+  },
+
   markSelected() {
     if (this.map === null) {
       return

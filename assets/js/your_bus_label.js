@@ -24,18 +24,19 @@ const LABEL_ANCHORS = ["left", "right"]
 const SOURCE_NAME_DEFAULT = "vehicle-markers"
 const HIDDEN_FILTER = ["==", ["literal", 0], ["literal", 1]]
 
-// The filter and text of the label of the journey chosen now: the marker of
-// its first ride's trip and service date, and "Your bus · 4 min away"; or a
-// filter no marker passes where none is chosen or the bus has passed.
-function labelNow() {
-  const chosen = chosenJourney()
-
+// The label of the journey chosen now, a `yourBusLabel` answer, none where
+// no journey is chosen.
+function labelOf(chosen) {
   if (chosen.kind === ChosenKind.none) {
-    return {filter: HIDDEN_FILTER, text: ""}
+    return {kind: YourBusLabelKind.none}
   }
 
-  const label = yourBusLabel({chosen})
+  return yourBusLabel({chosen})
+}
 
+// The filter and text of the map layer for `label`: the marker of its trip
+// and service date and its text; or a filter no marker passes for none.
+function layerOf(label) {
   if (label.kind === YourBusLabelKind.none) {
     return {filter: HIDDEN_FILTER, text: ""}
   }
@@ -46,21 +47,24 @@ function labelNow() {
 
 /**
  * The label of the first bus on the vehicle markers' source named
- * `sourceName`. `attach(map)` adds its layer to a map whose style has loaded
- * and the source exists in, and `destroy` stops it following the chosen
- * journey.
+ * `sourceName`, for a vehicle the source holds; `onLabel(label)` is called
+ * with each label for a vehicle the canvas draws, which writes it itself.
+ * `attach(map)` adds the layer to a map whose style has loaded and the
+ * source exists in, `current()` gives the label of the journey chosen now,
+ * and `destroy` stops it following the chosen journey.
  */
-export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT} = {}) {
+export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT, onLabel}) {
   let map = null
 
   function apply() {
+    onLabel(labelOf(chosenJourney()))
     const hasLayer = map !== null && map.getLayer(LAYER_NAME) !== undefined
 
     if (!hasLayer) {
       return
     }
 
-    const {filter, text} = labelNow()
+    const {filter, text} = layerOf(labelOf(chosenJourney()))
     map.setFilter(LAYER_NAME, filter)
     map.setLayoutProperty(LAYER_NAME, "text-field", text)
   }
@@ -68,7 +72,7 @@ export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT} = {}) {
   function attach(attached) {
     map = attached
     const colors = mapColors(currentTheme())
-    const {filter, text} = labelNow()
+    const {filter, text} = layerOf(labelOf(chosenJourney()))
 
     // The label is its marker's own, so it stays where it collides with the
     // marker's badge, and it takes its room before the journey's labels,
@@ -101,6 +105,7 @@ export function createYourBusLabel({sourceName = SOURCE_NAME_DEFAULT} = {}) {
 
   return {
     attach,
+    current() { return labelOf(chosenJourney()) },
     destroy() { window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, apply) }
   }
 }

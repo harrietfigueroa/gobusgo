@@ -37,6 +37,9 @@ const END_STROKE_WIDTH_PIXELS = 3
 // The room kept between the journey and the map's edges when the map is
 // fitted to it, beside the room the sheet covers.
 const FIT_MARGIN_PIXELS = 48
+// The room kept beside the journey for a label standing at its leftmost or
+// rightmost point: the width of the longest label with its offset.
+const FIT_LABEL_MARGIN_PIXELS = 130
 const FIT_ZOOM_MAX = 16
 const LABEL_FONT = ["Noto Sans Medium"]
 const LABEL_SIZE_PIXELS = 12
@@ -229,9 +232,9 @@ export function createTripMap() {
     map.fitBounds(bounds.bounds, {
       padding: {
         top: FIT_MARGIN_PIXELS,
-        right: FIT_MARGIN_PIXELS,
+        right: FIT_LABEL_MARGIN_PIXELS,
         bottom: insets.bottom + FIT_MARGIN_PIXELS,
-        left: insets.left + FIT_MARGIN_PIXELS
+        left: insets.left + FIT_LABEL_MARGIN_PIXELS
       },
       maxZoom: FIT_ZOOM_MAX
     }, FIT_EVENT_DATA)
