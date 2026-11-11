@@ -353,6 +353,22 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_places/1" do
+    test "returns the configured directory" do
+      assert Config.fetch_places(dir: "/data/places") == {:ok, %{dir: "/data/places"}}
+    end
+
+    for {description, env} <- [
+          {"an empty environment", []},
+          {"a nil directory", [dir: nil]},
+          {"a blank directory", [dir: "  "]}
+        ] do
+      test "reports dir as missing for #{description}" do
+        assert Config.fetch_places(unquote(env)) == {:error, {:missing, :dir}}
+      end
+    end
+  end
+
   describe "fetch_revision/1" do
     @revision "43402796c905c22db533043dee878950c74d5791"
 

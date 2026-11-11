@@ -226,6 +226,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo/one_bus_away/AGENTS.md`: the OneBusAway integration, its requests, stored responses, processors, views, scheduled sources, rebuilds, and trip paths. Read it before changing anything under `lib/gobusgo/one_bus_away/`.
 - `lib/gobusgo/gbfs/AGENTS.md`: the GBFS client, vehicle types, the shared vehicle source, and its files published to the browser.
 - `lib/gobusgo/packed/AGENTS.md`: the packed container of published data files, its layout, kinds, storage, fixtures, and Mix task.
+- `lib/gobusgo/places/AGENTS.md`: the places file, its selection and merge rules, its kind of the packed container, its publication and serving, and the Mix task that builds it.
 - `lib/gobusgo/routing/AGENTS.md`: the routing snapshots and the browser's routing modules.
 - `lib/gobusgo/s3/AGENTS.md`: the S3 backends' requests, settings, and credentials.
 - `lib/gobusgo/vendor_assets/AGENTS.md`: the vendored front-end assets and their sources.
@@ -372,6 +373,7 @@ The OneBusAway API reference is <https://developer.onebusaway.org/api/where/meth
 - The route path of a route the paths view holds and no agency lists any more is never fetched again and never removed. Its stops record stays as well, so the stop view keeps the stops only that route lists.
 - How an instance that serves pages tells the instance that runs ingestion what is in demand, the open stops and the vehicle viewers, once ingestion runs on one instance only (GOB-154); the demand registry is per node.
 - The arrival source's pace, one request every five seconds, set low until the rate limit is known.
+- The places file and its manifest under `places/` (GOB-366) are built by hand and deleted by nothing: `Gobusgo.RetentionPolicy` has no rule for them and the bucket has no lifecycle rule, so an old file stays until it is removed by hand. CloudFront has no behavior for `/places/*` yet, so production serves no places file until the infrastructure repository adds one.
 - The bucket's lifecycle rules, in the infrastructure repository, have no rule for `raw/gbfs/free-bike-status/` or `shared-vehicles/` yet; until one is added, the ten-minute deletion of `Gobusgo.Gbfs.VehicleStatusRetention` alone removes the shared vehicle files and their published files from S3 (GOB-256, GOB-258). CloudFront has no behavior for `/shared-vehicles/*` yet, so production pages draw no shared vehicle until the infrastructure repository adds one (GOB-258).
 - Whether the stops no route serves are ingested, through `stop-ids-for-agency` and `stop` (GOB-69, GOB-70); most are entrances of Sound Transit stations.
 - Whether the service alerts come from the agencies' own GTFS-realtime alert feeds, which hold an agency's whole set, where OneBusAway's responses hold those of the running trips and the open stops (deferred in GOB-225).
