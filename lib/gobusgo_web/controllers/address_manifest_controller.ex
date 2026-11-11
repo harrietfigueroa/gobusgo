@@ -3,14 +3,13 @@ defmodule GobusgoWeb.AddressManifestController do
 
   @moduledoc """
   Serves every county's manifest of the address shards from
-  `Gobusgo.Addresses`, as `{"counties": [...]}`.
+  `Gobusgo.Addresses`.
 
   The manifests name the shard files by addresses that never change
-  content, so they are the one thing a reader revalidates: it is answered with
-  `cache-control: no-cache` and a strong `etag`, the SHA-256 of the body,
-  and a request whose `if-none-match` names that tag gets `304` with no
-  body. While no county is built it answers `503` problem details with
-  `Retry-After: #{@retry_after_seconds}`.
+  content, so they are the one thing a reader revalidates. The statuses,
+  headers, and body are described in `priv/openapi.json`; while no county is
+  built the answer asks the reader to retry after #{@retry_after_seconds}
+  seconds.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -18,7 +17,7 @@ defmodule GobusgoWeb.AddressManifestController do
   alias Gobusgo.Addresses
   alias GobusgoWeb.Problem
 
-  @doc "Answers `200` with the manifest, `304` when the client holds it already, or `503` while there is none."
+  @doc "Answers the manifest, that the client holds it already, or that there is none."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     case Addresses.manifest(Addresses) do

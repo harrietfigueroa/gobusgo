@@ -7,8 +7,9 @@ defmodule GobusgoWeb.HealthController do
   use Phoenix.Controller, formats: [:json]
 
   @doc """
-  Answers 200 with `{"status": "ok"}`, and `revision`, the commit the
-  application was built from, beside it when the build names one.
+  Answers that the server is running, with `revision`, the commit the
+  application was built from, when the build names one. The body is
+  described in `priv/openapi.private.json`.
   """
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do

@@ -4,17 +4,15 @@ defmodule GobusgoWeb.RoutingManifestController do
   `GobusgoWeb.TransitQuery.routing_manifest/0`.
 
   The manifest names the snapshot files by addresses that never change
-  content, so it is the one thing a reader revalidates: it is answered with
-  `cache-control: no-cache` and a strong `etag`, the SHA-256 of the body,
-  and a request whose `if-none-match` names that tag gets `304` with no
-  body.
+  content, so it is the one thing a reader revalidates. The statuses,
+  headers, and body are described in `priv/openapi.json`.
   """
 
   use Phoenix.Controller, formats: [:json]
 
   alias GobusgoWeb.TransitQuery
 
-  @doc "Answers `200` with the manifest, or `304` when the client holds it already."
+  @doc "Answers the manifest, or that the client holds it already."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     body = TransitQuery.routing_manifest()

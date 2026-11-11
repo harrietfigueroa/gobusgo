@@ -66,26 +66,17 @@ Open http://127.0.0.1:4000/ for the front end. In development the server also re
 
 While the application runs with `ONEBUSAWAY_BASE_URL` and `ONEBUSAWAY_API_KEY` set, it fetches agency discovery once a minute, every agency's vehicles every ten seconds while a vehicle page is connected and for a minute after the last one leaves, and once a minute otherwise, and each agency's routes and each route's paths once a day at a minute of their own, and stores each successful response under `GOBUSGO_DATA_DIR`. With either one unset it starts without fetching and logs `OneBusAway sources not scheduled`. `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.AgencyScheduler)` returns how the last agency fetch ended, and `Gobusgo.Scheduler.status(Gobusgo.OneBusAway.VehicleScheduler)` how the last vehicle cycle did. Each stored response is announced by a "response stored" event and processed from it, so a scheduled fetch reaches the agency endpoints and the vehicle test page.
 
-`GET /health` answers `200` with `{"status": "ok"}` while the server is running.
+The endpoints' paths, methods, statuses, headers, and bodies are described in `priv/openapi.json` for the public ones and in `priv/openapi.private.json` for `GET /health` and `GET /ready`. Check the two operational ones:
 
 ```sh
 curl -i http://127.0.0.1:4000/health
-```
-
-`GET /ready` answers `200` with `{"status": "ready"}` once the views hold what a start fills them with: the agency view has a fetch, and every agency's routes and every listed route's paths have been fetched once. Before that it answers `503` problem details with `Retry-After` and a `detail` that names what is missing. A start with fresh views takes about ten minutes to get there. The daily refresh of a route leaves the answer at `200`.
-
-```sh
 curl -i http://127.0.0.1:4000/ready
 ```
 
-Every error response under `/api` is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served as `application/problem+json` with `type`, `title`, `status`, and, where the error has a written explanation, `detail`. Elsewhere, an error is an HTML page for a request that accepts HTML first, such as a browser's, and problem details otherwise:
+A start with fresh views takes about ten minutes to answer `/ready` with success. A request that matches no route shows the error body:
 
 ```sh
 curl -i http://127.0.0.1:4000/nope
-```
-
-```json
-{"detail":"No route matches GET /nope.","status":404,"title":"Not Found","type":"about:blank"}
 ```
 
 To listen elsewhere, set the variables for the command:
@@ -96,29 +87,7 @@ GOBUSGO_HTTP_HOST=0.0.0.0 GOBUSGO_HTTP_PORT=8080 mix phx.server
 
 ### Agency endpoints
 
-| Request | Response |
-| --- | --- |
-| `GET /api/agencies` | `200` with every agency of the latest processed fetch, sorted by identifier |
-| `GET /api/agencies/:id` | `200` with one agency, or `404` problem details when the fetch holds no such agency |
-
-Both answer `503` problem details with a `Retry-After` header until a fetch has been processed. A response body holds `data` and `meta`:
-
-```json
-{
-  "data": [
-    {
-      "id": "1",
-      "name": "Metro Transit",
-      "url": "https://metro.example.test",
-      "timezone": "America/Los_Angeles",
-      "coverage": { "lat": 47.53009, "lon": -122.1462285, "latSpan": 0.681946, "lonSpan": 0.720787 }
-    }
-  ],
-  "meta": { "count": 1, "fetchedAt": "2026-10-02T03:15:00Z", "requestId": "0199c4a2-7e1b-7a3f-9d20-5b6c1e8f4a10" }
-}
-```
-
-`GET /api/agencies/:id` returns the one agency as `data`, and its `meta` holds `fetchedAt` and `requestId`. Every agency in a response comes from the fetch `meta` names.
+`priv/openapi.json` describes `GET /api/agencies` and `GET /api/agencies/{id}`.
 
 The agencies are held in memory, so they are empty until a fetch has been processed. To see data without an API key, start the server in a shell with `iex -S mix phx.server`, store the test fixture as a response, and publish its "response stored" event:
 

@@ -6,15 +6,16 @@ defmodule GobusgoWeb.ReadinessController do
   `Gobusgo.OneBusAway.Readiness` reads it. It reads the views and starts no
   fetch.
 
-  While the views are filling it answers `503` problem details with
-  `Retry-After: #{@retry_after_seconds}` and a `detail` that names the gap.
+  The statuses, headers, and bodies are described in
+  `priv/openapi.private.json`; while the views are filling the answer asks
+  the reader to retry after #{@retry_after_seconds} seconds and names the
+  gap in `detail`.
 
   Both answers also hold the freshness of the current route and stop tile
-  archive, as `GobusgoWeb.RouteStopTiles.freshness/1` judges it: `tiles` is
-  `"current"`, `"stale"`, or `"none"`, and `tilesAgeSeconds` the archive's
-  age where its name holds its build time. An archive whose name holds none
-  is `"stale"` with no age. The archive never changes the status or the
-  code, so a failing tile build leaves the instance ready.
+  archive, as `GobusgoWeb.RouteStopTiles.freshness/1` judges it, and an
+  archive whose name holds no build time is `"stale"` with no age. The
+  archive never changes the status or the code, so a failing tile build
+  leaves the instance ready.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -23,7 +24,7 @@ defmodule GobusgoWeb.ReadinessController do
   alias GobusgoWeb.ErrorJSON
   alias GobusgoWeb.RouteStopTiles
 
-  @doc ~s(Answers 200 with `{"status": "ready"}` once the views are full, and 503 before that.)
+  @doc ~s(Answers that the views are full, or that they are still filling.)
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     destination = RouteStopTiles.current_destination(RouteStopTiles)
