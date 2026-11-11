@@ -1,45 +1,31 @@
 defmodule Gobusgo.Addresses.Source do
   @moduledoc """
-  A county's address points as the build reads them: how to fetch the
-  county's whole layer into a file, and how to read the file's rows as the
-  records `Gobusgo.Addresses.Accumulator` takes. A county is a module that
-  implements this behaviour; the field mapping and the addresses of the
+  A county's address points as the build reads them. A county is a module
+  that implements this behaviour; the field mapping and the addresses of the
   county's services live in it, and nothing else in the build names a field
   or a service.
 
-  `fetch/2` writes the layer to a file in `request.directory`, at most
-  `request.bytes_max` bytes of it, and returns what it holds:
-  `last_edit_at`, when the county last edited the layer, and `record_count`,
-  how many records the layer has, which a file read to its end must match.
-  An export that is older than the layer it exports is not an error but a
-  known outcome, `{:stale, details}`, which the build logs and answers by
-  keeping the files it has.
-
-  `records/1` returns a lazy stream over the rows of the file `fetch/2`
-  wrote, one record per row.
+  `fetch/1` returns the county's layer: `last_edit_at`, when the county last
+  edited it, `record_count`, how many records it has, which the records read
+  must match, and `pages`, a lazy stream of the layer's records in pages,
+  each page the records the build takes (`Gobusgo.Addresses.Accumulator`)
+  with the count of requests it took. A page whose requests failed ends the
+  stream as `{:failed, reason}`.
   """
 
   alias Gobusgo.Addresses.Accumulator
 
-  @type export :: %{
-          path: String.t(),
+  @type page ::
+          {:records, [Accumulator.county_record()], pos_integer()}
+          | {:failed, term()}
+
+  @type layer :: %{
           last_edit_at: DateTime.t(),
           record_count: non_neg_integer(),
-          byte_count: non_neg_integer()
-        }
-
-  @type stale :: %{
-          reason: :export_older_than_layer | :record_count_differs | :export_metadata_missing,
-          layer_last_edit_at: DateTime.t(),
-          layer_record_count: non_neg_integer()
+          pages: Enumerable.t(page())
         }
 
   @callback name() :: atom()
 
-  @callback fetch(
-              request :: %{directory: String.t(), bytes_max: pos_integer()},
-              options :: keyword()
-            ) :: {:ok, export()} | {:stale, stale()} | {:error, term()}
-
-  @callback records(path :: String.t()) :: Enumerable.t(Accumulator.county_record())
+  @callback fetch(options :: keyword()) :: {:ok, layer()} | {:error, term()}
 end

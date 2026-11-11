@@ -66,8 +66,7 @@ defmodule Gobusgo.Addresses.BuildTest do
           source_options: [records: Map.get(context, :records, records())],
           bounds: {:bounds, @bounds},
           clock: fn -> Map.get(context, :now, @now) end,
-          write_options: [base_dir: tmp_dir],
-          work_directory: Path.join(tmp_dir, "work")
+          write_options: [base_dir: tmp_dir]
         ],
         overrides
       )
@@ -203,25 +202,36 @@ defmodule Gobusgo.Addresses.BuildTest do
     refute second["shards"] == first["shards"]
   end
 
-  test "a stale export keeps the current build and writes nothing", context do
-    run(context)
-    before = stored_files(context.tmp_dir)
-    {:ok, current} = Addresses.manifest(context.server)
+  test "reads the records of every page", context do
+    pages = [
+      {:records, Enum.take(records(), 2), 1},
+      {:records, Enum.drop(records(), 2), 2}
+    ]
 
-    stale = %{
-      reason: :export_older_than_layer,
-      layer_last_edit_at: ~U[2026-11-10 08:00:00Z],
-      layer_record_count: 5
-    }
+    assert run(context, source_options: [records: records(), pages: pages]) ==
+             {:ok, %{outcome: :built}}
 
-    result =
-      run(Map.put(context, :now, ~U[2026-11-11 12:00:00Z]),
-        source_options: [answer: {:stale, stale}]
-      )
+    assert {:ok, %{"addressCount" => 4}} = Addresses.manifest(context.server)
+  end
 
-    assert result == {:ok, %{outcome: :stale}}
-    assert stored_files(context.tmp_dir) == before
-    assert Addresses.manifest(context.server) == {:ok, current}
+  test "a page that failed is an error with its reason and writes nothing", context do
+    failure = {:page, 100, {:unexpected_status, 403}}
+    pages = [{:records, Enum.take(records(), 2), 1}, {:failed, failure}]
+
+    result = run(context, source_options: [records: records(), pages: pages])
+
+    assert result == {:error, {:fetch, failure}}
+    assert stored_files(context.tmp_dir) == []
+    assert Addresses.manifest(context.server) == :none
+  end
+
+  test "a failed run's log line carries its reason in the message", context do
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        run(context, source_options: [answer: {:error, {:transport, :nxdomain}}])
+      end)
+
+    assert log =~ "Address shards not built: {:fetch, {:transport, :nxdomain}}"
   end
 
   test "a failed fetch is an error and keeps the current build", context do
@@ -270,11 +280,6 @@ defmodule Gobusgo.Addresses.BuildTest do
       )
 
     assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
-  end
-
-  test "deletes the export when the run ends", context do
-    run(context)
-    refute File.exists?(Path.join(context.tmp_dir, "work"))
   end
 
   test "a process started over a stored build holds its manifest and when it was built",
