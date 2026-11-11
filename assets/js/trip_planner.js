@@ -740,7 +740,8 @@ export const TripPlanner = {
     const live = lives[card.order]
     const strip = tripStrip({card, live, names: this.names, serviceDayStartsMs, timeZone})
     this.stripView.write(strip)
-    setChosenJourney({journey: card.row.journey, live, leadText: strip.leadText, arriveText: strip.arriveText, serviceDayStartsMs, timeZone})
+    const {origin} = this.shown
+    setChosenJourney({journey: card.row.journey, live, leadText: strip.leadText, arriveText: strip.arriveText, serviceDayStartsMs, timeZone, names: this.names, origin, nowMs: Date.now()})
   },
 
   // The sorts of the journey list, as a group of toggle buttons shown with

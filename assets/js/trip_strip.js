@@ -8,7 +8,7 @@
 import {assertCondition, unreachable} from "./assert.js"
 import {LegKind} from "./routing_engine.js"
 import {LEG_KIND_TO_POINT} from "./point_journeys.js"
-import {LiveKind, firstBusText, latenessText} from "./journey_cards.js"
+import {LiveKind, firstBusText, latenessText, liveShiftMs} from "./journey_cards.js"
 import {clockText, routeChip, stopName, walkMinutes} from "./trip_plan.js"
 
 /** How many steps after the first the strip lists where it has room. */
@@ -57,7 +57,7 @@ function boardStep({leg, index, isFirstRide, live, names, startMs, timeZone}) {
   const isLive = isFirstRide && live.kind === LiveKind.live
 
   if (isLive) {
-    shiftMs = live.latenessS * SECOND_MS
+    shiftMs = liveShiftMs(live)
     lateText = `, ${latenessText(live.latenessS)}`
   }
 

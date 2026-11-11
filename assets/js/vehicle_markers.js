@@ -76,6 +76,7 @@ import {
 import {PackedOutcome, expandStream} from "./packed_container"
 import {preparePath} from "./vehicle_prediction"
 import {registerImageResolver} from "./style_images"
+import {createYourBusLabel} from "./your_bus_label"
 
 const SOURCE_NAME = "vehicle-markers"
 const IMAGE_RESOLVER_KEY = "vehicle-markers"
@@ -317,7 +318,9 @@ function markerProperties(marker) {
     nextStop: marker.next_stop,
     status: marker.status,
     locationAge: marker.location_age,
-    realTime: marker.real_time
+    realTime: marker.real_time,
+    tripId: marker.trip_id,
+    serviceDateMs: marker.service_date_ms
   }
 }
 
@@ -554,6 +557,8 @@ export const VehicleMarkers = {
     this.tripPathFiles = emptyTripPathFiles()
     this.manifestUrl = this.el.dataset.manifestUrl
     this.isDestroyed = false
+    // The label beside the chosen journey's first bus.
+    this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME, onLabel: (label) => { this.markYourBus(label) }})
     this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
 
     this.onVisibilityChange = () => { this.visibilityChanged() }
@@ -714,6 +719,7 @@ export const VehicleMarkers = {
     const canvas = map.getCanvas()
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
     this.overlay.markSelected(this.viewMarkerId)
+    this.overlay.markYourBus(this.yourBus.current())
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -899,6 +905,15 @@ export const VehicleMarkers = {
 
   // Marks the vehicle the view shows, in the layers and on the canvas,
   // and unmarks every other.
+  // Gives the label of the first bus to the canvas, which writes it beside
+  // that vehicle while it draws it; the map's layer labels the vehicle in the
+  // source.
+  markYourBus(label) {
+    if (this.overlay !== null) {
+      this.overlay.markYourBus(label)
+    }
+  },
+
   markSelected() {
     if (this.map === null) {
       return
@@ -1036,6 +1051,8 @@ export const VehicleMarkers = {
         "icon-allow-overlap": false
       }
     })
+
+    this.yourBus.attach(map)
   },
 
   // A marker of a status a recent report lacks carries that status's badge
@@ -1577,6 +1594,7 @@ export const VehicleMarkers = {
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    this.yourBus.destroy()
     this.events.release()
   }
 }

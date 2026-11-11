@@ -127,9 +127,27 @@ export function firstRideLive({journey, shownByStop, serviceDayStartsMs}) {
   return {kind: LiveKind.live, latenessS, routeId: leg.routeId}
 }
 
+/**
+ * How far the first bus is from its schedule, in milliseconds, where `live`
+ * is a `firstRideLive` answer: its lateness where the bus is live, and none
+ * where it is scheduled or the journey has no ride.
+ */
+export function liveShiftMs(live) {
+  if (live.kind === LiveKind.live) {
+    return live.latenessS * SECOND_MS
+  }
+
+  return 0
+}
+
+/** A lateness in whole minutes, late positive and early negative. */
+export function latenessMinutes(latenessS) {
+  return Math.round(latenessS / MINUTE_S)
+}
+
 /** The text of a lateness in whole minutes: on time, late, or early. */
 export function latenessText(latenessS) {
-  const minutes = Math.round(latenessS / MINUTE_S)
+  const minutes = latenessMinutes(latenessS)
 
   if (minutes === 0) {
     return "on time"
@@ -196,12 +214,7 @@ export function journeyCard({row, order, live, nowMs, serviceDayStartsMs, names,
   const {journey} = row
   const startMs = serviceDayStartsMs[journey.serviceDate]
   assertCondition(Number.isInteger(startMs), "journey cards: no start for the service date " + journey.serviceDate)
-  let shiftMs = 0
-
-  if (live.kind === LiveKind.live) {
-    shiftMs = live.latenessS * SECOND_MS
-  }
-
+  const shiftMs = liveShiftMs(live)
   const leaveMs = startMs + journeyLeaveS(journey) * SECOND_MS + shiftMs
   const arrivalMs = startMs + journey.arrivalS * SECOND_MS + shiftMs
 

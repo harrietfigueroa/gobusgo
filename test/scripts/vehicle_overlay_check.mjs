@@ -21,7 +21,9 @@ import {
   routeBadgeCorner,
   screenAngleRadians,
   VEHICLE_COUNT_MAX,
-  vehiclesInBox
+  vehiclesInBox,
+  YourBusSide,
+  yourBusPlacement
 } from "../../assets/js/vehicle_overlay_layout.js"
 
 const WIDTH = 390
@@ -165,6 +167,25 @@ function vehicleAtOrigin(_, index) {
 }
 
 const tooMany = Array.from({length: VEHICLE_COUNT_MAX + 1}, vehicleAtOrigin)
+
+const LABEL_WIDTH = 130
+const GLYPH_LABEL_OFFSET = 17
+const ROUND_LABEL_OFFSET = 12
+const NEAR_RIGHT_EDGE = 300
+const NEAR_LEFT_EDGE = 20
+const LABEL_AT = 150
+
+// The first bus's label stands to the right of its marker, past the
+// marker's edge, level with its center; a dot is smaller, so its label
+// stands nearer.
+deepStrictEqual(yourBusPlacement({x: LABEL_AT, y: LABEL_AT, kind: MarkerKind.glyph, textWidth: LABEL_WIDTH, width: WIDTH}), {side: YourBusSide.right, textX: LABEL_AT + GLYPH_LABEL_OFFSET, textY: LABEL_AT})
+deepStrictEqual(yourBusPlacement({x: LABEL_AT, y: LABEL_AT, kind: MarkerKind.round, textWidth: LABEL_WIDTH, width: WIDTH}), {side: YourBusSide.right, textX: LABEL_AT + ROUND_LABEL_OFFSET, textY: LABEL_AT})
+
+// Where the right side would leave the canvas, the label stands to the left.
+deepStrictEqual(yourBusPlacement({x: NEAR_RIGHT_EDGE, y: LABEL_AT, kind: MarkerKind.glyph, textWidth: LABEL_WIDTH, width: WIDTH}), {side: YourBusSide.left, textX: NEAR_RIGHT_EDGE - GLYPH_LABEL_OFFSET, textY: LABEL_AT})
+
+// Where neither side fits, it stands to the right and the canvas clips it.
+deepStrictEqual(yourBusPlacement({x: NEAR_LEFT_EDGE, y: LABEL_AT, kind: MarkerKind.glyph, textWidth: WIDTH, width: WIDTH}).side, YourBusSide.right)
 
 const refusedCases = [
   {case: "more vehicles than the canvas takes are refused", run: () => drawnVehicles({vehicles: tooMany, width: WIDTH, height: HEIGHT})},
