@@ -16,7 +16,7 @@
 // Every text here is built as text nodes: names come from outside the
 // application and are never parsed as HTML.
 
-import {unreachable} from "./assert"
+import {assertCondition, unreachable} from "./assert"
 import {FetchKind, FailureReason, FromKind, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
@@ -690,11 +690,7 @@ export const TripPlanner = {
   // End trip does what Clear trip does.
   buildStrip() {
     const host = document.getElementById(STRIP_ID)
-
-    if (host === null) {
-      return null
-    }
-
+    assertCondition(host !== null, "trip planner: the page has no element for the trip strip")
     const onOpen = () => { this.el.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true})) }
     return createStripView({host, onOpen, onEnd: () => { this.endTrip() }})
   },
@@ -705,9 +701,7 @@ export const TripPlanner = {
     this.isFilterSent = false
     this.isStripEnded = true
 
-    if (this.stripView !== null) {
-      this.stripView.hide()
-    }
+    this.stripView.hide()
   },
 
   // End trip leaves the strip that held focus, so focus moves to the Trip
@@ -724,13 +718,11 @@ export const TripPlanner = {
   // Writes the strip of the selected journey, or takes it away where the
   // trip's filter ended or no journey is selected.
   writeStrip({cards, lives}) {
-    if (this.stripView === null) {
-      return
-    }
-
     const card = cards.find((candidate) => candidate.order === this.selectedIndex)
+    const isCardMissing = card === undefined
+    const isStripOff = this.isStripEnded || isCardMissing
 
-    if (this.isStripEnded || card === undefined) {
+    if (isStripOff) {
       this.stripView.hide()
       return
     }
@@ -1248,9 +1240,7 @@ export const TripPlanner = {
     this.releaseLiveStops()
     this.tripMap.clear()
 
-    if (this.stripView !== null) {
-      this.stripView.hide()
-    }
+    this.stripView.hide()
 
     if (this.isFilterSent) {
       this.events.push({name: CLEAR_EVENT_NAME, payload: {}})
@@ -1677,9 +1667,7 @@ export const TripPlanner = {
     this.stopTicker()
     this.releaseLiveStops()
 
-    if (this.stripView !== null) {
-      this.stripView.hide()
-    }
+    this.stripView.hide()
 
     stopPicking()
     releasePosition({holder: TRIP_HOLDER})

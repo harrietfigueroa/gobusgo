@@ -47,10 +47,10 @@ function buildMain() {
 }
 
 /**
- * The view of the strip inside `host`: `write(strip)` shows a `tripStrip`
- * answer, `hide()` removes it from the page and from assistive technology,
- * and `contains(node)` says whether `node` is inside it. `onOpen` is called
- * for a press of the strip or of All steps, `onEnd` for End trip.
+ * The view of the strip inside `host`: it shows a `tripStrip` answer, hides
+ * the strip from the page and from assistive technology, and says whether a
+ * node is inside it. `onOpen` is called for a press of the strip or of All
+ * steps, `onEnd` for End trip.
  */
 export function createStripView({host, onOpen, onEnd}) {
   const parts = buildMain()
@@ -87,12 +87,17 @@ export function createStripView({host, onOpen, onEnd}) {
         items.push(create({tag: "li", className: "trip-strip-next", text}))
       }
 
-      stepList.replaceChildren(...items)
-      host.hidden = false
+      stepList.replaceChildren()
+
+      for (const item of items) {
+        stepList.append(item)
+      }
+
+      host.toggleAttribute("hidden", false)
     },
 
     hide() {
-      host.hidden = true
+      host.toggleAttribute("hidden", true)
     },
 
     contains(node) {

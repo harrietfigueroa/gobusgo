@@ -9,7 +9,7 @@
 import {deepStrictEqual} from "node:assert/strict"
 import {LegKind} from "../../assets/js/routing_engine.js"
 import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
-import {LiveKind, firstRideLive, journeyCard} from "../../assets/js/journey_cards.js"
+import {LiveKind, SegmentKind, firstRideLive, journeyCard} from "../../assets/js/journey_cards.js"
 import {journeyRows} from "../../assets/js/trip_plan.js"
 import {tripStrip} from "../../assets/js/trip_strip.js"
 
@@ -110,7 +110,8 @@ function lateArrival({tripId, scheduledClock}) {
   deepStrictEqual(strip.firstStepText, "Walk to 3rd Ave & Pike St")
   deepStrictEqual(strip.nextStepTexts, ["Board 7 at 3rd Ave & Pike St, 8:48 am, 2 min late", "Arrive at S Jackson St & 20th Pl S"])
   deepStrictEqual(strip.sentence, "Trip: Leave in 7 min, Arrive 9:16 am. 7 2 min late. Walk to 3rd Ave & Pike St.")
-  deepStrictEqual(strip.segments.length, 2)
+  const segmentKinds = Array.from(strip.segments, (segment) => segment.kind)
+  deepStrictEqual(segmentKinds, [SegmentKind.walk, SegmentKind.ride])
 }
 
 // A scheduled first bus reads as scheduled, with no live dot and the
