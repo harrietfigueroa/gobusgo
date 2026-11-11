@@ -49,6 +49,12 @@ defmodule Gobusgo.Routing.Snapshot do
   @spec chunk_s() :: pos_integer()
   def chunk_s, do: @chunk_s
 
+  @doc "The directory of the files built at `built_at`, without a trailing `/`."
+  @spec directory(DateTime.t()) :: String.t()
+  def directory(%DateTime{} = built_at) do
+    "#{@prefix}/dt=#{built_at |> DateTime.to_date() |> Date.to_iso8601()}"
+  end
+
   @doc """
   Returns the files of the snapshot of `input.timetable` with
   `input.walking_links`, `input.positions`, the position of each stop by
@@ -70,7 +76,7 @@ defmodule Gobusgo.Routing.Snapshot do
         %{timetable: timetable, walking_links: walking_links, built_at: %DateTime{} = built_at} =
           input
       ) do
-    directory = "#{@prefix}/dt=#{built_at |> DateTime.to_date() |> Date.to_iso8601()}"
+    directory = directory(built_at)
     stops = file(directory, :stops, timetable.stop_ids)
     trips = file(directory, :trips, timetable.trips)
     transfers = file(directory, :transfers, walking_links)
