@@ -186,6 +186,11 @@ function routeColorOf(route) {
   }
 }
 
+/** The chip the saved route `route` of `routeId` is shown as: its `savedRouteName` and its CSS color. */
+export function savedRouteChip({route, routeId}) {
+  return {name: savedRouteName({route, routeId}), color: routeColorOf(route)}
+}
+
 // The route `routeId` of the first names file of `snapshots` that holds
 // it, or none.
 function savedRoute({snapshots, routeId}) {
@@ -250,7 +255,7 @@ export function namesReply({snapshots, payload, countMax}) {
     const saved = savedRoute({snapshots, routeId})
 
     if (saved.kind === TableKind.found) {
-      routes[routeId] = {name: savedRouteName({route: saved.route, routeId}), color: routeColorOf(saved.route)}
+      routes[routeId] = savedRouteChip({route: saved.route, routeId})
     }
   }
 

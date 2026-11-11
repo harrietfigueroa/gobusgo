@@ -148,6 +148,9 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             },
             "content": {
@@ -166,6 +169,55 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headRoutingManifest",
+        "tags": [
+          "Manifests"
+        ],
+        "summary": "Check the manifest of the routing snapshots",
+        "description": "The status and headers the `GET` of this path answers, with no body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest as canonical JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             }
           },
@@ -197,6 +249,9 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             },
             "content": {
@@ -215,6 +270,58 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ManifestUnavailable"
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headAddressesManifest",
+        "tags": [
+          "Manifests"
+        ],
+        "summary": "Check the manifest of the address shards",
+        "description": "The status and headers the `GET` of this path answers, with no body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest as canonical JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             }
           },
@@ -249,6 +356,9 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             },
             "content": {
@@ -267,6 +377,58 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ManifestUnavailable"
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headIntersectionsManifest",
+        "tags": [
+          "Manifests"
+        ],
+        "summary": "Check the manifest of the intersection files",
+        "description": "The status and headers the `GET` of this path answers, with no body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest as canonical JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
               }
             }
           },
@@ -450,6 +612,13 @@
         "schema": {
           "type": "string",
           "const": "no-cache"
+        }
+      },
+      "AccessControlAllowOrigin": {
+        "description": "`*`, so a page of any origin, such as the trip planner app in a frame its host picks, reads the manifest.",
+        "schema": {
+          "type": "string",
+          "const": "*"
         }
       }
     },

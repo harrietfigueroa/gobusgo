@@ -15,6 +15,8 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
 
   @endpoint GobusgoWeb.Endpoint
   @legacy "2025-11-25"
+  @transit_tool_names ["arrivals", "find", "vehicles"]
+  @transit_resource_uris ["gobusgo://api/agencies", "gobusgo://api/routing/manifest"]
 
   setup do
     TransitSeeds.restart_views()
@@ -48,20 +50,21 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
     rpc("tools/call", %{"name" => name, "arguments" => arguments})
   end
 
-  test "lists the three tools, each with an output schema" do
+  test "lists the three transit tools, each with an output schema" do
     assert %{"result" => %{"tools" => tools}} = rpc("tools/list", %{})
 
-    assert Enum.map(tools, & &1["name"]) == ["arrivals", "find", "vehicles"]
-    assert Enum.all?(tools, &is_map(&1["outputSchema"]))
+    transit_tools = for tool <- tools, tool["name"] in @transit_tool_names, do: tool
+    assert Enum.map(transit_tools, & &1["name"]) == @transit_tool_names
+    assert Enum.all?(transit_tools, &is_map(&1["outputSchema"]))
   end
 
-  test "lists the two resources" do
+  test "lists the two transit resources" do
     assert %{"result" => %{"resources" => resources}} = rpc("resources/list", %{})
 
-    assert Enum.map(resources, & &1["uri"]) == [
-             "gobusgo://api/agencies",
-             "gobusgo://api/routing/manifest"
-           ]
+    uris =
+      for resource <- resources, resource["uri"] in @transit_resource_uris, do: resource["uri"]
+
+    assert uris == @transit_resource_uris
   end
 
   test "reads the agencies resource" do

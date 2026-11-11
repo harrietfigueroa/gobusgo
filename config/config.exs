@@ -4,7 +4,7 @@ config :esbuild,
   version: "0.25.5",
   default: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
+      ~w(js/app.js js/trip_app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
@@ -132,11 +132,13 @@ config :gobusgo, GobusgoWeb.Mcp,
   tools: [
     GobusgoWeb.Mcp.Tools.Arrivals,
     GobusgoWeb.Mcp.Tools.Find,
+    GobusgoWeb.Mcp.Tools.PlanTrip,
     GobusgoWeb.Mcp.Tools.Vehicles
   ],
   resources: [
     GobusgoWeb.Mcp.Resources.Agencies,
-    GobusgoWeb.Mcp.Resources.RoutingManifest
+    GobusgoWeb.Mcp.Resources.RoutingManifest,
+    GobusgoWeb.Mcp.Resources.TripApp
   ]
 
 # The sources run on their schedule everywhere except under test, where no
