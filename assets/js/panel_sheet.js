@@ -11,12 +11,14 @@ import {
   DESELECT_EVENT_NAME,
   DetailKind
 } from "./panel_detail"
+import {keyboardInset} from "./keyboard_inset"
 import {revealOffset} from "./reveal_offset"
 
 const SHEET_ID = "panel-sheet"
 const TAB_SELECTOR = "[role=tab]"
 const PANEL_SELECTOR = "[role=tabpanel]"
 const INSET_BOTTOM_PROPERTY = "--panel-sheet-inset-bottom"
+const KEYBOARD_INSET_PROPERTY = "--keyboard-inset-bottom"
 const EXPAND_LABEL = "Expand the panels"
 const COLLAPSE_LABEL = "Collapse the panels"
 const BACK_LABEL_PREFIX = "Back to "
@@ -122,6 +124,16 @@ function movedIndex({key, index, count}) {
   }
 }
 
+// Whether `value` is neither null nor undefined, as `window.visualViewport`
+// is in a browser without a visual viewport.
+function isPresent(value) {
+  if (value === null) {
+    return false
+  }
+
+  return value !== undefined
+}
+
 function isSelectedTab(tab) {
   return tab.getAttribute("aria-selected") === "true"
 }
@@ -181,6 +193,19 @@ export const PanelSheet = {
     this.resizeObserver.observe(this.el)
     this.onResize = () => { this.writeInset() }
     window.addEventListener("resize", this.onResize)
+
+    // The visual viewport is absent from an old browser, which keeps the
+    // sheet where it is.
+    this.visualViewport = window.visualViewport
+    this.hasVisualViewport = isPresent(this.visualViewport)
+    this.onKeyboard = () => { this.writeKeyboardInset() }
+
+    if (this.hasVisualViewport) {
+      this.visualViewport.addEventListener("resize", this.onKeyboard)
+      this.visualViewport.addEventListener("scroll", this.onKeyboard)
+    }
+
+    this.writeKeyboardInset()
     this.writeInset()
   },
 
@@ -388,9 +413,30 @@ export const PanelSheet = {
     document.documentElement.style.setProperty(INSET_BOTTOM_PROPERTY, `${Math.round(bottom)}px`)
   },
 
+  // The height the on-screen keyboard covers, which a narrow viewport's
+  // sheet stands above, so the field in it stays visible. The sheet's
+  // position changes with the property, which no resize of the sheet
+  // reports, so the inset is written again after it.
+  writeKeyboardInset() {
+    if (!this.hasVisualViewport) {
+      return
+    }
+
+    const inset = keyboardInset({layoutHeight: window.innerHeight, visual: this.visualViewport})
+    document.documentElement.style.setProperty(KEYBOARD_INSET_PROPERTY, `${inset}px`)
+    this.writeInset()
+  },
+
   destroyed() {
     this.resizeObserver.disconnect()
     window.removeEventListener("resize", this.onResize)
+
+    if (this.hasVisualViewport) {
+      this.visualViewport.removeEventListener("resize", this.onKeyboard)
+      this.visualViewport.removeEventListener("scroll", this.onKeyboard)
+    }
+
+    document.documentElement.style.removeProperty(KEYBOARD_INSET_PROPERTY)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(DESELECT_EVENT_NAME, this.onDeselect)
     document.documentElement.style.removeProperty(INSET_BOTTOM_PROPERTY)

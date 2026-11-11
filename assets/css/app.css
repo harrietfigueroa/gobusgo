@@ -1855,6 +1855,13 @@ a.inline-target {
 /* The open tab is marked where its panel shows: on a narrow viewport while
    the sheet is expanded or dragged, and always on a wide one. */
 @media (width < 48rem) {
+  /* While the on-screen keyboard shows, the sheet stands above it and
+     takes no more than the room above it, which the hook writes. */
+  .panel-sheet {
+    bottom: var(--keyboard-inset-bottom, 0px);
+    max-height: calc(100dvh - var(--keyboard-inset-bottom, 0px));
+  }
+
   .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
     display: none;
   }
