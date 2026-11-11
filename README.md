@@ -496,21 +496,23 @@ mix test
 
 ### Inspecting the running server
 
-A server started as a named node bound to localhost can be inspected from a short-lived second node with `elixir --rpc-eval`. This adds no dependency, route, or plug. Start the server in a terminal, since `iex` exits when its input closes:
+A server started as a named node bound to localhost can be inspected from a short-lived second node with `elixir --rpc-eval`. Start the server in a terminal, since `iex` exits when its input closes:
 
 ```sh
 ERL_EPMD_ADDRESS=127.0.0.1 iex --sname gobusgo \
   --erl "-kernel inet_dist_use_interface {127,0,0,1}" -S mix phx.server
 ```
 
-Then, from a second terminal, read the vehicle view process's memory and message queue:
+Then, from a second terminal, read the vehicle view's process and table:
 
 ```sh
 elixir --sname probe --rpc-eval gobusgo@$(hostname -s) \
-  'IO.inspect(Process.info(Process.whereis(Gobusgo.OneBusAway.VehicleView), [:memory, :message_queue_len]))'
+  'view = Gobusgo.OneBusAway.VehicleView
+   IO.inspect(Process.info(Process.whereis(view), [:memory, :message_queue_len]))
+   IO.inspect({:ets.info(view, :size), :ets.info(view, :memory)})'
 ```
 
-which prints `[memory: <bytes>, message_queue_len: <count>]`. The probe node exits when the expression returns.
+which prints `[memory: <bytes>, message_queue_len: <count>]` and then `{<record count>, <words>}`. A view's records live in its named ETS table, which shares the view's name, so the process's own memory says little about the view's size; `:ets.info/2` gives `:memory` in words, 8 bytes each on a 64-bit machine, not bytes. The probe node exits when the expression returns.
 
 - **Read-only expressions only.** An expression runs with the application's full power and environment, the OneBusAway key included.
 - **Ask for sizes and samples, not whole states.** `:sys.get_state/1` copies a process's whole state into the evaluating process. `Process.info/2`, `map_size/1`, `:ets.info(table, :size)`, and `Enum.take/2` copy almost nothing.
