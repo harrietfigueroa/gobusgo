@@ -164,6 +164,31 @@ defmodule Gobusgo.Addresses.Source.KingTest do
     assert Agent.get(counter, & &1) == 3
   end
 
+  test "a 202 that says the file is being generated is asked for again", %{tmp_dir: tmp_dir} do
+    {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+    # The body is what the Hub answered on 2026-11-11.
+    pending =
+      JSON.encode!(%{
+        "message" =>
+          "Up to date download file is being generated. Please check back again later.",
+        "status" => "Pending"
+      })
+
+    hub = fn conn ->
+      polls = Agent.get_and_update(counter, &{&1, &1 + 1})
+
+      if polls < 2 do
+        answer(conn, 202, pending)
+      else
+        default_answers().hub.(conn)
+      end
+    end
+
+    assert {:ok, _export} = fetch(tmp_dir, %{hub: hub})
+    assert Agent.get(counter, & &1) == 3
+  end
+
   test "an export that never finishes is an error after the polls are spent", %{tmp_dir: tmp_dir} do
     hub = fn conn -> answer(conn, 200, JSON.encode!(%{"status" => "Pending"})) end
     assert fetch(tmp_dir, %{hub: hub}) == {:error, :export_not_ready}

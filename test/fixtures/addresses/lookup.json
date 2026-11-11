@@ -1,0 +1,82 @@
+{
+  "center": [-122.3321, 47.6062],
+  "held": [
+    {"text": "920 12th ave s", "lat": 47.5901, "lon": -122.3162},
+    {"text": "920a 12th ave s", "lat": 47.59015, "lon": -122.31625},
+    {"text": "920b 12th ave s", "lat": 47.59005, "lon": -122.3161},
+    {"text": "1204 12th ave s", "lat": 47.589, "lon": -122.3169},
+    {"text": "920c 12th ave s", "lat": 47.5901, "lon": -122.3162}
+  ],
+  "interpolated": {"text": "1000 12th ave s", "lat": 47.58975422535211, "lon": -122.31632535211268},
+  "pastEnd": ["1300 12th ave s", "900 12th ave s", "921 12th ave s", "99999 12th ave s", "11 main st, ke"],
+  "cityOfFirst": [
+    {"text": "5 main st", "city": "RÉDMOND"},
+    {"text": "3 main", "city": "KENT"},
+    {"text": "999999999z zed ct", "city": "SEATTLE"},
+    {"text": "999999999z n zed ct", "city": "SEATTLE"}
+  ],
+  "noStreet": ["5 main ave", "999999999z s zed ct", "999999999z zed st", "5 main st n", "120 nonexistent ln"],
+  "locality": [
+    {"text": "3 main st, ke", "kind": "found"},
+    {"text": "3 main st, kent wa 98032", "kind": "found"},
+    {"text": "5 main st, ré", "kind": "found"},
+    {"text": "3 main st, ent", "kind": "noStreet"},
+    {"text": "3 main st, seattle", "kind": "noStreet"},
+    {"text": "920 12th ave s, 98122", "kind": "found"}
+  ],
+  "spellings": ["920 12th ave s apt 3", "920 12th ave s #4", "920 12th ave s ste 2200", "920 twelfth avenue south", "920 12 ave s", "920 12th avenue south"],
+  "notAnAddress": ["12th ave s", "4th & pike", "pike place market", ""],
+  "labels": [
+    {"text": "920 12th ave s", "label": "920 12TH AVE S, SEATTLE"},
+    {"text": "999999999z zed ct", "label": "999999999Z N ZED CT, SEATTLE"},
+    {"text": "10 pole", "label": "10 POLE"}
+  ],
+  "rankStreets": [
+    {"preDirection": "", "name": "PINE", "type": "ST", "sufDirection": "", "city": "SEATTLE", "addresses": [[2, 47.61, -122.33], [12, 47.61, -122.32]]},
+    {"preDirection": "", "name": "PINE", "type": "ST", "sufDirection": "", "city": "FAR", "addresses": [[10, 47.1, -122.1], [20, 47.2, -122.2]]},
+    {"preDirection": "", "name": "PINE", "type": "ST", "sufDirection": "", "city": "NEAR", "addresses": [[10, 47.6, -122.3], [20, 47.7, -122.4]]},
+    {"preDirection": "", "name": "PINE", "type": "", "sufDirection": "", "city": "PLAIN", "addresses": [[10, 47.0, -122.0]]},
+    {"preDirection": "S", "name": "PINE", "type": "ST", "sufDirection": "E", "city": "FILLED", "addresses": [[10, 47.6, -122.33]]}
+  ],
+  "ranking": [
+    {
+      "why": "a held point, then fewer parts filled in, then the nearer, with the interpolated point last",
+      "text": "10 pine",
+      "near": [-122.3321, 47.6062],
+      "cities": ["PLAIN", "NEAR", "FAR", "FILLED", "SEATTLE"],
+      "placements": ["exact", "exact", "exact", "exact", "interpolated"]
+    },
+    {
+      "why": "a locality narrows before the distance ranks",
+      "text": "10 pine st, f",
+      "near": [-122.1, 47.1],
+      "cities": ["FAR", "FILLED"],
+      "placements": ["exact", "exact"]
+    },
+    {
+      "why": "the distance ranks held points of one shape, whichever way the center lies",
+      "text": "10 pine st",
+      "near": [-122.1, 47.1],
+      "cities": ["FAR", "NEAR", "FILLED", "SEATTLE"],
+      "placements": ["exact", "exact", "exact", "interpolated"]
+    }
+  ],
+  "manyStreets": [
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY0", "addresses": [[2, 47.5, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY1", "addresses": [[2, 47.51, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY2", "addresses": [[2, 47.52, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY3", "addresses": [[2, 47.53, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY4", "addresses": [[2, 47.54, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY5", "addresses": [[2, 47.55, -122.3]]},
+    {"preDirection": "", "name": "OAK", "type": "ST", "sufDirection": "", "city": "CITY6", "addresses": [[2, 47.56, -122.3]]}
+  ],
+  "resultCountMax": 5,
+  "shards": [
+    {"text": "5 main st", "path": "addresses-3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d.bin.gz"},
+    {"text": "5 maine st", "path": "addresses-2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6.bin.gz"},
+    {"text": "5 zed ct", "path": "addresses-ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb.bin.gz"},
+    {"text": "5 école st", "path": "addresses-18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4.bin.gz"},
+    {"text": "5 ecole st", "path": "addresses-ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb.bin.gz"},
+    {"text": "5 main street suite 4", "path": "addresses-3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d.bin.gz"}
+  ]
+}

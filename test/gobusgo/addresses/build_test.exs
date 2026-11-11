@@ -122,7 +122,8 @@ defmodule Gobusgo.Addresses.BuildTest do
 
     decoded =
       for entry <- entries do
-        stream = File.read!(Path.join([tmp_dir, "addresses/dt=2026-11-10", entry.name]))
+        name = Packed.file_name(%{kind: Format.shard_kind(), sha256: entry.sha256})
+        stream = File.read!(Path.join([tmp_dir, "addresses/dt=2026-11-10", name]))
         {:ok, content} = Packed.expand(stream, Format.expanded_bytes_max(:shard))
         {:ok, %{streets: streets}} = Format.decode_shard(content)
         streets
@@ -252,6 +253,23 @@ defmodule Gobusgo.Addresses.BuildTest do
     assert run(context, heap_words_max: 2_000) == {:error, :killed}
     assert Addresses.manifest(context.server) == :none
     assert stored_files(context.tmp_dir) == []
+  end
+
+  test "the heap cap counts the binaries a process references" do
+    bytes_over_cap = 4_000_000
+
+    {pid, monitor} =
+      :erlang.spawn_opt(
+        fn ->
+          held = :binary.copy(<<0>>, bytes_over_cap)
+          :erlang.garbage_collect()
+          # Keeps the binary referenced until the collection above has judged it.
+          Process.sleep(byte_size(held))
+        end,
+        [:monitor, max_heap_size: Build.heap_cap(100_000)]
+      )
+
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
   end
 
   test "deletes the export when the run ends", context do
