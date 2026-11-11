@@ -58,7 +58,8 @@ defmodule GobusgoWeb.Router do
     get "/agencies/:id", AgencyController, :show
   end
 
-  # The manifests an MCP App reads from a sandbox of another origin.
+  # The manifests an MCP App reads from a sandbox of another origin, and the
+  # public OpenAPI document.
   scope "/api", GobusgoWeb do
     pipe_through [:api, :public_files]
 
@@ -68,6 +69,8 @@ defmodule GobusgoWeb.Router do
     head "/addresses/manifest", AddressManifestController, :show
     get "/intersections/manifest", IntersectionManifestController, :show
     head "/intersections/manifest", IntersectionManifestController, :show
+    get "/openapi.json", OpenApiController, :show
+    head "/openapi.json", OpenApiController, :show
   end
 
   scope "/api", GobusgoWeb do
