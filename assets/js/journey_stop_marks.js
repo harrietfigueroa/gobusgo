@@ -107,7 +107,9 @@ export function yourBusRow({mark, shown}) {
   const isBoardingFirst = mark.kind === StopMarkKind.boardsFirst
   const hasArrivals = shown.status === ARRIVALS_STATUS
 
-  if (isBoardingFirst && hasArrivals) {
+  const isMatchable = isBoardingFirst && hasArrivals
+
+  if (isMatchable) {
     const {tripId, departureMs} = mark
 
     for (const [index, arrival] of shown.arrivals.entries()) {

@@ -174,9 +174,9 @@ export function writeTripLine({line, stopId}) {
   line.toggleAttribute("hidden", !isShown)
 
   if (isShown) {
-    line.textContent = mark.text
+    line.replaceChildren(mark.text)
   } else {
-    line.textContent = ""
+    line.replaceChildren()
   }
 }
 

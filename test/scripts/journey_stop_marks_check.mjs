@@ -24,6 +24,9 @@ const MINUTE_SECONDS = 60
 const SECOND_MS = 1000
 const MINUTE_MS = 60 * 1000
 const WALK_SECONDS = 170
+const LATE_MINUTES = 2
+const TOLERANCE_MINUTES = 5
+const BEYOND_TOLERANCE_MINUTES = 6
 
 function seconds(clock) {
   const [hours, minutes] = clock.split(":")
@@ -82,7 +85,7 @@ for (const stopId of ["1_500", "1_start", "1_other"]) {
 // bus's lateness, as the strip moves the times it writes; the second ride's
 // time stays scheduled, and a bus that runs early moves it earlier.
 {
-  const lateChosen = {...chosen, live: {kind: LiveKind.live, latenessS: 2 * MINUTE_SECONDS, routeId: "1_e"}}
+  const lateChosen = {...chosen, live: {kind: LiveKind.live, latenessS: LATE_MINUTES * MINUTE_SECONDS, routeId: "1_e"}}
   deepStrictEqual(stopMark({chosen: lateChosen, stopId: "1_1121"}), {kind: StopMarkKind.getsOff, text: "Your trip gets off here · 8:53 am"})
   deepStrictEqual(stopMark({chosen: lateChosen, stopId: "1_11920"}), {kind: StopMarkKind.getsOff, text: "Your trip gets off here · 9:02 am"})
   const earlyChosen = {...chosen, live: {kind: LiveKind.live, latenessS: -MINUTE_SECONDS, routeId: "1_e"}}
@@ -106,17 +109,19 @@ function arrival({tripId, scheduledMs}) {
 const boardsFirst = stopMark({chosen, stopId: "1_431"})
 const other = arrival({tripId: "trip-other", scheduledMs: atMs("08:42")})
 const mine = arrival({tripId: "trip-1_e", scheduledMs: atMs("08:42")})
-const arrivals = (list) => ({stop_id: "1_431", status: "arrivals", age_minutes: 0, arrivals: list})
+function arrivals(list) {
+  return {stop_id: "1_431", status: "arrivals", age_minutes: 0, arrivals: list}
+}
 
 // The row of the first ride's trip is found by its trip and its time, a
 // scheduled arrival as well as a predicted one.
 deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([other, mine])}), {kind: YourBusKind.row, index: 1})
-deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([{...mine, predicted: true, time_ms: mine.time_ms + 2 * MINUTE_MS}])}), {kind: YourBusKind.row, index: 0})
+deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([{...mine, predicted: true, time_ms: mine.time_ms + LATE_MINUTES * MINUTE_MS}])}), {kind: YourBusKind.row, index: 0})
 
 // An arrival within the tolerance of the ride's departure is the ride; one
 // beyond it, another run of the same trip, is not.
-deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([arrival({tripId: "trip-1_e", scheduledMs: atMs("08:42") + 5 * MINUTE_MS})])}), {kind: YourBusKind.row, index: 0})
-deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([arrival({tripId: "trip-1_e", scheduledMs: atMs("08:42") + 6 * MINUTE_MS})])}), {kind: YourBusKind.absent})
+deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([arrival({tripId: "trip-1_e", scheduledMs: atMs("08:42") + TOLERANCE_MINUTES * MINUTE_MS})])}), {kind: YourBusKind.row, index: 0})
+deepStrictEqual(yourBusRow({mark: boardsFirst, shown: arrivals([arrival({tripId: "trip-1_e", scheduledMs: atMs("08:42") + BEYOND_TOLERANCE_MINUTES * MINUTE_MS})])}), {kind: YourBusKind.absent})
 
 // A list without the trip, an empty list, an answer that is not arrivals, and
 // a mark that names no bus have no row.

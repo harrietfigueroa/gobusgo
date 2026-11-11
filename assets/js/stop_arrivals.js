@@ -21,6 +21,7 @@ const ROW_CLASS_NAME = "arrival-row"
 const YOURS_ROW_CLASS_NAME = "arrival-row arrival-row-yours"
 const YOURS_CLASS_NAME = "arrival-yours"
 const YOURS_TEXT = "Your bus"
+const NO_ROW_INDEX = -1
 const HEADSIGN_CLASS_NAME = "arrival-headsign"
 const TIME_CLASS_NAME = "arrival-time"
 const LIVE_TIME_CLASS_NAME = "arrival-time arrival-time-live"
@@ -301,7 +302,7 @@ function yourBusIndexOf(yourBus) {
     return yourBus.index
   }
 
-  return -1
+  return NO_ROW_INDEX
 }
 
 function classedParagraph({text, className}) {
