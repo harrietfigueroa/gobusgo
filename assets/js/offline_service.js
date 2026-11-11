@@ -3,7 +3,8 @@
 // whenever the routes the page shows change. It hands each result to the
 // `dispatch` it is
 // started with, under the event the hooks take it by: the markers under
-// SCHEDULED_MARKERS_EVENT_NAME, which replace every agency's, and each open
+// SCHEDULED_MARKERS_EVENT_NAME, which replace every agency's, with the
+// reader of the straight-line path of each marker's trip, and each open
 // stop's arrivals under the server's own arrivals event. A page with no
 // saved schedules gets no markers and no arrivals, so the in-place notes
 // stand. Nothing runs while the page is hidden.
@@ -97,7 +98,7 @@ async function place(running) {
 
   const startMark = performance.mark(PLACEMENT_START_MARK_NAME)
   const placed = scheduledMarkers({snapshots, nowMs, kept: keptRoutes(), color: scheduledColor(), countMax: SCHEDULED_MARKER_COUNT_MAX})
-  running.dispatch(SCHEDULED_MARKERS_EVENT_NAME, {markers: placed.markers})
+  running.dispatch(SCHEDULED_MARKERS_EVENT_NAME, {markers: placed.markers, fallbackPathOf: placed.fallbackPathOf})
 
   if (snapshots.length > 0) {
     for (const stopId of running.openStopIds()) {

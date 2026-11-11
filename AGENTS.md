@@ -336,7 +336,7 @@ The rule applies to every backend-neutral interface: the writer, the reader, the
 Update the Linear issue status as the work moves, without waiting to be asked:
 
 1. Move the issue to In Progress when work starts, or when its work is committed locally and not yet pushed.
-2. Make one commit per issue, with the issue key in the subject (for example `(GOB-12)`).
+2. Put the issue key in the subject of every commit of the issue (for example `(GOB-12)`). An issue may take several commits.
 3. Move the issue to Done once its commit is pushed to `origin`, and after CI passes on that push once the CI workflow runs on GitHub.
 4. Leave an issue in its current status and tell the user when its acceptance criteria are not fully met, such as a pending decision or a missing credential.
 

@@ -32,9 +32,11 @@ import {
   emptyTripPathFiles,
   fileFetched,
   hasExpectedSize,
+  isTripHeldBack,
   manifestFetched,
   planTripPathFiles
 } from "../../assets/js/trip_path_files.js"
+import {isFallbackDue} from "../../assets/js/scheduled_path.js"
 import {decodeTripPathShard, tripPathFromShard} from "../../assets/js/trip_path_shard.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/routing/trip-paths-v1/", import.meta.url))
@@ -192,6 +194,24 @@ deepStrictEqual(heldBack.files.missingUntilMs, served.files.missingUntilMs, "a h
 const decidedAgain = planAt({files: served.files, trips: [absentTrip], nowMs: START_MS + MISSING_PATH_RETRY_MS})
 const decidedAgainUntilMs = Array.from(decidedAgain.files.missingUntilMs.values())
 deepStrictEqual(decidedAgainUntilMs, [START_MS + MISSING_PATH_RETRY_MS + MISSING_PATH_RETRY_MS], "a trip is held back again for a full retry time")
+
+// A trip is held back to its retry time, and not after it.
+ok(isTripHeldBack({files: served.files, trip: absentTrip, nowMs: START_MS + MISSING_PATH_RETRY_MS - STEP_MS}), "a trip is held back before its retry time")
+ok(!isTripHeldBack({files: served.files, trip: absentTrip, nowMs: START_MS + MISSING_PATH_RETRY_MS}), "a trip is not held back from its retry time")
+ok(!isTripHeldBack({files: served.files, trip: loopTrip, nowMs: START_MS}), "a trip found in a shard is not held back at any time")
+
+// A scheduled vehicle of the saved schedule takes the fallback path where the shards cannot serve its trip.
+function savedMarkerOf({trip, isSavedSchedule = true, serviceDateMs = trip.serviceDateMs}) {
+  return {is_saved_schedule: isSavedSchedule, trip_id: trip.tripId, route_id: trip.routeId, service_date_ms: serviceDateMs}
+}
+
+const heldNowMs = START_MS + MISSING_PATH_RETRY_MS - STEP_MS
+ok(isFallbackDue({marker: savedMarkerOf({trip: absentTrip}), files: served.files, nowMs: heldNowMs}), "a trip its shard lacks takes the fallback path")
+ok(!isFallbackDue({marker: savedMarkerOf({trip: absentTrip}), files: served.files, nowMs: START_MS + MISSING_PATH_RETRY_MS}), "a trip decided again waits for its shard")
+ok(!isFallbackDue({marker: savedMarkerOf({trip: loopTrip}), files: served.files, nowMs: START_MS}), "a trip a shard serves takes no fallback path")
+ok(!isFallbackDue({marker: savedMarkerOf({trip: loopTrip}), files: first.files, nowMs: START_MS}), "a trip waiting for the manifest takes no fallback path yet")
+ok(isFallbackDue({marker: savedMarkerOf({trip: loopTrip, serviceDateMs: null}), files: first.files, nowMs: START_MS}), "a trip of a date that is not saved takes the fallback path at once")
+ok(!isFallbackDue({marker: savedMarkerOf({trip: absentTrip, isSavedSchedule: false}), files: served.files, nowMs: heldNowMs}), "a vehicle of the server takes no fallback path")
 
 // A date with no entry is held back and asks for the manifest again at most once per retry time.
 const otherDay = {...loopTrip, serviceDateMs: OTHER_DATE_MS}

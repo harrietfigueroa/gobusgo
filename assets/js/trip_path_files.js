@@ -503,6 +503,16 @@ function isHeldBack({files, key, nowMs}) {
   return nowMs < untilMs
 }
 
+/**
+ * Whether `trip`, with its `tripId`, `routeId`, and `serviceDateMs`, has no
+ * path in `files` at `nowMs`: its files cannot serve it, and it is held back
+ * until the time to decide it again.
+ */
+export function isTripHeldBack({files, trip, nowMs}) {
+  assertTime(nowMs)
+  return isHeldBack({files, key: tripPathKey(trip), nowMs})
+}
+
 // One plan's working state: copies of the maps the plan changes, and what it
 // has decided so far. Its methods are the only places the state changes.
 class PlanWork {
