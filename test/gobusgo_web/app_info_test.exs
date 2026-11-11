@@ -577,6 +577,25 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
+  describe "address_sources/0" do
+    test "credits King County and links its terms at an https address" do
+      assert [
+               %{
+                 operator: "King County",
+                 layer: "Addresses in King County",
+                 terms: %{
+                   name: "King County GIS Center terms and conditions",
+                   url:
+                     "https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights"
+                 },
+                 summary: summary
+               }
+             ] = AppInfo.address_sources()
+
+      assert summary =~ "as is"
+    end
+  end
+
   describe "app_license/0" do
     test "states the license and the copyright line of the repository's license" do
       %{name: name, copyright: copyright} = AppInfo.app_license()
@@ -584,6 +603,24 @@ defmodule GobusgoWeb.AppInfoTest do
 
       assert first_line == name
       assert copyright in rest
+    end
+  end
+
+  describe "places_license/0" do
+    test "states the places file's license and its credit" do
+      assert %{name: "Places", license: "ODbL 1.0, © OpenStreetMap contributors"} =
+               AppInfo.places_license()
+    end
+
+    test "links the ODbL, the copyright page, and the manifest of the places file" do
+      assert AppInfo.places_license().links == [
+               %{
+                 text: "Open Database License 1.0",
+                 url: "https://opendatacommons.org/licenses/odbl/1-0/"
+               },
+               %{text: "OpenStreetMap copyright", url: "https://www.openstreetmap.org/copyright"},
+               %{text: "Places file", url: "/places/manifest.json"}
+             ]
     end
   end
 

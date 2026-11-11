@@ -8,6 +8,7 @@ defmodule Gobusgo.Places.PublicationTest do
   alias Gobusgo.Deleter
   alias Gobusgo.Packed
   alias Gobusgo.Places.Format
+  alias Gobusgo.Places.License
   alias Gobusgo.Places.Publication
   alias Gobusgo.Test.PlaceFixture
   alias Gobusgo.Writer
@@ -53,10 +54,25 @@ defmodule Gobusgo.Places.PublicationTest do
              },
              "kind" => 5,
              "kindVersion" => 1,
+             "license" => License.manifest_entry(),
              "placeCount" => 5,
              "sourceDate" => PlaceFixture.source_date(),
              "builtAt" => "2026-11-10T22:00:00Z"
            }
+  end
+
+  test "stores the notice the manifest's license names", %{tmp_dir: tmp_dir} do
+    assert {:ok, _published} = Publication.publish(request(), options(tmp_dir))
+
+    notice_path = manifest(tmp_dir)["license"]["notice"]
+    assert File.read!(Path.join(tmp_dir, notice_path)) == License.notice_text()
+  end
+
+  test "stores the notice again on a second build", %{tmp_dir: tmp_dir} do
+    assert {:ok, _first} = Publication.publish(request(), options(tmp_dir))
+    assert {:ok, _second} = Publication.publish(request(), options(tmp_dir))
+
+    assert File.read!(Path.join(tmp_dir, License.notice_destination())) == License.notice_text()
   end
 
   test "replaces the manifest of an earlier build and keeps the earlier file", %{tmp_dir: tmp_dir} do

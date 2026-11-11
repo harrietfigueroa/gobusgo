@@ -24,6 +24,7 @@ import {
   TripPathRefusal,
   decodeTripPathIndex,
   decodeTripPathShard,
+  indexEntries,
   tripPathFromShard
 } from "../../assets/js/trip_path_shard.js"
 
@@ -239,6 +240,14 @@ function checkIndex() {
   }
 
   deepStrictEqual(index.entryOf("1_none"), {kind: TripPathLookup.missing}, "a route the index lacks")
+
+  const listed = indexEntries(index)
+  deepStrictEqual(listed.length, index.routeCount, "every route's entry is listed")
+
+  for (const [position, record] of expected.index.records.entries()) {
+    const entry = {path: record.path, byteSize: record.byteSize, sha256: record.sha256}
+    deepStrictEqual(listed[position], entry, "the listed entry " + position + " is the index's order")
+  }
 }
 
 function shardWithSection({index, section}) {

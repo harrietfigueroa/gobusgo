@@ -169,6 +169,7 @@ defmodule Gobusgo.Application do
              name: Gobusgo.IngestionTaskSupervisor, max_children: @ingestion_task_count_max},
             {GobusgoWeb.RouteStopTiles, name: GobusgoWeb.RouteStopTiles},
             {Gobusgo.Routing.Snapshots, name: Gobusgo.Routing.Snapshots},
+            {Gobusgo.Addresses, name: Gobusgo.Addresses},
             {GobusgoWeb.Endpoint,
              [http: [ip: ip, port: port], secret_key_base: configured_secret || generate_secret()] ++
                GobusgoWeb.PublicHost.endpoint_options(public_host)}
@@ -180,6 +181,7 @@ defmodule Gobusgo.Application do
                 gbfs_specs(scheduled, shared_vehicles) ++
                 tile_specs(scheduled) ++
                 routing_specs(scheduled) ++
+                address_specs(scheduled) ++
                 trip_paths_specs(scheduled) ++ cleanup_specs(scheduled, storage)
             )
           ]
@@ -247,6 +249,10 @@ defmodule Gobusgo.Application do
   # scheduled, which is where a node serves pages.
   defp trip_paths_specs(true), do: [TripPathsServed.log_spec()]
   defp trip_paths_specs(false), do: []
+  # The address shards are built wherever the sources are scheduled. The
+  # county's export is a public download, so the build needs no setting.
+  defp address_specs(true), do: [Gobusgo.Addresses.spec(server: Gobusgo.Addresses)]
+  defp address_specs(false), do: []
 
   # The GBFS feeds are public, so their sources need no settings and run
   # wherever the sources are scheduled. The retention source deletes the

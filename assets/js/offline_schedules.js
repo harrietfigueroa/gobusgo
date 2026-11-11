@@ -4,7 +4,9 @@
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, fetches one file at a time at low priority, and
-// runs again while the page stays open. Every file of a bundle is stored
+// runs again while the page stays open. A date's trip path shards are
+// named by its trip path index, so the index is stored and read before its
+// shards are. Every file of a bundle is stored
 // before the index that names them, so a save that stops part way leaves the
 // previous complete bundle in use, and the files the new index no longer
 // names are deleted only after it is written. The bundle's own manifest is
@@ -20,15 +22,22 @@ import {
   OFFLINE_SCHEDULES_CACHE_NAME,
   PlanKind,
   SettingKind,
+  ShardPlanKind,
+  ShardRefusal,
+  TRIP_PATH_INDEX_EXPANDED_BYTES_MAX,
   bundleStatus,
+  bundleWithTripPaths,
   planBundle,
   savedIndex,
   stalePaths,
-  statusMessage
+  statusMessage,
+  tripPathShardPlan
 } from "./offline_bundle"
 import {writeMessage} from "./message"
+import {PackedOutcome, expandStream} from "./packed_container"
 import {requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
+import {decodeTripPathIndex, indexEntries} from "./trip_path_shard"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
@@ -109,8 +118,10 @@ async function storedPaths(cache) {
   return Array.from(requests, pathOf)
 }
 
-// Stores `path` unless the store holds it already, and says whether it is stored.
-async function storeFile({cache, path, signal}) {
+// Stores `path` unless the store holds it already, and says whether it is
+// stored. A file whose `byteSize` is known is stored only when the answer
+// holds that many bytes.
+async function storeFile({cache, path, byteSize, signal}) {
   const stored = await cache.match(path)
 
   if (stored !== undefined) {
@@ -123,8 +134,81 @@ async function storeFile({cache, path, signal}) {
     return false
   }
 
+  if (byteSize !== undefined) {
+    const bytes = await response.clone().arrayBuffer()
+
+    if (bytes.byteLength !== byteSize) {
+      return false
+    }
+  }
+
   await cache.put(path, response)
   return true
+}
+
+// The files of `plan`, each with the size the manifest gives it where it
+// gives one, which is the trip path indexes' alone.
+function filesOf(plan) {
+  const sizes = new Map()
+
+  for (const index of plan.tripPathIndexes) {
+    sizes.set(index.path, index.byteSize)
+  }
+
+  const files = []
+
+  for (const path of plan.paths) {
+    if (sizes.has(path)) {
+      files.push({path, byteSize: sizes.get(path)})
+    } else {
+      files.push({path})
+    }
+  }
+
+  return files
+}
+
+// What the trip path index stored at `path` names: the plan of its shards,
+// refused where the index cannot be read.
+async function shardPlanOf({cache, path}) {
+  const stored = await cache.match(path)
+
+  if (stored === undefined) {
+    return {kind: ShardPlanKind.refused, reason: ShardRefusal.unreadable}
+  }
+
+  const compressed = await stored.arrayBuffer()
+  const expanded = await expandStream(new Uint8Array(compressed), {expandedByteSizeMax: TRIP_PATH_INDEX_EXPANDED_BYTES_MAX})
+
+  if (expanded.kind !== PackedOutcome.expanded) {
+    return {kind: ShardPlanKind.refused, reason: ShardRefusal.unreadable}
+  }
+
+  const decoded = decodeTripPathIndex(expanded.bytes)
+
+  if (decoded.kind !== PackedOutcome.decoded) {
+    return {kind: ShardPlanKind.refused, reason: ShardRefusal.unreadable}
+  }
+
+  return tripPathShardPlan(indexEntries(decoded.index))
+}
+
+// Stores each of `files`, a `{path, byteSize}`, and says what stopped it, or
+// nothing where every one is stored.
+async function storeFiles({cache, files, signal}) {
+  for (const {path, byteSize} of files) {
+    if (signal.aborted) {
+      return {kind: SaveKind.stopped}
+    }
+
+    const isStored = await storeFile({cache, path, byteSize, signal})
+
+    if (!isStored) {
+      return {kind: SaveKind.failed, reason: path + " could not be fetched or differs from the size the manifest gives"}
+    }
+  }
+
+  return {kind: SaveKind.saved}
 }
 
 async function save(signal) {
@@ -143,28 +227,40 @@ async function save(signal) {
 
   const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
 
-  for (const path of plan.paths) {
-    if (signal.aborted) {
-      return {kind: SaveKind.stopped}
-    }
+  const tablesOutcome = await storeFiles({cache, files: filesOf(plan), signal})
 
-    const isStored = await storeFile({cache, path, signal})
+  if (tablesOutcome.kind !== SaveKind.saved) {
+    return tablesOutcome
+  }
 
-    if (!isStored) {
-      return {kind: SaveKind.failed, reason: path + " could not be fetched"}
+  const shardPlans = []
+
+  for (const {serviceDate, path} of plan.tripPathIndexes) {
+    const shardPlan = await shardPlanOf({cache, path})
+    shardPlans.push({serviceDate, shardPlan})
+
+    if (shardPlan.kind === ShardPlanKind.refused) {
+      console.warn("Trip paths not saved for offline use", serviceDate, shardPlan.reason)
     }
   }
 
+  const bundle = bundleWithTripPaths({plan, shardPlans})
+  const shardsOutcome = await storeFiles({cache, files: bundle.shardFiles, signal})
+
+  if (shardsOutcome.kind !== SaveKind.saved) {
+    return shardsOutcome
+  }
+
   const jsonHeaders = {"content-type": "application/json"}
-  const manifestText = JSON.stringify(plan.manifest)
+  const manifestText = JSON.stringify(bundle.manifest)
   const manifestCopy = new Response(manifestText, {headers: jsonHeaders})
   await cache.put(BUNDLE_MANIFEST_PATH, manifestCopy)
-  const index = savedIndex({plan, savedAtMs: Date.now()})
+  const index = savedIndex({plan: bundle, savedAtMs: Date.now()})
   const indexText = JSON.stringify(index)
   const indexResponse = new Response(indexText, {headers: jsonHeaders})
   await cache.put(INDEX_PATH, indexResponse)
   const present = await storedPaths(cache)
-  const keptPaths = [INDEX_PATH, BUNDLE_MANIFEST_PATH, ...plan.paths]
+  const keptPaths = [INDEX_PATH, BUNDLE_MANIFEST_PATH, ...bundle.paths]
   const stale = stalePaths({index: {paths: keptPaths}, storedPaths: present})
 
   for (const path of stale) {

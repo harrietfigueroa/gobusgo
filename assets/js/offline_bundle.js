@@ -4,16 +4,21 @@
 // no storage.
 //
 // A bundle holds the routing snapshots of the service dates that have not
-// ended, at most BUNDLE_DATE_COUNT_MAX of them, each with its names file,
-// and the route and stop tile archive, which holds the stops and route
-// shapes a snapshot leaves out. A service date ends at its last departure,
-// which can be past midnight. A bundle also holds a manifest of its own,
-// which names its dates alone, so that a page reading it offline asks for
-// no file the bundle lacks.
+// ended, at most BUNDLE_DATE_COUNT_MAX of them, each with its names file
+// and, where its snapshot has them, its trip path index and the shard of
+// every route the index names, and the route and stop tile archive, which
+// holds the stops and route shapes a snapshot leaves out. A shard's path is
+// known only once its date's index is read, so a bundle is planned in two
+// steps: `planBundle` names the files the manifest names, and
+// `bundleWithTripPaths` adds the shards. A service date ends at its last
+// departure, which can be past midnight. A bundle also holds a manifest of
+// its own, which names its dates alone, so that a page reading it offline
+// asks for no file the bundle lacks.
 
 import {unreachable} from "./assert.js"
 
 const BUNDLE_DATE_COUNT_MAX = 2
+const MEBIBYTE_BYTES = 1024 * 1024
 const SECOND_MS = 1000
 const NOT_SAVED_HEADER_NAME = "gobusgo-offline"
 const NOT_SAVED_HEADER_VALUE = "not-saved"
@@ -34,6 +39,21 @@ export const NOT_SAVED_HEADER = Object.freeze({name: NOT_SAVED_HEADER_NAME, valu
 export function isNotSaved(response) {
   return response.headers.get(NOT_SAVED_HEADER_NAME) === NOT_SAVED_HEADER_VALUE
 }
+
+/** The most shards a date's trip path index may name; 380 are measured for a weekday of the whole region. */
+export const TRIP_PATH_SHARD_COUNT_MAX = 1000
+
+/** The most bytes a date's expanded trip path index may hold; about 100 KB is measured. */
+export const TRIP_PATH_INDEX_EXPANDED_BYTES_MAX = MEBIBYTE_BYTES
+
+/** The prefix of every path the routing snapshot files are served under. */
+export const ROUTING_PATH_PREFIX = "/routing/"
+
+/** The kinds of the shards a date's trip path index gives: its files, or the reason it is refused. */
+export const ShardPlanKind = Object.freeze({shards: "shards", refused: "refused"})
+
+/** Why a date's trip paths are not saved. */
+export const ShardRefusal = Object.freeze({tooManyShards: "tooManyShards", badPath: "badPath", unreadable: "unreadable"})
 
 /** The kinds of a bundle plan. */
 export const PlanKind = Object.freeze({bundle: "bundle", nothingToSave: "nothingToSave"})
@@ -65,6 +85,16 @@ function snapshotPaths(entry) {
   }
 
   return paths
+}
+
+function tripPathIndexOf(entry) {
+  const {tripPaths} = entry.files
+
+  if (tripPaths === undefined) {
+    return []
+  }
+
+  return [{serviceDate: entry.serviceDate, path: tripPaths.path, byteSize: tripPaths.byteSize}]
 }
 
 // Service dates are ISO 8601, so their text sorts in date order.
@@ -105,10 +135,16 @@ export function planBundle({manifest, nowMs, tileArchivePath}) {
   }
 
   const paths = []
+  const tripPathIndexes = []
 
   for (const entry of chosen) {
     for (const path of snapshotPaths(entry)) {
       paths.push(path)
+    }
+
+    for (const index of tripPathIndexOf(entry)) {
+      paths.push(index.path)
+      tripPathIndexes.push(index)
     }
   }
 
@@ -118,7 +154,111 @@ export function planBundle({manifest, nowMs, tileArchivePath}) {
 
   const bundleManifest = {...manifest, snapshots: chosen}
   const dates = Array.from(chosen, summaryOf)
-  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates, paths, tileArchivePath, manifest: bundleManifest}
+  return {kind: PlanKind.bundle, formatVersion: manifest.formatVersion, dates, paths, tripPathIndexes, tileArchivePath, manifest: bundleManifest}
+}
+
+/**
+ * The shards `entries`, the entries of a decoded trip path index, name:
+ * `{kind: "shards", files}`, each file a `{path, byteSize}` and a path that
+ * two routes share named once, or `{kind: "refused", reason}` for an index
+ * naming more than TRIP_PATH_SHARD_COUNT_MAX routes or a path outside the
+ * routing files.
+ */
+export function tripPathShardPlan(entries) {
+  if (entries.length > TRIP_PATH_SHARD_COUNT_MAX) {
+    return {kind: ShardPlanKind.refused, reason: ShardRefusal.tooManyShards}
+  }
+
+  const files = []
+  const named = new Set()
+
+  for (const entry of entries) {
+    const isRouting = entry.path.startsWith(ROUTING_PATH_PREFIX)
+
+    if (!isRouting) {
+      return {kind: ShardPlanKind.refused, reason: ShardRefusal.badPath}
+    }
+
+    if (!named.has(entry.path)) {
+      named.add(entry.path)
+      files.push({path: entry.path, byteSize: entry.byteSize})
+    }
+  }
+
+  return {kind: ShardPlanKind.shards, files}
+}
+
+function withoutTripPaths(entry) {
+  const files = {}
+
+  for (const [name, file] of Object.entries(entry.files)) {
+    if (name !== "tripPaths") {
+      files[name] = file
+    }
+  }
+
+  return {...entry, files}
+}
+
+/**
+ * `plan` with the shards of its dates: `shardPlans` holds, for each of the
+ * plan's `tripPathIndexes`, its `serviceDate` and its `shardPlan`, from
+ * `tripPathShardPlan`. A date whose shards are refused is saved without its
+ * index and shards, and its entry in the bundle's manifest drops
+ * `files.tripPaths`, so the manifest names no file the bundle lacks. The
+ * result carries `shardFiles`, every shard to save, and `paths`, every file
+ * the bundle holds.
+ */
+export function bundleWithTripPaths({plan, shardPlans}) {
+  const refusedDates = new Set()
+  const shardFiles = []
+  const named = new Set()
+
+  for (const {serviceDate, shardPlan} of shardPlans) {
+    if (shardPlan.kind === ShardPlanKind.refused) {
+      refusedDates.add(serviceDate)
+      continue
+    }
+
+    for (const file of shardPlan.files) {
+      if (!named.has(file.path)) {
+        named.add(file.path)
+        shardFiles.push(file)
+      }
+    }
+  }
+
+  const droppedPaths = new Set()
+
+  for (const index of plan.tripPathIndexes) {
+    if (refusedDates.has(index.serviceDate)) {
+      droppedPaths.add(index.path)
+    }
+  }
+
+  const paths = []
+
+  for (const path of plan.paths) {
+    if (!droppedPaths.has(path)) {
+      paths.push(path)
+    }
+  }
+
+  for (const file of shardFiles) {
+    paths.push(file.path)
+  }
+
+  const snapshots = []
+
+  for (const entry of plan.manifest.snapshots) {
+    if (refusedDates.has(entry.serviceDate)) {
+      snapshots.push(withoutTripPaths(entry))
+    } else {
+      snapshots.push(entry)
+    }
+  }
+
+  return {...plan, paths, shardFiles, manifest: {...plan.manifest, snapshots}}
 }
 
 /**

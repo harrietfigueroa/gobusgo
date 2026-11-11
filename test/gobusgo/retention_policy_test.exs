@@ -31,17 +31,18 @@ defmodule Gobusgo.RetentionPolicyTest do
           {"raw/oba/schedule-for-route", 3},
           {"usage/page-connections", 3},
           {"tiles/route-stops", 2},
-          {"routing/snapshots", 2}
+          {"routing/snapshots", 2},
+          {"addresses", 7}
         ] do
       test "keeps #{prefix} for #{day_count} days" do
         assert day_count(unquote(prefix)) == unquote(day_count)
       end
     end
 
-    test "holds eleven rules, each one Retention accepts" do
+    test "holds twelve rules, each one Retention accepts" do
       rules = RetentionPolicy.rules()
 
-      assert length(rules) == 11
+      assert length(rules) == 12
       assert Enum.all?(rules, &(Retention.assert_rule(&1) == :ok))
     end
 

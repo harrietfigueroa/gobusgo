@@ -31,6 +31,7 @@ defmodule GobusgoWeb.AppInfo do
   """
 
   alias Gobusgo.Assert
+  alias Gobusgo.Places.License
 
   @type cadences :: %{
           vehicle_interval_ms: pos_integer(),
@@ -41,11 +42,24 @@ defmodule GobusgoWeb.AppInfo do
 
   @type terms :: %{name: String.t(), url: String.t()}
 
+  @type address_source :: %{
+          operator: String.t(),
+          layer: String.t(),
+          terms: terms(),
+          summary: String.t()
+        }
+
   @type recorded_field :: %{field: String.t(), text: String.t()}
 
   @type app_license :: %{name: String.t(), copyright: String.t()}
 
   @type message :: %{headline: String.t(), caption: String.t()}
+
+  @type places_license :: %{
+          name: String.t(),
+          license: String.t(),
+          links: [%{text: String.t(), url: String.t()}]
+        }
 
   @typedoc """
   One thing a page ships to the browser, with its license. `lock_names` are
@@ -111,6 +125,25 @@ defmodule GobusgoWeb.AppInfo do
     url:
       "https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/transit-data-terms-use"
   }
+
+  # King County permits copying, distributing, and using the information,
+  # permits no sale of it without a written agreement, and provides it as is
+  # and states no attribution requirement.
+  # https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights — checked 2026-11-10
+  @address_sources [
+    %{
+      operator: "King County",
+      layer: "Addresses in King County",
+      terms: %{
+        name: "King County GIS Center terms and conditions",
+        url:
+          "https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights"
+      },
+      summary:
+        "King County provides the layer as is, with no warranty. It allows copying, " <>
+          "distributing, and using it, and allows no sale of it without a written agreement."
+    }
+  ]
 
   @recorded [
     %{field: "connectedAt", text: "When the page connected."},
@@ -559,9 +592,35 @@ defmodule GobusgoWeb.AppInfo do
   @spec terms() :: terms()
   def terms, do: @terms
 
+  @doc """
+  The counties whose address points the street address search reads, each
+  with the layer used, a link to the terms it is provided under, and what
+  those terms say.
+  """
+  @spec address_sources() :: [address_source(), ...]
+  def address_sources, do: @address_sources
+
   @doc "The application's own license and its copyright line."
   @spec app_license() :: app_license()
   def app_license, do: @app_license
+
+  @doc """
+  The license of the places file, as a name, the license and its credit, and
+  the links to the license's text, the copyright page, and the places
+  manifest.
+  """
+  @spec places_license() :: places_license()
+  def places_license do
+    %{
+      name: "Places",
+      license: "ODbL 1.0, #{License.attribution()}",
+      links: [
+        %{text: "Open Database License 1.0", url: License.uri()},
+        %{text: "OpenStreetMap copyright", url: License.attribution_uri()},
+        %{text: "Places file", url: License.manifest_path()}
+      ]
+    }
+  end
 
   @doc "Everything a page ships to the browser that has a license of its own, in display order."
   @spec components() :: [component()]

@@ -93,6 +93,7 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.IngestionTaskSupervisor,
              GobusgoWeb.RouteStopTiles,
              Gobusgo.Routing.Snapshots,
+             Gobusgo.Addresses,
              GobusgoWeb.Endpoint,
              Gobusgo.SchedulerSupervisor
            ]
