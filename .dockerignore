@@ -13,3 +13,4 @@ assets/vendor
 !lib
 !priv/static/manifest.webmanifest
 !priv/static/icons
+!priv/openapi.json

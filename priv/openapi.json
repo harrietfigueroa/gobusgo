@@ -4,7 +4,7 @@
     "title": "Gobusgo API",
     "version": "1.0.0",
     "summary": "The public HTTP endpoints of Gobusgo.",
-    "description": "The JSON endpoints a client outside the application's own pages may call: the agency API, the manifests of the published routing, address, and intersection files, and the MCP endpoint at `/mcp`. Every error is RFC 9457 problem details, except the JSON-RPC errors of `/mcp`. Static files, the browser pages, and the LiveView socket are not described; `GET /health` and `GET /ready` are in the operational document, `openapi.private.json`. Any method on a path under `/api` that no operation here names is answered `404` problem details, and any method but POST on `/mcp` is answered `405` (see `x-fallbacks`). This document is maintained by hand and a test checks only that its operations and catch-alls match the router, not that bodies match its schemas."
+    "description": "The JSON endpoints a client outside the application's own pages may call: the agency API, the manifests of the published routing, address, and intersection files, this document at `/api/openapi.json`, and the MCP endpoint at `/mcp`. Every error is RFC 9457 problem details, except the JSON-RPC errors of `/mcp`. Static files, the browser pages, and the LiveView socket are not described; `GET /health` and `GET /ready` are in the operational document, `openapi.private.json`. Any method on a path under `/api` that no operation here names is answered `404` problem details, and any method but POST on `/mcp` is answered `405` (see `x-fallbacks`). This document is maintained by hand and a test checks only that its operations and catch-alls match the router, not that bodies match its schemas."
   },
   "servers": [
     {
@@ -21,6 +21,10 @@
     {
       "name": "Manifests",
       "description": "The manifests of the published routing, address, and intersection files."
+    },
+    {
+      "name": "Documentation",
+      "description": "The public OpenAPI document."
     },
     {
       "name": "MCP",
@@ -441,6 +445,107 @@
         }
       }
     },
+    "/api/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiDocument",
+        "tags": [
+          "Documentation"
+        ],
+        "summary": "Get the public OpenAPI document",
+        "description": "This document, read once when the application is built. A request that accepts `application/openapi+json` is answered with it as `application/json`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The document as JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headOpenApiDocument",
+        "tags": [
+          "Documentation"
+        ],
+        "summary": "Check the public OpenAPI document",
+        "description": "The status and headers the `GET` of this path answers, with no body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The document as JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      }
+    },
     "/mcp": {
       "post": {
         "operationId": "postMcp",
@@ -608,14 +713,14 @@
         }
       },
       "CacheControl": {
-        "description": "Always `no-cache`: the manifest is revalidated on every use.",
+        "description": "Always `no-cache`: the response is revalidated on every use.",
         "schema": {
           "type": "string",
           "const": "no-cache"
         }
       },
       "AccessControlAllowOrigin": {
-        "description": "`*`, so a page of any origin, such as the trip planner app in a frame its host picks, reads the manifest.",
+        "description": "`*`, so a page of any origin, such as the trip planner app in a frame its host picks, reads the response.",
         "schema": {
           "type": "string",
           "const": "*"
@@ -710,6 +815,10 @@
       }
     },
     "schemas": {
+      "OpenApiDocument": {
+        "type": "object",
+        "description": "An OpenAPI 3.1 document: this one, byte for byte as the file `priv/openapi.json` holds it."
+      },
       "Problem": {
         "type": "object",
         "description": "An RFC 9457 problem details object. `type` is always `about:blank`, so `title` is the HTTP reason phrase of `status`.",
