@@ -68,6 +68,8 @@ The index holds one record per shard, in the order of the prefixes, and 3 sectio
 
 `Gobusgo.Intersections.Publication` cuts the streets into shards of at most 65,536 bytes before compression, the address shards' bound (`Gobusgo.Addresses.Build.shard_bytes_max/0`, which GOB-361 set for the transfer of a cold query on Slow 4G), stores each shard and the index as one gzip stream at `intersections/<prefix>-<SHA-256 of the stream>.bin.gz` through `Gobusgo.Writer` with a reader keep time of a year, then, only after every file is stored, the manifest at `intersections/manifest-<UTC build time>-<SHA-256 of the index>.json`: canonical JSON of the shape `components.schemas.IntersectionsManifest` describes in `priv/openapi.json`. The writer stores a destination once, so each build's manifest has a name of its own, and the reader takes the newest by name with `Gobusgo.Reader.discover/2` (`Publication.manifest/1`). The manifests of earlier builds are deleted only after the new one is stored, so a reader that asks at any moment finds one; a file of the same name is left as it is.
 
+A road's key follows the address normalizer, so the normalizer's numbered-highway rule (GOB-394) keys "State Route 99" and "SR 99" as `HWY 99`; files built before that rule hold such a road under its old key, `SR 99TH` for "SR 99", and agree with the browser only once they are built again.
+
 Nothing deletes `intersections/`: `Gobusgo.RetentionPolicy` has no rule for it, the hourly cleanup leaves it alone, and the bucket has no lifecycle rule for it, so the files of an earlier build stay until they are removed by hand.
 
 ## Serving
