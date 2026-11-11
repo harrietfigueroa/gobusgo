@@ -1,6 +1,5 @@
-# Git's built-in diff patterns put the enclosing function, heading, or selector in each hunk header.
-*.ex diff=elixir
-*.exs diff=elixir
+# Git's built-in diff patterns put the enclosing heading or selector in each hunk header.
+# Elixir files keep git's default hunk headers: on macOS, git's built-in elixir pattern segfaults the system regexec on some diffs (GOB-387).
 *.md diff=markdown
 *.css diff=css
 

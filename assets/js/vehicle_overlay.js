@@ -13,6 +13,7 @@ import {assertCondition} from "./assert.js"
 import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"
+import {YourBusLabelKind} from "./journey_labels"
 import {SpriteCache} from "./vehicle_sprites"
 import {BADGE_FONT, GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, dotStrokeOpacity, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
 import {selectionColor, selectionHaloOpacity, selectionHaloRadius, selectionRingRadius, selectionRingWidth} from "./selection_mark"
@@ -39,7 +40,9 @@ import {
   RATE_HZ_MAX,
   routeBadgeCorner,
   screenAngleRadians,
-  vehiclesInBox
+  vehiclesInBox,
+  YourBusSide,
+  yourBusPlacement
 } from "./vehicle_overlay_layout"
 
 const CANVAS_CLASS_NAME = "vehicle-overlay"
@@ -49,6 +52,8 @@ const OPACITY_FALLBACK = 1
 const HALVING_DIVISOR = 2
 const FULL_TURN = HALVING_DIVISOR * Math.PI
 const NO_DASH = Object.freeze([])
+const YOUR_BUS_FONT = "500 12px system-ui, sans-serif"
+const YOUR_BUS_HALO_WIDTH_PIXELS = 3
 
 // The overlay of each map, which the map's other readers ask through the
 // functions below.
@@ -80,6 +85,13 @@ function hasRouteBadge(properties) {
 
 // `value`, a length in CSS pixels, at the nearest whole device pixel, so a
 // bitmap is copied pixel for pixel with no resampling between pixels.
+// Whether a vehicle's feature `properties` are those of the trip and
+// service day `label` names.
+function isYourBus({properties, label}) {
+  const isTrip = properties.tripId === label.tripId
+  return isTrip && properties.serviceDateMs === label.serviceDateMs
+}
+
 function snapToPixel({value, ratio}) {
   return Math.round(value * ratio) / ratio
 }
@@ -166,6 +178,9 @@ class VehicleOverlay {
     // The marker of the vehicle the details view shows, which the canvas
     // rings while it draws that vehicle, or null.
     this.selectedId = null
+    // The label of the first bus of the chosen journey, a `yourBusLabel`
+    // answer, which the canvas writes beside that vehicle while it draws it.
+    this.yourBus = {kind: YourBusLabelKind.none}
 
     this.onRender = () => {
       const isShowing = this.vehiclesAt !== null || this.tiesAt !== null
@@ -240,6 +255,15 @@ class VehicleOverlay {
   // layers ring it while it stands in the source; null rings none.
   markSelected(markerId) {
     this.selectedId = markerId
+    this.drawIfRunning()
+  }
+
+  // Writes `label` beside the vehicle of its trip and service date while
+  // the canvas draws that vehicle, as the map's layer labels it while it
+  // stands in the source; a none label labels none. The label is drawn with the
+  // vehicles, at their rate, so it stays beside its marker.
+  markYourBus(label) {
+    this.yourBus = label
     this.drawIfRunning()
   }
 
@@ -334,6 +358,7 @@ class VehicleOverlay {
     this.drawMarkers({drawn, colors, ratio})
     this.drawBadges({drawn, colors, ratio})
     this.drawRouteBadges({drawn, colors, ratio})
+    this.drawYourBus({drawn, colors, width})
 
     this.drawn = drawn
   }
@@ -440,6 +465,40 @@ class VehicleOverlay {
     }
 
     return opacity
+  }
+
+  // The first bus's label beside its marker, in the halo and ink of the
+  // map's own labels so it reads over any ground.
+  drawYourBus({drawn, colors, width}) {
+    const {yourBus} = this
+
+    if (yourBus.kind === YourBusLabelKind.none) {
+      return
+    }
+
+    const bus = drawn.find((vehicle) => isYourBus({properties: vehicle.feature.properties, label: yourBus}))
+
+    if (bus === undefined) {
+      return
+    }
+
+    const context = this.canvas.getContext("2d")
+    context.font = YOUR_BUS_FONT
+    const textWidth = context.measureText(yourBus.text).width
+    const placement = yourBusPlacement({x: bus.x, y: bus.y, kind: bus.marker.kind, textWidth, width})
+    context.textAlign = "left"
+
+    if (placement.side === YourBusSide.left) {
+      context.textAlign = "right"
+    }
+
+    context.textBaseline = "middle"
+    context.lineJoin = "round"
+    context.lineWidth = YOUR_BUS_HALO_WIDTH_PIXELS * HALVING_DIVISOR
+    context.strokeStyle = colors.badgePaper
+    context.strokeText(yourBus.text, placement.textX, placement.textY)
+    context.fillStyle = colors.badgeInk
+    context.fillText(yourBus.text, placement.textX, placement.textY)
   }
 
   // Copies `sprite` centered on `x`, `y`.

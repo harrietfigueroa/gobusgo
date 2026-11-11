@@ -723,7 +723,13 @@ function pointFeature({coordinate, kind}) {
   return {type: "Feature", geometry: {type: "Point", coordinates: coordinate}, properties: {kind}}
 }
 
-function legCoordinates({journey, leg, origin}) {
+/**
+ * The coordinates of `leg` of `journey`, each `[lon, lat]`: a ride's stops
+ * in order, a walk's two ends, with `origin`, the rider's position as a
+ * list of one coordinate or none, standing for a walk from a position. A
+ * stop with no known position is left out.
+ */
+export function legCoordinates({journey, leg, origin}) {
   switch (leg.kind) {
     case LegKind.ride: {
       const coordinates = []

@@ -73,12 +73,20 @@ export function liveStopIds({journeys, countMax}) {
   return stopIds
 }
 
+/**
+ * Whether `arrival` is of the ride's trip near the ride's scheduled
+ * departure, `departureMs`, whether its time is predicted or scheduled.
+ */
+export function isRideRun({arrival, tripId, departureMs}) {
+  const isTrip = arrival.trip_id === tripId
+  const isNear = Math.abs(arrival.scheduled_ms - departureMs) <= MATCH_TOLERANCE_MS
+  return isTrip && isNear
+}
+
 // Whether `arrival` is the predicted arrival of the ride's trip near the
 // ride's scheduled departure, `departureMs`.
 function isRideArrival({arrival, tripId, departureMs}) {
-  const isTrip = arrival.trip_id === tripId
-  const isNear = Math.abs(arrival.scheduled_ms - departureMs) <= MATCH_TOLERANCE_MS
-  const isRun = isTrip && isNear
+  const isRun = isRideRun({arrival, tripId, departureMs})
   return isRun && arrival.predicted === true
 }
 
@@ -119,9 +127,27 @@ export function firstRideLive({journey, shownByStop, serviceDayStartsMs}) {
   return {kind: LiveKind.live, latenessS, routeId: leg.routeId}
 }
 
-// The text of a lateness in whole minutes: on time, late, or early.
-function latenessText(latenessS) {
-  const minutes = Math.round(latenessS / MINUTE_S)
+/**
+ * How far the first bus is from its schedule, in milliseconds, where `live`
+ * is a `firstRideLive` answer: its lateness where the bus is live, and none
+ * where it is scheduled or the journey has no ride.
+ */
+export function liveShiftMs(live) {
+  if (live.kind === LiveKind.live) {
+    return live.latenessS * SECOND_MS
+  }
+
+  return 0
+}
+
+/** A lateness in whole minutes, late positive and early negative. */
+export function latenessMinutes(latenessS) {
+  return Math.round(latenessS / MINUTE_S)
+}
+
+/** The text of a lateness in whole minutes: on time, late, or early. */
+export function latenessText(latenessS) {
+  const minutes = latenessMinutes(latenessS)
 
   if (minutes === 0) {
     return "on time"
@@ -132,7 +158,11 @@ function latenessText(latenessS) {
   return `${-minutes} min early`
 }
 
-function statusText({live, names}) {
+/**
+ * The text of a journey's first bus: its route and its lateness, or that it
+ * is scheduled, or that the journey only walks.
+ */
+export function firstBusText({live, names}) {
   switch (live.kind) {
     case LiveKind.live:
       return `${routeChip({names, routeId: live.routeId}).name} ${latenessText(live.latenessS)}`
@@ -184,12 +214,7 @@ export function journeyCard({row, order, live, nowMs, serviceDayStartsMs, names,
   const {journey} = row
   const startMs = serviceDayStartsMs[journey.serviceDate]
   assertCondition(Number.isInteger(startMs), "journey cards: no start for the service date " + journey.serviceDate)
-  let shiftMs = 0
-
-  if (live.kind === LiveKind.live) {
-    shiftMs = live.latenessS * SECOND_MS
-  }
-
+  const shiftMs = liveShiftMs(live)
   const leaveMs = startMs + journeyLeaveS(journey) * SECOND_MS + shiftMs
   const arrivalMs = startMs + journey.arrivalS * SECOND_MS + shiftMs
 
@@ -199,7 +224,7 @@ export function journeyCard({row, order, live, nowMs, serviceDayStartsMs, names,
     leadText: leadText({leaveMs, nowMs, dayPhrase: row.dayPhrase, timeZone}),
     arriveText: `arrive ${clockText({ms: arrivalMs, timeZone})}`,
     isLive: live.kind === LiveKind.live,
-    detailText: statusText({live, names}) + SEPARATOR + row.changesText,
+    detailText: firstBusText({live, names}) + SEPARATOR + row.changesText,
     segments: barSegments({journey, names}),
     leaveMs,
     arrivalMs,

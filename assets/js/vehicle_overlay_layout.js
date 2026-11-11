@@ -262,3 +262,39 @@ export function placedBadges(vehicles) {
 
   return placed
 }
+
+/** The sides of a marker its first bus's label stands on. */
+export const YourBusSide = Object.freeze({left: "left", right: "right"})
+
+// The room between a marker's edge and the label beside it.
+const YOUR_BUS_GAP_PIXELS = 6
+
+/**
+ * Where the first bus's label stands beside its marker at `x`, `y`: the
+ * `side` of the marker, `textX` where the text starts on the right side or
+ * ends on the left, and `textY` level with the marker's center. The label
+ * stands past the edge of a marker of `kind`, a MarkerKind member, to the
+ * right where `textWidth` fits inside a canvas `width` wide, and else to
+ * the left where it fits there; where neither fits it stands to the right
+ * and the canvas clips it.
+ */
+export function yourBusPlacement({x, y, kind, textWidth, width}) {
+  assertCondition(isPoint({x, y}), `a label stands at a point, got: ${x}, ${y}`)
+  assertCondition(textWidth >= 0, `a label's width is not negative, got: ${textWidth}`)
+  let radius = GLYPH_RADIUS_PIXELS
+
+  if (kind === MarkerKind.round) {
+    radius = MARKER_RADIUS_PIXELS
+  }
+
+  const offset = radius + YOUR_BUS_GAP_PIXELS
+  const isRightFit = x + offset + textWidth <= width
+  const isLeftFit = x - offset - textWidth >= 0
+  const isLeft = !isRightFit && isLeftFit
+
+  if (isLeft) {
+    return {side: YourBusSide.left, textX: x - offset, textY: y}
+  }
+
+  return {side: YourBusSide.right, textX: x + offset, textY: y}
+}

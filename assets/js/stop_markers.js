@@ -11,7 +11,9 @@ import {
   showDetail,
   showsDetail
 } from "./panel_detail"
-import {stopViewElements, suppliedName, writeFavoriteButton} from "./stop_view"
+import {chosenStopMark, stopViewElements, suppliedName, writeFavoriteButton, writeTripLine} from "./stop_view"
+import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME} from "./chosen_journey"
+import {yourBusRow} from "./journey_stop_marks"
 import {isPicking, pickStop} from "./trip_ends"
 import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
@@ -303,6 +305,17 @@ export const StopMarkers = {
     }
 
     window.addEventListener(READY_EVENT_NAME, this.onBasemapReady)
+
+    // A journey chosen, changed, or cleared rewrites the view's trip line
+    // and the mark on its arrivals.
+    this.onChosenChange = () => {
+      if (this.view !== null) {
+        writeTripLine({line: this.view.tripLine, stopId: this.view.stop.id})
+        this.tickArrivals(Date.now())
+      }
+    }
+
+    window.addEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
     window.addEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.addEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
@@ -340,7 +353,8 @@ export const StopMarkers = {
   // Writes the view's arrivals as of `nowMs`, from the answer the view last got.
   writeViewArrivals(nowMs) {
     const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
-    writeArrivals({element: this.view.arrivalsElement, shown, withKey: true})
+    const yourBus = yourBusRow({mark: chosenStopMark(this.view.stop.id), shown})
+    writeArrivals({element: this.view.arrivalsElement, shown, withKey: true, yourBus})
   },
 
   // Writes the view's arrivals again as of `nowMs`, once it has had an answer.
@@ -372,9 +386,9 @@ export const StopMarkers = {
       return
     }
 
-    const {content, favoriteButton, note, arrivalsElement} = stopViewElements(stop)
+    const {content, favoriteButton, note, arrivalsElement, tripLine} = stopViewElements(stop)
     const earlier = this.view
-    this.view = {stop, content, favoriteButton, note, arrivalsElement, shown: null}
+    this.view = {stop, content, favoriteButton, note, arrivalsElement, tripLine, shown: null}
 
     if (earlier !== null) {
       releaseStop({pushEvent: this.push, stopId: earlier.stop.id, holder: VIEW_HOLDER})
@@ -546,6 +560,7 @@ export const StopMarkers = {
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
     this.events.release()
   }

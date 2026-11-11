@@ -146,7 +146,7 @@ defmodule GobusgoWeb.VehicleLive do
   and the route view hold. `trip:filter` names the routes of the selected
   journey: while a trip is open the page shows that filter in place of the
   rider's, with no agency, and neither puts it in the address nor has the
-  browser store it; the line above the tabs names the trip's routes.
+  browser store it; the line above the tabs names the trip's routes, which the browser's trip strip replaces while a journey is chosen.
   `trip:clear` brings back the rider's filter. A change of the filter bar,
   or another filter in the address, ends the trip's filter, which the page
   tells the browser with `trip:filter-ended`; the change is stored and put
@@ -523,7 +523,7 @@ defmodule GobusgoWeb.VehicleLive do
       <%!-- The sheet stands before the map's elements: hooks mount in document
       order, so the stored filter is offered before the map asks for its
       markers and lines. --%>
-      <PanelSheet.sheet detail={@basemap != nil}>
+      <PanelSheet.sheet detail={@basemap != nil} strip={@basemap != nil}>
         <:summary :if={@basemap != nil}>
           <.filter_summary filter={@filter} tokens={@filter_bar.tokens} trip={@trip} />
         </:summary>
