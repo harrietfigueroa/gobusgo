@@ -494,6 +494,31 @@ mix test
 
 `mix test` needs no broker and no network access.
 
+### Inspecting the running server
+
+A server started as a named node bound to localhost can be inspected from a short-lived second node with `elixir --rpc-eval`. Start the server in a terminal, since `iex` exits when its input closes:
+
+```sh
+ERL_EPMD_ADDRESS=127.0.0.1 iex --sname gobusgo \
+  --erl "-kernel inet_dist_use_interface {127,0,0,1}" -S mix phx.server
+```
+
+Then, from a second terminal, read the vehicle view's process and table:
+
+```sh
+elixir --sname probe --rpc-eval gobusgo@$(hostname -s) \
+  'view = Gobusgo.OneBusAway.VehicleView
+   IO.inspect(Process.info(Process.whereis(view), [:memory, :message_queue_len]))
+   IO.inspect({:ets.info(view, :size), :ets.info(view, :memory)})'
+```
+
+which prints `[memory: <bytes>, message_queue_len: <count>]` and then `{<record count>, <words>}`. A view's records live in its named ETS table, which shares the view's name, so the process's own memory says little about the view's size; `:ets.info/2` gives `:memory` in words, 8 bytes each on a 64-bit machine, not bytes. The probe node exits when the expression returns.
+
+- **Read-only expressions only.** An expression runs with the application's full power and environment, the OneBusAway key included.
+- **Ask for sizes and samples, not whole states.** `:sys.get_state/1` copies a process's whole state into the evaluating process. `Process.info/2`, `map_size/1`, `:ets.info(table, :size)`, and `Enum.take/2` copy almost nothing.
+- **The cookie is the only credential.** By default it is `~/.erlang.cookie`, which only the user can read.
+- **EPMD.** `ERL_EPMD_ADDRESS` applies only to an EPMD the node starts itself. An EPMD already listening on every interface stays as it is: it exposes the node's name and port, but not a connection, since `-kernel inet_dist_use_interface {127,0,0,1}` binds the distribution port to localhost. Stop it first to keep everything on localhost.
+
 ### Memory of the vehicle page
 
 Two measurements print the memory the page at `/vehicles` holds, with one fetch cycle of synthetic vehicles in the counts a real cycle had, synthetic routes and paths in the counts of a real day, and twelve further cycles while the page is open. Each reading is given as found and again after a forced collection, so the difference is garbage that was still held.
