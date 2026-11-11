@@ -41,6 +41,7 @@ const NO_FOCUS_KEY = ""
 const EndStateKind = Object.freeze({waiting: "waiting", loading: "loading", resolved: "resolved", choices: "choices", none: "none", locating: "locating", asking: "asking"})
 
 const WAITING = Object.freeze({kind: EndStateKind.waiting, isEditing: false, text: ""})
+const ASKING = Object.freeze({kind: EndStateKind.asking, isEditing: false, text: ""})
 
 // The kinds of the journeys the app offers the model on its own: none to offer, found and waiting to be sent, and spent.
 const OfferKind = Object.freeze({none: "none", ready: "ready", spent: "spent"})
@@ -48,7 +49,6 @@ const OfferKind = Object.freeze({none: "none", ready: "ready", spent: "spent"})
 function journeyOf(row) {
   return row.journey
 }
-const ASKING = Object.freeze({kind: EndStateKind.asking, isEditing: false, text: ""})
 
 function endTextOf(end) {
   switch (end.kind) {
@@ -400,6 +400,7 @@ export function startTripApp({root, origin, host}) {
     const fromName = endTextOf(shown.from)
     const toName = endTextOf(shown.to)
     const context = journeyContext({journey: row.journey, names: shown.outcome.names, serviceDayStartsMs: shown.outcome.serviceDayStartsMs, timeZone, from: fromName, to: toName})
+    app.offer = {kind: OfferKind.spent}
     app.chosen = {kind: "sending"}
     render()
     const updated = await updateModelContext({host, structuredContent: context})
