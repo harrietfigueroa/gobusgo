@@ -437,6 +437,14 @@ function hexOf(bytes) {
 }
 
 /**
+ * The entry of every route of a decoded `index`, in the order the index
+ * holds them: each `{path, byteSize, sha256}`, the manifest entry of a shard.
+ */
+export function indexEntries(index) {
+  return index.entryList
+}
+
+/**
  * The index `bytes` holds, an expanded container of kind 2: `{kind:
  * "decoded", index}`, or `{kind: "refused", reason}`. `index.routeCount` is
  * the routes it holds, and `index.entryOf(routeId)` is the route's `{path,
@@ -508,5 +516,7 @@ export function decodeTripPathIndex(bytes) {
     return entry
   }
 
-  return {kind: PackedOutcome.decoded, index: Object.freeze({routeCount, entryOf})}
+  const entryList = Array.from(entries.values())
+  const index = Object.freeze({routeCount, entryOf, entryList: Object.freeze(entryList)})
+  return {kind: PackedOutcome.decoded, index}
 }
