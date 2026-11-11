@@ -104,13 +104,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
   # the request identifier in its metadata, and the lines that name this
   # test's identifier are the ones its recording wrote.
   defp capture_own_log(metadata, options \\ [], fun) do
-    metadata_keys =
-      case metadata do
-        :all -> :all
-        keys -> [:request_id | keys]
-      end
-
-    log = capture_log([metadata: metadata_keys] ++ options, fun)
+    log = capture_log([metadata: [:request_id | metadata]] ++ options, fun)
     lines = String.split(log, "\n")
     own_lines = Enum.filter(lines, &String.contains?(&1, "request_id=#{@request_id}"))
     Enum.join(own_lines, "\n")
@@ -393,7 +387,7 @@ defmodule Gobusgo.OneBusAway.AgencyRecorderTest do
       stub_body(~s({"code": 400, "currentTime": 1, "text": "bad key #{@api_key}", "version": 2}))
 
       log =
-        capture_own_log(:all, fn ->
+        capture_log([metadata: :all], fn ->
           refute inspect(record(), limit: :infinity) =~ @api_key
         end)
 
