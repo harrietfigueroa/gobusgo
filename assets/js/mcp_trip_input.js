@@ -1,8 +1,8 @@
 // What the trip planner app reads of a `plan_trip` call, as pure functions:
 // the arguments the host sends, or the tool result's `structuredContent`,
-// which holds the same object, read into the two ends' texts and the time
-// the Trip tab plans for. Nothing here reads the document, the network, or a
-// clock.
+// which holds the same object, read into the start, the destination's text,
+// and the time the Trip tab plans for. Nothing here reads the document, the
+// network, or a clock.
 //
 // The arguments come from a model, so each field is checked, and a refusal
 // is a value that names the field, never a throw.
@@ -15,8 +15,19 @@ export const END_TEXT_LENGTH_MAX = 200
 /** The kinds of a read of the arguments. */
 export const InputKind = Object.freeze({found: "found", refused: "refused"})
 
+/** The kinds of a start: where the rider is, or the words that name a place. */
+export const StartKind = Object.freeze({position: "position", words: "words"})
+
 const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const LEAVING_NOW = Object.freeze({mode: TimeMode.now, day: DayChoice.today, clockText: ""})
+const AT_POSITION = Object.freeze({kind: StartKind.position})
+
+// The phrases that name where the rider is rather than a place, compared
+// lowercased with runs of spaces joined and a closing full stop or
+// exclamation mark dropped.
+const POSITION_PHRASES = Object.freeze(["here", "my location", "current location", "my current location", "my position", "where i am"])
+const SPACE_RUN = /\s+/g
+const CLOSING_MARK = /[.!]$/
 
 const MODE_NAMES = Object.freeze(Object.values(TimeMode))
 const DAY_NAMES = Object.freeze(Object.values(DayChoice))
@@ -37,6 +48,38 @@ function isDayName(day) {
 
 function refused(field) {
   return {kind: InputKind.refused, field}
+}
+
+function isPositionPhrase(text) {
+  const spaced = text.toLowerCase().replace(SPACE_RUN, " ")
+  const phrase = spaced.replace(CLOSING_MARK, "")
+  return POSITION_PHRASES.includes(phrase)
+}
+
+// The start: where the rider is for no text, blank text, or a phrase that
+// names their position, and otherwise the words, read as an end's text is.
+function startOf(value) {
+  if (value === undefined) {
+    return {kind: InputKind.found, start: AT_POSITION}
+  }
+
+  const isBlankText = typeof value === "string" && value.trim() === ""
+
+  if (isBlankText) {
+    return {kind: InputKind.found, start: AT_POSITION}
+  }
+
+  const named = endText(value)
+
+  if (named.kind === InputKind.refused) {
+    return named
+  }
+
+  if (isPositionPhrase(named.text)) {
+    return {kind: InputKind.found, start: AT_POSITION}
+  }
+
+  return {kind: InputKind.found, start: {kind: StartKind.words, text: named.text}}
 }
 
 // The text of an end: trimmed, and not blank or longer than the bound.
@@ -127,17 +170,19 @@ export function toolResultArguments(params) {
 
 /**
  * The trip `value`, the arguments of a `plan_trip` call, asks for: an
- * InputKind member, found with `from` and `to`, the trimmed texts of the two
- * ends, and `when`, the `{mode, day, clockText}` the planner takes, or
- * refused with the `field` that failed, `from`, `to`, or `when`. A call with
- * no `when` leaves now, and a `when` of mode `now` carries no time.
+ * InputKind member, found with `from`, a StartKind member, `position` for a
+ * missing or blank `from` or one such as "here" or "my location", and
+ * `words` with the trimmed `text` otherwise; `to`, the destination's trimmed
+ * text; and `when`, the `{mode, day, clockText}` the planner takes. Refused
+ * names the `field` that failed, `from`, `to`, or `when`. A call with no
+ * `when` leaves now, and a `when` of mode `now` carries no time.
  */
 export function tripInput(value) {
   if (!isRecord(value)) {
     return refused("from")
   }
 
-  const from = endText(value.from)
+  const from = startOf(value.from)
 
   if (from.kind === InputKind.refused) {
     return refused("from")
@@ -155,5 +200,5 @@ export function tripInput(value) {
     return timed
   }
 
-  return {kind: InputKind.found, from: from.text, to: to.text, when: timed.when}
+  return {kind: InputKind.found, from: from.start, to: to.text, when: timed.when}
 }
