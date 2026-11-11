@@ -49,7 +49,7 @@ The schedulers start only when the OneBusAway settings are present, and never un
 
 `Gobusgo.Demand` holds the `{dataset, item}` keys the node's processes register, each until its process releases it or exits. It answers which items of a dataset are held, how many processes hold a key, and how long ago a key last had a holder, on the monotonic clock it is started with; its state module takes the time of each release as a value.
 
-A process that holds keys monitors the registry and registers again when the registry restarts. The registry is per node; how a page-serving instance tells an ingestion instance what is in demand is an open decision (GOB-154).
+A vehicle page holds the keys of its open stops, and the MCP `arrivals` tool holds the key of a stop it is asked about, in a process per stop that lives for one hold and at most ten at once (`lib/gobusgo_web/AGENTS.md`, "MCP endpoint"). A page that holds keys monitors the registry and registers again when the registry restarts; an MCP hold does not, and ends with its hold. The registry is per node; how a page-serving instance tells an ingestion instance what is in demand is an open decision (GOB-154).
 
 ## Usage records
 

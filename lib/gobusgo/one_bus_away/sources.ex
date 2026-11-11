@@ -207,6 +207,21 @@ defmodule Gobusgo.OneBusAway.Sources do
   end
 
   @doc """
+  Returns the time between two runs of the arrival source, in milliseconds,
+  which is also the time between two arrival requests it makes.
+  """
+  @spec arrival_interval_ms() :: pos_integer()
+  def arrival_interval_ms, do: @arrival_interval_ms
+
+  @doc """
+  Returns how long the vehicle source keeps its viewer cadence after the
+  last viewer leaves, in milliseconds: the hold a page that goes away leaves
+  behind.
+  """
+  @spec vehicle_hold_ms() :: pos_integer()
+  def vehicle_hold_ms, do: @vehicle_hold_ms
+
+  @doc """
   Returns the vehicle source's shortest interval, in milliseconds: the one
   it runs at while vehicles have a viewer.
   """
