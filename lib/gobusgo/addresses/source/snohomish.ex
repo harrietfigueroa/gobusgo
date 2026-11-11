@@ -1,7 +1,8 @@
 defmodule Gobusgo.Addresses.Source.Snohomish do
   @item_id "3c07edee19f142d2926dc1f7e4efc474"
   @layer_url "https://services6.arcgis.com/z6WYi9VRHfgwgtyW/arcgis/rest/services/Building_Address_Points/FeatureServer/0"
-  @file_name "snohomish-addresses.jsonl"
+  @file_name "snohomish-addresses.csv"
+  @read_bytes 65_536
   @page_count_max 5_000
   @out_fields [
     "OBJECTID",
@@ -12,6 +13,17 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
     "LSt_Type",
     "LSt_PostDir",
     "Post_Comm"
+  ]
+  @columns [
+    "Add_Number",
+    "AddNum_Suf",
+    "LSt_PreDir",
+    "LSt_Name",
+    "LSt_Type",
+    "LSt_PostDir",
+    "Post_Comm",
+    "x",
+    "y"
   ]
 
   @moduledoc """
@@ -29,17 +41,21 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
   space.
 
   `fetch/2` reads the layer's last edit and count, then writes each page's
-  features to a file, one JSON object a line, at most `request.bytes_max`
-  bytes of it and at most #{@page_count_max} pages. A layer that holds more
-  or fewer features than its count said when the read began, because the
-  county edited it meanwhile, is an error, and the scheduler's backoff
-  reads it again. The export's last edit is the layer's. Paging reads the
-  layer itself, so no export is ever stale.
+  features to a CSV file of the columns above, `x` the longitude and `y`
+  the latitude, at most `request.bytes_max` bytes of it and at most
+  #{@page_count_max} pages. The build reads that file with
+  `Gobusgo.Addresses.Csv`, as it reads the Hub exports, so reading a county
+  allocates the same small amount of garbage whichever way it was fetched.
+  A layer that holds more or fewer features than its count said when the
+  read began, because the county edited it meanwhile, is an error, and the
+  scheduler's backoff reads it again. The export's last edit is the layer's.
+  Paging reads the layer itself, so no export is ever stale.
   """
 
   @behaviour Gobusgo.Addresses.Source
 
   alias Gobusgo.Addresses.ArcGis
+  alias Gobusgo.Addresses.Csv
   alias Gobusgo.Addresses.FeaturePages
 
   @impl Gobusgo.Addresses.Source
@@ -79,7 +95,12 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
     device = File.open!(path, [:write, :binary])
 
     try do
-      Enum.reduce_while(pages, %{feature_count: 0, byte_count: 0}, fn
+      header = Csv.encode_row(@columns)
+      :ok = IO.binwrite(device, header)
+      start = %{feature_count: 0, byte_count: IO.iodata_length(header)}
+
+      pages
+      |> Enum.reduce_while(start, fn
         {:page, features}, written ->
           write_page(features, %{device: device, written: written, bytes_max: bytes_max})
 
@@ -96,11 +117,11 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
   defp finished(written), do: {:ok, written}
 
   defp write_page(features, %{device: device, written: written, bytes_max: bytes_max}) do
-    lines = Enum.map(features, &[JSON.encode_to_iodata!(&1), ?\n])
-    page_bytes = IO.iodata_length(lines)
+    rows = Enum.map(features, &(&1 |> row() |> Csv.encode_row()))
+    page_bytes = IO.iodata_length(rows)
 
     if written.byte_count + page_bytes <= bytes_max do
-      :ok = IO.binwrite(device, lines)
+      :ok = IO.binwrite(device, rows)
 
       {:cont,
        %{
@@ -112,33 +133,18 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
     end
   end
 
-  @impl Gobusgo.Addresses.Source
-  def records(path) when is_binary(path) do
-    path
-    |> File.stream!(:line)
-    |> Stream.map(&(&1 |> JSON.decode!() |> record()))
-  end
-
-  defp record(%{"attributes" => attributes} = feature) do
-    %{
-      house_number: house_number(attributes),
-      pre_direction: text(attributes, "LSt_PreDir"),
-      name: text(attributes, "LSt_Name"),
-      type: text(attributes, "LSt_Type"),
-      suf_direction: text(attributes, "LSt_PostDir"),
-      city: text(attributes, "Post_Comm"),
-      lat: degrees(feature, "y"),
-      lon: degrees(feature, "x")
-    }
-  end
-
-  defp house_number(attributes) do
-    number = text(attributes, "Add_Number")
-
-    case text(attributes, "AddNum_Suf") do
-      "" -> number
-      suffix -> number <> " " <> suffix
-    end
+  defp row(%{"attributes" => attributes} = feature) do
+    [
+      text(attributes, "Add_Number"),
+      text(attributes, "AddNum_Suf"),
+      text(attributes, "LSt_PreDir"),
+      text(attributes, "LSt_Name"),
+      text(attributes, "LSt_Type"),
+      text(attributes, "LSt_PostDir"),
+      text(attributes, "Post_Comm"),
+      degrees(feature, "x"),
+      degrees(feature, "y")
+    ]
   end
 
   defp text(attributes, field) do
@@ -151,10 +157,69 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
 
   defp degrees(%{"geometry" => %{} = geometry}, axis) do
     case Map.get(geometry, axis) do
-      value when is_number(value) -> value
-      _absent -> nil
+      value when is_float(value) -> Float.to_string(value)
+      value when is_integer(value) -> Integer.to_string(value)
+      _absent -> ""
     end
   end
 
-  defp degrees(_feature, _axis), do: nil
+  defp degrees(_feature, _axis), do: ""
+
+  @impl Gobusgo.Addresses.Source
+  def records(path) when is_binary(path) do
+    rows = path |> File.stream!(@read_bytes) |> Csv.rows()
+
+    Stream.transform(rows, :header, fn
+      header, :header -> {[], column_indexes(header)}
+      row, indexes -> {[record(row, indexes)], indexes}
+    end)
+  end
+
+  defp column_indexes(header) do
+    positions = header |> Enum.with_index() |> Map.new()
+
+    Map.new(@columns, fn column ->
+      case Map.fetch(positions, column) do
+        {:ok, index} ->
+          {column, index}
+
+        :error ->
+          raise Gobusgo.Assert.AssertionError, message: "the file has no #{column} column"
+      end
+    end)
+  end
+
+  defp record(row, indexes) do
+    fields = List.to_tuple(row)
+
+    %{
+      house_number: house_number(fields, indexes),
+      pre_direction: field(fields, indexes["LSt_PreDir"]),
+      name: field(fields, indexes["LSt_Name"]),
+      type: field(fields, indexes["LSt_Type"]),
+      suf_direction: field(fields, indexes["LSt_PostDir"]),
+      city: field(fields, indexes["Post_Comm"]),
+      lat: coordinate(fields, indexes["y"]),
+      lon: coordinate(fields, indexes["x"])
+    }
+  end
+
+  defp house_number(fields, indexes) do
+    number = field(fields, indexes["Add_Number"])
+
+    case field(fields, indexes["AddNum_Suf"]) do
+      "" -> number
+      suffix -> number <> " " <> suffix
+    end
+  end
+
+  defp field(fields, index) when index < tuple_size(fields), do: elem(fields, index)
+  defp field(_fields, _index), do: ""
+
+  defp coordinate(fields, index) do
+    case Float.parse(field(fields, index)) do
+      {degrees, ""} -> degrees
+      _other -> nil
+    end
+  end
 end

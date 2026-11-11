@@ -31,6 +31,26 @@ defmodule Gobusgo.Addresses.Csv do
            first_row: boolean()
          }
 
+  @doc """
+  `row` written as one CSV row ending in a line feed, a field that holds a
+  comma, a quote, or a line break in double quotes with each quote written
+  twice, so `rows/1` reads the row back as it is.
+  """
+  @spec encode_row([binary()]) :: iodata()
+  def encode_row(row) when is_list(row) do
+    [Enum.intersperse(Enum.map(row, &encode_field/1), ?,), ?\n]
+  end
+
+  defp encode_field(field) when is_binary(field) do
+    needs_quotes = String.contains?(field, [",", "\"", "\n", "\r"])
+
+    if needs_quotes do
+      [?", String.replace(field, "\"", "\"\""), ?"]
+    else
+      field
+    end
+  end
+
   @doc "The rows of the CSV that `chunks` holds."
   @spec rows(Enumerable.t()) :: Enumerable.t()
   def rows(chunks) do

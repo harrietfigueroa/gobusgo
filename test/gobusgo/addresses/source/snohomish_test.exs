@@ -130,8 +130,17 @@ defmodule Gobusgo.Addresses.Source.SnohomishTest do
     assert [%{pre_direction: "", house_number: "30"}] = records(export)
   end
 
+  test "a field with a comma, a quote, or a line break is read back as the county wrote it",
+       %{tmp_dir: tmp_dir} do
+    city = "LAKE, \"STEVENS\"\nWA"
+    {:ok, export} = fetch(tmp_dir, [feature(3, %{"Post_Comm" => city})])
+
+    assert [%{city: ^city}] = records(export)
+  end
+
   test "an empty layer is an export of no records", %{tmp_dir: tmp_dir} do
-    assert {:ok, %{record_count: 0, byte_count: 0}} = fetch(tmp_dir, [])
+    assert {:ok, %{record_count: 0} = export} = fetch(tmp_dir, [])
+    assert records(export) == []
   end
 
   test "asks for each page above the last OBJECTID in WGS 84", %{tmp_dir: tmp_dir} do

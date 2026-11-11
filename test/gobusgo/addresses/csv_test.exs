@@ -55,4 +55,24 @@ defmodule Gobusgo.Addresses.CsvTest do
     text = String.duplicate(",", 300) <> "\n"
     assert_raise AssertionError, fn -> rows_of(text, 65_536) end
   end
+
+  describe "encode_row/1" do
+    for {name, row, expected} <- [
+          {"plain fields", ["a", "b", "c"], "a,b,c\n"},
+          {"empty fields", ["a", "", "c"], "a,,c\n"},
+          {"a comma", ["a,b", "c"], ~s("a,b",c\n)},
+          {"a quote written twice", [~s(say "hi")], ~s("say ""hi"""\n)},
+          {"a line break", ["one\ntwo", "x"], "\"one\ntwo\",x\n"},
+          {"a carriage return", ["one\rtwo"], "\"one\rtwo\"\n"},
+          {"multibyte text", ["Café", "x"], "Café,x\n"}
+        ] do
+      test "writes #{name} so the reader reads the row back" do
+        row = unquote(Macro.escape(row))
+        encoded = row |> Csv.encode_row() |> IO.iodata_to_binary()
+
+        assert encoded == unquote(expected)
+        assert rows_of(encoded, 3) == [row]
+      end
+    end
+  end
 end
