@@ -18,6 +18,7 @@ import {
   ThemeKind,
   createHost,
   incomingOf,
+  isContextAccepted,
   isLocationGranted,
   sendMessage,
   themeOf,
@@ -258,6 +259,14 @@ deepStrictEqual(isLocationGranted({sandbox: {permissions: {camera: {}}}}), false
 deepStrictEqual(isLocationGranted({sandbox: {}}), false, "no permissions")
 deepStrictEqual(isLocationGranted({}), false, "no sandbox")
 deepStrictEqual(isLocationGranted(undefined), false, "no capabilities")
+
+// A host takes the model's context only where it declares `updateModelContext`.
+deepStrictEqual(isContextAccepted({updateModelContext: {text: {}}}), true, "a declared context update")
+deepStrictEqual(isContextAccepted({updateModelContext: {}}), true, "a declared context update with no content types")
+deepStrictEqual(isContextAccepted({message: {}}), false, "another capability")
+deepStrictEqual(isContextAccepted({updateModelContext: true}), false, "a context update that is no record")
+deepStrictEqual(isContextAccepted({}), false, "no capabilities named")
+deepStrictEqual(isContextAccepted(undefined), false, "no capabilities")
 
 deepStrictEqual(themeOf({theme: "dark"}), {kind: ThemeKind.named, theme: "dark"}, "a dark theme")
 deepStrictEqual(themeOf({theme: "light", displayMode: "inline"}), {kind: ThemeKind.named, theme: "light"}, "a light theme")

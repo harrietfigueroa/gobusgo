@@ -55,7 +55,9 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
           "names, as they said them: a stop, a place, a street address, or an intersection " <>
           "such as \"Pine and 3rd\". The rider's device finds the places and the journeys " <>
           "and shows them to the rider, who chooses one; the chosen journey comes back as " <>
-          "context. Pass the rider's words for each end unchanged. When the rider names no " <>
+          "context. When the app finds both ends itself, the journeys it found reach the " <>
+          "model as context, and a journey the rider chooses replaces them. Pass the " <>
+          "rider's words for each end unchanged. When the rider names no " <>
           ~s(start or says only "here", leave from out or pass "here": the app uses the ) <>
           "device's location where the host allows it and otherwise asks the rider where they are.",
       "inputSchema" => %{

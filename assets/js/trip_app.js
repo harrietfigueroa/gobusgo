@@ -16,10 +16,10 @@ import {button, element} from "./dom_element"
 import {cardElement} from "./journey_card_view"
 import {firstRideLive, journeyCard} from "./journey_cards"
 import {appendMessage} from "./message"
-import {HostMethod, OutcomeKind, ThemeKind, createHost, isLocationGranted, sendMessage, themeOf, updateModelContext} from "./mcp_host"
+import {HostMethod, OutcomeKind, ThemeKind, createHost, isContextAccepted, isLocationGranted, sendMessage, themeOf, updateModelContext} from "./mcp_host"
 import {ResolutionKind, resolution} from "./mcp_trip_ends"
 import {InputKind, StartKind, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
-import {chosenMessage, journeyContext} from "./mcp_trip_journey"
+import {chosenMessage, journeyContext, journeysContext} from "./mcp_trip_journey"
 import {PlanKind, planTrip} from "./mcp_trip_plan"
 import {SEARCH_CENTER_DEFAULT} from "./where_to"
 import {createSearchFiles} from "./where_to_files"
@@ -41,6 +41,13 @@ const NO_FOCUS_KEY = ""
 const EndStateKind = Object.freeze({waiting: "waiting", loading: "loading", resolved: "resolved", choices: "choices", none: "none", locating: "locating", asking: "asking"})
 
 const WAITING = Object.freeze({kind: EndStateKind.waiting, isEditing: false, text: ""})
+
+// The kinds of the journeys the app offers the model on its own: none to offer, found and waiting to be sent, and spent.
+const OfferKind = Object.freeze({none: "none", ready: "ready", spent: "spent"})
+
+function journeyOf(row) {
+  return row.journey
+}
 const ASKING = Object.freeze({kind: EndStateKind.asking, isEditing: false, text: ""})
 
 function endTextOf(end) {
@@ -252,6 +259,9 @@ export function startTripApp({root, origin, host}) {
     plan: {kind: "idle"},
     chosen: {kind: "none"},
     isLocationOffered: false,
+    isContextAccepted: false,
+    isOfferPending: false,
+    offer: {kind: OfferKind.none},
   }
 
   function searchNear() {
@@ -267,7 +277,8 @@ export function startTripApp({root, origin, host}) {
     render()
   }
 
-  async function resolveEnd({end, text}) {
+  // `isAutomatic` is whether the end comes from the start the call named, not from the rider.
+  async function resolveEnd({end, text, isAutomatic}) {
     setEnd({end, state: {kind: EndStateKind.loading, isEditing: false, text}})
     files.warm({routingManifestUrl: ROUTING_MANIFEST_PATH})
     await Promise.allSettled(files.pendingLoads())
@@ -276,7 +287,7 @@ export function startTripApp({root, origin, host}) {
 
     switch (decided.kind) {
       case ResolutionKind.resolved:
-        setEnd({end, state: {kind: EndStateKind.resolved, isEditing: false, text, end: decided.end}})
+        setEnd({end, state: {kind: EndStateKind.resolved, isEditing: false, isAutomatic, text, end: decided.end}})
         break
       case ResolutionKind.choices:
         setEnd({end, state: {kind: EndStateKind.choices, isEditing: false, text, groups: decided.groups}})
@@ -295,7 +306,7 @@ export function startTripApp({root, origin, host}) {
     const state = app.ends[end]
 
     if (state.kind === EndStateKind.resolved) {
-      return {kind: EndStateKind.resolved, end: state.end}
+      return {kind: EndStateKind.resolved, end: state.end, isAutomatic: state.isAutomatic}
     }
 
     return {kind: EndStateKind.loading}
@@ -305,6 +316,12 @@ export function startTripApp({root, origin, host}) {
   async function planWhenReady() {
     app.planCount += 1
     const planNumber = app.planCount
+    const isStale = app.offer.kind === OfferKind.ready
+
+    if (isStale) {
+      app.offer = {kind: OfferKind.none}
+    }
+
     app.chosen = {kind: "none"}
     app.plan = {kind: "idle"}
     const fromEnd = resolvedEnd(TripEnd.from)
@@ -316,6 +333,11 @@ export function startTripApp({root, origin, host}) {
       render()
       return
     }
+
+    // The start's offer is spent by the first plan with both ends resolved, whoever resolved them.
+    const isBothAutomatic = fromEnd.isAutomatic && toEnd.isAutomatic
+    const isOffered = app.isOfferPending && isBothAutomatic
+    app.isOfferPending = false
 
     const from = fromEnd.end
     const to = toEnd.end
@@ -339,9 +361,39 @@ export function startTripApp({root, origin, host}) {
       app.plan = {kind: "state", state: outcome.state, isRetry: outcome.isRetry}
     } else {
       app.plan = {kind: "journeys", outcome, from, to, nowMs: Date.now()}
+
+      if (isOffered) {
+        app.offer = {kind: OfferKind.ready, context: offeredContext()}
+      }
     }
 
     render()
+    await offerJourneys()
+  }
+
+  function offeredContext() {
+    const {outcome, from, to, nowMs} = app.plan
+    const rows = rowsShown()
+    const journeys = Array.from(rows, journeyOf)
+    return journeysContext({journeys, names: outcome.names, serviceDayStartsMs: outcome.serviceDayStartsMs, timeZone, from: endTextOf(from), to: endTextOf(to), plannedAtMs: nowMs})
+  }
+
+  // Sends the journeys the plan found as the model's context, once, where the host takes context.
+  async function offerJourneys() {
+    const isReady = app.offer.kind === OfferKind.ready
+    const isSendable = isReady && app.isContextAccepted
+
+    if (!isSendable) {
+      return
+    }
+
+    const {context} = app.offer
+    app.offer = {kind: OfferKind.spent}
+    const outcome = await updateModelContext({host, structuredContent: context})
+
+    if (outcome.kind !== OutcomeKind.answered) {
+      console.debug("Journeys not offered", {outcome: outcome.kind})
+    }
   }
 
   async function chooseJourney({row, shown}) {
@@ -363,22 +415,22 @@ export function startTripApp({root, origin, host}) {
   }
 
   const handlers = {
-    onSearch: ({end, text}) => { resolveEnd({end, text}) },
+    onSearch: ({end, text}) => { resolveEnd({end, text, isAutomatic: false}) },
     onChoose: ({end, option}) => {
-      setEnd({end, state: {kind: EndStateKind.resolved, isEditing: false, text: option.text, end: option.choice.end}})
+      setEnd({end, state: {kind: EndStateKind.resolved, isEditing: false, isAutomatic: false, text: option.text, end: option.choice.end}})
       planWhenReady()
     },
     onEdit: (end) => { setEnd({end, state: {...app.ends[end], isEditing: true}}) },
-    onLocate: () => { locate() },
+    onLocate: () => { locate({isAutomatic: false}) },
   }
 
-  async function locate() {
+  async function locate({isAutomatic}) {
     setEnd({end: TripEnd.from, state: {kind: EndStateKind.locating, isEditing: false, text: LOCATION_TEXT}})
     const located = await currentPosition()
 
     if (located.isFound) {
       app.position = located.position
-      setEnd({end: TripEnd.from, state: {kind: EndStateKind.resolved, isEditing: false, text: LOCATION_TEXT, end: LOCATION_END}})
+      setEnd({end: TripEnd.from, state: {kind: EndStateKind.resolved, isEditing: false, isAutomatic, text: LOCATION_TEXT, end: LOCATION_END}})
     } else {
       setEnd({end: TripEnd.from, state: ASKING})
     }
@@ -389,11 +441,11 @@ export function startTripApp({root, origin, host}) {
   function startFrom(from) {
     switch (from.kind) {
       case StartKind.words:
-        resolveEnd({end: TripEnd.from, text: from.text})
+        resolveEnd({end: TripEnd.from, text: from.text, isAutomatic: true})
         break
       case StartKind.position:
         if (app.isLocationOffered) {
-          locate()
+          locate({isAutomatic: true})
         } else {
           setEnd({end: TripEnd.from, state: ASKING})
         }
@@ -495,9 +547,11 @@ export function startTripApp({root, origin, host}) {
       app.input = input
       app.planCount += 1
       app.ends = {[TripEnd.from]: WAITING, [TripEnd.to]: WAITING}
+      app.isOfferPending = true
+      app.offer = {kind: OfferKind.none}
       render()
       startFrom(input.from)
-      resolveEnd({end: TripEnd.to, text: input.to})
+      resolveEnd({end: TripEnd.to, text: input.to, isAutomatic: true})
     },
 
     // Offers the rider's location as a start, once the host has said it grants it.
@@ -505,8 +559,14 @@ export function startTripApp({root, origin, host}) {
       app.isLocationOffered = true
 
       if (app.ends[TripEnd.from].kind === EndStateKind.asking) {
-        locate()
+        locate({isAutomatic: true})
       }
+    },
+
+    // Offers the journeys the plan finds as the model's context, once the host has said it takes context.
+    offerContext() {
+      app.isContextAccepted = true
+      offerJourneys()
     },
 
     refuse(field) {
@@ -596,6 +656,10 @@ async function main() {
 
   if (isLocatable) {
     planner.offerLocation()
+  }
+
+  if (isContextAccepted(connected.result.hostCapabilities)) {
+    planner.offerContext()
   }
 
   reportSize({host, body: document.body})
