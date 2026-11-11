@@ -25,13 +25,14 @@ defmodule GobusgoWeb.AddressManifestControllerTest do
   defp record_manifest do
     :ok =
       Addresses.record(Addresses, %{
+        county: :king,
         manifest: @manifest,
         inputs_sha256: :binary.copy(<<0xAB>>, 32),
         built_at: ~U[2026-11-10 12:00:00Z]
       })
 
     on_exit(fn ->
-      :sys.replace_state(Addresses, fn state -> %{state | manifest: nil, built: nil} end)
+      :sys.replace_state(Addresses, fn state -> %{state | counties: %{}} end)
     end)
   end
 
@@ -43,11 +44,11 @@ defmodule GobusgoWeb.AddressManifestControllerTest do
     assert get_resp_header(conn, "content-type") == ["application/problem+json; charset=utf-8"]
   end
 
-  test "answers the manifest as JSON that every request revalidates" do
+  test "answers every county's manifest as JSON that every request revalidates" do
     record_manifest()
     conn = get(build_conn(), "/api/addresses/manifest")
 
-    assert json_response(conn, 200) == @manifest
+    assert json_response(conn, 200) == %{"counties" => [Map.put(@manifest, "county", "king")]}
     assert get_resp_header(conn, "cache-control") == ["no-cache"]
     assert [~s(") <> _tag] = get_resp_header(conn, "etag")
   end

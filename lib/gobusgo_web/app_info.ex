@@ -42,11 +42,15 @@ defmodule GobusgoWeb.AppInfo do
 
   @type terms :: %{name: String.t(), url: String.t()}
 
+  @type disclaimer :: %{title: String.t(), text: String.t()}
+
   @type address_source :: %{
+          id: String.t(),
           operator: String.t(),
           layer: String.t(),
           terms: terms(),
-          summary: String.t()
+          summary: String.t(),
+          disclaimers: [disclaimer()]
         }
 
   @type intersection_source :: %{
@@ -137,8 +141,24 @@ defmodule GobusgoWeb.AppInfo do
   # permits no sale of it without a written agreement, and provides it as is
   # and states no attribution requirement.
   # https://kingcounty.gov/en/dept/kcit/data-information-services/gis-center/about/terms-conditions-copyrights — checked 2026-11-10
+  #
+  # Pierce County's GIS Data Terms of Use (29 May 2026) require a user who
+  # shows the data in a way that reveals the county as its source to tell
+  # the user the county does not warrant the data and makes each of its
+  # disclaimers, which the summary says, and bar the county's logo and text
+  # that suggests a product of the county. Each disclaimer is a section of
+  # the terms that disclaims, under its heading and in its own words; the
+  # section on acting as the county ends before its sentence on the logo,
+  # which binds the application and disclaims nothing.
+  # https://matterhorn.piercecountywa.gov/Disclaimer/PierceCountyGISDataTermsofUse.pdf — checked 2026-11-10
+  #
+  # Snohomish County's license text for the layer is a disclaimer, carried
+  # in its own words. The item is the layer's page on the county's open data
+  # portal, which states it.
+  # https://www.arcgis.com/home/item.html?id=3c07edee19f142d2926dc1f7e4efc474 — checked 2026-11-10
   @address_sources [
     %{
+      id: "king",
       operator: "King County",
       layer: "Addresses in King County",
       terms: %{
@@ -148,7 +168,107 @@ defmodule GobusgoWeb.AppInfo do
       },
       summary:
         "King County provides the layer as is, with no warranty. It allows copying, " <>
-          "distributing, and using it, and allows no sale of it without a written agreement."
+          "distributing, and using it, and allows no sale of it without a written agreement.",
+      disclaimers: []
+    },
+    %{
+      id: "pierce",
+      operator: "Pierce County",
+      layer: "Address_Points",
+      terms: %{
+        name: "Pierce County GIS Data Terms of Use",
+        url: "https://matterhorn.piercecountywa.gov/Disclaimer/PierceCountyGISDataTermsofUse.pdf"
+      },
+      summary:
+        "Pierce County provides the layer as is and with all faults. Pierce County does " <>
+          "not warrant the Data in any way and makes each of the disclaimers set forth in " <>
+          "its terms of use, which follow. The county may require that its data stop being used.",
+      disclaimers: [
+        %{
+          title: "Data warranty disclaimer",
+          text:
+            "All Pierce County GIS data is expressly provided “AS IS” and “WITH ALL FAULTS”. " <>
+              "The County makes no warranty of any kind, express or implied, concerning this " <>
+              "information, including but not limited to any warranties of merchantability or " <>
+              "fitness for any particular purpose. Pierce County assumes no responsibility or " <>
+              "legal liability concerning the Data’s accuracy, reliability, completeness, " <>
+              "timeliness, or usefulness. The Data is not intended to constitute advice nor is " <>
+              "it to be used as a substitute for specific advice from a professional. Users " <>
+              "should not act (or refrain from acting) based upon information in the Data " <>
+              "without independently verifying the information and obtaining any necessary " <>
+              "professional advice. Users are solely responsible for ensuring the accuracy, " <>
+              "currency and other qualities of any products derived from or in connection " <>
+              "with Pierce County’s Data. The Data is collected from various sources and may " <>
+              "be modified over time without notice to improve spatial and attribute " <>
+              "accuracy. The County disclaims responsibility for the spatial accuracy and " <>
+              "attribution of GIS features and makes no warranty concerning same."
+        },
+        %{
+          title: "Liability disclaimer",
+          text:
+            "Pierce County disclaims any responsibility or legal liability to users for " <>
+              "damages of any kind, including lost profits, lost savings or any other " <>
+              "incidental or consequential damages relating to the providing of the Data or " <>
+              "the use of it. Pierce County expressly disclaims any responsibility to defend " <>
+              "or indemnify users against claims of others based on users’ copying, " <>
+              "distribution, or other use of any of the Data. Users assume the risk of using " <>
+              "this Data and shall have no remedy at law or equity against Pierce County in " <>
+              "case the Data provided is inaccurate, incomplete or otherwise defective in any " <>
+              "way."
+        },
+        %{
+          title: "No authority to act as County",
+          text:
+            "Users are not authorized by Pierce County to combine this Data with other data " <>
+              "with the intent or effect of representing a County business function, such as, " <>
+              "but not limited to, matters relating to land development, permitting, or flood " <>
+              "hazard evaluation. When using this Data, a user has no authority to represent " <>
+              "its products or services as though user were a County agent or office."
+        },
+        %{
+          title: "Termination of data availability",
+          text:
+            "Pierce County reserves the right to modify the Data in any way or discontinue " <>
+              "providing any or all Data at any time without notice, and is not liable for any " <>
+              "modification, suspension, or discontinuation of access to the Data. " <>
+              "Additionally, Pierce County may require the termination of all display, " <>
+              "distribution, or other use of any or all Data for any reason including, without " <>
+              "limitation, the violation of any provision of these Terms of Use."
+        }
+      ]
+    },
+    %{
+      id: "snohomish",
+      operator: "Snohomish County",
+      layer: "Building Address Points",
+      terms: %{
+        name: "Building Address Points item license",
+        url: "https://www.arcgis.com/home/item.html?id=3c07edee19f142d2926dc1f7e4efc474"
+      },
+      summary:
+        "Snohomish County provides the layer with no warranty, and Washington law " <>
+          "bars commercial use of lists of individuals in it.",
+      disclaimers: [
+        %{
+          title: "Disclaimer",
+          text:
+            "All maps, data, and information set forth herein (“Data”), are for illustrative " <>
+              "purposes only and are not to be considered an official citation to, or " <>
+              "representation of, the Snohomish County Code. Amendments and updates to the " <>
+              "Data, together with other applicable County Code provisions, may apply which " <>
+              "are not depicted herein. Snohomish County makes no representation or warranty " <>
+              "concerning the content, accuracy, currency, completeness or quality of the " <>
+              "Data contained herein and expressly disclaims any warranty of merchantability " <>
+              "or fitness for any particular purpose. All persons accessing or otherwise " <>
+              "using this Data assume all responsibility for use thereof and agree to hold " <>
+              "Snohomish County harmless from and against any damages, loss, claim or " <>
+              "liability arising out of any error, defect or omission contained within said " <>
+              "Data. Washington State Law, Ch. 42.56 RCW, prohibits state and local agencies " <>
+              "from providing access to lists of individuals intended for use for commercial " <>
+              "purposes and, thus, no commercial use may be made of any Data comprising " <>
+              "lists of individuals contained herein."
+        }
+      ]
     }
   ]
 

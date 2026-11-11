@@ -12,7 +12,7 @@ import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {decodeAddressIndex, decodeAddressShard} from "../../assets/js/address_file.js"
-import {LookupKind, PlacementKind, RESULT_COUNT_MAX, searchAddress, shardFor} from "../../assets/js/address_lookup.js"
+import {LookupKind, PlacementKind, RESULT_COUNT_MAX, mergedResults, searchAddress, shardFor} from "../../assets/js/address_lookup.js"
 import {AssertionError} from "../../assets/js/assert.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/addresses/", import.meta.url))
@@ -184,6 +184,28 @@ deepStrictEqual(shardFor({index: fixtureIndex, text: "pike place market"}).kind,
 
 const uncoveredIndex = {shardCount: 1, prefixes: ["PINE"], paths: ["a"], byteSizes: Uint32Array.of(1), sha256s: ["x"]}
 deepStrictEqual(shardFor({index: uncoveredIndex, text: "5 oak st"}).kind, LookupKind.noShard, "a name no prefix covers")
+
+// Each county's shard is searched on its own, and their found results are
+// ranked together, at most five, so a street on a county line is answered
+// from either side; an outcome that found nothing adds nothing.
+function result({city, placement, filledInCount, distanceM}) {
+  return {label: "1 MAIN ST", city, lat: 47.6, lon: -122.3, placement, filledInCount, distanceM}
+}
+
+const kingFound = {kind: LookupKind.found, query: {}, results: [
+  result({city: "SEATTLE", placement: PlacementKind.interpolated, filledInCount: 0, distanceM: 10}),
+  result({city: "KENT", placement: PlacementKind.exact, filledInCount: 1, distanceM: 900}),
+]}
+const pierceFound = {kind: LookupKind.found, query: {}, results: [
+  result({city: "TACOMA", placement: PlacementKind.exact, filledInCount: 0, distanceM: 4000}),
+  result({city: "FIFE", placement: PlacementKind.exact, filledInCount: 1, distanceM: 50}),
+]}
+const snohomishNothing = {kind: LookupKind.noStreet, query: {}}
+const merged = mergedResults([kingFound, pierceFound, snohomishNothing])
+deepStrictEqual(Array.from(merged, cityOf), ["TACOMA", "FIFE", "KENT", "SEATTLE"], "results of several counties ranked together")
+deepStrictEqual(mergedResults([snohomishNothing, {kind: LookupKind.pastEnd, query: {}}]), [], "no county found the address")
+const crowded = Array.from({length: RESULT_COUNT_MAX}, () => kingFound)
+deepStrictEqual(mergedResults(crowded).length, RESULT_COUNT_MAX, "merged results are at most the result limit")
 
 // Programmer errors crash.
 function searchNotText() {

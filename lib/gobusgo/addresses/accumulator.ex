@@ -12,9 +12,11 @@ defmodule Gobusgo.Addresses.Accumulator do
   street's four fields, the postal city, and the position in degrees. A
   record is counted and left out when its house number is not a whole number
   with at most one letter after it, when its street name is empty after
-  normalization, when its position is not a position on the globe, or when
-  its position is outside the bounds the accumulator was given. The counts
-  name each cause.
+  normalization, when its position is not a position on the globe, when its
+  position is outside the bounds the accumulator was given, or when the
+  record's optional `is_active` is `false`, which a county's source sets for
+  a record the county has not made a standing address. The counts name each
+  cause.
 
   A street is every address of one normalized street (`Gobusgo.Addresses.Normalize`)
   in one postal city. Rows are gathered per street in a tail of at most
@@ -33,6 +35,7 @@ defmodule Gobusgo.Addresses.Accumulator do
   @type bounds :: %{south: number(), west: number(), north: number(), east: number()}
 
   @type county_record :: %{
+          optional(:is_active) => boolean(),
           house_number: String.t(),
           pre_direction: String.t(),
           name: String.t(),
@@ -48,7 +51,8 @@ defmodule Gobusgo.Addresses.Accumulator do
           accepted: non_neg_integer(),
           invalid: non_neg_integer(),
           suffix_unsupported: non_neg_integer(),
-          outside_bounds: non_neg_integer()
+          outside_bounds: non_neg_integer(),
+          inactive: non_neg_integer()
         }
 
   @typedoc "One street in one postal city and the packed rows of its addresses."
@@ -63,18 +67,30 @@ defmodule Gobusgo.Addresses.Accumulator do
 
   defstruct bounds: nil,
             streets: %{},
-            counts: %{read: 0, accepted: 0, invalid: 0, suffix_unsupported: 0, outside_bounds: 0}
+            counts: %{
+              read: 0,
+              accepted: 0,
+              invalid: 0,
+              suffix_unsupported: 0,
+              outside_bounds: 0,
+              inactive: 0
+            }
 
   @doc "A new accumulator that keeps the positions inside `bounds`, or every position for `nil`."
   @spec new(bounds() | nil) :: t()
   def new(bounds), do: %__MODULE__{bounds: bounds}
+
+  @doc "How many records `accumulator` has been given, and what became of them."
+  @spec counts(t()) :: counts()
+  def counts(%__MODULE__{counts: counts}), do: counts
 
   @doc "Adds `record` to `accumulator`, or counts why it is left out."
   @spec add(t(), county_record()) :: t()
   def add(%__MODULE__{} = accumulator, record) when is_map(record) do
     accumulator = update_in(accumulator.counts.read, &(&1 + 1))
 
-    with {:ok, house_number} <- house_number(record.house_number),
+    with :ok <- active(record),
+         {:ok, house_number} <- house_number(record.house_number),
          {:ok, street} <- street(record),
          {:ok, position} <- position(record),
          :ok <- inside(accumulator.bounds, record) do
@@ -107,8 +123,9 @@ defmodule Gobusgo.Addresses.Accumulator do
   def finish(%__MODULE__{streets: entities, counts: counts}) do
     streets =
       entities
-      |> Map.values()
-      |> Enum.map(&finished_street/1)
+      |> Map.keys()
+      |> Enum.reduce({entities, []}, &finish_next/2)
+      |> elem(1)
       |> Enum.sort_by(&{&1.name_key, Normalize.street_key(&1.street), &1.city})
 
     %{
@@ -118,6 +135,9 @@ defmodule Gobusgo.Addresses.Accumulator do
       sha256: sha256(streets)
     }
   end
+
+  defp active(%{is_active: false}), do: {:left_out, :inactive}
+  defp active(_record), do: :ok
 
   defp house_number(text) do
     cleaned = clean(text)
@@ -186,6 +206,14 @@ defmodule Gobusgo.Addresses.Accumulator do
       end
 
     %{accumulator | streets: Map.put(accumulator.streets, key, entity)}
+  end
+
+  # Each street leaves the map as it is finished, so the streets in their
+  # chunked form are freed while the finished ones are made, and the two
+  # forms of every street are never held together.
+  defp finish_next(key, {entities, finished}) do
+    {entity, entities} = Map.pop!(entities, key)
+    {entities, [finished_street(entity) | finished]}
   end
 
   defp finished_street(entity) do

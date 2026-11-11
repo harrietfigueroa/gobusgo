@@ -317,10 +317,26 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     test "credits each address source and links its terms behind the credits' disclosure" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      for %{terms: %{url: url}, operator: operator} <- AppInfo.address_sources() do
+      for %{terms: %{url: url}, operator: operator, id: id} <- AppInfo.address_sources() do
         assert has_element?(view, ~s(#app-info-credits-more a[href="#{url}"]))
-        assert text(view, "#app-info-address-source") =~ operator
+        assert text(view, "#app-info-address-source-#{id}") =~ operator
       end
+    end
+
+    test "passes each county's disclaimers on in the credits' disclosure" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      for %{id: id, disclaimers: disclaimers} <- AppInfo.address_sources(),
+          %{title: title, text: disclaimer_text} <- disclaimers do
+        credit = text(view, "#app-info-address-source-#{id}")
+        assert credit =~ title
+        assert credit =~ disclaimer_text
+      end
+    end
+
+    test "the credits show no county's logo" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      refute has_element?(view, "#app-info-credits-more img")
     end
 
     test "credits OpenStreetMap for the intersections and links the license they are offered under" do
