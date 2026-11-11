@@ -6,7 +6,8 @@
 // directional, each in the USPS abbreviation of Publication 28 where it has
 // one. A numbered name is written as its digits with the ordinal suffix the
 // number takes ("12TH", "1ST", "22ND"), whether it was typed as "12", "12th",
-// or "twelfth".
+// or "twelfth". A numbered highway ("Hwy 99", "SR 99", "State Route 99") is
+// "HWY 99", its number kept as a number.
 
 import {assertCondition} from "./assert.js"
 
@@ -50,6 +51,15 @@ const ORDINAL_WORDS = {
   TWENTIETH: 20, THIRTIETH: 30, FORTIETH: 40, FIFTIETH: 50, SIXTIETH: 60,
   SEVENTIETH: 70, EIGHTIETH: 80, NINETIETH: 90, HUNDREDTH: 100,
 }
+
+// A numbered highway: a designator, whose spellings all key as "HWY", and a
+// whole number that is the route's number, not an ordinal.
+const HIGHWAY_KEY = "HWY"
+const HIGHWAY_DESIGNATORS = new Set(["HWY", "HIGHWAY", "SR"])
+const STATE_ROUTE_WORDS = new Set(["ROUTE", "RTE", "HIGHWAY", "HWY"])
+const ROUTE_NUMBER_PATTERN = /^\d{1,9}$/
+const STATE_ROUTE_PREFIX_LENGTH = 3
+const DESIGNATOR_PREFIX_LENGTH = 2
 
 const UNIT_DESIGNATORS = new Set(["APT", "APARTMENT", "UNIT", "STE", "SUITE", "BLDG", "BUILDING", "FL", "FLOOR", "RM", "ROOM", "SPC", "SPACE", "LOT", "#", "NO"])
 const INTERSECTION_WORDS = new Set(["&", "AND", "AT", "@", "/"])
@@ -131,6 +141,22 @@ function mergeCompoundDirections(tokens) {
   return merged
 }
 
+// The tokens of a numbered highway that open the name tokens from `first` to
+// `last`: "HIGHWAY 99" and "SR 99" are two, "STATE ROUTE 99" is three, and a
+// name that opens with neither is none. The number is the last of them.
+function highwayPrefixLength(tokens, first, last) {
+  const count = last - first + 1
+  const hasDesignatorPrefix = count >= DESIGNATOR_PREFIX_LENGTH && HIGHWAY_DESIGNATORS.has(tokens[first])
+  if (hasDesignatorPrefix && ROUTE_NUMBER_PATTERN.test(tokens[first + 1])) {
+    return DESIGNATOR_PREFIX_LENGTH
+  }
+  const hasStatePrefix = count >= STATE_ROUTE_PREFIX_LENGTH && tokens[first] === "STATE"
+  if (hasStatePrefix && STATE_ROUTE_WORDS.has(tokens[first + 1]) && ROUTE_NUMBER_PATTERN.test(tokens[first + 2])) {
+    return STATE_ROUTE_PREFIX_LENGTH
+  }
+  return 0
+}
+
 /**
  * The four parts of a street from its tokens, in the order a sign or a county
  * writes them: a suffix directional and a type are read from the end and a
@@ -180,6 +206,11 @@ export function parseStreet(rawTokens) {
   }
 
   const nameTokens = []
+  const highwayLength = highwayPrefixLength(tokens, first, last)
+  if (highwayLength > 0) {
+    nameTokens.push(HIGHWAY_KEY, tokens[first + highwayLength - 1])
+    first += highwayLength
+  }
   for (let index = first; index <= last; index++) {
     nameTokens.push(ordinalToken(tokens[index]))
   }

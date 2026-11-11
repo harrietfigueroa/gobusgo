@@ -719,6 +719,111 @@
         "sufDirection": ""
       },
       "key": "INTERNATIONAL BLVD"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "HIGHWAY 99",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "HWY 99",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "HWY 99"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "STATE ROUTE 522",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "HWY 522",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "HWY 522"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "SR 520",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "HWY 520",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "HWY 520"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "HIGHWAY 99",
+        "type": "FRONTAGE RD",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "HWY 99 FRONTAGE",
+        "type": "RD",
+        "sufDirection": ""
+      },
+      "key": "HWY 99 FRONTAGE RD"
+    },
+    {
+      "input": {
+        "preDirection": "N",
+        "name": "STATE HWY 9",
+        "type": "",
+        "sufDirection": "S"
+      },
+      "street": {
+        "preDirection": "N",
+        "name": "HWY 9",
+        "type": "",
+        "sufDirection": "S"
+      },
+      "key": "N HWY 9 S"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "STATE",
+        "type": "ROUTE",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "STATE",
+        "type": "RTE",
+        "sufDirection": ""
+      },
+      "key": "STATE RTE"
+    },
+    {
+      "input": {
+        "preDirection": "",
+        "name": "HWY",
+        "type": "",
+        "sufDirection": ""
+      },
+      "street": {
+        "preDirection": "",
+        "name": "HWY",
+        "type": "",
+        "sufDirection": ""
+      },
+      "key": "HWY"
     }
   ],
   "queries": [
@@ -1589,6 +1694,120 @@
           "sufDirection": ""
         },
         "locality": "SEATAC",
+        "zip": ""
+      }
+    },
+    {
+      "text": "20000 Hwy 99, Lynnwood",
+      "parsed": {
+        "kind": "address",
+        "number": 20000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "LYNNWOOD",
+        "zip": ""
+      }
+    },
+    {
+      "text": "20000 Highway 99, Lynnwood",
+      "parsed": {
+        "kind": "address",
+        "number": 20000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "LYNNWOOD",
+        "zip": ""
+      }
+    },
+    {
+      "text": "20000 SR 99, Lynnwood",
+      "parsed": {
+        "kind": "address",
+        "number": 20000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "LYNNWOOD",
+        "zip": ""
+      }
+    },
+    {
+      "text": "20000 State Route 99, Lynnwood",
+      "parsed": {
+        "kind": "address",
+        "number": 20000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "LYNNWOOD",
+        "zip": ""
+      }
+    },
+    {
+      "text": "20000 S.R. 99, Lynnwood",
+      "parsed": {
+        "kind": "address",
+        "number": 20000,
+        "numberSuffix": "",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "LYNNWOOD",
+        "zip": ""
+      }
+    },
+    {
+      "text": "SR 99",
+      "parsed": {
+        "kind": "street",
+        "street": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "locality": "",
+        "zip": ""
+      }
+    },
+    {
+      "text": "Hwy 99 & 164th St",
+      "parsed": {
+        "kind": "intersection",
+        "first": {
+          "preDirection": "",
+          "name": "HWY 99",
+          "type": "",
+          "sufDirection": ""
+        },
+        "second": {
+          "preDirection": "",
+          "name": "164TH",
+          "type": "ST",
+          "sufDirection": ""
+        },
+        "locality": "",
         "zip": ""
       }
     }
