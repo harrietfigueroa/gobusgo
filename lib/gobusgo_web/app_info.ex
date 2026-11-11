@@ -145,8 +145,11 @@ defmodule GobusgoWeb.AppInfo do
   # Pierce County's GIS Data Terms of Use (29 May 2026) require a user who
   # shows the data in a way that reveals the county as its source to tell
   # the user the county does not warrant the data and makes each of its
-  # disclaimers, and bar the county's logo and text that suggests a product
-  # of the county. The disclaimers are the terms' own words.
+  # disclaimers, which the summary says, and bar the county's logo and text
+  # that suggests a product of the county. Each disclaimer is a section of
+  # the terms that disclaims, under its heading and in its own words; the
+  # section on acting as the county ends before its sentence on the logo,
+  # which binds the application and disclaims nothing.
   # https://matterhorn.piercecountywa.gov/Disclaimer/PierceCountyGISDataTermsofUse.pdf — checked 2026-11-10
   #
   # Snohomish County's license text for the layer is a disclaimer, carried
@@ -177,8 +180,9 @@ defmodule GobusgoWeb.AppInfo do
         url: "https://matterhorn.piercecountywa.gov/Disclaimer/PierceCountyGISDataTermsofUse.pdf"
       },
       summary:
-        "Pierce County provides the layer as is, with no warranty, and does not " <>
-          "warrant it in any way. The county may require that its data stop being used.",
+        "Pierce County provides the layer as is and with all faults. Pierce County does " <>
+          "not warrant the Data in any way and makes each of the disclaimers set forth in " <>
+          "its terms of use, which follow. The county may require that its data stop being used.",
       disclaimers: [
         %{
           title: "Data warranty disclaimer",
@@ -213,15 +217,23 @@ defmodule GobusgoWeb.AppInfo do
               "way."
         },
         %{
-          title: "No authority to act as the county",
+          title: "No authority to act as County",
           text:
             "Users are not authorized by Pierce County to combine this Data with other data " <>
               "with the intent or effect of representing a County business function, such as, " <>
               "but not limited to, matters relating to land development, permitting, or flood " <>
               "hazard evaluation. When using this Data, a user has no authority to represent " <>
-              "its products or services as though user were a County agent or office. " <>
-              "Pierce County does not warrant the Data in any way and makes each of the " <>
-              "disclaimers set forth in its terms of use."
+              "its products or services as though user were a County agent or office."
+        },
+        %{
+          title: "Termination of data availability",
+          text:
+            "Pierce County reserves the right to modify the Data in any way or discontinue " <>
+              "providing any or all Data at any time without notice, and is not liable for any " <>
+              "modification, suspension, or discontinuation of access to the Data. " <>
+              "Additionally, Pierce County may require the termination of all display, " <>
+              "distribution, or other use of any or all Data for any reason including, without " <>
+              "limitation, the violation of any provision of these Terms of Use."
         }
       ]
     },

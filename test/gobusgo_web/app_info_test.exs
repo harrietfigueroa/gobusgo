@@ -613,19 +613,50 @@ defmodule GobusgoWeb.AppInfoTest do
       end
     end
 
-    test "passes on Pierce County's warranty and liability disclaimers and its limit on use of its name" do
+    test "passes on each section of Pierce County's terms that disclaims, under the terms' headings" do
       %{disclaimers: disclaimers} = Enum.find(AppInfo.address_sources(), &(&1.id == "pierce"))
 
       assert Enum.map(disclaimers, & &1.title) == [
                "Data warranty disclaimer",
                "Liability disclaimer",
-               "No authority to act as the county"
+               "No authority to act as County",
+               "Termination of data availability"
              ]
+    end
 
-      text = Enum.map_join(disclaimers, " ", & &1.text)
-      assert text =~ ~s(expressly provided “AS IS” and “WITH ALL FAULTS”)
-      assert text =~ "Pierce County disclaims any responsibility or legal liability to users"
-      assert text =~ "Pierce County does not warrant the Data in any way"
+    # Each disclaimer is quoted from the terms of 29 May 2026, so each case
+    # pins the first and the last sentence it quotes as the terms word them.
+    for {title, first, last} <- [
+          {"Data warranty disclaimer",
+           ~s(All Pierce County GIS data is expressly provided “AS IS” and “WITH ALL FAULTS”.),
+           "makes no warranty concerning same."},
+          {"Liability disclaimer",
+           "Pierce County disclaims any responsibility or legal liability to users",
+           "inaccurate, incomplete or otherwise defective in any way."},
+          {"No authority to act as County",
+           "Users are not authorized by Pierce County to combine this Data with other data",
+           "a user has no authority to represent its products or services as though user " <>
+             "were a County agent or office."},
+          {"Termination of data availability",
+           "Pierce County reserves the right to modify the Data in any way",
+           "the violation of any provision of these Terms of Use."}
+        ] do
+      test "quotes Pierce County's #{title} from its first sentence to its last" do
+        %{disclaimers: disclaimers} =
+          Enum.find(AppInfo.address_sources(), &(&1.id == "pierce"))
+
+        %{text: text} = Enum.find(disclaimers, &(&1.title == unquote(title)))
+        assert String.starts_with?(text, unquote(first))
+        assert String.ends_with?(text, unquote(last))
+      end
+    end
+
+    test "tells the rider what Pierce County's terms require a user be told" do
+      %{summary: summary} = Enum.find(AppInfo.address_sources(), &(&1.id == "pierce"))
+
+      assert summary =~
+               "Pierce County does not warrant the Data in any way and makes each of the " <>
+                 "disclaimers set forth in its terms of use"
     end
 
     test "carries Snohomish County's license text as its disclaimer" do
