@@ -190,7 +190,8 @@ deepStrictEqual([cached.paths.length, isHeldBack({files: cached.files, trip: loo
 const heldBack = planAt({files: served.files, trips: [absentTrip], nowMs: START_MS + MISSING_PATH_RETRY_MS - STEP_MS})
 deepStrictEqual(heldBack.files.missingUntilMs, served.files.missingUntilMs, "a held back trip is not decided again before its retry time")
 const decidedAgain = planAt({files: served.files, trips: [absentTrip], nowMs: START_MS + MISSING_PATH_RETRY_MS})
-deepStrictEqual(Array.from(decidedAgain.files.missingUntilMs.values()), [START_MS + 2 * MISSING_PATH_RETRY_MS], "a trip is held back again for a full retry time")
+const decidedAgainUntilMs = Array.from(decidedAgain.files.missingUntilMs.values())
+deepStrictEqual(decidedAgainUntilMs, [START_MS + MISSING_PATH_RETRY_MS + MISSING_PATH_RETRY_MS], "a trip is held back again for a full retry time")
 
 // A date with no entry is held back and asks for the manifest again at most once per retry time.
 const otherDay = {...loopTrip, serviceDateMs: OTHER_DATE_MS}
