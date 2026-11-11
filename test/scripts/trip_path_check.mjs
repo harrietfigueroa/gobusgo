@@ -1,8 +1,8 @@
 // Checks the vehicle page's trip path decoder and cache as pure functions:
 // the decoder reads the shared fixture the Elixir tests pin to the server's
 // builder, the stored loop trip 1_1137791 of route 1_7994, and must find
-// its points and each stop's distance and times; the cache and the request
-// are fed paths and trips written out by hand. Run it with
+// its points and each stop's distance and times; the cache is fed paths
+// written out by hand. Run it with
 // `node test/scripts/trip_path_check.mjs`; it exits non-zero on the first
 // case that differs.
 
@@ -12,10 +12,8 @@ import {AssertionError} from "../../assets/js/assert.js"
 import {distanceMeters} from "../../assets/js/math/geodesy.js"
 import {
   TRIP_PATH_COUNT_MAX,
-  TRIP_PATH_REQUEST_COUNT_MAX,
   decodeTripPath,
   tripPathKey,
-  tripPathRequest,
   withTripPaths
 } from "../../assets/js/trip_path.js"
 
@@ -23,7 +21,6 @@ const fixtureUrl = new URL("../fixtures/one_bus_away/trip_path/encoded_loop.json
 const fixtureText = readFileSync(fixtureUrl, "utf8")
 const {event, expected} = JSON.parse(fixtureText)
 const DISTANCE_TOLERANCE_M = 1
-const ROUTE_ID = "1_7994"
 
 function stopDistance(stop) {
   return stop.distanceMeters
@@ -81,10 +78,6 @@ function heldPath(name) {
   return {key: tripPathKey({tripId: "trip_" + name, serviceDateMs: event.service_date_ms})}
 }
 
-function trip(name) {
-  return {tripId: "trip_" + name, routeId: ROUTE_ID, serviceDateMs: event.service_date_ms}
-}
-
 const overflowing = []
 for (let index = 0; index <= TRIP_PATH_COUNT_MAX; index += 1) {
   overflowing.push(heldPath(index))
@@ -106,20 +99,5 @@ const both = withTripPaths(new Map(), [firstPath, secondPath])
 const moved = withTripPaths(both, [firstPath])
 const movedKeys = Array.from(moved.keys())
 deepStrictEqual(movedKeys, [secondPath.key, firstPath.key], "a path put again moves to the back")
-
-const held = withTripPaths(new Map(), [firstPath])
-const requested = tripPathRequest(held, [trip("first"), trip("second"), trip("second")])
-deepStrictEqual(
-  requested,
-  [{trip_id: "trip_second", route_id: ROUTE_ID, service_date_ms: event.service_date_ms}],
-  "a request names each trip the cache lacks once"
-)
-
-const manyTrips = []
-for (let index = 0; index <= TRIP_PATH_REQUEST_COUNT_MAX; index += 1) {
-  manyTrips.push(trip(index))
-}
-const bounded = tripPathRequest(new Map(), manyTrips)
-deepStrictEqual(bounded.length, TRIP_PATH_REQUEST_COUNT_MAX, "a request names at most its bound")
 
 console.log("trip path checks passed")

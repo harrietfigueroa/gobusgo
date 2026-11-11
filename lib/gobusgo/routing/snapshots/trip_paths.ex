@@ -46,6 +46,8 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
   Builds and writes the shards and the index of `input.service_date` under
   `input.directory`, reading the views `options` names: `:schedule_view`,
   `:stop_view`, `:route_path_view`, `:write_options`, and `:heap_words_max`.
+  `:attempt` is the number of this try of the date's paths, 1 for the
+  first, which the failure logs carry.
   Returns `{:built, built}`, `:killed` for a process that outgrew the cap,
   or `:failed`.
   """
@@ -54,6 +56,9 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
   def run(%{service_date: %Date{} = service_date, directory: directory, options: options})
       when is_binary(directory) and is_list(options) do
     heap_words_max = Keyword.fetch!(options, :heap_words_max)
+    attempt = Keyword.fetch!(options, :attempt)
+    Assert.condition(is_integer(attempt), "attempt must be an integer")
+    Assert.condition(attempt >= 1, "attempt must be at least 1, got: #{attempt}")
     Assert.condition(is_integer(heap_words_max), "the heap cap must be an integer")
     Assert.condition(heap_words_max > 0, "the heap cap must be positive, got: #{heap_words_max}")
 
@@ -66,6 +71,7 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
       {:ok, {:error, :write_failed}} ->
         Logger.error("Routing trip paths build failed",
           service_date: Date.to_iso8601(service_date),
+          attempt: Keyword.fetch!(options, :attempt),
           reason: "write_failed"
         )
 
@@ -74,6 +80,7 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
       {:exit, :killed} ->
         Logger.error("Routing trip paths build killed",
           service_date: Date.to_iso8601(service_date),
+          attempt: Keyword.fetch!(options, :attempt),
           heap_words_max: heap_words_max
         )
 
@@ -82,6 +89,7 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
       {:exit, reason} ->
         Logger.error("Routing trip paths build failed",
           service_date: Date.to_iso8601(service_date),
+          attempt: Keyword.fetch!(options, :attempt),
           err: exit_error(reason)
         )
 
@@ -243,6 +251,7 @@ defmodule Gobusgo.Routing.Snapshots.TripPaths do
       false ->
         Logger.error("Routing trip paths build failed",
           service_date: Date.to_iso8601(service_date),
+          attempt: Keyword.fetch!(options, :attempt),
           reason: "write_failed"
         )
 

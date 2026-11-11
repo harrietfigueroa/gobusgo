@@ -22,9 +22,17 @@
 // date's snapshot, whose trips that one lacks, with the departure moved
 // into that date's seconds. The two frontiers meet on one timeline, and the
 // window counts from the earliest arrival of either.
+//
+// A query that arrives by a time mirrors this: it loads the chunks from the
+// one holding its arrival backward, stops before the first chunk departing
+// wholly before the latest departure found less WINDOW_SECONDS, and keeps
+// the frontier journeys that leave at or after that. Where its date has no
+// journey, or its latest leaves before the date's first connection, it
+// goes back into the previous date's snapshot, whose trips before midnight
+// that one lacks.
 
 import {assertCondition, unreachable} from "./assert.js"
-import {LegKind, OriginKind, createEngine, route} from "./routing_engine.js"
+import {LegKind, OriginKind, createEngine, route, routeArrivingBy} from "./routing_engine.js"
 import {DecodeKind, FORMAT_VERSION, POSITION_UNKNOWN_MICRODEGREES, decodeConnections, decodePositions, decodeStops, decodeTransfers, decodeTrips} from "./routing_snapshot.js"
 import {startsNear} from "./routing_walk.js"
 
@@ -38,7 +46,12 @@ const MICRODEGREES_PER_DEGREE = 1000000
 // A sequence below every hop's, which a trip's first hop, at 0, follows.
 const SEQUENCE_BEFORE_FIRST = -1
 const NO_ARRIVAL_S = Number.POSITIVE_INFINITY
+const NO_DEPARTURE_S = Number.NEGATIVE_INFINITY
+// The index before the first chunk, where a backward load starts with none to read.
+const NO_CHUNK_INDEX = -1
 const RoutedKind = Object.freeze({routed: "routed"})
+// A snapshot's query leaves at a time, or arrives by one.
+const TimeKind = Object.freeze({leaving: "leaving", arrivingBy: "arrivingBy"})
 const CONNECTION_COLUMNS = Object.freeze({
   departureS: Int32Array,
   arrivalS: Int32Array,
@@ -273,7 +286,11 @@ export function loadEngine({files, minimumTransferS}) {
     return route(engine, query)
   }
 
-  return {route: routeQuery}
+  function routeArrivingByQuery(query) {
+    return routeArrivingBy(engine, query)
+  }
+
+  return {route: routeQuery, routeArrivingBy: routeArrivingByQuery}
 }
 
 function stopIndexOf(stopIds) {
@@ -491,17 +508,26 @@ function candidatesOf({scan, tables, stopIndex, serviceDate}) {
     }
 
     const stopPositions = stopPositionsOf({stopIds: legStopIds(legs), stopIndex, tables})
-    candidates.push({serviceDate, arrivalS: journey.arrivalS, changes: journey.changes, legs, stopPositions})
+    const candidate = {serviceDate, arrivalS: journey.arrivalS, changes: journey.changes, legs, stopPositions}
+
+    // A journey arriving by a time leaves at the time its scan found, which
+    // a journey leaving at a time does not carry.
+    if (journey.departureS !== undefined) {
+      candidate.departureS = journey.departureS
+    }
+
+    candidates.push(candidate)
   }
 
   return candidates
 }
 
 // Routes in one snapshot: its tables, the origin and target resolved in its
-// stop numbering, and its chunks by window. `boundS`, in this snapshot's
-// seconds, is an arrival already found elsewhere, which the window counts
-// from where it is earlier than this snapshot's own.
-async function routeSnapshot({entry, departureS, from, toStopId, fetchFile, boundS}) {
+// stop numbering, and its chunks by window, leaving at a time or arriving by
+// one as `time` says. `boundS`, in this snapshot's seconds, is a time
+// already found elsewhere, which the window counts from where it is better
+// than this snapshot's own.
+async function routeSnapshot({entry, time, from, toStopId, fetchFile, boundS}) {
   if (entry.connectionChunks.length > CHUNK_COUNT_MAX) {
     return failed({reason: FailureReason.tooManyChunks, path: ""})
   }
@@ -527,8 +553,7 @@ async function routeSnapshot({entry, departureS, from, toStopId, fetchFile, boun
     return origin
   }
 
-  const query = {origin, target, departureS}
-  const scanned = await scanByWindow({entry, tables, query, fetchFile, boundS})
+  const scanned = await scanOf({entry, tables, time, origin, target, fetchFile, boundS})
 
   if (scanned.kind === JourneysKind.failed) {
     return scanned
@@ -537,6 +562,273 @@ async function routeSnapshot({entry, departureS, from, toStopId, fetchFile, boun
   const candidates = candidatesOf({scan: scanned.scan, tables, stopIndex, serviceDate: entry.serviceDate})
   const loaded = {chunkCount: scanned.chunkCount, byteCount: tables.byteCount + scanned.byteCount}
   return {kind: RoutedKind.routed, candidates, loaded}
+}
+
+// The scan of one snapshot by window in the direction `time` names.
+async function scanOf({entry, tables, time, origin, target, fetchFile, boundS}) {
+  switch (time.kind) {
+    case TimeKind.leaving: {
+      const query = {origin, target, departureS: time.seconds}
+      return await scanByWindow({entry, tables, query, fetchFile, boundS})
+    }
+    case TimeKind.arrivingBy: {
+      const query = {origin, target, arrivalS: time.seconds}
+      return await scanBackByWindow({entry, tables, query, fetchFile, boundS})
+    }
+    default:
+      return unreachable(time.kind, "routing journeys: a time of unknown kind")
+  }
+}
+
+function firstDepartureS(entry) {
+  let firstS = NO_ARRIVAL_S
+
+  for (const chunk of entry.connectionChunks) {
+    firstS = Math.min(firstS, chunk.departureSMin)
+  }
+
+  return firstS
+}
+
+// The index of the last chunk with a connection departing at or before
+// `arrivalS`, or NO_CHUNK_INDEX where none has.
+function lastChunkIndex({chunks, arrivalS}) {
+  for (let index = chunks.length - 1; index >= 0; index--) {
+    if (chunks[index].departureSMin <= arrivalS) {
+      return index
+    }
+  }
+
+  return NO_CHUNK_INDEX
+}
+
+function latestDepartureS(frontier) {
+  const latest = frontier[frontier.length - 1]
+  return latest.departureS
+}
+
+// The frontier arriving by a time over the chunks loaded so far.
+function routeLoadedBack({tables, chunks, minimumTransferS, query}) {
+  const connections = joinChunks(chunks)
+  const engine = createEngine({stopCount: tables.stops.length, connections, transfers: tables.transfers, minimumTransferS})
+  const frontier = routeArrivingBy(engine, query)
+  return {frontier, connections}
+}
+
+// The latest departure the window counts back from: this scan's own, or
+// `boundS` where that is later.
+function windowEndS({frontier, boundS}) {
+  if (frontier.length === 0) {
+    return boundS
+  }
+
+  return Math.max(latestDepartureS(frontier), boundS)
+}
+
+// Loads chunks from the arrival backward until the next one departs wholly
+// before the cutoff, the latest departure less the window, routing after
+// each. The loaded chunks stay in departure order.
+async function scanBackByWindow({entry, tables, query, fetchFile, boundS}) {
+  const chunks = entry.connectionChunks
+  const transferSMin = entry.transferRules.minimumTransferS
+  const loaded = []
+  let byteCount = 0
+  let scan = routeLoadedBack({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+
+  for (let index = lastChunkIndex({chunks, arrivalS: query.arrivalS}); index >= 0; index--) {
+    const endS = windowEndS({frontier: scan.frontier, boundS})
+    const isLeft = endS > NO_DEPARTURE_S
+
+    if (isLeft) {
+      const cutoffS = endS - WINDOW_SECONDS
+
+      if (chunks[index].departureSMax < cutoffS) {
+        break
+      }
+    }
+
+    const fetched = await fetchChecked({fetchFile, file: chunks[index]})
+
+    if (fetched.kind === JourneysKind.failed) {
+      return fetched
+    }
+
+    const chunk = decodedOrFailed({fetched, decode: decodeConnections, path: chunks[index].path})
+
+    if (chunk.kind === JourneysKind.failed) {
+      return chunk
+    }
+
+    loaded.unshift(chunk.records)
+    byteCount += chunk.byteCount
+    scan = routeLoadedBack({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+  }
+
+  return {kind: DecodeKind.decoded, scan, chunkCount: loaded.length, byteCount}
+}
+
+function latestCandidateS(candidates) {
+  let latestS = NO_DEPARTURE_S
+
+  for (const candidate of candidates) {
+    latestS = Math.max(latestS, candidate.departureS)
+  }
+
+  return latestS
+}
+
+// The snapshot whose day starts last before `entry`'s.
+function previousEntryOf({manifest, entry}) {
+  let previous = {kind: ServiceDateKind.none}
+
+  for (const candidate of manifest.snapshots) {
+    const isEarlier = candidate.serviceDayStartMs < entry.serviceDayStartMs
+    const isLater = previous.kind === ServiceDateKind.none || candidate.serviceDayStartMs > previous.entry.serviceDayStartMs
+    const isPrevious = isEarlier && isLater
+
+    if (isPrevious) {
+      previous = {kind: ServiceDateKind.found, entry: candidate}
+    }
+  }
+
+  return previous
+}
+
+function byChangesThenDeparture(left, right) {
+  if (left.changes !== right.changes) {
+    return left.changes - right.changes
+  }
+
+  if (left.absoluteS !== right.absoluteS) {
+    return right.absoluteS - left.absoluteS
+  }
+
+  return left.partIndex - right.partIndex
+}
+
+// The answer arriving by a time from the candidates of one or two
+// snapshots, each part with the seconds its day starts after the first's:
+// their frontier on one timeline, cut at the latest departure less the
+// window, the latest marked.
+function answerArrivingByOf(parts) {
+  const timed = []
+  const loaded = {chunkCount: 0, byteCount: 0}
+
+  for (const [partIndex, part] of parts.entries()) {
+    loaded.chunkCount += part.routed.loaded.chunkCount
+    loaded.byteCount += part.routed.loaded.byteCount
+
+    for (const candidate of part.routed.candidates) {
+      timed.push({candidate, absoluteS: candidate.departureS + part.shiftS, changes: candidate.changes, partIndex})
+    }
+  }
+
+  timed.sort(byChangesThenDeparture)
+  const kept = []
+  let bestS = NO_DEPARTURE_S
+
+  for (const entry of timed) {
+    if (entry.absoluteS > bestS) {
+      bestS = entry.absoluteS
+      kept.push(entry)
+    }
+  }
+
+  if (kept.length === 0) {
+    return {kind: JourneysKind.none, loaded}
+  }
+
+  const cutoffS = bestS - WINDOW_SECONDS
+  const journeys = []
+
+  for (const entry of kept) {
+    if (entry.absoluteS >= cutoffS) {
+      journeys.push({...entry.candidate, isLatest: entry.absoluteS === bestS})
+    }
+  }
+
+  return {kind: JourneysKind.found, journeys, loaded}
+}
+
+// Whether a query arriving by a time in `entry` goes back into the previous
+// service date: it found no journey, or its latest leaves before the date's
+// first connection departs.
+function isContinuingBack({routed, entry}) {
+  const latestS = latestCandidateS(routed.candidates)
+  return latestS < firstDepartureS(entry)
+}
+
+/**
+ * The journeys of `serviceDate` in `manifest` from `from` to the stop
+ * `toStopId`, arriving at or before `arrivalS`, seconds from that date's
+ * start, read as `routeJourneys` reads its query.
+ *
+ * Found journeys leave at or after the latest departure less
+ * WINDOW_SECONDS, fewest changes first, each as `routeJourneys` gives it
+ * with the time it leaves in `departureS` and whether it is the latest in
+ * place of whether it is the earliest; `loaded` counts the chunks and the
+ * bytes fetched.
+ *
+ * Where `serviceDate` has no journey, or its latest leaves before the
+ * date's first connection departs, the query goes back into the snapshot
+ * whose day starts before, once and no further, with the arrival moved into
+ * that date's seconds, and its journeys carry that date.
+ */
+export async function routeJourneysArrivingBy({manifest, serviceDate, arrivalS, from, toStopId, fetchFile}) {
+  const found = entryOf({manifest, serviceDate})
+
+  if (found.kind === JourneysKind.failed) {
+    return found
+  }
+
+  const {entry} = found
+  const first = await routeSnapshot({entry, time: {kind: TimeKind.arrivingBy, seconds: arrivalS}, from, toStopId, fetchFile, boundS: NO_DEPARTURE_S})
+
+  if (first.kind !== RoutedKind.routed) {
+    return first
+  }
+
+  const firstPart = {routed: first, shiftS: 0}
+  const previous = previousEntryOf({manifest, entry})
+  const isPrevious = previous.kind === ServiceDateKind.found
+  const isContinued = isPrevious && isContinuingBack({routed: first, entry})
+
+  if (!isContinued) {
+    return answerArrivingByOf([firstPart])
+  }
+
+  const shiftS = (entry.serviceDayStartMs - previous.entry.serviceDayStartMs) / SECOND_MS
+  assertCondition(Number.isInteger(shiftS), "routing journeys: the service day starts a fraction of a second after the previous: " + shiftS)
+  const boundS = latestCandidateS(first.candidates) + shiftS
+  const time = {kind: TimeKind.arrivingBy, seconds: arrivalS + shiftS}
+  const second = await routeSnapshot({entry: previous.entry, time, from, toStopId, fetchFile, boundS})
+
+  if (second.kind === JourneysKind.failed) {
+    return second
+  }
+
+  if (second.kind !== RoutedKind.routed) {
+    return answerArrivingByOf([firstPart])
+  }
+
+  return answerArrivingByOf([firstPart, {routed: second, shiftS: -shiftS}])
+}
+
+// The manifest entry of `serviceDate`, or why a query cannot use it.
+function entryOf({manifest, serviceDate}) {
+  if (manifest.formatVersion !== FORMAT_VERSION) {
+    return failed({reason: FailureReason.unsupportedVersion, path: ""})
+  }
+
+  const entry = manifest.snapshots.find(function isServiceDate(candidate) {
+    return candidate.serviceDate === serviceDate
+  })
+
+  if (entry === undefined) {
+    return failed({reason: FailureReason.unknownServiceDate, path: ""})
+  }
+
+  return {kind: ServiceDateKind.found, entry}
 }
 
 function earliestCandidateS(candidates) {
@@ -651,19 +943,14 @@ function answerOf(parts) {
  * day starts next, once and no further, and its journeys carry that date.
  */
 export async function routeJourneys({manifest, serviceDate, departureS, from, toStopId, fetchFile}) {
-  if (manifest.formatVersion !== FORMAT_VERSION) {
-    return failed({reason: FailureReason.unsupportedVersion, path: ""})
+  const found = entryOf({manifest, serviceDate})
+
+  if (found.kind === JourneysKind.failed) {
+    return found
   }
 
-  const entry = manifest.snapshots.find(function isServiceDate(candidate) {
-    return candidate.serviceDate === serviceDate
-  })
-
-  if (entry === undefined) {
-    return failed({reason: FailureReason.unknownServiceDate, path: ""})
-  }
-
-  const first = await routeSnapshot({entry, departureS, from, toStopId, fetchFile, boundS: NO_ARRIVAL_S})
+  const {entry} = found
+  const first = await routeSnapshot({entry, time: {kind: TimeKind.leaving, seconds: departureS}, from, toStopId, fetchFile, boundS: NO_ARRIVAL_S})
 
   if (first.kind !== RoutedKind.routed) {
     return first
@@ -681,7 +968,8 @@ export async function routeJourneys({manifest, serviceDate, departureS, from, to
   const shiftS = (next.entry.serviceDayStartMs - entry.serviceDayStartMs) / SECOND_MS
   assertCondition(Number.isInteger(shiftS), "routing journeys: the next service day starts a fraction of a second later: " + shiftS)
   const boundS = earliestCandidateS(first.candidates) - shiftS
-  const second = await routeSnapshot({entry: next.entry, departureS: departureS - shiftS, from, toStopId, fetchFile, boundS})
+  const time = {kind: TimeKind.leaving, seconds: departureS - shiftS}
+  const second = await routeSnapshot({entry: next.entry, time, from, toStopId, fetchFile, boundS})
 
   if (second.kind === JourneysKind.failed) {
     return second

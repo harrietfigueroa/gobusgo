@@ -53,6 +53,13 @@ defmodule GobusgoWeb.AppInfo do
           disclaimers: [disclaimer()]
         }
 
+  @type intersection_source :: %{
+          credit: String.t(),
+          license: terms(),
+          path: String.t(),
+          summary: String.t()
+        }
+
   @type recorded_field :: %{field: String.t(), text: String.t()}
 
   @type app_license :: %{name: String.t(), copyright: String.t()}
@@ -252,6 +259,22 @@ defmodule GobusgoWeb.AppInfo do
       ]
     }
   ]
+
+  # The intersection files are a derivative database of OpenStreetMap, which
+  # the ODbL requires to be offered under the same license, with credit.
+  # https://opendatacommons.org/licenses/odbl/1-0/ — checked 2026-11-10
+  @intersection_source %{
+    credit: "OpenStreetMap contributors",
+    license: %{
+      name: "Open Database License 1.0",
+      url: "https://opendatacommons.org/licenses/odbl/1-0/"
+    },
+    path: "/intersections/",
+    summary:
+      "The street intersections the search finds are made from the named roads of " <>
+        "OpenStreetMap. The files that list them are a derivative database, offered to " <>
+        "anyone under the same license."
+  }
 
   @recorded [
     %{field: "connectedAt", text: "When the page connected."},
@@ -707,6 +730,14 @@ defmodule GobusgoWeb.AppInfo do
   """
   @spec address_sources() :: [address_source(), ...]
   def address_sources, do: @address_sources
+
+  @doc """
+  Where the street intersections the search finds come from: the credit, the
+  license the files are offered under with a link to it, the path the files
+  are served under, and what that means.
+  """
+  @spec intersection_source() :: intersection_source()
+  def intersection_source, do: @intersection_source
 
   @doc "The application's own license and its copyright line."
   @spec app_license() :: app_license()

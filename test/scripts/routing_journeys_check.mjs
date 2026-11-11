@@ -20,6 +20,7 @@ import {
   WINDOW_SECONDS,
   loadEngine,
   routeJourneys,
+  routeJourneysArrivingBy,
   serviceDateAt,
 } from "../../assets/js/routing_journeys.js"
 import {decodePositions} from "../../assets/js/routing_snapshot.js"
@@ -145,6 +146,10 @@ function served(...snapshots) {
 
 function isTomorrowPath(path) {
   return path.startsWith("/tomorrow/")
+}
+
+function isTodayPath(path) {
+  return path.startsWith("/today/")
 }
 
 // A fetch over the snapshot's files in memory, recording each path asked for.
@@ -365,5 +370,131 @@ const pastMidnight = await routeJourneys({manifest: manifestOf(lateToday, tomorr
 deepStrictEqual(datedReadable(pastMidnight.journeys), [{serviceDate: "2026-11-08", arrive: "24:30", changes: 0, isEarliest: true, legs: ["ride L A 23:50 C 24:30"]}])
 deepStrictEqual(pastMidnightFetch.requested.includes("/tomorrow/stops.bin"), true)
 deepStrictEqual(pastMidnightFetch.requested.includes("/tomorrow/connections-5.bin"), false)
+
+// Arriving by 09:00 at C from A, the latest journey changes once and leaves
+// at 08:10 from the chunk of hour 8, so the window reaches back to 07:25.
+// The direct trip leaves at 07:50 from the chunk of hour 7, which the loader
+// has to fetch; the early trip at 06:00 is in a chunk wholly before the
+// window, and the late trip at 09:30 in one after the arrival.
+const arriveByFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  trips: [
+    {id: "E", stopTimes: [["A", "06:00"], ["C", "06:30"]]},
+    {id: "D", stopTimes: [["A", "07:50"], ["C", "08:55"]]},
+    {id: "W1", stopTimes: [["A", "08:10"], ["B", "08:25"]]},
+    {id: "W2", stopTimes: [["B", "08:30"], ["C", "08:50"]]},
+    {id: "LATE", stopTimes: [["A", "09:30"], ["C", "09:45"]]},
+  ],
+}
+
+const ARRIVE_BY_CHUNK_COUNT = 4
+const ARRIVE_BY_LOADED_CHUNK_COUNT = 2
+
+// The journeys of an answer arriving by a time, each with when it leaves.
+function leavingReadable(journeys) {
+  const result = []
+
+  for (const [index, journey] of datedReadable(journeys).entries()) {
+    const {isEarliest, ...rest} = journey
+    deepStrictEqual(isEarliest, undefined)
+    result.push({depart: clock(journeys[index].departureS), isLatest: journeys[index].isLatest, ...rest})
+  }
+
+  return result
+}
+
+// The engine's frontier over every chunk arriving by `arrivalS`, cut at the
+// latest departure less the window, in the readable form of the loader's.
+function wholeArrivingByCutoff({snapshot, from, to, arrivalS}) {
+  const engine = loadEngine({files: snapshot.files, minimumTransferS: TRANSFER_RULES.minimumTransferS})
+  const origin = {kind: OriginKind.stop, stop: snapshot.stopIndex.get(from)}
+  const frontier = engine.routeArrivingBy({origin, target: snapshot.stopIndex.get(to), arrivalS})
+  const latestS = frontier[frontier.length - 1].departureS
+  const result = []
+
+  for (const journey of frontier) {
+    if (journey.departureS >= latestS - WINDOW_SECONDS) {
+      const legs = []
+
+      for (const leg of journey.legs) {
+        const board = snapshot.connections[leg.boardConnection]
+        const alight = snapshot.connections[leg.alightConnection]
+        const parts = ["ride", snapshot.tripIds[board.trip], snapshot.stopIds[board.departureStop], clock(board.departureS), snapshot.stopIds[alight.arrivalStop], clock(alight.arrivalS)]
+        legs.push(parts.join(" "))
+      }
+
+      result.push({depart: clock(journey.departureS), isLatest: journey.departureS === latestS, serviceDate: snapshot.entry.serviceDate, arrive: clock(journey.arrivalS), changes: journey.changes, legs})
+    }
+  }
+
+  return result
+}
+
+// Loading by window backward: the truncated set's journeys are the whole
+// set's frontier cut at the latest departure less the window, and neither
+// the chunk before the window nor the one after the arrival is fetched.
+const arriveBySnapshot = snapshotOf(arriveByFixture)
+const arriveByFetch = memoryFetch(arriveBySnapshot)
+const arriveByQuery = {serviceDate: arriveByFixture.serviceDate, from: {kind: FromKind.stop, stopId: "A"}, toStopId: "C", arrivalS: seconds("09:00")}
+const arrivingBy = await routeJourneysArrivingBy({manifest: manifestOf(arriveBySnapshot), fetchFile: arriveByFetch.fetchFile, ...arriveByQuery})
+deepStrictEqual(arrivingBy.kind, JourneysKind.found)
+
+deepStrictEqual(leavingReadable(arrivingBy.journeys), [
+  {depart: "07:50", isLatest: false, serviceDate: "2026-11-08", arrive: "08:55", changes: 0, legs: ["ride D A 07:50 C 08:55"]},
+  {depart: "08:10", isLatest: true, serviceDate: "2026-11-08", arrive: "08:50", changes: 1, legs: ["ride W1 A 08:10 B 08:25", "ride W2 B 08:30 C 08:50"]},
+])
+
+deepStrictEqual(leavingReadable(arrivingBy.journeys), wholeArrivingByCutoff({snapshot: arriveBySnapshot, from: "A", to: "C", arrivalS: arriveByQuery.arrivalS}))
+deepStrictEqual(arriveBySnapshot.entry.connectionChunks.length, ARRIVE_BY_CHUNK_COUNT)
+deepStrictEqual(arrivingBy.loaded.chunkCount, ARRIVE_BY_LOADED_CHUNK_COUNT)
+deepStrictEqual(arriveByFetch.requested.includes("/fixture/connections-6.bin"), false)
+deepStrictEqual(arriveByFetch.requested.includes("/fixture/connections-9.bin"), false)
+
+// An arrival the network cannot meet: every trip to C arrives after 06:20,
+// so the query reads every chunk departing by then and finds none.
+const tooEarlyFetch = memoryFetch(arriveBySnapshot)
+const tooEarly = await routeJourneysArrivingBy({manifest: manifestOf(arriveBySnapshot), fetchFile: tooEarlyFetch.fetchFile, ...arriveByQuery, arrivalS: seconds("06:20")})
+deepStrictEqual(tooEarly, {kind: JourneysKind.none, loaded: {chunkCount: 1, byteCount: tooEarly.loaded.byteCount}})
+deepStrictEqual(tooEarlyFetch.requested.includes("/fixture/connections-7.bin"), false)
+
+// An arrival before the date's first connection departs reads no chunk.
+const beforeService = await routeJourneysArrivingBy({manifest: manifestOf(arriveBySnapshot), fetchFile: memoryFetch(arriveBySnapshot).fetchFile, ...arriveByQuery, arrivalS: seconds("05:00")})
+deepStrictEqual(beforeService, {kind: JourneysKind.none, loaded: {chunkCount: 0, byteCount: beforeService.loaded.byteCount}})
+
+// A start from a position arriving by a time walks to the stop whose trip
+// leaves latest, and leaves the position that walk before the trip.
+const locatedBy = await routeJourneysArrivingBy({manifest: manifestOf(positionSnapshot), serviceDate: positionFixture.serviceDate, fetchFile: memoryFetch(positionSnapshot).fetchFile, from: fromRider, toStopId: "T", arrivalS: seconds("08:15")})
+deepStrictEqual(readable(locatedBy.journeys), [{arrive: "08:10", changes: 0, isEarliest: undefined, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]}])
+deepStrictEqual(locatedBy.journeys[0].departureS, seconds("08:05") - N2_WALK_S)
+
+// A position with no stop within the radius has nowhere to start.
+const nowhereBy = await routeJourneysArrivingBy({manifest: manifestOf(positionSnapshot), serviceDate: positionFixture.serviceDate, fetchFile: memoryFetch(positionSnapshot).fetchFile, from: farAway, toStopId: "T", arrivalS: seconds("08:15")})
+deepStrictEqual(nowhereBy, {kind: JourneysKind.noStartStop})
+
+// An identifier the stops file does not hold is refused.
+const unknownBy = await routeJourneysArrivingBy({manifest: manifestOf(arriveBySnapshot), fetchFile: memoryFetch(arriveBySnapshot).fetchFile, ...arriveByQuery, toStopId: "Z"})
+deepStrictEqual(unknownBy, {kind: JourneysKind.unknownStop, stopId: "Z"})
+
+// Arriving by 00:45 on the 9th, the 9th's snapshot holds no journey, since
+// the trip past midnight departs before the 9th starts. The query goes back
+// into the 8th, the arrival moved into its seconds, and finds that trip,
+// marked with the 8th's date and timed in its service day.
+const previousDayFetch = memoryFetch(served(lateToday, tomorrow))
+const previousDayQuery = {serviceDate: tomorrowFixture.serviceDate, from: {kind: FromKind.stop, stopId: "A"}, toStopId: "C"}
+const pastMidnightBy = await routeJourneysArrivingBy({manifest: manifestOf(lateToday, tomorrow), fetchFile: previousDayFetch.fetchFile, ...previousDayQuery, arrivalS: seconds("00:45")})
+deepStrictEqual(leavingReadable(pastMidnightBy.journeys), [{depart: "23:50", isLatest: true, serviceDate: "2026-11-08", arrive: "24:30", changes: 0, legs: ["ride L A 23:50 C 24:30"]}])
+deepStrictEqual(previousDayFetch.requested.includes("/today/connections-23.bin"), true)
+
+// A journey of the 9th itself stays on the 9th and fetches nothing of the 8th.
+const morningFetch = memoryFetch(served(lateToday, tomorrow))
+const morningBy = await routeJourneysArrivingBy({manifest: manifestOf(lateToday, tomorrow), fetchFile: morningFetch.fetchFile, ...previousDayQuery, arrivalS: seconds("06:00")})
+deepStrictEqual(leavingReadable(morningBy.journeys), [{depart: "05:12", isLatest: true, serviceDate: "2026-11-09", arrive: "05:40", changes: 0, legs: ["ride M A 05:12 C 05:40"]}])
+const isTodayFetched = morningFetch.requested.some(isTodayPath)
+deepStrictEqual(isTodayFetched, false)
+
+// With no earlier snapshot, the 9th's answer stands alone.
+const firstDateBy = await routeJourneysArrivingBy({manifest: manifestOf(tomorrow), fetchFile: memoryFetch(tomorrow).fetchFile, ...previousDayQuery, arrivalS: seconds("00:45")})
+deepStrictEqual(firstDateBy.kind, JourneysKind.none)
 
 console.log("routing journeys: every case holds")

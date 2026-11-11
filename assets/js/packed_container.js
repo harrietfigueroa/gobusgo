@@ -53,6 +53,8 @@ export const PackedKind = Object.freeze({
   addressShard: 3,
   addressIndex: 4,
   places: 5,
+  intersectionShard: 6,
+  intersectionIndex: 7,
 })
 
 /** The kind table: each kind's number, name, and the file prefix of its stored files. */
@@ -63,6 +65,8 @@ export const KINDS = Object.freeze([
   Object.freeze({number: PackedKind.addressShard, name: "address shard", prefix: "addresses"}),
   Object.freeze({number: PackedKind.addressIndex, name: "address index", prefix: "addresses-index"}),
   Object.freeze({number: PackedKind.places, name: "places", prefix: "places"}),
+  Object.freeze({number: PackedKind.intersectionShard, name: "intersection shard", prefix: "intersections"}),
+  Object.freeze({number: PackedKind.intersectionIndex, name: "intersection index", prefix: "intersections-index"}),
 ])
 
 /** The `kind` of every result. */

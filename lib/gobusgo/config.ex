@@ -11,6 +11,8 @@ defmodule Gobusgo.Config do
   @type basemap_error :: {:missing, :dir}
   @type tiles :: %{dir: String.t()}
   @type tiles_error :: {:missing, :dir}
+  @type intersections :: %{dir: String.t()}
+  @type intersections_error :: {:missing, :dir}
   @type places :: %{dir: String.t()}
   @type places_error :: {:missing, :dir}
   @type routing :: %{dir: String.t()}
@@ -541,6 +543,21 @@ defmodule Gobusgo.Config do
   @spec places() :: {:ok, places()} | {:error, places_error()}
   def places do
     :gobusgo |> Application.get_env(:places, []) |> fetch_places()
+  end
+
+  @doc """
+  Returns the intersections settings from `env`: `:dir`, the directory the
+  locally stored intersection files are served from. A nil or blank value
+  counts as missing.
+  """
+  @spec fetch_intersections(Keyword.t()) ::
+          {:ok, intersections()} | {:error, intersections_error()}
+  def fetch_intersections(env) when is_list(env), do: fetch_dir(env)
+
+  @doc "Reads the intersections settings configured for the running application."
+  @spec intersections() :: {:ok, intersections()} | {:error, intersections_error()}
+  def intersections do
+    :gobusgo |> Application.get_env(:intersections, []) |> fetch_intersections()
   end
 
   defp fetch_dir(env) do

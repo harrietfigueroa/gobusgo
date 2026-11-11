@@ -80,8 +80,6 @@ defmodule Gobusgo.ApplicationTest do
              Gobusgo.OneBusAway.RoutePathView,
              Gobusgo.OneBusAway.StopView,
              Gobusgo.OneBusAway.RouteScheduleView,
-             Gobusgo.OneBusAway.TripPathCache,
-             Gobusgo.OneBusAway.TripPathBuilders,
              Gobusgo.OneBusAway.ArrivalView,
              Gobusgo.OneBusAway.VehicleSituationView,
              Gobusgo.OneBusAway.ArrivalSituationView,

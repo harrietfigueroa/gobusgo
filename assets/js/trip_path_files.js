@@ -4,15 +4,21 @@
 // service date, that entry's index of route shards, and the shard of the
 // trip's route. A trip these files cannot serve, a date with no entry, a
 // route with no shard, a trip its shard lacks, or a file that failed
-// repeatedly, goes to the fallback, which the caller sends to the server.
+// repeatedly, has no path: it is held back until its retry time and then
+// decided again, since the manifest or a file can arrive meanwhile.
 // Nothing here fetches, waits, or keeps time: the page runs the fetches this
 // asks for and hands each outcome back.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {PackedOutcome} from "./packed_container.js"
 import {tripPathKey} from "./trip_path.js"
-import {MISSING_PATH_RETRY_MS, MISSING_TRIP_COUNT_MAX} from "./trip_path_requests.js"
 import {TripPathLookup, decodeTripPathIndex, decodeTripPathShard, tripPathFromShard} from "./trip_path_shard.js"
+
+/** How long a trip with no path is left out before it is decided again. */
+export const MISSING_PATH_RETRY_MS = 2 * 60 * 1000
+
+/** The most trips with no path held at once, the earliest leaving first. */
+export const MISSING_TRIP_COUNT_MAX = 300
 
 /** How long a file fetch is waited for before it counts as failed. */
 export const FILE_FETCH_TIMEOUT_MS = 20 * 1000
@@ -26,7 +32,7 @@ export const MANIFEST_RETRY_MS = 60 * 1000
 /** The most index and shard fetches in flight at once: a downtown view needs 17 to 38 shards. */
 export const SHARD_FETCH_PARALLEL_MAX = 4
 
-/** The failed fetches of one file after which its trips go to the fallback. */
+/** The failed fetches of one file after which its trips have no path. */
 export const SHARD_FAILURE_COUNT_MAX = 3
 
 /** The most shard entries held, decoded or not, the least recently used leaving first. */
@@ -62,7 +68,7 @@ export const ManifestOutcomeKind = Object.freeze({changed: "changed", failed: "f
 export const FileOutcomeKind = Object.freeze({expanded: "expanded", failed: "failed"})
 
 const EntryState = Object.freeze({failed: "failed", pending: "pending", ready: "ready"})
-const Verdict = Object.freeze({fallback: "fallback", found: "found", unusable: "unusable", waiting: "waiting"})
+const Verdict = Object.freeze({found: "found", missing: "missing", waiting: "waiting"})
 const DatesKind = Object.freeze({dates: "dates", refused: "refused"})
 const NO_STARTS = Object.freeze([])
 
@@ -78,7 +84,7 @@ export function emptyTripPathFiles() {
     manifestPending: false,
     indexes: new Map(),
     shards: new Map(),
-    unusableUntilMs: new Map()
+    missingUntilMs: new Map()
   })
 }
 
@@ -333,8 +339,8 @@ function isPreparable(path) {
   return hasPoints && hasStops
 }
 
-function boundedUnusable({unusableUntilMs, keys, untilMs}) {
-  const next = new Map(unusableUntilMs)
+function boundedMissing({missingUntilMs, keys, untilMs}) {
+  const next = new Map(missingUntilMs)
 
   for (const key of keys) {
     next.delete(key)
@@ -382,7 +388,7 @@ function slotVerdict({previous, fetch, inFlight, nowMs}) {
   assertCondition(previous.kind === EntryState.failed, "an entry is pending, failed, or ready")
 
   if (previous.failureCount >= SHARD_FAILURE_COUNT_MAX) {
-    return {kind: Verdict.fallback, starts: NO_STARTS}
+    return {kind: Verdict.missing, starts: NO_STARTS}
   }
 
   if (nowMs >= previous.retryAtMs) {
@@ -392,7 +398,7 @@ function slotVerdict({previous, fetch, inFlight, nowMs}) {
   return {kind: Verdict.waiting, starts: NO_STARTS}
 }
 
-// The manifest entry of a trip's date, or the fallback, and whether the
+// The manifest entry of a trip's date, or missing, and whether the
 // manifest is asked for.
 function manifestVerdict({files, trip, nowMs}) {
   const hasAsked = files.manifestAskedAtMs !== null
@@ -407,19 +413,19 @@ function manifestVerdict({files, trip, nowMs}) {
   const hasDate = files.manifest.dates.has(trip.serviceDateMs)
 
   if (!hasDate) {
-    return {kind: Verdict.fallback, asksManifest: isAskDue}
+    return {kind: Verdict.missing, asksManifest: isAskDue}
   }
 
   const entry = files.manifest.dates.get(trip.serviceDateMs)
 
   if (entry === null) {
-    return {kind: Verdict.fallback, asksManifest: false}
+    return {kind: Verdict.missing, asksManifest: false}
   }
 
   return {kind: Verdict.found, entry, asksManifest: false}
 }
 
-// A trip waits for the first ask of the manifest, and goes to the fallback
+// A trip waits for the first ask of the manifest, and is missing
 // once an ask has failed.
 function noManifestVerdict({files, isAskDue, hasAsked}) {
   if (files.manifestPending) {
@@ -430,7 +436,7 @@ function noManifestVerdict({files, isAskDue, hasAsked}) {
     return {kind: Verdict.waiting, asksManifest: true}
   }
 
-  return {kind: Verdict.fallback, asksManifest: isAskDue}
+  return {kind: Verdict.missing, asksManifest: isAskDue}
 }
 
 function indexVerdict({indexes, trip, entry, inFlight, nowMs}) {
@@ -450,7 +456,7 @@ function shardVerdict({shards, trip, index, inFlight, nowMs}) {
   const shardEntry = index.entryOf(trip.routeId)
 
   if (shardEntry.kind === TripPathLookup.missing) {
-    return {kind: Verdict.fallback, starts: NO_STARTS}
+    return {kind: Verdict.missing, starts: NO_STARTS}
   }
 
   const previous = shards.get(shardKeyOf(trip))
@@ -477,18 +483,18 @@ function pathVerdict({shard, trip}) {
   const path = tripPathFromShard(shard, trip)
 
   if (path.kind === TripPathLookup.missing) {
-    return {kind: Verdict.fallback}
+    return {kind: Verdict.missing}
   }
 
   if (!isPreparable(path)) {
-    return {kind: Verdict.unusable}
+    return {kind: Verdict.missing}
   }
 
   return {kind: Verdict.found, path}
 }
 
-function isUnusable({files, key, nowMs}) {
-  const untilMs = files.unusableUntilMs.get(key)
+function isHeldBack({files, key, nowMs}) {
+  const untilMs = files.missingUntilMs.get(key)
 
   if (untilMs === undefined) {
     return false
@@ -507,8 +513,7 @@ class PlanWork {
     this.asksManifest = false
     this.fetches = []
     this.paths = []
-    this.fallback = []
-    this.unusableKeys = []
+    this.missingKeys = []
 
     for (const entry of [...files.indexes.values(), ...files.shards.values()]) {
       if (entry.kind === EntryState.pending) {
@@ -550,12 +555,8 @@ class PlanWork {
     this.paths.push(path)
   }
 
-  addFallback(trip) {
-    this.fallback.push(trip)
-  }
-
-  addUnusable(key) {
-    this.unusableKeys.push(key)
+  addMissing(trip) {
+    this.missingKeys.push(tripPathKey(trip))
   }
 }
 
@@ -568,16 +569,16 @@ function planTrip({files, work, trip, nowMs}) {
     return
   }
 
-  if (dated.kind === Verdict.fallback) {
-    work.addFallback(trip)
+  if (dated.kind === Verdict.missing) {
+    work.addMissing(trip)
     return
   }
 
   const indexed = indexVerdict({indexes: work.indexes, trip, entry: dated.entry, inFlight: work.inFlight, nowMs})
   work.start(indexed.starts)
 
-  if (indexed.kind === Verdict.fallback) {
-    work.addFallback(trip)
+  if (indexed.kind === Verdict.missing) {
+    work.addMissing(trip)
   }
 
   if (indexed.kind === Verdict.found) {
@@ -589,8 +590,8 @@ function planShard({work, trip, index, nowMs}) {
   const sharded = shardVerdict({shards: work.shards, trip, index, inFlight: work.inFlight, nowMs})
   work.start(sharded.starts)
 
-  if (sharded.kind === Verdict.fallback) {
-    work.addFallback(trip)
+  if (sharded.kind === Verdict.missing) {
+    work.addMissing(trip)
   }
 
   if (sharded.kind === Verdict.found) {
@@ -606,12 +607,8 @@ function planPath({work, trip, shard}) {
     work.addPath(read.path)
   }
 
-  if (read.kind === Verdict.fallback) {
-    work.addFallback(trip)
-  }
-
-  if (read.kind === Verdict.unusable) {
-    work.addUnusable(tripPathKey(trip))
+  if (read.kind === Verdict.missing) {
+    work.addMissing(trip)
   }
 }
 
@@ -626,14 +623,14 @@ function etagOf(files) {
 /**
  * What to do now for `trips`, each with its `tripId`, `routeId`, and
  * `serviceDateMs`: `paths`, the decoded paths of trips the held shards
- * serve, to put in the path cache; `fallback`, the trips the files cannot
- * serve, for the caller to ask the server for; `fetches`, the files to
+ * serve, to put in the path cache; `fetches`, the files to
  * fetch now, each `{kind, path, byteSize, sha256}` with the date and route
  * it serves, at most SHARD_FETCH_PARALLEL_MAX in flight; `manifest`, whether
  * to fetch the manifest and the etag to revalidate it with, empty before it
  * is held; and the `files` state that follows. A trip `cache` holds, or
- * whose path is unusable until its retry time, is left out; a trip whose
- * files are in flight is in none of the lists.
+ * with no path until its retry time, is left out; a trip with no path now is
+ * held back in `files`, and a trip whose files are in flight is in none of
+ * the lists.
  */
 export function planTripPathFiles({files, cache, trips, nowMs}) {
   assertTime(nowMs)
@@ -646,7 +643,7 @@ export function planTripPathFiles({files, cache, trips, nowMs}) {
     seen.add(key)
     const isLeftOut = isRepeat || cache.has(key)
 
-    const isWanted = !isLeftOut && !isUnusable({files, key, nowMs})
+    const isWanted = !isLeftOut && !isHeldBack({files, key, nowMs})
 
     if (isWanted) {
       planTrip({files, work, trip, nowMs})
@@ -654,14 +651,13 @@ export function planTripPathFiles({files, cache, trips, nowMs}) {
   }
 
   const untilMs = nowMs + MISSING_PATH_RETRY_MS
-  const unusableUntilMs = boundedUnusable({unusableUntilMs: files.unusableUntilMs, keys: work.unusableKeys, untilMs})
+  const missingUntilMs = boundedMissing({missingUntilMs: files.missingUntilMs, keys: work.missingKeys, untilMs})
   const manifestPending = files.manifestPending || work.asksManifest
-  const next = Object.freeze({...files, indexes: work.indexes, shards: work.shards, unusableUntilMs, manifestPending})
+  const next = Object.freeze({...files, indexes: work.indexes, shards: work.shards, missingUntilMs, manifestPending})
 
   return Object.freeze({
     files: next,
     paths: Object.freeze(work.paths),
-    fallback: Object.freeze(work.fallback),
     fetches: Object.freeze(work.fetches),
     manifest: Object.freeze({ask: work.asksManifest, etag: etagOf(files)})
   })

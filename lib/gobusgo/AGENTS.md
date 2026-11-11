@@ -25,10 +25,11 @@
 - `command.ex` runs an external command to its end or to a deadline, kills the command's process at the deadline, and returns the last 4,096 bytes of its output.
 - `math/geodesy.ex`, `Gobusgo.Math.Geodesy`, holds the server's geodesy: the Earth's mean radius, which a test reads from `assets/js/math/geodesy.js`, the meters of a degree, π times the radius over 180, which every server caller uses (GOB-324), great-circle distance, and degrees and radians (GOB-322).
 - `places/` builds and publishes the places file; read `places/AGENTS.md`.
+- `intersections/` builds and publishes the intersection files from OpenStreetMap's named roads; read `intersections/AGENTS.md`.
 - `basemap.ex` reads the manifest of the basemap directory, and `basemap/` plans and runs the extraction of the regional archives.
 - `start_memory.ex` and `start_memory/fixture.ex` are the rules and the synthetic network of the start-memory check.
 - `vendor_assets.ex` downloads the vendored front-end assets; read `vendor_assets/AGENTS.md`.
-- `lib/mix/tasks/` holds the Mix tasks: `gobusgo.vendor.fetch`, `gobusgo.vendor.update`, `gobusgo.basemap.extract`, `gobusgo.places.build` (`places/AGENTS.md`), `gobusgo.start_memory`, `gobusgo.start_memory.fixture`, `gobusgo.assets.map_library`, and `gobusgo.assets.service_worker`. The two asset tasks are described in `assets/AGENTS.md`.
+- `lib/mix/tasks/` holds the Mix tasks: `gobusgo.vendor.fetch`, `gobusgo.vendor.update`, `gobusgo.basemap.extract`, `gobusgo.places.build` (`places/AGENTS.md`), `gobusgo.intersections.build` (`intersections/AGENTS.md`), `gobusgo.start_memory`, `gobusgo.start_memory.fixture`, `gobusgo.assets.map_library`, and `gobusgo.assets.service_worker`. The two asset tasks are described in `assets/AGENTS.md`.
 
 ## Cadences and schedulers
 
@@ -106,6 +107,6 @@ Processed data is held in the in-memory views alone, and the application needs n
 
 The OneBusAway datasets, their topics, keys, views, cadences, and the arrivals of the open stops (GOB-158) are in `one_bus_away/AGENTS.md`. GBFS vehicle types take the flow with no recorder, since they are fetched again on their slot (GOB-257), and GBFS shared vehicles take the whole flow from a source that runs only while a page shows them (GOB-256); both are in `gbfs/AGENTS.md`. The routing snapshots are built from the views (`routing/AGENTS.md`), and the route and stop tile archive from the views (`lib/gobusgo_web/AGENTS.md`).
 
-Raw responses, usage records, the route and stop tile archives, the routing snapshot files, the places file and its manifest under `places/`, the address shard files, and the shared vehicle files published to the browser are the only stored files (the archives decided in GOB-217, the published files in GOB-258). Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it, so an old places file stays until it is removed by hand (`lib/gobusgo/places/AGENTS.md`). An S3 mock is not part of the design.
+Raw responses, usage records, the route and stop tile archives, the routing snapshot files, the places file and its manifest under `places/`, the intersection files and their manifest under `intersections/`, the address shard files, and the shared vehicle files published to the browser are the only stored files (the archives decided in GOB-217, the published files in GOB-258). Nothing deletes `places/`: `Gobusgo.RetentionPolicy` has no rule for it, so an old places file stays until it is removed by hand (`lib/gobusgo/places/AGENTS.md`). An S3 mock is not part of the design.
 
 Production uses production services, and local runs never touch production endpoints: configuration selects the target. GOB-19 holds the trigger definition and names the issues that hold the rest of the data flow's decisions.

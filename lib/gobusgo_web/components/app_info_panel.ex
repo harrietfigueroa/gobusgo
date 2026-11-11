@@ -504,7 +504,12 @@ defmodule GobusgoWeb.AppInfoPanel do
   attr :agencies, :list, required: true
 
   defp credits(assigns) do
-    assigns = assign(assigns, terms: AppInfo.terms(), address_sources: AppInfo.address_sources())
+    assigns =
+      assign(assigns,
+        terms: AppInfo.terms(),
+        address_sources: AppInfo.address_sources(),
+        intersection_source: AppInfo.intersection_source()
+      )
 
     ~H"""
     <section id="app-info-credits" class="flex flex-col gap-2">
@@ -535,6 +540,13 @@ defmodule GobusgoWeb.AppInfoPanel do
             <span class="font-semibold">{disclaimer.title}.</span> {disclaimer.text}
           </p>
         </div>
+        <p id="app-info-intersection-source">
+          Street intersections are © {@intersection_source.credit}, under the <a
+            href={@intersection_source.license.url}
+            class="underline"
+            rel="noopener"
+          >{@intersection_source.license.name}</a>. {@intersection_source.summary} The files are at {@intersection_source.path}.
+        </p>
       </.more>
     </section>
     """

@@ -58,7 +58,6 @@ import {
 } from "./vehicle_motion"
 import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
 import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
-import {PathRequestKind, emptyPathRequests, nextPathRequest, pathRequestReplied, pathsReceived} from "./trip_path_requests"
 import {tripPathKey, withTripPaths} from "./trip_path"
 import {
   FILE_FETCH_TIMEOUT_MS,
@@ -547,10 +546,9 @@ export const VehicleMarkers = {
     this.tracked = new Map()
     this.agencyOfMarker = new Map()
     this.clocks = new Map()
-    // The trip paths the page holds, each prepared once, and its requests.
+    // The trip paths the page holds, each prepared once.
     this.pathCache = new Map()
     this.preparedPaths = new WeakMap()
-    this.pathRequests = emptyPathRequests()
     // The snapshot's manifest, indexes, and route shards the paths are read
     // from, and the address of the manifest.
     this.tripPathFiles = emptyTripPathFiles()
@@ -628,8 +626,6 @@ export const VehicleMarkers = {
       this.draw({isSnapped: false})
       this.updateView(markers)
     })
-
-    this.events.handle("trip-paths:paths", (event) => { this.pathsArrived(event) })
 
     // The saved schedule's markers stand where the schedule puts them, on a
     // clock of their own that no prediction reads.
@@ -1328,7 +1324,7 @@ export const VehicleMarkers = {
 
   // Reads the paths of the trips the vehicles of `markerIds` serve that the
   // page lacks from the snapshot's route shards, fetching the files that
-  // takes, and asks the server for those the shards cannot serve.
+  // takes.
   requestPaths(markerIds) {
     const trips = []
 
@@ -1355,7 +1351,6 @@ export const VehicleMarkers = {
       this.fetchFile(file)
     }
 
-    this.requestFromServer(planned.fallback)
     this.keepPaths(planned.paths)
   },
 
@@ -1384,33 +1379,7 @@ export const VehicleMarkers = {
     this.requestPaths(this.tiedIds)
   },
 
-  // Asks the server for the paths of `trips`, which the snapshot's files
-  // cannot serve, as the requests' state allows.
-  requestFromServer(trips) {
-    const next = nextPathRequest({requests: this.pathRequests, cache: this.pathCache, trips, nowMs: performance.now()})
-
-    if (next.kind === PathRequestKind.none) {
-      return
-    }
-
-    this.pathRequests = next.requests
-    this.events.push({
-      name: "trip-paths:request",
-      payload: {trips: next.trips},
-      onReply: (reply) => {
-        this.pathRequests = pathRequestReplied({requests: this.pathRequests, reply, nowMs: performance.now()})
-      }
-    })
-  },
-
-  // Takes the paths of a `trip-paths:paths` event.
-  pathsArrived(event) {
-    const received = pathsReceived({requests: this.pathRequests, event, nowMs: performance.now()})
-    this.pathRequests = received.requests
-    this.keepPaths(received.paths)
-  },
-
-  // Keeps decoded `paths`, from a shard or an event, anchors again each
+  // Keeps decoded `paths` from a shard, anchors again each
   // vehicle of their trips, places a vehicle the source draws at its new
   // prediction, and decides the tier again so they move.
   keepPaths(paths) {

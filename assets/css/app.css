@@ -1340,6 +1340,71 @@ a.inline-target {
   font-size: 1.125rem;
 }
 
+.trip-when {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+  border-radius: var(--surface-radius);
+}
+
+.trip-mode {
+  min-height: var(--close-button-hit-size);
+  padding: 0 4px;
+  border: 0;
+  background-color: var(--panel-detail-action-fill);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.trip-mode + .trip-mode {
+  border-left: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+}
+
+.trip-mode[aria-pressed="true"] {
+  background-color: var(--panel-detail-action-pressed-fill);
+  color: var(--panel-sheet-selected-color);
+  font-weight: 700;
+}
+
+.trip-time {
+  display: flex;
+  gap: 8px;
+}
+
+.trip-time[hidden] {
+  display: none;
+}
+
+.trip-time-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trip-time-label {
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
+}
+
+.trip-time-input {
+  min-height: var(--close-button-hit-size);
+  padding: 0 8px;
+  border: var(--surface-border-width) solid var(--panel-sheet-rule-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  color: inherit;
+  font: inherit;
+}
+
 .trip-status {
   display: flex;
   flex-direction: column;
@@ -1384,7 +1449,7 @@ a.inline-target {
   color: var(--filter-kind-color);
 }
 
-.trip-journey-earliest {
+.trip-journey-marked {
   color: var(--panel-sheet-selected-color);
   font-weight: 600;
 }
@@ -1424,6 +1489,8 @@ a.inline-target {
 }
 
 .trip-field:focus-visible,
+.trip-mode:focus-visible,
+.trip-time-input:focus-visible,
 .trip-swap:focus-visible,
 .trip-menu-item:focus-visible,
 .trip-journey:focus-visible,
@@ -1518,6 +1585,7 @@ a.inline-target {
 
   .panel-detail-action[aria-pressed="true"],
   .panel-detail-favorite[aria-pressed="true"],
+  .trip-mode[aria-pressed="true"],
   .filter-suggestion[aria-selected="true"] {
     background-color: Highlight;
     color: HighlightText;
