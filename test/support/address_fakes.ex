@@ -13,6 +13,9 @@ defmodule Gobusgo.Test.AddressSource do
   def name, do: :test
 
   @impl Gobusgo.Addresses.Source
+  def run_deadline_ms, do: 60_000
+
+  @impl Gobusgo.Addresses.Source
   def fetch(options) do
     case Keyword.get(options, :answer, :layer) do
       :layer ->
@@ -42,6 +45,9 @@ defmodule Gobusgo.Test.AddressSourceTwo do
 
   @impl Gobusgo.Addresses.Source
   def name, do: :test_two
+
+  @impl Gobusgo.Addresses.Source
+  def run_deadline_ms, do: 60_000
 
   @impl Gobusgo.Addresses.Source
   def fetch(options) do

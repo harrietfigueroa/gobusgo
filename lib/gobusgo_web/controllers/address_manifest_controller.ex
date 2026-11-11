@@ -2,13 +2,14 @@ defmodule GobusgoWeb.AddressManifestController do
   @retry_after_seconds 60
 
   @moduledoc """
-  Serves the manifest of the address shards from `Gobusgo.Addresses`.
+  Serves every county's manifest of the address shards from
+  `Gobusgo.Addresses`, as `{"counties": [...]}`.
 
-  The manifest names the shard files by addresses that never change
-  content, so it is the one thing a reader revalidates: it is answered with
+  The manifests name the shard files by addresses that never change
+  content, so they are the one thing a reader revalidates: it is answered with
   `cache-control: no-cache` and a strong `etag`, the SHA-256 of the body,
   and a request whose `if-none-match` names that tag gets `304` with no
-  body. While no build exists it answers `503` problem details with
+  body. While no county is built it answers `503` problem details with
   `Retry-After: #{@retry_after_seconds}`.
   """
 

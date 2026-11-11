@@ -123,8 +123,9 @@ defmodule Gobusgo.Addresses.Accumulator do
   def finish(%__MODULE__{streets: entities, counts: counts}) do
     streets =
       entities
-      |> Map.values()
-      |> Enum.map(&finished_street/1)
+      |> Map.keys()
+      |> Enum.reduce({entities, []}, &finish_next/2)
+      |> elem(1)
       |> Enum.sort_by(&{&1.name_key, Normalize.street_key(&1.street), &1.city})
 
     %{
@@ -205,6 +206,14 @@ defmodule Gobusgo.Addresses.Accumulator do
       end
 
     %{accumulator | streets: Map.put(accumulator.streets, key, entity)}
+  end
+
+  # Each street leaves the map as it is finished, so the streets in their
+  # chunked form are freed while the finished ones are made, and the two
+  # forms of every street are never held together.
+  defp finish_next(key, {entities, finished}) do
+    {entity, entities} = Map.pop!(entities, key)
+    {entities, [finished_street(entity) | finished]}
   end
 
   defp finished_street(entity) do

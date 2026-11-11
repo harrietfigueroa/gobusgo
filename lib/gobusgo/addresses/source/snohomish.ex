@@ -37,6 +37,11 @@ defmodule Gobusgo.Addresses.Source.Snohomish do
   @impl Gobusgo.Addresses.Source
   def name, do: :snohomish
 
+  # About 1.6 times the 3,980 pages at the 3.8 requests a second King's read
+  # measured on 2026-11-11.
+  @impl Gobusgo.Addresses.Source
+  def run_deadline_ms, do: 1_800_000
+
   @impl Gobusgo.Addresses.Source
   def fetch(options) when is_list(options) do
     layer_url = Keyword.get(options, :layer_url, @layer_url)

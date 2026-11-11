@@ -27,5 +27,11 @@ defmodule Gobusgo.Addresses.Source do
 
   @callback name() :: atom()
 
+  @doc """
+  How long a build of the county may run, in milliseconds: its measured
+  fetch time with a margin, under the scheduler's deadline.
+  """
+  @callback run_deadline_ms() :: pos_integer()
+
   @callback fetch(options :: keyword()) :: {:ok, layer()} | {:error, term()}
 end
