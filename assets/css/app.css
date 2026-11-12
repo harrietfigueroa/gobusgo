@@ -40,6 +40,9 @@
   --panel-sheet-expanded-height: 60dvh;
   --panel-sheet-handle-height: 28px;
   --panel-sheet-tab-height: 52px;
+  /* Below md the tab row stands this far above the safe area, so its icons
+     clear the device's bottom edge; the side panel from md up sets it to 0. */
+  --panel-sheet-tabs-lift: 10px;
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
   --connection-signal-age-color: #334155;
@@ -715,7 +718,7 @@ a.inline-target {
   display: flex;
   flex-direction: column;
   max-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--panel-sheet-tabs-lift));
   accent-color: var(--surface-border-color);
   background-color: var(--surface-fill);
   border-top: var(--surface-border-width) solid var(--surface-border-color);
@@ -1951,6 +1954,7 @@ a.inline-target {
 @media (width >= 48rem) {
   .panel-sheet,
   .panel-sheet[data-expanded="true"] {
+    --panel-sheet-tabs-lift: 0px;
     top: var(--panel-sheet-margin);
     right: auto;
     bottom: var(--panel-sheet-margin);
