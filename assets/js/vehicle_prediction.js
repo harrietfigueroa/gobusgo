@@ -51,12 +51,10 @@ const PROJECTION_SLACK_METERS = 1
 // encoded points the stop distances were measured over.
 const STOP_DISTANCE_SLACK_METERS = 5
 
-// A new prediction up to the first bound behind the drawn marker slows the
-// marker down, to the prediction's pace over the factor less the prediction's
-// own, until the prediction reaches it: the marker keeps one third of the
-// prediction's pace at a factor of 1.5. One up to the second bound ahead
-// speeds it up, to the prediction's pace plus the extra pace, over at least
-// the minimum duration.
+// A marker up to the first bound ahead of a new prediction keeps 1 - 1/1.5,
+// a third, of the prediction's pace until the prediction reaches it. A
+// marker up to the second bound behind one runs at the prediction's pace
+// plus the extra pace, over at least the minimum duration.
 const SLOW_DOWN_BEHIND_METERS_MAX = 300
 const SLOW_DOWN_FACTOR = 1.5
 const SPEED_UP_AHEAD_METERS_MAX = 500
@@ -532,9 +530,10 @@ function isSameRun({drawn, prediction}) {
  * How a marker drawn at `drawn` meets `prediction`, the first prediction of
  * a new report, at `atMs`. On one trip's path, a prediction up to 300 m
  * behind slows the marker down until the prediction reaches it, and one up
- * to 500 m ahead speeds it up until it reaches the prediction, each
- * converging by the prediction's own progress. Otherwise it glides to the
- * prediction, or snaps there where `glides` says a fetch's marker snaps.
+ * to 500 m ahead speeds it up until it reaches the prediction. The slow-down
+ * converges by the prediction's own progress, the speed-up over time.
+ * Otherwise it glides to the prediction, or snaps there where `glides` says
+ * a fetch's marker snaps.
  */
 export function beginCorrection({drawn, prediction, atMs}) {
   assertTimeMs(atMs, "the time of a correction")
@@ -550,15 +549,15 @@ export function beginCorrection({drawn, prediction, atMs}) {
     const isSlowDown = isBehind && isNearBehind
     if (isSlowDown) {
       const untilMs = prediction.reportedAtMs + PREDICTION_HORIZON_MS
-      return Object.freeze({kind: CorrectionKind.slowDown, aheadMeters: -deltaMeters, startMeters: prediction.distanceMeters, position: drawn.position, untilMs})
+      return Object.freeze({kind: CorrectionKind.slowDown, aheadMeters: -deltaMeters, startMeters: prediction.distanceMeters, untilMs})
     }
 
     const isAhead = deltaMeters > 0
     const isNearAhead = deltaMeters <= SPEED_UP_AHEAD_METERS_MAX
     const isSpeedUp = isAhead && isNearAhead
     if (isSpeedUp) {
-      const extraPaceMs = (deltaMeters / SPEED_UP_EXTRA_METERS_PER_SECOND) * MS_PER_SECOND
-      const durationMs = Math.max(SPEED_UP_DURATION_MS_MIN, extraPaceMs)
+      const closingMs = (deltaMeters / SPEED_UP_EXTRA_METERS_PER_SECOND) * MS_PER_SECOND
+      const durationMs = Math.max(SPEED_UP_DURATION_MS_MIN, closingMs)
       return Object.freeze({kind: CorrectionKind.speedUp, offsetMeters: deltaMeters, startedAtMs: atMs, durationMs})
     }
   }
@@ -623,10 +622,12 @@ export function drawCorrected({path, correction, prediction, atMs}) {
       if (remaining === 0) {
         return drawnOf(prediction)
       }
+      const slowedMeters = prediction.distanceMeters + correction.aheadMeters * remaining
       if (atMs < correction.untilMs) {
-        return drawnAlong({path, prediction, meters: prediction.distanceMeters + correction.aheadMeters * remaining})
+        return drawnAlong({path, prediction, meters: slowedMeters})
       }
-      return glidedTo({source: correction.position, prediction, elapsedMs: atMs - correction.untilMs})
+      const source = positionAt({path, meters: slowedMeters})
+      return glidedTo({source, prediction, elapsedMs: atMs - correction.untilMs})
     }
     case CorrectionKind.speedUp: {
       assertCondition(prediction.kind === PredictionKind.alongPath, `a speed-up draws along a path, not ${prediction.kind}`)

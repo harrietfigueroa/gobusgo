@@ -416,12 +416,12 @@ const drawnCases = [
   {name: "a slowed marker stays at the prediction after the gap has closed", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 200, expected: {east: 1000}},
   {name: "a slowed marker stands while the prediction stands", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 250, expected: {east: WAITING_STANDING_METERS}},
   {name: "a slowed marker stands as long as the prediction does", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 311, expected: {east: WAITING_STANDING_METERS}},
-  {name: "a slowed marker glides to the prediction at the report's horizon", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 312.5, expected: {east: 1050}},
+  {name: "a slowed marker glides to the prediction from where it is drawn at the report's horizon", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 312.5, expected: {east: (WAITING_STANDING_METERS + 1000) / 2}},
   {name: "a slowed marker ends at the prediction after the horizon's glide", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 314, expected: {east: 1000}},
   {name: "a speed-up starts at the drawn marker", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 160, expected: {east: 700}},
   // After 6.25 s the prediction is at 831.25 m and half the 100 m gap is left.
   {name: "a speed-up of 100 m is halfway after 6.25 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 166.25, expected: {east: 831.25 - 50}},
-  {name: "a speed-up of 100 m is not done after 2 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 162, expected: {east: 810 - 100 * (1 - 2 / 12.5)}},
+  {name: "a speed-up of 100 m is still closing after 2 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 162, expected: {east: 810 - 100 * (1 - 2 / 12.5)}},
   {name: "a speed-up of 100 m ends at the prediction after 12.5 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 172.5, expected: {east: 862.5}},
   {name: "a speed-up of 10 m is halfway after 1 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 790}, seconds: 161, expected: {east: 805 - 5}},
   {name: "a speed-up of 10 m ends at the prediction after the 2 s floor", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 790}, seconds: 162, expected: {east: 810}},
@@ -445,6 +445,15 @@ for (let sample = 0; sample < SLOWED_SAMPLE_COUNT; sample++) {
   ok(slowedDrawn.distanceMeters >= slowedMetersBefore, `a slowed marker moved back at sample ${sample}: ${slowedDrawn.distanceMeters} m from ${slowedMetersBefore} m`)
   slowedMetersBefore = slowedDrawn.distanceMeters
 }
+
+// The glide begins where the marker is drawn at the horizon: a frame before
+// it and at it, the marker is at the same place.
+const HORIZON_SECONDS = WAITING_SECONDS + PREDICTION_HORIZON_MS / MS_PER_SECOND
+const FRAME_SECONDS = 0.001
+const beforeHorizon = drawnAt({report: WAITING, correction: slowedCorrection, seconds: HORIZON_SECONDS - FRAME_SECONDS})
+const atHorizon = drawnAt({report: WAITING, correction: slowedCorrection, seconds: HORIZON_SECONDS})
+isAt({position: atHorizon.position, expected: {east: WAITING_STANDING_METERS}, message: "the horizon's glide begins where the slowed marker stands"})
+isAt({position: beforeHorizon.position, expected: {east: WAITING_STANDING_METERS}, message: "the slowed marker stands a frame before the horizon"})
 
 // Invalid inputs are programmer errors.
 const OUT_OF_ORDER_TIMES = [
@@ -506,8 +515,8 @@ const STAND_METERS_MAX = 10
 const TRIP_END_METERS = 150
 
 // The corrections keep the marker off the prediction while a gap closes, so
-// the drawn error exceeds the prediction's by up to these much, at the
-// median and at the 90th percentile.
+// the drawn error exceeds the prediction's by at most these distances, at
+// the median and at the 90th percentile.
 const DRAWN_P50_EXCESS_METERS_MAX = 25
 const DRAWN_P90_EXCESS_METERS_MAX = 70
 
