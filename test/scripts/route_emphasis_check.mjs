@@ -27,7 +27,8 @@ for (const {name, given, alpha} of alphaCases) {
   deepStrictEqual(markerAlpha(given), alpha, name)
 }
 
-const statusOpacity = ["match", ["get", "status"], "live", 1, "stale", 0.6, 1]
+const STALE_OPACITY = 0.6
+const statusOpacity = ["match", ["get", "status"], "live", 1, "stale", STALE_OPACITY, 1]
 
 const expressionCases = [
   {name: "a number with no emphasis", given: {emphasizedRouteId: null, opacity: 1}, expected: 1},
