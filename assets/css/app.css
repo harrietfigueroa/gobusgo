@@ -1933,8 +1933,8 @@ a.inline-target {
     max-height: calc(100dvh - var(--keyboard-inset-bottom, 0px));
   }
 
-  /* The tab row stands the lift above the bottom edge, past the safe area,
-     so the icons clear the home indicator and the thumb's reach. */
+  /* The tab row stands the lift above the safe area, so the icons clear
+     the device's bottom edge and its home indicator. */
   .panel-sheet {
     padding-bottom: calc(env(safe-area-inset-bottom) + var(--panel-sheet-tabs-lift));
   }
