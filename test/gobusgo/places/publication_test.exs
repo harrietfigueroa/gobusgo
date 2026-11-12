@@ -53,7 +53,7 @@ defmodule Gobusgo.Places.PublicationTest do
                "sha256" => published.sha256
              },
              "kind" => 5,
-             "kindVersion" => 1,
+             "kindVersion" => 2,
              "license" => License.manifest_entry(),
              "placeCount" => 5,
              "sourceDate" => PlaceFixture.source_date(),

@@ -20,11 +20,16 @@ defmodule Gobusgo.Places.Selection do
   `wikipedia`, at most 255. `area_score` is separate and never added to it:
   0 for a point or an area under #{@area_floor_m2} square meters, otherwise
   `min(40, round(8 * log10(area / 1000)))`.
+
+  A candidate also carries the street address of its tags (`address`) and its
+  `place=` value (`settlement`), each the empty string when absent, which
+  `Gobusgo.Places.Locality` reads after the merge.
   """
 
   alias Gobusgo.Math.Geodesy
   alias Gobusgo.Places.Bounds
   alias Gobusgo.Places.Classification
+  alias Gobusgo.Places.Locality
 
   @name_length_max 200
   @prominence_max 255
@@ -43,7 +48,9 @@ defmodule Gobusgo.Places.Selection do
           category: String.t(),
           prominence: pos_integer(),
           area: float(),
-          area_score: non_neg_integer()
+          area_score: non_neg_integer(),
+          address: String.t(),
+          settlement: String.t()
         }
   @type skip :: :unnamed | :stop | :excluded | {:outside, String.t()} | :unusable
   @type counts :: %{
@@ -143,8 +150,17 @@ defmodule Gobusgo.Places.Selection do
       category: category,
       prominence: prominence(tags, base),
       area: position.area,
-      area_score: area_score(position.area)
+      area_score: area_score(position.area),
+      address: Locality.address(tags),
+      settlement: settlement(tags)
     }
+  end
+
+  defp settlement(tags) do
+    case Map.get(tags, "place") do
+      kind when is_binary(kind) -> clean(kind)
+      _absent -> ""
+    end
   end
 
   defp prominence(tags, base) do

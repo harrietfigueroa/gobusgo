@@ -45,6 +45,20 @@ defmodule Gobusgo.Places.SelectionTest do
       assert place.lon == -122.3
     end
 
+    test "reads the street address and the settlement kind of a feature" do
+      tags = %{
+        "name" => "Cafe",
+        "amenity" => "cafe",
+        "addr:housenumber" => "400",
+        "addr:street" => "Pine Street"
+      }
+
+      assert {:place, %{address: "400 Pine Street", settlement: ""}} = select_one(tags)
+
+      assert {:place, %{address: "", settlement: "suburb"}} =
+               select_one(%{"name" => "Ballard", "place" => "suburb"})
+    end
+
     test "caps prominence at 255" do
       tags = %{"name" => "Seattle", "place" => "city", "wikidata" => "Q1", "wikipedia" => "en:x"}
       assert {:place, %{prominence: 255}} = select_one(tags)

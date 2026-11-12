@@ -100,7 +100,9 @@ defmodule Mix.Tasks.Gobusgo.Places.BuildTest do
 
     decoded = records_path |> File.read!() |> JSON.decode!()
     assert decoded["sourceDate"] == "2026-11-08T21:21:00Z"
-    assert [["Central Library", [], 47_600_000, -122_330_000, _index, 100, 0]] = decoded["places"]
+
+    assert [["Central Library", [], 47_600_000, -122_330_000, _index, 100, 0, ""]] =
+             decoded["places"]
 
     manifest = tmp_dir |> Path.join("data/places/manifest.json") |> File.read!() |> JSON.decode!()
     assert manifest["placeCount"] == 1

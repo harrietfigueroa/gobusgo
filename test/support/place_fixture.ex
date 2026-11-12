@@ -1,18 +1,24 @@
 defmodule Gobusgo.Test.PlaceFixture do
   @moduledoc """
-  The records of the shared places fixture under `test/fixtures/places/v1/`:
+  The records of the shared places fixture under `test/fixtures/places/v2/`:
   `places.bin`, the expanded container, `places.bin.gz`, its gzip stream,
   and `expected.json`, the table a reader decodes from it. Five places cover
   ASCII and multibyte names, a name shared by two places, an alias list, no
   aliases, prominence and area at their 255 and 40 caps, a negative
-  longitude, and the origin.
+  longitude, and the origin. Two places have a locality, a street address
+  and a neighborhood with its city, and the three others have none. The
+  files of `test/fixtures/places/v1/` stay as a published file of version 1.
   """
 
   alias Gobusgo.Places.Classification
+  alias Gobusgo.Packed
+  alias Gobusgo.Packed.Columns
   alias Gobusgo.Places.Format
+  alias Gobusgo.Places.Locality
   alias Gobusgo.Places.Records
 
-  @directory Path.expand("../fixtures/places/v1", __DIR__)
+  @directory Path.expand("../fixtures/places/v2", __DIR__)
+  @version_one_directory Path.expand("../fixtures/places/v1", __DIR__)
   @source_date "2026-11-08T21:21:00Z"
 
   @places [
@@ -24,7 +30,8 @@ defmodule Gobusgo.Test.PlaceFixture do
       category: "tourism",
       prominence: 255,
       area: 20_000.0,
-      area_score: 40
+      area_score: 40,
+      locality: "85 Pike Street"
     },
     %{
       name: "Café Münster 東京",
@@ -34,7 +41,8 @@ defmodule Gobusgo.Test.PlaceFixture do
       category: "food",
       prominence: 50,
       area: 0.0,
-      area_score: 0
+      area_score: 0,
+      locality: ""
     },
     %{
       name: "Seattle Center",
@@ -44,7 +52,8 @@ defmodule Gobusgo.Test.PlaceFixture do
       category: "park",
       prominence: 135,
       area: 900_000.0,
-      area_score: 16
+      area_score: 16,
+      locality: "Lower Queen Anne, Seattle"
     },
     %{
       name: "Seattle Center",
@@ -54,7 +63,8 @@ defmodule Gobusgo.Test.PlaceFixture do
       category: "station",
       prominence: 140,
       area: 0.0,
-      area_score: 0
+      area_score: 0,
+      locality: ""
     },
     %{
       name: "Null Island",
@@ -64,13 +74,18 @@ defmodule Gobusgo.Test.PlaceFixture do
       category: "place",
       prominence: 70,
       area: 0.0,
-      area_score: 0
+      area_score: 0,
+      locality: ""
     }
   ]
 
   @doc "The directory the fixture files are in."
   @spec directory() :: String.t()
   def directory, do: @directory
+
+  @doc "The directory of the version 1 fixture files."
+  @spec version_one_directory() :: String.t()
+  def version_one_directory, do: @version_one_directory
 
   @doc "The places the container holds."
   @spec places() :: [map()]
@@ -83,6 +98,28 @@ defmodule Gobusgo.Test.PlaceFixture do
   @doc "Returns the expanded container of the fixture places."
   @spec encode() :: binary()
   def encode, do: Format.encode(%{source_date: @source_date, places: @places})
+
+  @doc """
+  Returns the fixture container with the first place's locality one character
+  past `Gobusgo.Places.Locality.length_max/0`, which the encoder refuses to
+  write and a reader refuses to read.
+  """
+  @spec encode_locality_over_bound() :: binary()
+  def encode_locality_over_bound do
+    expectation = %{kind: 5, versions: [2], section_count: 9}
+    {:ok, container} = Packed.decode(encode(), expectation)
+    long = String.duplicate("a", Locality.length_max() + 1)
+    strings = Tuple.to_list(container.strings) ++ [long]
+    localities = Columns.encode(:u32, [length(strings) - 1, 0, 0, 0, 0])
+
+    Packed.encode(%{
+      kind: container.kind,
+      version: container.version,
+      record_count: container.record_count,
+      strings: strings,
+      sections: List.replace_at(container.sections, 8, localities)
+    })
+  end
 
   @doc "Returns the table a reader decodes from the container, as the JSON of `expected.json`."
   @spec expected() :: map()
@@ -100,7 +137,8 @@ defmodule Gobusgo.Test.PlaceFixture do
       "longitudeMicrodegrees" => for([_n, _a, _lat, lon | _row] <- rows, do: lon),
       "categories" => for([_n, _a, _lat, _lon, category | _row] <- rows, do: category),
       "prominences" => for([_n, _a, _lat, _lon, _c, prominence | _row] <- rows, do: prominence),
-      "areas" => for([_n, _a, _lat, _lon, _c, _p, area] <- rows, do: area),
+      "areas" => for([_n, _a, _lat, _lon, _c, _p, area, _locality] <- rows, do: area),
+      "localities" => for([_n, _a, _lat, _lon, _c, _p, _area, locality] <- rows, do: locality),
       "categoryNames" => Classification.categories(),
       "sourceDate" => @source_date
     }

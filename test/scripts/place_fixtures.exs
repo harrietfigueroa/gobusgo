@@ -14,6 +14,11 @@ File.write!(Path.join(directory, "places.bin"), expanded)
 File.write!(Path.join(directory, "places.bin.gz"), Gobusgo.Compression.compress(expanded))
 
 File.write!(
+  Path.join(directory, "locality_over_bound.bin"),
+  PlaceFixture.encode_locality_over_bound()
+)
+
+File.write!(
   Path.join(directory, "expected.json"),
   Gobusgo.CanonicalJson.encode(PlaceFixture.expected()) <> "\n"
 )

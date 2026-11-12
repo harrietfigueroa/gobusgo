@@ -266,7 +266,11 @@ function searchEntry(manifest) {
 function placeResult({table, match}) {
   const lat = table.latitudeMicrodegrees[match.placeIndex] / MICRODEGREES_PER_DEGREE
   const lon = table.longitudeMicrodegrees[match.placeIndex] / MICRODEGREES_PER_DEGREE
-  const detail = placeDetail({categoryName: table.categoryNames[match.category], distanceMeters: match.distanceMeters})
+  const detail = placeDetail({
+    categoryName: table.categoryNames[match.category],
+    locality: table.localities[match.placeIndex],
+    distanceMeters: match.distanceMeters,
+  })
   return {name: match.name, detail, lat, lon}
 }
 
