@@ -205,31 +205,32 @@ export function searchPoints({anchor, rider, fallback}) {
  */
 export function placeDetailAt({categoryName, locality, rider, lat, lon}) {
   if (rider === null) {
-    assertCondition(typeof locality === "string", "where to: a place's locality must be text")
-    const category = categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
-
-    if (locality === "") {
-      return category
-    }
-
-    return `${category} · ${locality}`
+    return placeDetail({categoryName, locality, distance: {kind: PositionKind.unknown}})
   }
 
   const meters = distanceMeters([rider.lon, rider.lat], [lon, lat])
-  return placeDetail({categoryName, locality, distanceMeters: meters})
+  return placeDetail({categoryName, locality, distance: {kind: PositionKind.known, meters}})
 }
 
-/** The detail line of a place: its category, its locality when it has one, and its distance from the search's center. */
-export function placeDetail({categoryName, locality, distanceMeters: meters}) {
+/**
+ * The detail line of a place: its category, its locality when it has one,
+ * and its `distance`, a PositionKind member that is `known` with `meters`
+ * from the rider or `unknown`, which leaves the distance out.
+ */
+export function placeDetail({categoryName, locality, distance}) {
   assertCondition(typeof locality === "string", "where to: a place's locality must be text")
   const category = categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
-  const distance = distanceText(meters)
+  const parts = [category]
 
-  if (locality === "") {
-    return `${category} · ${distance}`
+  if (locality !== "") {
+    parts.push(locality)
   }
 
-  return `${category} · ${locality} · ${distance}`
+  if (distance.kind === PositionKind.known) {
+    parts.push(distanceText(distance.meters))
+  }
+
+  return parts.join(" · ")
 }
 
 /** The name an end reads as in a recent trip. */

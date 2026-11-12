@@ -338,9 +338,10 @@ for (const {meters, text} of DISTANCE_CASES) {
 
 // A place's detail line is its category, then its locality, then its distance, and drops the locality when the place has none.
 const PLACE_DETAIL_CASES = [
-  {name: "with a locality", given: {categoryName: "shop", locality: "Denny Triangle, Seattle", distanceMeters: 300}, expected: "Shop · Denny Triangle, Seattle · 300 m"},
-  {name: "with a street address", given: {categoryName: "food", locality: "400 Pine Street", distanceMeters: 1_500}, expected: "Food · 400 Pine Street · 1.5 km"},
-  {name: "with no locality", given: {categoryName: "tourism", locality: "", distanceMeters: 300}, expected: "Tourism · 300 m"}
+  {name: "with a locality", given: {categoryName: "shop", locality: "Denny Triangle, Seattle", distance: {kind: PositionKind.known, meters: 300}}, expected: "Shop · Denny Triangle, Seattle · 300 m"},
+  {name: "with a street address", given: {categoryName: "food", locality: "400 Pine Street", distance: {kind: PositionKind.known, meters: 1_500}}, expected: "Food · 400 Pine Street · 1.5 km"},
+  {name: "with no locality", given: {categoryName: "tourism", locality: "", distance: {kind: PositionKind.known, meters: 300}}, expected: "Tourism · 300 m"},
+  {name: "with an unknown distance", given: {categoryName: "shop", locality: "Seattle", distance: {kind: PositionKind.unknown}}, expected: "Shop · Seattle"}
 ]
 
 for (const {name, given, expected} of PLACE_DETAIL_CASES) {

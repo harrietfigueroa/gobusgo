@@ -501,14 +501,14 @@ export function startTripApp({root, origin, host}) {
     await offerUnmatched()
   }
 
-  function startFrom(from) {
+  async function startFrom(from) {
     switch (from.kind) {
       case StartKind.words:
-        resolveEnd({end: TripEnd.from, text: from.text, isAutomatic: true})
+        await resolveEnd({end: TripEnd.from, text: from.text, isAutomatic: true})
         break
       case StartKind.position:
         if (app.isLocationOffered) {
-          locate({isAutomatic: true})
+          await locate({isAutomatic: true})
         } else {
           setEnd({end: TripEnd.from, state: ASKING})
         }
@@ -517,6 +517,12 @@ export function startTripApp({root, origin, host}) {
       default:
         unreachable(from.kind, "trip app: a start of unknown kind")
     }
+  }
+
+  // The destination is resolved once the start has settled, resolved or not, so its search ranks near a resolved start.
+  async function startEnds(input) {
+    await startFrom(input.from)
+    await resolveEnd({end: TripEnd.to, text: input.to, isAutomatic: true})
   }
 
   // The journeys the plan found, as the Trip tab's rows, or none.
@@ -605,7 +611,7 @@ export function startTripApp({root, origin, host}) {
   }
 
   return Object.freeze({
-    // Starts the trip `input` asks for: the ends are resolved at once.
+    // Starts the trip `input` asks for: the start is resolved first, then the destination.
     start(input) {
       app.input = input
       app.planCount += 1
@@ -614,8 +620,7 @@ export function startTripApp({root, origin, host}) {
       app.isUnmatchedPending = true
       app.offer = {kind: OfferKind.none}
       render()
-      startFrom(input.from)
-      resolveEnd({end: TripEnd.to, text: input.to, isAutomatic: true})
+      startEnds(input)
     },
 
     // Offers the rider's location as a start, once the host has said it grants it.
