@@ -1925,11 +1925,22 @@ a.inline-target {
 /* The open tab is marked where its panel shows: on a narrow viewport while
    the sheet is expanded or dragged, and always on a wide one. */
 @media (width < 48rem) {
-  /* While the on-screen keyboard shows, the sheet stands above it and
-     takes no more than the room above it, which the hook writes. */
-  .panel-sheet {
+  /* While the on-screen keyboard shows, a collapsed sheet stands above it
+     and takes no more than the room above it, which the hook writes. */
+  .panel-sheet:not([data-expanded="true"]) {
     bottom: var(--keyboard-inset-bottom, 0px);
     max-height: calc(100dvh - var(--keyboard-inset-bottom, 0px));
+  }
+
+  /* An expanded sheet stays on the bottom edge, so no strip of the map shows
+     between it and the keyboard, and pads its bottom by the keyboard's
+     height, so its panel and the focused field stand above the keyboard.
+     The height grows by the same amount, so the part above the keyboard is
+     the height the details view has, and the sheet takes no more than the
+     viewport. */
+  .panel-sheet[data-expanded="true"] {
+    height: min(calc(var(--panel-sheet-expanded-height) + var(--keyboard-inset-bottom, 0px)), 100dvh);
+    padding-bottom: max(env(safe-area-inset-bottom), var(--keyboard-inset-bottom, 0px));
   }
 
   .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
