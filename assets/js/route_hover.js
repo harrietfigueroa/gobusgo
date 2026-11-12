@@ -35,7 +35,7 @@ const HOLD_MS = 300
 const HOVER_MEDIA_QUERY = "(hover: hover)"
 const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
 const KEYBOARD_LIST_LABEL = "Routes at the middle of the map"
-const nameCollator =new Intl.Collator("en", {numeric: true, sensitivity: "base"})
+const nameCollator = new Intl.Collator("en", {numeric: true, sensitivity: "base"})
 
 // The kinds of a read of the list under the pointer.
 const ListKind = Object.freeze({found: "found", none: "none"})
