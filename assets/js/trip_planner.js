@@ -77,8 +77,6 @@ const FILTER_EVENT_NAME = "trip:filter"
 const CLEAR_EVENT_NAME = "trip:clear"
 const FILTER_ENDED_EVENT_NAME = "trip:filter-ended"
 const ARRIVALS_EVENT_NAME = "stop-arrivals:arrivals"
-// The files are the page's own, so no origin goes in front of a path.
-const PAGE_ORIGIN = ""
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
 const OTHER_END = Object.freeze({[TripEnd.from]: TripEnd.to, [TripEnd.to]: TripEnd.from})
 const SEARCH_LABELS = Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
@@ -360,6 +358,9 @@ export const TripPlanner = {
     this.searchCount = 0
     this.searchFix = null
     this.manifestUrl = this.el.dataset.manifestUrl
+    // The origin in front of every file's path: empty for the page's own, or
+    // another host's, whose files answer a cross-origin fetch.
+    this.fileOrigin = this.el.dataset.fileOrigin
     this.nameCountMax = Number(this.el.dataset.nameCountMax)
     this.routeCountMax = Number(this.el.dataset.routeCountMax)
     this.openCountMax = Number(this.el.dataset.openCountMax)
@@ -370,7 +371,7 @@ export const TripPlanner = {
     this.shownByStop = {}
     this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
-    this.searchFiles = createSearchFiles({origin: PAGE_ORIGIN})
+    this.searchFiles = createSearchFiles({origin: this.fileOrigin})
     this.events = pageEvents(this)
     this.build()
 
@@ -1141,7 +1142,7 @@ export const TripPlanner = {
       return
     }
 
-    const manifestOutcome = await fetchManifest({origin: PAGE_ORIGIN, path: this.manifestUrl})
+    const manifestOutcome = await fetchManifest({origin: this.fileOrigin, path: this.manifestUrl})
 
     if (queryNumber !== this.queryCount) {
       return
@@ -1160,7 +1161,7 @@ export const TripPlanner = {
       return
     }
 
-    const answer = await routeTo({origin: PAGE_ORIGIN, searchFiles: this.searchFiles, manifest, planned, from: start.from, to: query.to})
+    const answer = await routeTo({origin: this.fileOrigin, searchFiles: this.searchFiles, manifest, planned, from: start.from, to: query.to})
 
     if (queryNumber !== this.queryCount) {
       return

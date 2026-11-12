@@ -215,6 +215,30 @@ defmodule GobusgoWeb.VehicleLiveTripTest do
 
   defp marker_ids(markers), do: Enum.map(markers, & &1.id)
 
+  describe "the origin of the published files" do
+    # The two hooks that fetch the routing manifest and the files it names
+    # read the origin from their element; an empty origin is the page's own.
+    setup do
+      configured_files = Application.get_env(:gobusgo, :files)
+      on_exit(fn -> Application.put_env(:gobusgo, :files, configured_files) end)
+    end
+
+    for selector <- ["#trip-planner", "#vehicle-markers"],
+        {description, origin, expected} <- [
+          {"the page's own with no origin configured", nil, ""},
+          {"the configured origin", "https://ddxsy8xnmcfe8.cloudfront.net",
+           "https://ddxsy8xnmcfe8.cloudfront.net"}
+        ] do
+      test "#{selector} carries #{description}" do
+        Application.put_env(:gobusgo, :files, origin: unquote(origin))
+        {:ok, view, _html} = live(build_conn(), "/vehicles")
+        html = view |> element(unquote(selector)) |> render()
+
+        assert html =~ ~s(data-file-origin="#{unquote(expected)}")
+      end
+    end
+  end
+
   describe "the trip planner's element" do
     test "carries the manifest's address and the bounds of a request" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")

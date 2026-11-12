@@ -45,9 +45,14 @@ config :gobusgo, :addresses, dir: Path.join(base_dir, "addresses")
 
 # The basemap archives are served from a directory beside the stored
 # responses.
-# The address the pages link for donations; unset, they link none.
 config :gobusgo, :basemap, dir: Path.join(base_dir, "basemap")
+
+# The address the pages link for donations; unset, they link none.
 config :gobusgo, :donation, url: System.get_env("GOBUSGO_DONATION_URL")
+
+# The origin the vehicle page fetches the routing, trip path, places,
+# address, and intersection files from; unset, it fetches them from its own.
+config :gobusgo, :files, origin: System.get_env("GOBUSGO_FILE_ORIGIN")
 
 config :gobusgo, :http,
   host: System.get_env("GOBUSGO_HTTP_HOST"),

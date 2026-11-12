@@ -353,7 +353,7 @@ TODO items live in Linear. Record follow-up work as a comment on the relevant is
 
 ## Credentials and configuration
 
-Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`, `GOBUSGO_DATA_DIR`, `SECRET_KEY_BASE`, `GOBUSGO_PUBLIC_HOST`, `GOBUSGO_S3_BUCKET`, `GOBUSGO_S3_REGION`, `GOBUSGO_S3_PREFIX`, `GOBUSGO_S3_ENDPOINT`, `GOBUSGO_REVISION`, `GOBUSGO_DONATION_URL`, and the five vehicle motion variables, each left empty for its default); the OneBusAway ones carry placeholder values, and the secret, the public host, and the donation address are left empty. Load them into the shell with:
+Local settings live in `.env`, which git ignores. `.env.example` lists the variable names (`ONEBUSAWAY_BASE_URL`, `ONEBUSAWAY_API_KEY`, `GOBUSGO_HTTP_HOST`, `GOBUSGO_HTTP_PORT`, `GOBUSGO_DATA_DIR`, `SECRET_KEY_BASE`, `GOBUSGO_PUBLIC_HOST`, `GOBUSGO_S3_BUCKET`, `GOBUSGO_S3_REGION`, `GOBUSGO_S3_PREFIX`, `GOBUSGO_S3_ENDPOINT`, `GOBUSGO_REVISION`, `GOBUSGO_DONATION_URL`, `GOBUSGO_FILE_ORIGIN`, and the five vehicle motion variables, each left empty for its default); the OneBusAway ones carry placeholder values, and the secret, the public host, and the donation address are left empty. Load them into the shell with:
 
 ```sh
 set -a; source .env; set +a
