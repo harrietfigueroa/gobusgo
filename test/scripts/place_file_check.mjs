@@ -30,7 +30,8 @@ import {
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/places/v2/", import.meta.url))
 const versionOneDirectory = fileURLToPath(new URL("../fixtures/places/v1/", import.meta.url))
-const FIXTURE_VERSIONS = Object.freeze([2])
+const VERSION_CURRENT = 2
+const FIXTURE_VERSIONS = Object.freeze([VERSION_CURRENT])
 const VERSION_OFFSET = 4
 const VERSION_UNKNOWN = 3
 const SECTION_COUNT = 9
@@ -112,10 +113,14 @@ function checkDecodes() {
   deepStrictEqual(plain(result.table), expected, "the expanded fixture")
 }
 
+function emptyLocality() {
+  return ""
+}
+
 function checkVersionOne() {
   const result = decodePlaceFile(expandedVersionOne)
   deepStrictEqual(result.kind, PackedOutcome.decoded)
-  const noLocalities = Array.from({length: expectedVersionOne.placeCount}, () => "")
+  const noLocalities = Array.from({length: expectedVersionOne.placeCount}, emptyLocality)
   deepStrictEqual(plain(result.table), {...expectedVersionOne, localities: noLocalities}, "the version 1 fixture")
 }
 
@@ -137,7 +142,7 @@ function checkHeaderRefusals() {
   expectRefusal({label: "version 1 with 9 sections", result: oneResult, reason: PackedRefusal.sectionCount})
 
   const versionTwoWithEight = new Uint8Array(expandedVersionOne)
-  new DataView(versionTwoWithEight.buffer).setUint16(VERSION_OFFSET, FIXTURE_VERSIONS[0], LITTLE_ENDIAN)
+  new DataView(versionTwoWithEight.buffer).setUint16(VERSION_OFFSET, VERSION_CURRENT, LITTLE_ENDIAN)
   const twoResult = decodePlaceFile(versionTwoWithEight)
   expectRefusal({label: "version 2 with 8 sections", result: twoResult, reason: PackedRefusal.sectionCount})
 
