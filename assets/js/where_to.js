@@ -133,6 +133,9 @@ export function distanceText(meters) {
   return `${Math.round(kilometers)} km`
 }
 
+/** The kinds of a place's distance from the rider: known where the rider's position is. */
+export const DistanceKind = Object.freeze({known: "known", unknown: "unknown"})
+
 /** The kinds of a position a search may or may not know. */
 export const PositionKind = Object.freeze({known: "known", unknown: "unknown"})
 
@@ -205,16 +208,16 @@ export function searchPoints({anchor, rider, fallback}) {
  */
 export function placeDetailAt({categoryName, locality, rider, lat, lon}) {
   if (rider === null) {
-    return placeDetail({categoryName, locality, distance: {kind: PositionKind.unknown}})
+    return placeDetail({categoryName, locality, distance: {kind: DistanceKind.unknown}})
   }
 
   const meters = distanceMeters([rider.lon, rider.lat], [lon, lat])
-  return placeDetail({categoryName, locality, distance: {kind: PositionKind.known, meters}})
+  return placeDetail({categoryName, locality, distance: {kind: DistanceKind.known, meters}})
 }
 
 /**
  * The detail line of a place: its category, its locality when it has one,
- * and its `distance`, a PositionKind member that is `known` with `meters`
+ * and its `distance`, a DistanceKind member that is `known` with `meters`
  * from the rider or `unknown`, which leaves the distance out.
  */
 export function placeDetail({categoryName, locality, distance}) {
@@ -226,7 +229,7 @@ export function placeDetail({categoryName, locality, distance}) {
     parts.push(locality)
   }
 
-  if (distance.kind === PositionKind.known) {
+  if (distance.kind === DistanceKind.known) {
     parts.push(distanceText(distance.meters))
   }
 
