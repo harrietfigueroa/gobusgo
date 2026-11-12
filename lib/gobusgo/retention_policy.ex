@@ -1,10 +1,11 @@
 defmodule Gobusgo.RetentionPolicy do
-  @vehicle_day_count 1
+  @vehicle_day_count 7
   @arrival_day_count 1
   @agency_day_count 30
   @route_day_count 30
   @route_path_day_count 30
-  @route_schedule_day_count 3
+  @schedule_lead_day_count 2
+  @route_schedule_day_count @vehicle_day_count + @schedule_lead_day_count
   @usage_day_count 3
   @route_stop_tiles_day_count 2
   @routing_snapshot_day_count 2
@@ -20,14 +21,19 @@ defmodule Gobusgo.RetentionPolicy do
   Each dataset has one rule of `Gobusgo.Retention`, by the prefix its owner
   names:
 
-    * the vehicles of an agency, #{@vehicle_day_count} day;
+    * the vehicles of an agency, #{@vehicle_day_count} days, a week of
+      fetches to replay against the schedules they ran on;
     * the arrivals at a stop, #{@arrival_day_count} day;
     * the agencies, #{@agency_day_count} days;
     * the routes of an agency, #{@route_day_count} days;
     * the stops and paths of a route, #{@route_path_day_count} days;
     * the schedule of a route on a service date, #{@route_schedule_day_count}
-      days, the fetch dates of the three service dates the schedule view
-      holds, so a start rebuilds them;
+      days, the vehicles' days and #{@schedule_lead_day_count} more: a
+      service date's schedule is fetched on the UTC date before it at the
+      earliest, and the vehicles of a UTC date run on that date's service
+      date and the one before, so each stored vehicle fetch keeps the
+      schedules of its trips. The days hold the fetch dates of the three
+      service dates the schedule view holds, so a start rebuilds them;
     * the usage records of page connections, #{@usage_day_count} days.
     * the route and stop tile archives, #{@route_stop_tiles_day_count} days,
       longer than a page that loaded an archive stays open;
