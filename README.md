@@ -45,6 +45,7 @@ flowchart LR
 The server fetches, stores, and publishes. The browser does the thinking. Read how:
 
 - [How the algorithms work](docs/algorithms.md): trip planning, vehicle motion, search, and offline service.
+- [The GBRT format](docs/gbrt-format.md): the binary layout of the routing snapshots the trip planner reads.
 - [How the server works](docs/server.md): fetching on demand, the data flow, the endpoints, and the AI assistant tools.
 - [Development](docs/development.md): setup, configuration, tests, Docker, and building the map and search files.
 

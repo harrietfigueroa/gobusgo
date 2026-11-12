@@ -10,7 +10,7 @@ Gobusgo's server fetches and publishes; the browser does the reasoning. Everythi
 
 ### The schedule files
 
-For each service date the server publishes a routing snapshot: binary tables of stops, trips, transfers, and stop positions, and the connections themselves. A connection is one hop of one trip, from one stop to the next, with a departure and an arrival time. Connections are sorted by departure and cut into hourly chunks, so a query fetches only the hours it needs.
+For each service date the server publishes a routing snapshot: binary tables of stops, trips, transfers, and stop positions, and the connections themselves. A connection is one hop of one trip, from one stop to the next, with a departure and an arrival time. Connections are sorted by departure and cut into hourly chunks, so a query fetches only the hours it needs. [The GBRT format](gbrt-format.md) describes the files byte by byte.
 
 A snapshot covers its date's trips and the previous date's trips still running after midnight, so a 1 a.m. query finds the night owl that left at 11:40 p.m.
 
