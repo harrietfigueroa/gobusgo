@@ -7,7 +7,7 @@
 // announced on the window with the "gobusgo:theme-change" event, whose
 // detail holds the theme.
 
-import {assertCondition} from "./assert"
+import {assertCondition} from "./core/assert"
 import {parseSetting, resolveTheme, settingStatusText, Theme, themeColor} from "./theme"
 import {storedSettings} from "./stored_settings"
 

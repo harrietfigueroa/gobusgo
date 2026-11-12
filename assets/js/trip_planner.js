@@ -16,8 +16,8 @@
 // Every text here is built as text nodes: names come from outside the
 // application and are never parsed as HTML.
 
-import {assertCondition, unreachable} from "./assert"
-import {FromKind, JourneysKind} from "./routing_journeys"
+import {assertCondition, unreachable} from "./core/assert"
+import {FromKind, JourneysKind} from "./core/routing_journeys"
 import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf, walkSpeedsOf} from "./trip_route"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
@@ -47,7 +47,7 @@ import {
   swappedEnds,
   tripRouteIds,
   windowText
-} from "./trip_plan"
+} from "./core/trip_plan"
 import {ChoiceKind, OSM_CREDIT, OptionMove, PositionKind, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, searchPoints, suggestionList, suggestionsAnnouncement} from "./where_to"
 import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
 import {button, element} from "./dom_element"

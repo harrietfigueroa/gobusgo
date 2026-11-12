@@ -1,4 +1,4 @@
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
 import {isItemAt} from "./map_view_reading"
 import {announce} from "./map_live_region"

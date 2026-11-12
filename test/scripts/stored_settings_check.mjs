@@ -10,7 +10,7 @@
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {resolveTheme, Theme, themeColor, ThemeSetting} from "../../assets/js/theme.js"
 import {
   FavoriteChangeKind,

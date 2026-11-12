@@ -22,7 +22,7 @@ import {
   loadAddressIndex,
   loadAddressShard,
 } from "../../assets/js/address_file.js"
-import {PackedOutcome, PackedRefusal} from "../../assets/js/packed_container.js"
+import {PackedOutcome, PackedRefusal} from "../../assets/js/core/packed_container.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/addresses/v1/", import.meta.url))
 const HEADER_BYTES = 16

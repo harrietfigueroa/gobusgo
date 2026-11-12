@@ -8,8 +8,8 @@
 // it exits non-zero on the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {EndKind, LOCATION_END, TripEnd, pointEnd, stopEnd} from "../../assets/js/trip_plan.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {EndKind, LOCATION_END, TripEnd, pointEnd, stopEnd} from "../../assets/js/core/trip_plan.js"
 import {
   ChoiceKind,
   GROUP_COUNT_MAX,

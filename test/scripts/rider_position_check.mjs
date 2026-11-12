@@ -11,7 +11,7 @@
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {
   FIX_AGE_MS_MAX,
   LatestKind,

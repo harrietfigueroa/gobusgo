@@ -15,7 +15,7 @@ import {
   decodeStops,
   decodeTransfers,
   decodeTrips,
-} from "../../assets/js/routing_snapshot.js"
+} from "../../assets/js/core/routing_snapshot.js"
 
 const directory = fileURLToPath(new URL("../fixtures/routing/v2/", import.meta.url))
 const POSITION_BYTES = 8

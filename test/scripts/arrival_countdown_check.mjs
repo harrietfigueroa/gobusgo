@@ -7,7 +7,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {ArrivalTimeKind, COUNTDOWN_INTERVAL_MS, arrivalTimeAt, shownAt} from "../../assets/js/arrival_countdown.js"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 
 const NOW_MS = 1_794_250_000_000
 const FRACTIONAL_NOW_MS = 1_794_250_000_000.5

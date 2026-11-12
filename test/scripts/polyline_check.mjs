@@ -8,8 +8,8 @@
 // first case that differs.
 
 import {deepStrictEqual, strictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {nearestAlong, pointsBetween, segmentIndexAt} from "../../assets/js/math/polyline.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {nearestAlong, pointsBetween, segmentIndexAt} from "../../assets/js/core/math/polyline.js"
 
 // An L-shaped line: 100 m east, then 100 m north.
 const LINE = {

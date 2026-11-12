@@ -34,10 +34,10 @@
 //                 serviceDate, departsAt, arrivesAt, changes, and legs of the
 //                 object above
 
-import {assertCondition, unreachable} from "./assert.js"
-import {LEG_KIND_TO_POINT} from "./point_journeys.js"
-import {LegKind} from "./routing_engine.js"
-import {journeyLeaveS, routeChip, stopName, walkMinutes} from "./trip_plan.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {LEG_KIND_TO_POINT} from "./core/point_journeys.js"
+import {LegKind} from "./core/routing_engine.js"
+import {journeyLeaveS, routeChip, stopName, walkMinutes} from "./core/trip_plan.js"
 
 /** The name that tells the object from any other the model holds. */
 export const JOURNEY_SCHEMA_NAME = "gobusgo.journey"

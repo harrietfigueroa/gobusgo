@@ -30,7 +30,7 @@ import {
   planIntersection,
   searchIntersection,
 } from "../../assets/js/intersection_lookup.js"
-import {PackedKind, PackedOutcome, PackedRefusal, packedFileName} from "../../assets/js/packed_container.js"
+import {PackedKind, PackedOutcome, PackedRefusal, packedFileName} from "../../assets/js/core/packed_container.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/intersections/v1/", import.meta.url))
 const HEADER_BYTES = 16

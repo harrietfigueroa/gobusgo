@@ -23,7 +23,7 @@
 - `request_id.ex` builds the UUID version 7 request identifiers.
 - `polyline.ex` encodes and decodes the encoded polyline format and is pure.
 - `command.ex` runs an external command to its end or to a deadline, kills the command's process at the deadline, and returns the last 4,096 bytes of its output.
-- `math/geodesy.ex`, `Gobusgo.Math.Geodesy`, holds the server's geodesy: the Earth's mean radius, which a test reads from `assets/js/math/geodesy.js`, the meters of a degree, π times the radius over 180, which every server caller uses (GOB-324), great-circle distance, and degrees and radians (GOB-322).
+- `math/geodesy.ex`, `Gobusgo.Math.Geodesy`, holds the server's geodesy: the Earth's mean radius, which a test reads from `assets/js/core/math/geodesy.js`, the meters of a degree, π times the radius over 180, which every server caller uses (GOB-324), great-circle distance, and degrees and radians (GOB-322).
 - `places/` builds and publishes the places file; read `places/AGENTS.md`.
 - `intersections/` builds and publishes the intersection files from OpenStreetMap's named roads; read `intersections/AGENTS.md`.
 - `basemap.ex` reads the manifest of the basemap directory, and `basemap/` plans and runs the extraction of the regional archives.

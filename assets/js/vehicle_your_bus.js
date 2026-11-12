@@ -7,7 +7,7 @@
 
 import {ChosenKind} from "./chosen_journey.js"
 import {BoardingKind, firstRideBoarding} from "./journey_labels.js"
-import {clockText, stopName} from "./trip_plan.js"
+import {clockText, stopName} from "./core/trip_plan.js"
 
 /** Whether a vehicle's view carries the line. */
 export const YourBusLineKind = Object.freeze({line: "line", none: "none"})

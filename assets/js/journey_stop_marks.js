@@ -4,10 +4,10 @@
 // found as the journey cards find their first bus. Nothing here reads the
 // document, the network, storage, or a clock.
 
-import {assertCondition} from "./assert.js"
-import {LegKind} from "./routing_engine.js"
+import {assertCondition} from "./core/assert.js"
+import {LegKind} from "./core/routing_engine.js"
 import {isRideRun, liveShiftMs} from "./journey_cards.js"
-import {clockText} from "./trip_plan.js"
+import {clockText} from "./core/trip_plan.js"
 
 /** What a journey does at a stop. */
 export const StopMarkKind = Object.freeze({none: "none", boardsFirst: "boardsFirst", boards: "boards", getsOff: "getsOff"})

@@ -10,9 +10,9 @@
 // linear interpolation between them. A number with no neighbor of its parity
 // on one side is past the street's end and has no answer.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {parseQuery, streetKey} from "./address_normalize.js"
-import {assertPosition, distanceMeters} from "./math/geodesy.js"
+import {assertPosition, distanceMeters} from "./core/math/geodesy.js"
 
 /** The most places `searchAddress` returns. */
 export const RESULT_COUNT_MAX = 5

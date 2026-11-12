@@ -9,7 +9,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {HANDOFF_COUNT_MAX, HandoffKind, NO_HANDOFF, keepHandoffState, takeHandoffState} from "../../assets/js/hook_handoff.js"
-import {TableKind} from "../../assets/js/offline_answers.js"
+import {TableKind} from "../../assets/js/core/offline_answers.js"
 import {
   BootEventKind,
   BootPhase,

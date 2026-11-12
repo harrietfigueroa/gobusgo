@@ -14,9 +14,9 @@
 // A change to a field's meaning, or a field removed, is a new version; a
 // field added keeps the version.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {ProblemKind, VALID, firstFailure, invalid, isRecord, isText} from "./mcp_trip_journey.js"
-import {TripEnd} from "./trip_plan.js"
+import {TripEnd} from "./core/trip_plan.js"
 
 /** The name that tells the object from any other the model holds. */
 export const UNMATCHED_SCHEMA_NAME = "gobusgo.unmatched"

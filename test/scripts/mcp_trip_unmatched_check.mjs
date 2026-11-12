@@ -7,10 +7,10 @@
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {ProblemKind} from "../../assets/js/mcp_trip_journey.js"
 import {UNMATCHED_SCHEMA_NAME, UNMATCHED_SCHEMA_VERSION, unmatchedContext, unmatchedProblem} from "../../assets/js/mcp_trip_unmatched.js"
-import {TripEnd} from "../../assets/js/trip_plan.js"
+import {TripEnd} from "../../assets/js/core/trip_plan.js"
 
 const VALID = {kind: ProblemKind.valid}
 

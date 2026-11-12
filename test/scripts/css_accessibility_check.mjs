@@ -21,8 +21,8 @@
 // names every failure.
 
 import {readFileSync} from "node:fs"
-import {assertCondition} from "../../assets/js/assert.js"
-import {contrastRatio} from "../../assets/js/math/color_contrast.js"
+import {assertCondition} from "../../assets/js/core/assert.js"
+import {contrastRatio} from "../../assets/js/core/math/color_contrast.js"
 
 const TEXT_CONTRAST_MIN = 4.5
 const NON_TEXT_CONTRAST_MIN = 3

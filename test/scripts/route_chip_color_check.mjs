@@ -10,7 +10,7 @@
 // names every color that fails.
 
 import {readFileSync} from "node:fs"
-import {contrastRatio} from "../../assets/js/math/color_contrast.js"
+import {contrastRatio} from "../../assets/js/core/math/color_contrast.js"
 import {chipTextColor} from "../../assets/js/route_chip_color.js"
 
 const TEXT_CONTRAST_MIN = 4.5

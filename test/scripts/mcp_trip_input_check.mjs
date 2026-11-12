@@ -9,7 +9,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {END_TEXT_LENGTH_MAX, InputKind, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "../../assets/js/mcp_trip_input.js"
-import {DayChoice, TimeMode} from "../../assets/js/trip_plan.js"
+import {DayChoice, TimeMode} from "../../assets/js/core/trip_plan.js"
 
 const NOW = {mode: TimeMode.now, day: DayChoice.today, clockText: ""}
 const POSITION = {kind: StartKind.position}

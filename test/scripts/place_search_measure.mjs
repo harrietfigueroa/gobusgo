@@ -15,7 +15,7 @@ import {tmpdir} from "node:os"
 import {join, normalize} from "node:path"
 import {setTimeout as sleep} from "node:timers/promises"
 import {parseArgs} from "node:util"
-import {assertCondition} from "../../assets/js/assert.js"
+import {assertCondition} from "../../assets/js/core/assert.js"
 import {jsonColumnsOfTable, tableOfRecords} from "./place_records.mjs"
 
 const HALF = 2

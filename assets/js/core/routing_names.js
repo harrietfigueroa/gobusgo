@@ -1,14 +1,11 @@
 // Reads the names file of a routing snapshot, version 1, as
 // Gobusgo.Routing.Names writes it: one JSON object stored as one gzip
-// stream. `expandNames` expands the stream as fetched, and `decodeNames`
-// checks the JSON against the counts of the snapshot's stops and trips
-// files, whose indexes key its stop and trip columns. Each returns a result
-// keyed by `kind`, the records or the reason the file was refused, and
-// `decodeNames` is pure.
+// stream. `decodeNames` reads the expanded JSON and checks it against the
+// counts of the snapshot's stops and trips files, whose indexes key its stop
+// and trip columns, and returns a result keyed by `kind`, the records or the
+// reason the file was refused. Everything here is pure.
 
 import {DecodeKind} from "./routing_snapshot.js"
-
-const COMPRESSION_FORMAT = "gzip"
 
 /** The version of the names file this module reads. */
 export const NAMES_VERSION = 1
@@ -34,58 +31,6 @@ function refused(reason) {
 
 function decoded(records) {
   return {kind: DecodeKind.decoded, records}
-}
-
-// The chunks of `reader` joined into one buffer, read until the stream ends
-// or passes NAMES_EXPANDED_BYTES_MAX.
-async function readBounded(reader) {
-  const chunks = []
-  let byteCount = 0
-
-  for (;;) {
-    const read = await reader.read()
-
-    if (read.done) {
-      break
-    }
-
-    byteCount += read.value.byteLength
-
-    if (byteCount > NAMES_EXPANDED_BYTES_MAX) {
-      await reader.cancel()
-      return refused(NamesRefusalReason.tooLarge)
-    }
-
-    chunks.push(read.value)
-  }
-
-  const bytes = new Uint8Array(byteCount)
-  let offset = 0
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-
-  return decoded(bytes.buffer)
-}
-
-/** The content of the gzip stream `buffer`, a names file as fetched. */
-export async function expandNames(buffer) {
-  const compressed = new Blob([buffer]).stream()
-  const expanded = compressed.pipeThrough(new DecompressionStream(COMPRESSION_FORMAT))
-  const reader = expanded.getReader()
-
-  try {
-    return await readBounded(reader)
-  } catch (error) {
-    // A stream that is not gzip, or ends early, rejects the read with a TypeError.
-    if (error instanceof TypeError) {
-      return refused(NamesRefusalReason.invalidStream)
-    }
-
-    throw error
-  }
 }
 
 function isText(value) {

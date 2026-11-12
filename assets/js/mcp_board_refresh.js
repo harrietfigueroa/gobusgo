@@ -5,7 +5,7 @@
 // board stops. Nothing here reads the document, the clock, or a timer.
 
 import {AnswerKind} from "./mcp_board_answer.js"
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 
 const SECOND_MS = 1000
 

@@ -7,7 +7,7 @@ defmodule Gobusgo.Math.GeodesyTest do
   alias Gobusgo.Math.Geodesy
 
   @tolerance_meters 1.0e-6
-  @browser_geodesy_path "assets/js/math/geodesy.js"
+  @browser_geodesy_path "assets/js/core/math/geodesy.js"
 
   describe "distance_meters/2" do
     for {name, from, to, meters} <- [

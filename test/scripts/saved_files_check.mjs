@@ -9,7 +9,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {RangeKind, rangeAnswer, requestedRange} from "../../assets/js/byte_range.js"
-import {isNotSaved} from "../../assets/js/offline_bundle.js"
+import {isNotSaved} from "../../assets/js/core/offline_bundle.js"
 import {SavedKind, answerNetworkFirst, answerSavedFile, savedFileReader, storedOf} from "../../assets/js/saved_files.js"
 
 const TOTAL_BYTES = 1000

@@ -7,17 +7,17 @@
 // refused; a bad file is never a throw. Everything here is pure but the
 // expansion.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {
   ColumnType,
   PackedKind,
   PackedOutcome,
   PackedRefusal,
   decodeContainer,
-  expandStream,
   openColumn,
   openPositions,
-} from "./packed_container.js"
+} from "./core/packed_container.js"
+import {expandStream} from "./packed_stream.js"
 
 const VERSION_WITH_LOCALITIES = 2
 // The versions read, the newest first, each with the sections it holds after the string table.

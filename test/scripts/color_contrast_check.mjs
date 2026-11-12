@@ -7,7 +7,7 @@
 // https://www.w3.org/TR/WCAG22/#dfn-contrast-ratio — checked 2026-11-09
 
 import {ok, strictEqual} from "node:assert/strict"
-import {contrastRatio, relativeLuminance} from "../../assets/js/math/color_contrast.js"
+import {contrastRatio, relativeLuminance} from "../../assets/js/core/math/color_contrast.js"
 
 const TEXT_CONTRAST_MIN = 4.5
 const CONTRAST_MAX = 21

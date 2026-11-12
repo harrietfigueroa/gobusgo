@@ -5,9 +5,9 @@
 // of them alone. Every heading here is in degrees clockwise from true
 // north, the map's north.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {FollowKind} from "./follow_state.js"
-import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees, turnDegrees} from "./math/angles.js"
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees, turnDegrees} from "./core/math/angles.js"
 import {MeasureKind} from "./position_watch.js"
 
 /** The width of the cone, centered on the heading. */

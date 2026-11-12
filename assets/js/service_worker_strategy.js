@@ -10,7 +10,7 @@
 // never deleted here; the offline schedules' cache and the saved map's are
 // read, never written.
 
-import {BUNDLE_MANIFEST_PATH} from "./offline_bundle.js"
+import {BUNDLE_MANIFEST_PATH} from "./core/offline_bundle.js"
 
 const RELEASE_CACHE_PREFIX = "gobusgo-release-"
 const BASEMAP_ASSETS_CACHE_PREFIX = "gobusgo-basemap-assets-"

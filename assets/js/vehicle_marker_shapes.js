@@ -5,7 +5,7 @@
 // The rules of each status's look are pure functions. Nothing here reads
 // the document.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {chipTextColor} from "./route_chip_color.js"
 import {StrokeOpacityKind} from "./theme.js"
 

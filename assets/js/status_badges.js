@@ -4,7 +4,7 @@
 // handed, at a corner it is given: a MapLibre image and a canvas drawn over
 // the map draw the same mark. Nothing here reads the document.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 /** The badge of a status a recent report lacks, as the server names it. */
 export const BadgeKind = Object.freeze({clock: "clock", question: "question", timetable: "timetable"})

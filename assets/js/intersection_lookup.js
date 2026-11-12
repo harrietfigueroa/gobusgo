@@ -6,9 +6,9 @@
 // of the two streets nearest a point. Every refusal and every miss is a value
 // keyed by `kind`. Everything here is pure.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {parseQuery, parseStreet, streetKey, tokenize} from "./address_normalize.js"
-import {distanceMeters} from "./math/geodesy.js"
+import {distanceMeters} from "./core/math/geodesy.js"
 
 const MICRODEGREES_PER_DEGREE = 1_000_000
 const COORDINATE_COUNT = 2

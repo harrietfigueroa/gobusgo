@@ -7,7 +7,7 @@
 // on the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {DepartureLoadKind} from "../../assets/js/departure_files.js"
 import {LIVE_NOTE} from "../../assets/js/mcp_board_departures.js"
 import {
@@ -19,7 +19,7 @@ import {
   isOffered
 } from "../../assets/js/mcp_board_context.js"
 import {ProblemKind} from "../../assets/js/mcp_trip_journey.js"
-import {DEPARTURE_COUNT_MAX} from "../../assets/js/scheduled_service.js"
+import {DEPARTURE_COUNT_MAX} from "../../assets/js/core/scheduled_service.js"
 
 const TIME_ZONE = "America/Los_Angeles"
 const MINUTE_MS = 60 * 1000

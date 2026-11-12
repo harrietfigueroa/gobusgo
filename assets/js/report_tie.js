@@ -3,8 +3,8 @@
 // from the ring along the trip's path to where the marker is drawn. Which
 // vehicles show one is decided here too. Positions are [lon, lat].
 
-import {assertCondition} from "./assert.js"
-import {pointsBetween} from "./math/polyline.js"
+import {assertCondition} from "./core/assert.js"
+import {pointsBetween} from "./core/math/polyline.js"
 import {DrawnKind} from "./vehicle_prediction.js"
 import {isAnimated} from "./vehicle_motion.js"
 

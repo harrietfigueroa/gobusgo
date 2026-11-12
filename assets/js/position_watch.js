@@ -3,7 +3,7 @@
 // time are given as values, so whether the watch runs and what a holder is
 // handed are functions of them alone.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 // High accuracy is what makes the browser use GPS, and GPS is what gives a
 // heading while moving. A fix the browser holds that is at most

@@ -5,8 +5,8 @@
 // from a seeded generator, so every run routes the same ones. The clock is
 // the caller's `now`, in milliseconds.
 
-import {OriginKind} from "../../../assets/js/routing_engine.js"
-import {loadEngine} from "../../../assets/js/routing_journeys.js"
+import {OriginKind} from "../../../assets/js/core/routing_engine.js"
+import {loadEngine} from "../../../assets/js/core/routing_journeys.js"
 
 export const QUERY_COUNT = 200
 export const REPEAT_COUNT = 50

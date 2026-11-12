@@ -23,10 +23,10 @@ import {
   SectionCursor,
   UNKNOWN_MICRODEGREES,
   decodeContainer,
-  expandStream,
   openColumn,
   openPositions,
-} from "../../assets/js/packed_container.js"
+} from "../../assets/js/core/packed_container.js"
+import {expandStream} from "../../assets/js/packed_stream.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/packed/core-v1/", import.meta.url))
 const kindsPath = fileURLToPath(new URL("../fixtures/packed/kinds.json", import.meta.url))

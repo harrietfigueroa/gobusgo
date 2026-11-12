@@ -10,11 +10,11 @@
 import {deepStrictEqual, ok} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
-import {METERS_PER_DEGREE, distanceMeters} from "../../assets/js/math/geodesy.js"
-import {nearestAlong} from "../../assets/js/math/polyline.js"
-import {TableKind} from "../../assets/js/offline_answers.js"
-import {KeptKind, scheduledMarkers} from "../../assets/js/scheduled_service.js"
-import {TripPathLookup, decodeTripPathShard, tripPathFromShard} from "../../assets/js/trip_path_shard.js"
+import {METERS_PER_DEGREE, distanceMeters} from "../../assets/js/core/math/geodesy.js"
+import {nearestAlong} from "../../assets/js/core/math/polyline.js"
+import {TableKind} from "../../assets/js/core/offline_answers.js"
+import {KeptKind, scheduledMarkers} from "../../assets/js/core/scheduled_service.js"
+import {TripPathLookup, decodeTripPathShard, tripPathFromShard} from "../../assets/js/core/trip_path_shard.js"
 import {DrawnKind, PREDICTION_HORIZON_MS, preparePath} from "../../assets/js/vehicle_prediction.js"
 import {
   MarkerPositionKind,

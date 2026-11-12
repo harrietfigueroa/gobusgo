@@ -3,7 +3,7 @@
 // visually hidden full stop, so an element that reads the two, a live
 // region among them, reads two sentences.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 const HEADLINE_CLASS_NAME = "message-headline"
 const CAPTION_CLASS_NAME = "message-caption"

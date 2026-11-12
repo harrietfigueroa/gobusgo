@@ -3,7 +3,7 @@
 // arrival of its route's chip, its headsign, and its time, with a live dot
 // beside a predicted time, and a key under the rows.
 
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 import {appendSpaced, chipElements} from "./route_chips.js"
 import {arrivalsKey} from "./stop_text.js"
 import {appendMessage} from "./message.js"

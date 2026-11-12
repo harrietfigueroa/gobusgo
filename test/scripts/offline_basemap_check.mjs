@@ -7,7 +7,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {ConnectionKind, OfflineReason} from "../../assets/js/connection_rules.js"
-import {PersistenceKind} from "../../assets/js/offline_bundle.js"
+import {PersistenceKind} from "../../assets/js/core/offline_bundle.js"
 import {
   BasemapSaveKind,
   SettingKind,

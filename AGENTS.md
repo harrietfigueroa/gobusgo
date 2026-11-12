@@ -235,6 +235,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo_web/AGENTS.md`: the HTTP server, its routes, the MCP endpoint, static files, error bodies, session, the browser pages' layout, the route and stop tile archive, and the pure modules that turn views into what a page shows.
 - `lib/gobusgo_web/live/AGENTS.md`: the vehicle page, what it shows, its filter, panel sheet, tabs, map layers, and the events between the page and the browser.
 - `assets/AGENTS.md`: the front end, the JavaScript modules and hooks, the stylesheet and themes, the build, the service worker, offline use, and the check each JavaScript file runs.
+- `assets/js/core/AGENTS.md`: the core, the front end's logic shared with the native apps, which does no async work, and the lint that enforces it. Read it before changing a module under `assets/js/core/`.
 
 Outside the area files:
 
@@ -261,6 +262,8 @@ node test/scripts/route_chip_color_check.mjs
 ```
 
 A change to a file under `assets/js/` runs that file's node check, or is checked in a browser, as `assets/AGENTS.md` ("Checks") lists; CI runs neither.
+
+When a change touches `assets/js/core/` or `tools/lint/rules/no_async_work.mjs`, also run the two commands CI's `core-lint` job runs (GOB-420), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which also lints code written out by hand to check that the rule still reports each kind of async work, and `npm run --prefix tools/lint lint:core`, which lints every module of the core with `tools/lint/eslint.core.config.mjs`.
 
 `mix test` also excludes the tests tagged `memory`, which print a measurement and assert little. `lib/gobusgo_web/live/AGENTS.md` ("Memory checks") holds the two commands that measure the vehicle page; run both before and after a change meant to move those numbers.
 

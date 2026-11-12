@@ -8,8 +8,9 @@
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {deepStrictEqual} from "node:assert/strict"
-import {DecodeKind} from "../../assets/js/routing_snapshot.js"
-import {NamesRefusalReason, decodeNames, expandNames} from "../../assets/js/routing_names.js"
+import {DecodeKind} from "../../assets/js/core/routing_snapshot.js"
+import {NamesRefusalReason, decodeNames} from "../../assets/js/core/routing_names.js"
+import {expandNames} from "../../assets/js/names_stream.js"
 
 const directory = fileURLToPath(new URL("../fixtures/routing/names-v1/", import.meta.url))
 const STOP_COUNT = 3

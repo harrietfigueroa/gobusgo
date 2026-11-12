@@ -24,7 +24,7 @@ import {
   viewSentence
 } from "./map_view_text"
 import {readView, screenPoint} from "./map_view_reading"
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 
 const CANVAS_NAME = "Vehicle map"
 const CANVAS_ROLE = "application"

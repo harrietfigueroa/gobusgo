@@ -11,7 +11,7 @@
 import {mkdirSync, readFileSync, writeFileSync} from "node:fs"
 import {join} from "node:path"
 import {parseArgs} from "node:util"
-import {assertCondition} from "../../assets/js/assert.js"
+import {assertCondition} from "../../assets/js/core/assert.js"
 import {buildPlaceIndex, searchPlaces} from "../../assets/js/place_search.js"
 import {jsonColumnsOfTable, tableOfRecords} from "./place_records.mjs"
 

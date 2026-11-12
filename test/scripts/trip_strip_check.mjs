@@ -7,10 +7,10 @@
 // the first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {LegKind} from "../../assets/js/routing_engine.js"
-import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "../../assets/js/core/point_journeys.js"
 import {LiveKind, SegmentKind, firstRideLive, journeyCard} from "../../assets/js/journey_cards.js"
-import {journeyRows} from "../../assets/js/trip_plan.js"
+import {journeyRows} from "../../assets/js/core/trip_plan.js"
 import {tripStrip} from "../../assets/js/trip_strip.js"
 
 const TIME_ZONE = "America/Los_Angeles"

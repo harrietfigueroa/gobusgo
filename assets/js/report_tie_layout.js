@@ -4,8 +4,8 @@
 // strokes draw every tie, and when the ties are drawn again. Every length
 // is in CSS pixels, and nothing here reads the document or the map.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {lerp} from "./math/interpolation.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {lerp} from "./core/math/interpolation.js"
 import {GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, MARKER_STROKE_WIDTH_PIXELS} from "./vehicle_marker_shapes.js"
 import {MarkerKind} from "./vehicle_overlay_layout.js"
 

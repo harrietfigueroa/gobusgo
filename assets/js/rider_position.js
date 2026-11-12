@@ -10,7 +10,7 @@
 // event, makes no request, and stores nothing. The latest fix lives in this
 // module's memory alone, for as long as the page.
 
-import {assertCondition, unreachable} from "./assert"
+import {assertCondition, unreachable} from "./core/assert"
 import {
   NO_FIX,
   OutcomeKind,

@@ -22,7 +22,7 @@ import {
   renderStampOf,
   waitsForJoin
 } from "../../assets/js/connection_rules.js"
-import {IndexKind} from "../../assets/js/offline_bundle.js"
+import {IndexKind} from "../../assets/js/core/offline_bundle.js"
 import {
   AGE_REFRESH_MS,
   AnnouncementKind,

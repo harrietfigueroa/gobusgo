@@ -14,10 +14,10 @@
 import {readFileSync, readdirSync, writeFileSync} from "node:fs"
 import {join} from "node:path"
 import {gunzipSync, gzipSync} from "node:zlib"
-import {assertCondition} from "../../assets/js/assert.js"
-import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
-import {clamp, lerp} from "../../assets/js/math/interpolation.js"
-import {segmentIndexAt} from "../../assets/js/math/polyline.js"
+import {assertCondition} from "../../assets/js/core/assert.js"
+import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
+import {clamp, lerp} from "../../assets/js/core/math/interpolation.js"
+import {segmentIndexAt} from "../../assets/js/core/math/polyline.js"
 
 // The sample: this many vehicles, shuffled by this seed.
 const SAMPLE_VEHICLE_COUNT = 60

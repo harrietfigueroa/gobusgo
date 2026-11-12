@@ -3,7 +3,7 @@
 // map control, and pressing it opens the Trip tab. The views own what the
 // line says; this module owns the control.
 
-import {assertCondition} from "./assert"
+import {assertCondition} from "./core/assert"
 import {OPEN_EVENT_NAME} from "./panel_sheet"
 
 const TRIP_LINE_CLASS_NAME = "panel-detail-trip"

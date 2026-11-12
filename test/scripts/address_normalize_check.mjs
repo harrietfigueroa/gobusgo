@@ -7,7 +7,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {ordinalToken, parseQuery, streetFromFields, streetKey, tokenize} from "../../assets/js/address_normalize.js"
 
 const NOT_TEXT = 7

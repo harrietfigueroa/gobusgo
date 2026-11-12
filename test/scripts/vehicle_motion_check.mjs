@@ -10,8 +10,8 @@
 // exits non-zero on the first case that differs.
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
 import {CorrectionKind, DrawnKind, PREDICTION_HORIZON_MS, preparePath} from "../../assets/js/vehicle_prediction.js"
 import {
   HEADING_TURN_DURATION_MS,

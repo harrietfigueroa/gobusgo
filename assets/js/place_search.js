@@ -29,8 +29,8 @@
 // The index is columnar, typed arrays and one flat posting list, so a place
 // costs the heap its strings and a few dozen bytes.
 
-import {assertCondition} from "./assert.js"
-import {METERS_PER_DEGREE, metersPerDegreeLongitude} from "./math/geodesy.js"
+import {assertCondition} from "./core/assert.js"
+import {METERS_PER_DEGREE, metersPerDegreeLongitude} from "./core/math/geodesy.js"
 
 /** The tier of a place one of whose names the query spells out whole. */
 export const TIER_NAME = 1

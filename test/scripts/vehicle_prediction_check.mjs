@@ -15,8 +15,8 @@
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {gunzipSync} from "node:zlib"
-import {AssertionError} from "../../assets/js/assert.js"
-import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
 import {
   CorrectionKind,
   DrawnKind,

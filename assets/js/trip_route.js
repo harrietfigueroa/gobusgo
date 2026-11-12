@@ -8,11 +8,12 @@
 // never in a request: a start is the router's argument, and a fetch names
 // only a file.
 
-import {unreachable} from "./assert.js"
-import {FetchKind, FailureReason, JourneysKind, routeJourneys, routeJourneysArrivingBy} from "./routing_journeys.js"
-import {EndKind, PlannedKind, StateKind, failureState, isRetryable} from "./trip_plan.js"
-import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./point_journeys.js"
-import {isNotSaved} from "./offline_bundle.js"
+import {unreachable} from "./core/assert.js"
+import {FetchKind, FailureReason, JourneysKind} from "./core/routing_journeys.js"
+import {routeJourneys, routeJourneysArrivingBy} from "./routing_driver.js"
+import {EndKind, PlannedKind, StateKind, failureState, isRetryable} from "./core/trip_plan.js"
+import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./core/point_journeys.js"
+import {isNotSaved} from "./core/offline_bundle.js"
 
 const MANIFEST_TIMEOUT_MS = 20 * 1000
 

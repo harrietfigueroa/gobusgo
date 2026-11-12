@@ -10,9 +10,9 @@
 // highest zoom. A page whose extract is not stored draws the full archive
 // in every state, and offline that draws an empty background.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {ConnectionKind} from "./connection_rules.js"
-import {PersistenceKind} from "./offline_bundle.js"
+import {PersistenceKind} from "./core/offline_bundle.js"
 
 const MEGABYTE_BYTES = 1000 * 1000
 

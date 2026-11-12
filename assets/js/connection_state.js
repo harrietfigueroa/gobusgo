@@ -11,7 +11,7 @@
 // stylesheet reads to hide what needs a connection and to show the offline
 // signal.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {
   ConnectionEventKind,
   JOIN_WAIT_MS,

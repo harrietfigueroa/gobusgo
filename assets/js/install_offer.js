@@ -9,7 +9,7 @@
 // https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable — checked 2026-11-08
 // https://webkit.org/blog/17333/webkit-features-in-safari-26-0/ — checked 2026-11-08
 
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 
 /** The offers: none, as in an installed app or a browser that installs nothing, the browser's prompt, or Safari's menus. */
 export const InstallOfferKind = Object.freeze({

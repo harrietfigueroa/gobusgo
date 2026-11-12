@@ -1,5 +1,5 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
-import {assertCondition, unreachable} from "./assert"
+import {assertCondition, unreachable} from "./core/assert"
 import {currentTheme} from "./color_theme"
 import {glidePosition, glides} from "./marker_glide"
 import {vehicleViewText} from "./vehicle_view_text"
@@ -20,8 +20,8 @@ import {
 import {revealOnMap} from "./panel_sheet"
 import {pageEvents} from "./page_events"
 import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
-import {TableKind} from "./offline_answers"
-import {isFallbackDue} from "./scheduled_path"
+import {TableKind} from "./core/offline_answers"
+import {isFallbackDue} from "./core/scheduled_path"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
 import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRouteOf} from "./route_emphasis"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -64,7 +64,7 @@ import {
 } from "./vehicle_motion"
 import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
 import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
-import {tripPathKey, withTripPaths} from "./trip_path"
+import {tripPathKey, withTripPaths} from "./core/trip_path"
 import {
   FILE_FETCH_TIMEOUT_MS,
   FileFailure,
@@ -78,8 +78,9 @@ import {
   hasExpectedSize,
   manifestFetched,
   planTripPathFiles
-} from "./trip_path_files"
-import {PackedOutcome, expandStream} from "./packed_container"
+} from "./core/trip_path_files"
+import {PackedOutcome} from "./core/packed_container"
+import {expandStream} from "./packed_stream.js"
 import {preparePath} from "./vehicle_prediction"
 import {registerImageResolver} from "./style_images"
 import {createYourBusLabel} from "./your_bus_label"

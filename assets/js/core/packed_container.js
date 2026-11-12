@@ -3,15 +3,13 @@
 // little-endian, of the magic "GBPK", a u16 kind version, a u16 kind, a u32
 // record count, and a u32 reserved, zero, then sections, each a u32 byte
 // length and that many bytes. Section 0 is the string table. A file is
-// stored as one gzip stream; `expandStream` expands it under a bound, and
+// stored as one gzip stream, and this module reads it once expanded:
 // `decodeContainer` reads the header and sections in place over one
-// DataView. Each returns a result keyed by `kind`, the value or the reason
-// the file was refused, and a bad file is never a throw. Everything here is
-// pure but the expansion, which uses DecompressionStream.
+// DataView and returns a result keyed by `kind`, the value or the reason the
+// file was refused, and a bad file is never a throw. Everything here is pure.
 
 import {assertCondition, unreachable} from "./assert.js"
 
-const COMPRESSION_FORMAT = "gzip"
 const TEXT_ENCODING = "utf-8"
 const MAGIC_TEXT = "GBPK"
 const LITTLE_ENDIAN = true
@@ -107,12 +105,6 @@ function refused(reason) {
   return {kind: PackedOutcome.refused, reason}
 }
 
-function isByteSource(source) {
-  const isArray = source instanceof Uint8Array
-  const isBuffer = source instanceof ArrayBuffer
-  return isArray || isBuffer
-}
-
 function assertIndex({index, count, name}) {
   assertCondition(Number.isInteger(index), "the index into " + name + " must be an integer")
   assertCondition(index >= 0, "the index into " + name + " must not be negative")
@@ -122,73 +114,6 @@ function assertIndex({index, count, name}) {
 function assertCount(count) {
   assertCondition(Number.isSafeInteger(count), "the count must be an integer")
   assertCondition(count >= 0, "the count must not be negative")
-}
-
-// The chunks of `reader` joined into one array, read until the stream ends
-// or passes `expandedByteSizeMax`.
-async function readBounded({reader, expandedByteSizeMax}) {
-  const chunks = []
-  let byteCount = 0
-
-  for (;;) {
-    const read = await reader.read()
-
-    if (read.done) {
-      break
-    }
-
-    byteCount += read.value.byteLength
-
-    if (byteCount > expandedByteSizeMax) {
-      await reader.cancel()
-      return refused(PackedRefusal.tooLarge)
-    }
-
-    chunks.push(read.value)
-  }
-
-  const bytes = new Uint8Array(byteCount)
-  let offset = 0
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-
-  return {kind: PackedOutcome.expanded, bytes}
-}
-
-/**
- * The content of the gzip stream `source`, the bytes of a stored container
- * as fetched or a ReadableStream of them, expanded to at most
- * `expandedByteSizeMax` bytes: `{kind: "expanded", bytes}`, or
- * `{kind: "refused", reason}` with `tooLarge`, once the bound is passed and
- * reading stops, or `corrupt` for a stream that is not gzip or ends early.
- */
-export async function expandStream(source, {expandedByteSizeMax}) {
-  assertCondition(Number.isSafeInteger(expandedByteSizeMax), "the bound must be an integer")
-  assertCondition(expandedByteSizeMax >= 1, "the bound must be at least 1 byte")
-  const isStream = source instanceof ReadableStream
-  const isSupported = isStream || isByteSource(source)
-  assertCondition(isSupported, "the source must be bytes or a ReadableStream")
-
-  let compressed = source
-
-  if (!isStream) {
-    compressed = new Blob([source]).stream()
-  }
-
-  const decompression = new DecompressionStream(COMPRESSION_FORMAT)
-  const expanded = compressed.pipeThrough(decompression)
-  const reader = expanded.getReader()
-
-  try {
-    return await readBounded({reader, expandedByteSizeMax})
-  } catch {
-    // A stream that is not gzip, or ends early, rejects the read; no other
-    // failure comes from reading it.
-    return refused(PackedRefusal.corrupt)
-  }
 }
 
 function isLatitude(microdegrees) {

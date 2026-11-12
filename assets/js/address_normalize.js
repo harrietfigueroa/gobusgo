@@ -9,7 +9,7 @@
 // or "twelfth". A numbered highway ("Hwy 99", "SR 99", "State Route 99") is
 // "HWY 99", its number kept as a number.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 const DIRECTIONS = {
   N: "N", NORTH: "N", S: "S", SOUTH: "S", E: "E", EAST: "E", W: "W", WEST: "W",

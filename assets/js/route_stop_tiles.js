@@ -1,5 +1,5 @@
 import {READY_EVENT_NAME} from "./basemap"
-import {KeptKind} from "./scheduled_service"
+import {KeptKind} from "./core/scheduled_service"
 
 // The source the route lines and the stops are drawn from: one vector source
 // over the route and stop tile archive, which the basemap's protocol reads

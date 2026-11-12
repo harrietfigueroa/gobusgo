@@ -1,6 +1,6 @@
 # Packed container
 
-The packed container is the one binary form every published data file of a kind added after the routing snapshot uses: trip path shards (GOB-357), address shards (GOB-361), places (GOB-366), and intersections (GOB-364) each add a kind to it. The routing snapshot's own files keep their formats, which `lib/gobusgo/routing/AGENTS.md` holds (GOB-369). The Elixir core is `lib/gobusgo/packed.ex` with the submodules of `lib/gobusgo/packed/`, and the JavaScript core is `assets/js/packed_container.js`. Both are pure but for the browser's expansion of a stream, and neither knows the columns of a kind.
+The packed container is the one binary form every published data file of a kind added after the routing snapshot uses: trip path shards (GOB-357), address shards (GOB-361), places (GOB-366), and intersections (GOB-364) each add a kind to it. The routing snapshot's own files keep their formats, which `lib/gobusgo/routing/AGENTS.md` holds (GOB-369). The Elixir core is `lib/gobusgo/packed.ex` with the submodules of `lib/gobusgo/packed/`, and the JavaScript core is `assets/js/core/packed_container.js`. Both are pure but for the expansion of a stream, which the JavaScript does apart, in `assets/js/packed_stream.js`, and neither knows the columns of a kind.
 
 ## Layout
 
@@ -16,7 +16,7 @@ Every number is little-endian. A file expanded is a 16-byte header and sections.
 
 ## Kinds
 
-The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/packed_container.js`, and `test/fixtures/packed/kinds.json`, which an ExUnit test and `test/scripts/packed_container_check.mjs` each compare with their side. The table holds a kind's number, name, and file prefix, and no kind's columns: each kind's own change defines them. A kind added later takes the next free number in its own change.
+The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/core/packed_container.js`, and `test/fixtures/packed/kinds.json`, which an ExUnit test and `test/scripts/packed_container_check.mjs` each compare with their side. The table holds a kind's number, name, and file prefix, and no kind's columns: each kind's own change defines them. A kind added later takes the next free number in its own change.
 
 | Number | Kind | Prefix | Defined by |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ A reader expands under a bound. `Gobusgo.Packed.expand/2` returns `{:error, :too
 
 ## JavaScript API
 
-`assets/js/packed_container.js` exports `expandStream(source, {expandedByteSizeMax})`, which returns `{kind: "expanded", bytes}` or `{kind: "refused", reason}`; `decodeContainer(bytes, {kind, versions, sectionCount})`, which returns `{kind: "decoded", header: {kind, version, recordCount}, strings: {count, at(index)}, sections: [{offset, byteLength}], view}` or a refusal with the reasons the Elixir decoder names in camel case; `openColumn({view, section, type, count})` and `openPositions({view, section, count})`, which return a reader or a refusal; and `SectionCursor`, whose `readVarint()` and `readPath()` read a section a varint or a path at a time and set `refusal` instead of throwing. The constants `KINDS`, `PackedKind`, `PackedOutcome`, `PackedRefusal`, `ColumnType`, `HEADER_BYTES`, `VARINT_VALUE_MAX`, `VARINT_BYTES_MAX`, `UNKNOWN_MICRODEGREES`, and `CONTAINER_EXPANDED_BYTES_MAX` name the format's numbers, and `unzigzag(value)` decodes a zigzag.
+`assets/js/packed_stream.js` exports `expandStream(source, {expandedByteSizeMax})`, which returns `{kind: "expanded", bytes}` or `{kind: "refused", reason}`, and `assets/js/core/packed_container.js` exports `decodeContainer(bytes, {kind, versions, sectionCount})`, which returns `{kind: "decoded", header: {kind, version, recordCount}, strings: {count, at(index)}, sections: [{offset, byteLength}], view}` or a refusal with the reasons the Elixir decoder names in camel case; `openColumn({view, section, type, count})` and `openPositions({view, section, count})`, which return a reader or a refusal; and `SectionCursor`, whose `readVarint()` and `readPath()` read a section a varint or a path at a time and set `refusal` instead of throwing. The constants `KINDS`, `PackedKind`, `PackedOutcome`, `PackedRefusal`, `ColumnType`, `HEADER_BYTES`, `VARINT_VALUE_MAX`, `VARINT_BYTES_MAX`, `UNKNOWN_MICRODEGREES`, and `CONTAINER_EXPANDED_BYTES_MAX` name the format's numbers, and `unzigzag(value)` decodes a zigzag.
 
 ## Fixtures and checks
 

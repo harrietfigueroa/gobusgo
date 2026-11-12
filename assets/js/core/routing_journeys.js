@@ -1,18 +1,22 @@
-// Routes a journey from the files of one routing snapshot, fetched through a
-// function the caller hands in, so the same code reads the network, the
-// offline store, or files held in memory. The rider's position never reaches
-// that function: a start from a position is decided here, from the
-// snapshot's positions file.
+// Decides a journey query over the files of one or two routing snapshots,
+// and fetches none of them. A query is a `startQuery` call and then
+// `resumeQuery` calls, each returning the query's state, a plain value, and
+// its next step: the files it needs, or its answer. The caller fetches the
+// files, holds their bytes for the query, and hands every file it holds to
+// each resume, so nothing here keeps a byte between calls and the same code
+// answers from the network, the offline store, or files held in memory. The
+// rider's position never reaches the caller's fetch: a start from a position
+// is decided here, from the snapshot's positions file.
 //
-// A query loads the stops, trips, transfers, and positions files, then the
-// connection chunks from the hour of its departure onward, one at a time,
-// routing after each. It stops before the first chunk that departs after the
-// cutoff, the earliest arrival found plus WINDOW_SECONDS, and keeps the
-// frontier journeys that arrive by the cutoff. The scan reads connections
-// from the departure onward and stops at the best arrival, so every journey
-// that arrives by the cutoff uses only connections that depart before it,
-// which the loaded chunks hold: the answer is the whole snapshot's frontier
-// cut at the cutoff.
+// A query asks for the stops, trips, transfers, and positions files at once,
+// then for the connection chunks from the hour of its departure onward, one
+// at a time, routing over every chunk it holds after each. It stops before
+// the first chunk that departs after the cutoff, the earliest arrival found
+// plus WINDOW_SECONDS, and keeps the frontier journeys that arrive by the
+// cutoff. The scan reads connections from the departure onward and stops at
+// the best arrival, so every journey that arrives by the cutoff uses only
+// connections that depart before it, which the held chunks hold: the answer
+// is the whole snapshot's frontier cut at the cutoff.
 //
 // A departure belongs to the latest snapshot whose service day has started
 // by then. That snapshot holds its own date's trips and the trips of the
@@ -23,13 +27,13 @@
 // into that date's seconds. The two frontiers meet on one timeline, and the
 // window counts from the earliest arrival of either.
 //
-// A query that arrives by a time mirrors this: it loads the chunks from the
-// one holding its arrival backward, stops before the first chunk departing
-// wholly before the latest departure found less WINDOW_SECONDS, and keeps
-// the frontier journeys that leave at or after that. Where its date has no
-// journey, or its latest leaves before the date's first connection, it
-// goes back into the previous date's snapshot, whose trips before midnight
-// that one lacks.
+// A query that arrives by a time mirrors this: it asks for the chunks from
+// the one holding its arrival backward, stops before the first chunk
+// departing wholly before the latest departure found less WINDOW_SECONDS,
+// and keeps the frontier journeys that leave at or after that. Where its
+// date has no journey, or its latest leaves before the date's first
+// connection, it goes back into the previous date's snapshot, whose trips
+// before midnight that one lacks.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {LegKind, OriginKind, createEngine, route, routeArrivingBy} from "./routing_engine.js"
@@ -39,8 +43,18 @@ import {startsNear} from "./routing_walk.js"
 /** How long past the earliest arrival a journey with fewer changes is still shown. */
 export const WINDOW_SECONDS = 45 * 60
 
-const FETCH_TIMEOUT_MS = 20 * 1000
+/** How long a caller waits for one file before the fetch is a failure. */
+export const FETCH_TIMEOUT_MS = 20 * 1000
+
 const CHUNK_COUNT_MAX = 48
+// A query routes in its own service date and at most one more.
+const PART_COUNT_MAX = 2
+// A part asks for its tables in one round and each chunk in a round of its own.
+const PART_ROUND_COUNT_MAX = 1 + CHUNK_COUNT_MAX
+
+/** The most times a query is resumed before it answers. */
+export const ROUND_COUNT_MAX = PART_COUNT_MAX * PART_ROUND_COUNT_MAX
+
 const SECOND_MS = 1000
 const MICRODEGREES_PER_DEGREE = 1000000
 // A sequence below every hop's, which a trip's first hop, at 0, follows.
@@ -50,8 +64,10 @@ const NO_DEPARTURE_S = Number.NEGATIVE_INFINITY
 // The index before the first chunk, where a backward load starts with none to read.
 const NO_CHUNK_INDEX = -1
 const RoutedKind = Object.freeze({routed: "routed"})
-// A snapshot's query leaves at a time, or arrives by one.
-const TimeKind = Object.freeze({leaving: "leaving", arrivingBy: "arrivingBy"})
+// What one part of a query needs next: files, or nothing more.
+const PartStepKind = Object.freeze({needFiles: "needFiles"})
+// Whether the first part of a query has been routed.
+const FirstPartKind = Object.freeze({pending: "pending", routed: "routed"})
 const CONNECTION_COLUMNS = Object.freeze({
   departureS: Int32Array,
   arrivalS: Int32Array,
@@ -63,6 +79,9 @@ const CONNECTION_COLUMNS = Object.freeze({
   alighting: Uint8Array,
 })
 
+/** The kinds of a query's time: it leaves at a time, or arrives by one. */
+export const TimeKind = Object.freeze({leaving: "leaving", arrivingBy: "arrivingBy"})
+
 /** The kinds of a query's start: a stop by identifier, or a position in degrees. */
 export const FromKind = Object.freeze({stop: "stop", position: "position"})
 
@@ -71,6 +90,9 @@ export const FetchKind = Object.freeze({fetched: "fetched", failed: "failed"})
 
 /** The kinds of the service date a departure belongs to. */
 export const ServiceDateKind = Object.freeze({found: "found", none: "none"})
+
+/** The kinds of a query's next step: the files it needs, or its answer. */
+export const StepKind = Object.freeze({needFiles: "needFiles", done: "done"})
 
 /** The kinds of a journey query's outcome. */
 export const JourneysKind = Object.freeze({
@@ -96,6 +118,10 @@ export const FailureReason = Object.freeze({
 
 function failed({reason, path}) {
   return {kind: JourneysKind.failed, reason, path}
+}
+
+function done(answer) {
+  return {kind: StepKind.done, answer}
 }
 
 function lastDepartureS(entry) {
@@ -140,42 +166,18 @@ export function serviceDateAt({manifest, departureMs}) {
   return {kind: ServiceDateKind.found, serviceDate: chosen.entry.serviceDate, departureS}
 }
 
-// Resolves on the outcome a timed-out fetch gets once `signal` aborts.
-function timeoutOf(signal) {
-  return new Promise(function awaitTimeout(resolve) {
-    function resolveTimedOut() {
-      resolve({kind: FetchKind.failed, reason: FailureReason.timedOut})
-    }
-
-    signal.addEventListener("abort", resolveTimedOut, {once: true})
-  })
-}
-
-async function fetchSettled({fetchFile, path, signal}) {
-  try {
-    const outcome = await fetchFile({path, signal})
-    const isFetched = outcome.kind === FetchKind.fetched
-    const isFailed = outcome.kind === FetchKind.failed
-    const isKnown = isFetched || isFailed
-    assertCondition(isKnown, "routing journeys: a fetch handed back an outcome of unknown kind " + outcome.kind)
-    return outcome
-  } catch (error) {
-    return {kind: FetchKind.failed, reason: FailureReason.fetchFailed, error}
-  }
-}
-
 /**
- * The content of `file`, an entry of the manifest, fetched through
- * `fetchFile` within FETCH_TIMEOUT_MS and of the size the manifest gives
- * it: `{kind: FetchKind.fetched, buffer}`, or the failure naming the file.
+ * `outcome`, what a fetch of `file`, an entry of the manifest, handed back,
+ * checked against the size the manifest gives the file:
+ * `{kind: FetchKind.fetched, buffer}`, or the failure naming the file.
  */
-export async function fetchChecked({fetchFile, file}) {
-  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  const pending = fetchSettled({fetchFile, path: file.path, signal})
-  const expiry = timeoutOf(signal)
-  const outcome = await Promise.race([pending, expiry])
+export function checkedOutcome({outcome, file}) {
+  const isFetched = outcome.kind === FetchKind.fetched
+  const isFailed = outcome.kind === FetchKind.failed
+  const isKnown = isFetched || isFailed
+  assertCondition(isKnown, "routing journeys: a fetch handed back an outcome of unknown kind " + outcome.kind)
 
-  if (outcome.kind === FetchKind.failed) {
+  if (isFailed) {
     return failed({reason: outcome.reason, path: file.path})
   }
 
@@ -199,27 +201,22 @@ export function decodedOrFailed({fetched, decode, path}) {
 
 const TABLE_DECODERS = Object.freeze({stops: decodeStops, trips: decodeTrips, transfers: decodeTransfers, positions: decodePositions})
 
-// The four tables of `entry`, fetched together and decoded.
-async function loadTables({entry, fetchFile}) {
+function tableFilesOf(entry) {
   const names = Object.keys(TABLE_DECODERS)
-  const files = Array.from(names, function fileOf(name) {
+  return Array.from(names, function fileOf(name) {
     return entry.files[name]
   })
-  const pending = Array.from(files, function fetchTable(file) {
-    return fetchChecked({fetchFile, file})
-  })
-  const settled = await Promise.allSettled(pending)
+}
+
+// The four tables of `entry`, decoded from the held files.
+function decodeTables({entry, files}) {
   const tables = {byteCount: 0}
 
-  for (const [index, name] of names.entries()) {
-    const result = settled[index]
-    assertCondition(result.status === "fulfilled", "routing journeys: a checked fetch rejected: " + result.reason)
-
-    if (result.value.kind === JourneysKind.failed) {
-      return result.value
-    }
-
-    const table = decodedOrFailed({fetched: result.value, decode: TABLE_DECODERS[name], path: files[index].path})
+  for (const [name, decode] of Object.entries(TABLE_DECODERS)) {
+    const file = entry.files[name]
+    const buffer = files.get(file.path)
+    assertCondition(buffer !== undefined, "routing journeys: a table is not held: " + file.path)
+    const table = decodedOrFailed({fetched: {buffer}, decode, path: file.path})
 
     if (table.kind === JourneysKind.failed) {
       return table
@@ -349,7 +346,7 @@ function earliestArrivalS(frontier) {
   return earliest.arrivalS
 }
 
-// The frontier over the chunks loaded so far.
+// The frontier over the held chunks.
 function routeLoaded({tables, chunks, minimumTransferS, query}) {
   const connections = joinChunks(chunks)
   const engine = createEngine({stopCount: tables.stops.length, connections, transfers: tables.transfers, minimumTransferS})
@@ -367,45 +364,31 @@ function windowStartS({frontier, boundS}) {
   return Math.min(earliestArrivalS(frontier), boundS)
 }
 
-// Loads chunks from the departure onward until the next one departs after
-// the cutoff, routing after each.
-async function scanByWindow({entry, tables, query, fetchFile, boundS}) {
-  const chunks = entry.connectionChunks
-  const transferSMin = entry.transferRules.minimumTransferS
-  const loaded = []
-  let byteCount = 0
-  let scan = routeLoaded({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+// The index of the chunk a query leaving at a time asks for next, after
+// the held ones, or the chunk count where it needs none: from the
+// departure onward until the next one departs after the cutoff.
+function nextChunkLeaving({chunks, frontier, part}) {
+  let index = firstChunkIndex({chunks, departureS: part.seconds})
 
-  for (let index = firstChunkIndex({chunks, departureS: query.departureS}); index < chunks.length; index++) {
-    const startS = windowStartS({frontier: scan.frontier, boundS})
-    const isReached = startS < NO_ARRIVAL_S
-
-    if (isReached) {
-      const cutoffS = startS + WINDOW_SECONDS
-
-      if (chunks[index].departureSMin > cutoffS) {
-        break
-      }
-    }
-
-    const fetched = await fetchChecked({fetchFile, file: chunks[index]})
-
-    if (fetched.kind === JourneysKind.failed) {
-      return fetched
-    }
-
-    const chunk = decodedOrFailed({fetched, decode: decodeConnections, path: chunks[index].path})
-
-    if (chunk.kind === JourneysKind.failed) {
-      return chunk
-    }
-
-    loaded.push(chunk.records)
-    byteCount += chunk.byteCount
-    scan = routeLoaded({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+  if (part.loadedIndexes.length > 0) {
+    index = part.loadedIndexes[part.loadedIndexes.length - 1] + 1
   }
 
-  return {kind: DecodeKind.decoded, scan, chunkCount: loaded.length, byteCount}
+  if (index >= chunks.length) {
+    return chunks.length
+  }
+
+  const startS = windowStartS({frontier, boundS: part.boundS})
+  const isReached = startS < NO_ARRIVAL_S
+  const cutoffS = startS + WINDOW_SECONDS
+  const isPastCutoff = chunks[index].departureSMin > cutoffS
+  const isPastWindow = isReached && isPastCutoff
+
+  if (isPastWindow) {
+    return chunks.length
+  }
+
+  return index
 }
 
 // The stops a ride passes, by index, from the one it boards at to the one
@@ -526,23 +509,90 @@ function candidatesOf({scan, tables, stopIndex, serviceDate}) {
   return candidates
 }
 
-// Routes in one snapshot: its tables, the origin and target resolved in its
-// stop numbering, and its chunks by window, leaving at a time or arriving by
-// one as `time` says. `boundS`, in this snapshot's seconds, is a time
-// already found elsewhere, which the window counts from where it is better
-// than this snapshot's own.
-async function routeSnapshot({entry, time, from, toStopId, fetchFile, boundS}) {
+// The held chunks of `part`, decoded in departure order, with their bytes,
+// or the failure naming a refused one.
+function decodeHeldChunks({entry, part, files}) {
+  const records = []
+  let byteCount = 0
+
+  for (const index of part.loadedIndexes) {
+    const file = entry.connectionChunks[index]
+    const buffer = files.get(file.path)
+    assertCondition(buffer !== undefined, "routing journeys: a chunk is not held: " + file.path)
+    const chunk = decodedOrFailed({fetched: {buffer}, decode: decodeConnections, path: file.path})
+
+    if (chunk.kind === JourneysKind.failed) {
+      return chunk
+    }
+
+    records.push(chunk.records)
+    byteCount += chunk.byteCount
+  }
+
+  return {kind: DecodeKind.decoded, records, byteCount}
+}
+
+// The scan of one snapshot over its held chunks in the direction `timeKind`
+// names, and the index of the chunk it asks for next, or NO_CHUNK_INDEX
+// where it needs none.
+function scanOf({entry, tables, timeKind, origin, target, part, chunks}) {
+  const minimumTransferS = entry.transferRules.minimumTransferS
+  const connectionChunks = entry.connectionChunks
+
+  switch (timeKind) {
+    case TimeKind.leaving: {
+      const query = {origin, target, departureS: part.seconds}
+      const scan = routeLoaded({tables, chunks, minimumTransferS, query})
+      const index = nextChunkLeaving({chunks: connectionChunks, frontier: scan.frontier, part})
+      let nextIndex = index
+
+      if (index === connectionChunks.length) {
+        nextIndex = NO_CHUNK_INDEX
+      }
+
+      return {scan, nextIndex}
+    }
+    case TimeKind.arrivingBy: {
+      const query = {origin, target, arrivalS: part.seconds}
+      const scan = routeLoadedBack({tables, chunks, minimumTransferS, query})
+      const nextIndex = nextChunkArrivingBy({chunks: connectionChunks, frontier: scan.frontier, part})
+      return {scan, nextIndex}
+    }
+    default:
+      return unreachable(timeKind, "routing journeys: a time of unknown kind")
+  }
+}
+
+// One step of routing in one snapshot: its tables, the origin and target
+// resolved in its stop numbering, and its chunks by window, leaving at a
+// time or arriving by one as `timeKind` says. `part.boundS`, in this
+// snapshot's seconds, is a time already found elsewhere, which the window
+// counts from where it is better than this snapshot's own. The step is the
+// files it needs next, the routed candidates, or why it cannot route.
+function partStepOf({entry, timeKind, from, toStopId, part, files}) {
   if (entry.connectionChunks.length > CHUNK_COUNT_MAX) {
     return failed({reason: FailureReason.tooManyChunks, path: ""})
   }
 
-  const loadedTables = await loadTables({entry, fetchFile})
+  const tableFiles = tableFilesOf(entry)
 
-  if (loadedTables.kind === JourneysKind.failed) {
-    return loadedTables
+  function isHeld(file) {
+    return files.has(file.path)
   }
 
-  const {tables} = loadedTables
+  const isTablesHeld = tableFiles.every(isHeld)
+
+  if (!isTablesHeld) {
+    return {kind: PartStepKind.needFiles, files: tableFiles, chunkIndex: NO_CHUNK_INDEX}
+  }
+
+  const decodedTables = decodeTables({entry, files})
+
+  if (decodedTables.kind === JourneysKind.failed) {
+    return decodedTables
+  }
+
+  const {tables} = decodedTables
   const stopIndex = stopIndexOf(tables.stops)
   const target = stopIndex.get(toStopId)
 
@@ -557,31 +607,21 @@ async function routeSnapshot({entry, time, from, toStopId, fetchFile, boundS}) {
     return origin
   }
 
-  const scanned = await scanOf({entry, tables, time, origin, target, fetchFile, boundS})
+  const heldChunks = decodeHeldChunks({entry, part, files})
 
-  if (scanned.kind === JourneysKind.failed) {
-    return scanned
+  if (heldChunks.kind === JourneysKind.failed) {
+    return heldChunks
   }
 
-  const candidates = candidatesOf({scan: scanned.scan, tables, stopIndex, serviceDate: entry.serviceDate})
-  const loaded = {chunkCount: scanned.chunkCount, byteCount: tables.byteCount + scanned.byteCount}
+  const {scan, nextIndex} = scanOf({entry, tables, timeKind, origin, target, part, chunks: heldChunks.records})
+
+  if (nextIndex !== NO_CHUNK_INDEX) {
+    return {kind: PartStepKind.needFiles, files: [entry.connectionChunks[nextIndex]], chunkIndex: nextIndex}
+  }
+
+  const candidates = candidatesOf({scan, tables, stopIndex, serviceDate: entry.serviceDate})
+  const loaded = {chunkCount: part.loadedIndexes.length, byteCount: tables.byteCount + heldChunks.byteCount}
   return {kind: RoutedKind.routed, candidates, loaded}
-}
-
-// The scan of one snapshot by window in the direction `time` names.
-async function scanOf({entry, tables, time, origin, target, fetchFile, boundS}) {
-  switch (time.kind) {
-    case TimeKind.leaving: {
-      const query = {origin, target, departureS: time.seconds}
-      return await scanByWindow({entry, tables, query, fetchFile, boundS})
-    }
-    case TimeKind.arrivingBy: {
-      const query = {origin, target, arrivalS: time.seconds}
-      return await scanBackByWindow({entry, tables, query, fetchFile, boundS})
-    }
-    default:
-      return unreachable(time.kind, "routing journeys: a time of unknown kind")
-  }
 }
 
 function firstDepartureS(entry) {
@@ -611,7 +651,7 @@ function latestDepartureS(frontier) {
   return latest.departureS
 }
 
-// The frontier arriving by a time over the chunks loaded so far.
+// The frontier arriving by a time over the held chunks.
 function routeLoadedBack({tables, chunks, minimumTransferS, query}) {
   const connections = joinChunks(chunks)
   const engine = createEngine({stopCount: tables.stops.length, connections, transfers: tables.transfers, minimumTransferS})
@@ -629,46 +669,32 @@ function windowEndS({frontier, boundS}) {
   return Math.max(latestDepartureS(frontier), boundS)
 }
 
-// Loads chunks from the arrival backward until the next one departs wholly
-// before the cutoff, the latest departure less the window, routing after
-// each. The loaded chunks stay in departure order.
-async function scanBackByWindow({entry, tables, query, fetchFile, boundS}) {
-  const chunks = entry.connectionChunks
-  const transferSMin = entry.transferRules.minimumTransferS
-  const loaded = []
-  let byteCount = 0
-  let scan = routeLoadedBack({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+// The index of the chunk a query arriving by a time asks for next, before
+// the held ones, or NO_CHUNK_INDEX where it needs none: from the arrival
+// backward until the next one departs wholly before the cutoff, the latest
+// departure less the window.
+function nextChunkArrivingBy({chunks, frontier, part}) {
+  let index = lastChunkIndex({chunks, arrivalS: part.seconds})
 
-  for (let index = lastChunkIndex({chunks, arrivalS: query.arrivalS}); index >= 0; index--) {
-    const endS = windowEndS({frontier: scan.frontier, boundS})
-    const isLeft = endS > NO_DEPARTURE_S
-
-    if (isLeft) {
-      const cutoffS = endS - WINDOW_SECONDS
-
-      if (chunks[index].departureSMax < cutoffS) {
-        break
-      }
-    }
-
-    const fetched = await fetchChecked({fetchFile, file: chunks[index]})
-
-    if (fetched.kind === JourneysKind.failed) {
-      return fetched
-    }
-
-    const chunk = decodedOrFailed({fetched, decode: decodeConnections, path: chunks[index].path})
-
-    if (chunk.kind === JourneysKind.failed) {
-      return chunk
-    }
-
-    loaded.unshift(chunk.records)
-    byteCount += chunk.byteCount
-    scan = routeLoadedBack({tables, chunks: loaded, minimumTransferS: transferSMin, query})
+  if (part.loadedIndexes.length > 0) {
+    index = part.loadedIndexes[0] - 1
   }
 
-  return {kind: DecodeKind.decoded, scan, chunkCount: loaded.length, byteCount}
+  if (index < 0) {
+    return NO_CHUNK_INDEX
+  }
+
+  const endS = windowEndS({frontier, boundS: part.boundS})
+  const isLeft = endS > NO_DEPARTURE_S
+  const cutoffS = endS - WINDOW_SECONDS
+  const isBeforeCutoff = chunks[index].departureSMax < cutoffS
+  const isPastWindow = isLeft && isBeforeCutoff
+
+  if (isPastWindow) {
+    return NO_CHUNK_INDEX
+  }
+
+  return index
 }
 
 function latestCandidateS(candidates) {
@@ -762,62 +788,6 @@ function isContinuingBack({routed, entry}) {
   return latestS < firstDepartureS(entry)
 }
 
-/**
- * The journeys of `serviceDate` in `manifest` from `from` to the stop
- * `toStopId`, arriving at or before `arrivalS`, seconds from that date's
- * start, read as `routeJourneys` reads its query.
- *
- * Found journeys leave at or after the latest departure less
- * WINDOW_SECONDS, fewest changes first, each as `routeJourneys` gives it
- * with the time it leaves in `departureS` and whether it is the latest in
- * place of whether it is the earliest; `loaded` counts the chunks and the
- * bytes fetched.
- *
- * Where `serviceDate` has no journey, or its latest leaves before the
- * date's first connection departs, the query goes back into the snapshot
- * whose day starts before, once and no further, with the arrival moved into
- * that date's seconds, and its journeys carry that date.
- */
-export async function routeJourneysArrivingBy({manifest, serviceDate, arrivalS, from, toStopId, fetchFile}) {
-  const found = entryOf({manifest, serviceDate})
-
-  if (found.kind === JourneysKind.failed) {
-    return found
-  }
-
-  const {entry} = found
-  const first = await routeSnapshot({entry, time: {kind: TimeKind.arrivingBy, seconds: arrivalS}, from, toStopId, fetchFile, boundS: NO_DEPARTURE_S})
-
-  if (first.kind !== RoutedKind.routed) {
-    return first
-  }
-
-  const firstPart = {routed: first, shiftS: 0}
-  const previous = previousEntryOf({manifest, entry})
-  const isPrevious = previous.kind === ServiceDateKind.found
-  const isContinued = isPrevious && isContinuingBack({routed: first, entry})
-
-  if (!isContinued) {
-    return answerArrivingByOf([firstPart])
-  }
-
-  const shiftS = (entry.serviceDayStartMs - previous.entry.serviceDayStartMs) / SECOND_MS
-  assertCondition(Number.isInteger(shiftS), "routing journeys: the service day starts a fraction of a second after the previous: " + shiftS)
-  const boundS = latestCandidateS(first.candidates) + shiftS
-  const time = {kind: TimeKind.arrivingBy, seconds: arrivalS + shiftS}
-  const second = await routeSnapshot({entry: previous.entry, time, from, toStopId, fetchFile, boundS})
-
-  if (second.kind === JourneysKind.failed) {
-    return second
-  }
-
-  if (second.kind !== RoutedKind.routed) {
-    return answerArrivingByOf([firstPart])
-  }
-
-  return answerArrivingByOf([firstPart, {routed: second, shiftS: -shiftS}])
-}
-
 // The manifest entry of `serviceDate`, or why a query cannot use it.
 function entryOf({manifest, serviceDate}) {
   if (manifest.formatVersion !== FORMAT_VERSION) {
@@ -885,7 +855,7 @@ function byChangesThenArrival(left, right) {
 // The answer from the candidates of one or two snapshots, each part with
 // the seconds its day starts after the first's: their frontier on one
 // timeline, cut at the earliest arrival plus the window, the earliest marked.
-function answerOf(parts) {
+function answerLeavingOf(parts) {
   const timed = []
   const loaded = {chunkCount: 0, byteCount: 0}
 
@@ -925,63 +895,199 @@ function answerOf(parts) {
   return {kind: JourneysKind.found, journeys, loaded}
 }
 
+function answerOf({timeKind, parts}) {
+  switch (timeKind) {
+    case TimeKind.leaving:
+      return answerLeavingOf(parts)
+    case TimeKind.arrivingBy:
+      return answerArrivingByOf(parts)
+    default:
+      return unreachable(timeKind, "routing journeys: a time of unknown kind")
+  }
+}
+
+function partOf({serviceDate, seconds, boundS, shiftS}) {
+  return {serviceDate, seconds, boundS, shiftS, loadedIndexes: [], requested: [], chunkIndex: NO_CHUNK_INDEX}
+}
+
+// The second part of a query whose first part, routed in `entry`, found
+// nothing or nothing before the date's edge, or none where the query ends
+// with the first: the next date for a query leaving at a time, the previous
+// one for a query arriving by one, with the time moved into that date's
+// seconds and the window's bound from the first part's answer.
+function secondPartOf({manifest, entry, request, routed}) {
+  switch (request.kind) {
+    case TimeKind.leaving: {
+      const next = nextEntryOf({manifest, entry})
+      const isNext = next.kind === ServiceDateKind.found
+      const isContinued = isNext && isContinuing({routed, entry})
+
+      if (!isContinued) {
+        return {kind: ServiceDateKind.none}
+      }
+
+      const shiftS = (next.entry.serviceDayStartMs - entry.serviceDayStartMs) / SECOND_MS
+      assertCondition(Number.isInteger(shiftS), "routing journeys: the next service day starts a fraction of a second later: " + shiftS)
+      const boundS = earliestCandidateS(routed.candidates) - shiftS
+      const part = partOf({serviceDate: next.entry.serviceDate, seconds: request.seconds - shiftS, boundS, shiftS})
+      return {kind: ServiceDateKind.found, part}
+    }
+    case TimeKind.arrivingBy: {
+      const previous = previousEntryOf({manifest, entry})
+      const isPrevious = previous.kind === ServiceDateKind.found
+      const isContinued = isPrevious && isContinuingBack({routed, entry})
+
+      if (!isContinued) {
+        return {kind: ServiceDateKind.none}
+      }
+
+      const shiftS = (entry.serviceDayStartMs - previous.entry.serviceDayStartMs) / SECOND_MS
+      assertCondition(Number.isInteger(shiftS), "routing journeys: the service day starts a fraction of a second after the previous: " + shiftS)
+      const boundS = latestCandidateS(routed.candidates) + shiftS
+      const part = partOf({serviceDate: previous.entry.serviceDate, seconds: request.seconds + shiftS, boundS, shiftS: -shiftS})
+      return {kind: ServiceDateKind.found, part}
+    }
+    default:
+      return unreachable(request.kind, "routing journeys: a time of unknown kind")
+  }
+}
+
+function heldEntry({manifest, serviceDate}) {
+  const found = entryOf({manifest, serviceDate})
+  assertCondition(found.kind === ServiceDateKind.found, "routing journeys: a query's service date left the manifest: " + serviceDate)
+  return found.entry
+}
+
+// Routes the query as far as the held files take it: at most one step of
+// each part, stopping at the first file it lacks or at its answer.
+function advance({manifest, state, files}) {
+  let current = state
+
+  for (let partIndex = 0; partIndex < PART_COUNT_MAX; partIndex++) {
+    const {request, part} = current
+    const entry = heldEntry({manifest, serviceDate: part.serviceDate})
+    const partStep = partStepOf({entry, timeKind: request.kind, from: request.from, toStopId: request.toStopId, part, files})
+    const isFirstPart = current.first.kind === FirstPartKind.pending
+
+    if (partStep.kind === PartStepKind.needFiles) {
+      const asking = {...part, requested: partStep.files, chunkIndex: partStep.chunkIndex}
+      return {state: {...current, part: asking}, step: {kind: StepKind.needFiles, files: partStep.files}}
+    }
+
+    if (partStep.kind !== RoutedKind.routed) {
+      const isSecondFailed = !isFirstPart && partStep.kind === JourneysKind.failed
+
+      if (isFirstPart || isSecondFailed) {
+        return {state: current, step: done(partStep)}
+      }
+
+      const answer = answerOf({timeKind: request.kind, parts: [{routed: current.first.routed, shiftS: 0}]})
+      return {state: current, step: done(answer)}
+    }
+
+    if (!isFirstPart) {
+      const parts = [{routed: current.first.routed, shiftS: 0}, {routed: partStep, shiftS: part.shiftS}]
+      return {state: current, step: done(answerOf({timeKind: request.kind, parts}))}
+    }
+
+    const second = secondPartOf({manifest, entry, request, routed: partStep})
+
+    if (second.kind === ServiceDateKind.none) {
+      const answer = answerOf({timeKind: request.kind, parts: [{routed: partStep, shiftS: 0}]})
+      return {state: current, step: done(answer)}
+    }
+
+    current = {...current, first: {kind: FirstPartKind.routed, routed: partStep}, part: second.part}
+  }
+
+  return unreachable(current.part, "routing journeys: a query routed past its second service date")
+}
+
 /**
- * The journeys of `serviceDate` in `manifest` from `from` to the stop
- * `toStopId`, leaving at or after `departureS`, seconds from that date's
- * start. `from` is `{kind: FromKind.stop, stopId}` or
- * `{kind: FromKind.position, lat, lon}` in degrees. `fetchFile({path,
- * signal})` hands back `{kind: FetchKind.fetched, buffer}` with an
- * ArrayBuffer, or `{kind: FetchKind.failed, reason}`, and sees nothing but
- * paths the manifest names.
+ * Starts the journey query `request`: `{kind, serviceDate, seconds, from,
+ * toStopId}`, leaving at or after `seconds` for `TimeKind.leaving` and
+ * arriving at or before it for `TimeKind.arrivingBy`, seconds from the start
+ * of `serviceDate` in `manifest`, from `from` to the stop `toStopId`. `from`
+ * is `{kind: FromKind.stop, stopId}` or `{kind: FromKind.position, lat,
+ * lon}` in degrees.
  *
- * Found journeys arrive by the earliest arrival plus WINDOW_SECONDS, fewest
- * changes first, each with the service date its times count from, its
- * arrival, its changes, whether it is the earliest, its legs by
- * identifier, a ride's with every stop it passes in `stopIds`, and in
- * `stopPositions` the position in degrees of each stop it names whose
- * position the snapshot knows; `loaded` counts the chunks and the bytes
- * fetched.
+ * Returns `{state, step}`: the state to resume with, and either
+ * `{kind: StepKind.needFiles, files}`, the manifest entries of the files to
+ * fetch, or `{kind: StepKind.done, answer}`.
+ *
+ * A found answer leaving at a time holds the journeys arriving by the
+ * earliest arrival plus WINDOW_SECONDS, fewest changes first, each with the
+ * service date its times count from, its arrival, its changes, whether it is
+ * the earliest, its legs by identifier, a ride's with every stop it passes
+ * in `stopIds`, and in `stopPositions` the position in degrees of each stop
+ * it names whose position the snapshot knows; one arriving by a time holds
+ * the journeys leaving at or after the latest departure less WINDOW_SECONDS,
+ * each with the time it leaves in `departureS` and whether it is the latest.
+ * `loaded` counts the chunks and the bytes the query read.
  *
  * Where `serviceDate` has no journey, or its earliest arrives after the
- * date's last connection departs, the query goes on into the snapshot whose
- * day starts next, once and no further, and its journeys carry that date.
+ * date's last connection departs (its latest leaves before the date's first
+ * connection, arriving by a time), the query goes on into the snapshot whose
+ * day starts next (before), once and no further, and its journeys carry
+ * that date.
  */
-export async function routeJourneys({manifest, serviceDate, departureS, from, toStopId, fetchFile}) {
-  const found = entryOf({manifest, serviceDate})
+export function startQuery({manifest, request}) {
+  const isLeaving = request.kind === TimeKind.leaving
+  const isArrivingBy = request.kind === TimeKind.arrivingBy
+  const isKnownTime = isLeaving || isArrivingBy
+  assertCondition(isKnownTime, "routing journeys: a query of unknown time kind " + request.kind)
+  const found = entryOf({manifest, serviceDate: request.serviceDate})
 
   if (found.kind === JourneysKind.failed) {
-    return found
+    return {state: {request, roundCount: 0}, step: done(found)}
   }
 
-  const {entry} = found
-  const first = await routeSnapshot({entry, time: {kind: TimeKind.leaving, seconds: departureS}, from, toStopId, fetchFile, boundS: NO_ARRIVAL_S})
+  let boundS = NO_DEPARTURE_S
 
-  if (first.kind !== RoutedKind.routed) {
-    return first
+  if (isLeaving) {
+    boundS = NO_ARRIVAL_S
   }
 
-  const firstPart = {routed: first, shiftS: 0}
-  const next = nextEntryOf({manifest, entry})
-  const isNext = next.kind === ServiceDateKind.found
-  const isContinued = isNext && isContinuing({routed: first, entry})
+  const part = partOf({serviceDate: request.serviceDate, seconds: request.seconds, boundS, shiftS: 0})
+  const state = {request, roundCount: 0, part, first: {kind: FirstPartKind.pending}}
+  return advance({manifest, state, files: new Map()})
+}
 
-  if (!isContinued) {
-    return answerOf([firstPart])
+/**
+ * Resumes a query from `state`, the state its last step returned, with
+ * `fetched`, what the fetch of each file that step asked for handed back,
+ * in the order asked: `{kind: FetchKind.fetched, buffer}` with an
+ * ArrayBuffer, or `{kind: FetchKind.failed, reason}`. `files` maps the path
+ * of every file the caller holds for the query to its ArrayBuffer, those of
+ * `fetched` among them. Returns `{state, step}` as `startQuery` does; a
+ * failed fetch or a file of another size than the manifest's is a done step
+ * whose answer names the file.
+ */
+export function resumeQuery({manifest, state, fetched, files}) {
+  const {part} = state
+  assertCondition(state.roundCount < ROUND_COUNT_MAX, "routing journeys: a query resumed past " + ROUND_COUNT_MAX + " rounds")
+  assertCondition(fetched.length === part.requested.length, "routing journeys: " + fetched.length + " outcomes for " + part.requested.length + " files asked for")
+
+  for (const [index, outcome] of fetched.entries()) {
+    const checked = checkedOutcome({outcome, file: part.requested[index]})
+
+    if (checked.kind === JourneysKind.failed) {
+      return {state, step: done(checked)}
+    }
   }
 
-  const shiftS = (next.entry.serviceDayStartMs - entry.serviceDayStartMs) / SECOND_MS
-  assertCondition(Number.isInteger(shiftS), "routing journeys: the next service day starts a fraction of a second later: " + shiftS)
-  const boundS = earliestCandidateS(first.candidates) - shiftS
-  const time = {kind: TimeKind.leaving, seconds: departureS - shiftS}
-  const second = await routeSnapshot({entry: next.entry, time, from, toStopId, fetchFile, boundS})
+  const loadedIndexes = Array.from(part.loadedIndexes)
 
-  if (second.kind === JourneysKind.failed) {
-    return second
+  if (part.chunkIndex !== NO_CHUNK_INDEX) {
+    loadedIndexes.push(part.chunkIndex)
+    loadedIndexes.sort(byIndex)
   }
 
-  if (second.kind !== RoutedKind.routed) {
-    return answerOf([firstPart])
-  }
+  const resumed = {...part, loadedIndexes, requested: [], chunkIndex: NO_CHUNK_INDEX}
+  const next = {...state, roundCount: state.roundCount + 1, part: resumed}
+  return advance({manifest, state: next, files})
+}
 
-  return answerOf([firstPart, {routed: second, shiftS}])
+function byIndex(left, right) {
+  return left - right
 }

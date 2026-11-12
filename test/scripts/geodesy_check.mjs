@@ -8,7 +8,7 @@
 // case that differs.
 
 import {ok, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {
   EARTH_RADIUS_METERS,
   METERS_PER_DEGREE,
@@ -18,7 +18,7 @@ import {
   initialBearingDegrees,
   metersPerDegreeLongitude,
   tangentPlane
-} from "../../assets/js/math/geodesy.js"
+} from "../../assets/js/core/math/geodesy.js"
 
 // Far finer than a reported position, and coarser than the rounding of a
 // sum of a few products of doubles.

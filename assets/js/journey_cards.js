@@ -10,10 +10,10 @@
 // the arrival move by that bus's lateness, and otherwise they read the
 // schedule.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {LegKind} from "./routing_engine.js"
-import {LEG_KIND_TO_POINT} from "./point_journeys.js"
-import {clockText, journeyLeaveS, routeChip} from "./trip_plan.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {LegKind} from "./core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "./core/point_journeys.js"
+import {clockText, journeyLeaveS, routeChip} from "./core/trip_plan.js"
 
 /** The sorts of the journey list. */
 export const SortKind = Object.freeze({soonest: "soonest", fewestChanges: "fewestChanges", leastWalking: "leastWalking"})

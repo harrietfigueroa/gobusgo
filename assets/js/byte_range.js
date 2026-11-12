@@ -11,7 +11,7 @@
 // https://www.rfc-editor.org/rfc/rfc9110.html#name-byte-ranges — checked 2026-11-08
 // https://www.rfc-editor.org/rfc/rfc9110.html#name-range — checked 2026-11-08
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 
 const SINGLE_RANGE_PATTERN = /^bytes=(\d*)-(\d*)$/
 const PARTIAL_STATUS = 206

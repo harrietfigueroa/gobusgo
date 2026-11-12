@@ -16,7 +16,7 @@ import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "./journey_label_pill"
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
 import {registerImageResolver} from "./style_images"
 import {mapColors} from "./theme"
-import {BoundsKind, FeatureKind} from "./trip_plan"
+import {BoundsKind, FeatureKind} from "./core/trip_plan"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 
 const SOURCE_NAME = "trip-journey"

@@ -8,7 +8,7 @@
 // it exits non-zero on the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {MotionTierKind, STILL_TIER, isPositionInBounds, markerIdsInBounds, motionSettingsOf, motionTier} from "../../assets/js/motion_tier.js"
 
 // The rates of each band's steps.

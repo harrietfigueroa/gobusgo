@@ -16,7 +16,7 @@
 // parsed as HTML.
 
 import {startArrivalTicker} from "./arrival_ticker.js"
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {element} from "./dom_element.js"
 import {NO_YOUR_BUS} from "./journey_stop_marks.js"
 import {showDepartures} from "./board_departures.js"

@@ -7,9 +7,9 @@
 // on the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {LegKind} from "../../assets/js/routing_engine.js"
-import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "../../assets/js/core/point_journeys.js"
 import {LiveKind} from "../../assets/js/journey_cards.js"
 import {TimelineRowKind, headsignsByTrip, timelineRows} from "../../assets/js/journey_timeline.js"
 

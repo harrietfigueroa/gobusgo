@@ -9,11 +9,11 @@
 // except a stop's scheduled times, which are seconds after the trip's
 // service date as the source's schedule gives them.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {glidePosition, glides} from "./marker_glide.js"
-import {LAT, LON, METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, initialBearingDegrees, tangentPlane} from "./math/geodesy.js"
-import {clamp, lerp} from "./math/interpolation.js"
-import {COORDINATES_PER_POINT, POINT_X, POINT_Y, nearestAlong, segmentIndexAt} from "./math/polyline.js"
+import {LAT, LON, METERS_PER_DEGREE, assertPlaneCovers, assertPosition, distanceMeters, initialBearingDegrees, tangentPlane} from "./core/math/geodesy.js"
+import {clamp, lerp} from "./core/math/interpolation.js"
+import {COORDINATES_PER_POINT, POINT_X, POINT_Y, nearestAlong, segmentIndexAt} from "./core/math/polyline.js"
 
 /** The most points a path holds. */
 export const PATH_POINT_COUNT_MAX = 20000

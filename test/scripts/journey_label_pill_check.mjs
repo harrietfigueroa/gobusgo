@@ -6,7 +6,7 @@
 
 import {deepStrictEqual, ok} from "node:assert/strict"
 import {PILL_IMAGE_SIZE_PIXELS, pillImageSpec} from "../../assets/js/journey_label_pill.js"
-import {contrastRatio} from "../../assets/js/math/color_contrast.js"
+import {contrastRatio} from "../../assets/js/core/math/color_contrast.js"
 import {Theme, mapColors} from "../../assets/js/theme.js"
 
 const TEXT_CONTRAST_MIN = 4.5

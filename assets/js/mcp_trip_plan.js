@@ -3,10 +3,10 @@
 // their stops and routes, all from files fetched from `origin`. No request
 // names a place or the rider's position; a fetch names only a file.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {FromKind, JourneysKind} from "./routing_journeys.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {FromKind, JourneysKind} from "./core/routing_journeys.js"
 import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf} from "./trip_route.js"
-import {EndKind, PlannedKind, StateKind, failureState, plannedTime} from "./trip_plan.js"
+import {EndKind, PlannedKind, StateKind, failureState, plannedTime} from "./core/trip_plan.js"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 

@@ -14,8 +14,8 @@
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
-import {AssertionError} from "../../assets/js/assert.js"
-import {tripPathKey} from "../../assets/js/trip_path.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {tripPathKey} from "../../assets/js/core/trip_path.js"
 import {
   FILE_RETRY_MS,
   FileFailure,
@@ -35,9 +35,9 @@ import {
   isTripHeldBack,
   manifestFetched,
   planTripPathFiles
-} from "../../assets/js/trip_path_files.js"
-import {isFallbackDue} from "../../assets/js/scheduled_path.js"
-import {decodeTripPathShard, tripPathFromShard} from "../../assets/js/trip_path_shard.js"
+} from "../../assets/js/core/trip_path_files.js"
+import {isFallbackDue} from "../../assets/js/core/scheduled_path.js"
+import {decodeTripPathShard, tripPathFromShard} from "../../assets/js/core/trip_path_shard.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/routing/trip-paths-v1/", import.meta.url))
 const shardBytes = new Uint8Array(readFileSync(fixtureDirectory + "shard.bin"))

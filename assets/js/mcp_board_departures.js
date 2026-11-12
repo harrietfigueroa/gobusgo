@@ -4,10 +4,10 @@
 // that says what the list is from, and the status line of each way a read
 // ends. Nothing here reads the document, the network, or a clock.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {DepartureLoadKind} from "./departure_files.js"
-import {ARRIVAL_HORIZON_SECONDS} from "./scheduled_service.js"
-import {ClockKind, TimeMode, clockText, wallClockMs} from "./trip_plan.js"
+import {ARRIVAL_HORIZON_SECONDS} from "./core/scheduled_service.js"
+import {ClockKind, TimeMode, clockText, wallClockMs} from "./core/trip_plan.js"
 
 /** The kinds of the instant a time asked for names. */
 export const FromKind = Object.freeze({found: "found", invalid: "invalid"})
