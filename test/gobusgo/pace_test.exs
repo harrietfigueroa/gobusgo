@@ -148,6 +148,9 @@ defmodule Gobusgo.PaceTest do
       assert meta["cellCount"] == cell_count
       assert_in_delta total(cells, 0), 10, 0.01
       assert_in_delta total(cells, 1), 100, 0.5
+
+      assert Pace.write(pace.pace) == {:ok, 0}
+      assert [_only_file] = files(context)
     end
 
     test "log one line per write with the date, cells, and meters", context do
@@ -177,6 +180,25 @@ defmodule Gobusgo.PaceTest do
 
       assert Pace.write(pace.pace) == {:ok, 0}
       assert files(context) == []
+    end
+  end
+
+  describe "a flush before the end of the UTC day" do
+    test "gives files whose cells sum to the day's totals, each cell once", context do
+      pace = start(context)
+      run_step(%{pace: pace}, {:pair, 0})
+      assert {:ok, _cell_count} = Pace.write(pace.pace)
+      run_step(%{pace: pace}, {:pair, 1000})
+
+      Agent.update(pace.clock, fn _ -> ~U[2026-11-12 00:00:05Z] end)
+      observe(pace, [vehicle(5, 5000, %{id: "v2"})])
+
+      assert [{_first, first}, {_second, second}] = files(context)
+      assert first["meta"]["date"] == "2026-11-11"
+      assert second["meta"]["date"] == "2026-11-11"
+      assert_in_delta total(first["cells"], 0), 10, 0.01
+      assert_in_delta total(second["cells"], 0), 10, 0.01
+      assert_in_delta total(first["cells"], 1) + total(second["cells"], 1), 200, 1.0
     end
   end
 

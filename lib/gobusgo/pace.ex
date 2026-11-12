@@ -48,7 +48,8 @@ defmodule Gobusgo.Pace do
   logged at `error` as `Pace pending table dropped`. The process also writes
   both tables when it shuts down, so a restart keeps what it learned; each
   file is its own destination, and a reader sums the files of a date. A
-  table with no cell is not written.
+  table with no cell is not written. `write/1` flushes: after a successful
+  write the table of that date starts empty.
 
   The file's form is `Gobusgo.Pace.Aggregate`. A write logs `Pace table
   written` at `info` with the date, the count of cells, the meters, and the
@@ -102,9 +103,10 @@ defmodule Gobusgo.Pace do
   end
 
   @doc """
-  Writes the table now and returns how many cells it wrote or why the writer
-  stored none. The table stays, so a day's writes before its end repeat its
-  cells in each file.
+  Flushes the table: writes it now and returns how many cells it wrote, and
+  the process starts an empty table of the same date, so a reader
+  that sums a date's files counts each cell once. A write that fails returns
+  why the writer stored none and keeps the table.
   """
   @spec write(GenServer.server()) :: {:ok, non_neg_integer()} | {:error, Writer.error_reason()}
   def write(server), do: GenServer.call(server, :write)
@@ -195,8 +197,16 @@ defmodule Gobusgo.Pace do
   end
 
   @impl GenServer
-  def handle_call(:write, _from, %{table: table} = pace) do
-    {:reply, store(table, pace), pace}
+  def handle_call(:write, _from, %{table: table, options: options} = pace) do
+    case store(table, pace) do
+      {:ok, _cell_count} = written ->
+        empty = Table.new(%{date: table.date, cell_count_max: options.cell_count_max})
+        flushed = %{pace | table: empty, table_is_full_logged: false}
+        {:reply, written, flushed}
+
+      {:error, _reason} = failed ->
+        {:reply, failed, pace}
+    end
   end
 
   @impl GenServer
