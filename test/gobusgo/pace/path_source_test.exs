@@ -1,6 +1,6 @@
 defmodule Gobusgo.Pace.PathSourceTest do
   # Checks that a trip's path is prepared for learning from a polyline and
-  # stop positions, with the band the trip's first departure picks.
+  # stop positions.
   use ExUnit.Case, async: true
 
   alias Gobusgo.Pace.PathSource
@@ -35,13 +35,9 @@ defmodule Gobusgo.Pace.PathSourceTest do
     )
   end
 
-  test "prepares the path the trip follows, in the band of its first departure" do
-    assert {:ok, %{band: 1, length_m: length_m}} = build(%{})
+  test "prepares the path the trip follows" do
+    assert {:ok, %{length_m: length_m}} = build(%{})
     assert_in_delta length_m, 750, 5
-  end
-
-  test "takes the band from the trip's first departure" do
-    assert {:ok, %{band: 4}} = build(%{trip: trip(20 * 3600)})
   end
 
   test "has no path where a stop has no position" do

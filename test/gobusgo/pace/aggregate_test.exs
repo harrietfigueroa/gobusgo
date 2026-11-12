@@ -21,29 +21,28 @@ defmodule Gobusgo.Pace.AggregateTest do
   end
 
   test "names the day and the node and run in the destination" do
-    file = build([{{1, 2, 0, 0}, 1.0, 1.0}])
+    file = build([{{1, 2, 0}, 1.0, 1.0}])
     assert file.destination == "paces/daily/dt=2026-11-11/nonode.40nohost-#{@file_id}.json.gz"
     assert String.starts_with?(file.destination, Aggregate.prefix() <> "/")
   end
 
-  test "keys each cell by its grid cells, direction, and band and rounds its sums" do
-    file = build([{{-271_867, 158_666, 2, 1}, 1.23456, 10.98765}])
-    assert %{"cells" => %{"-271867,158666,2,1" => [1.235, 10.988]}} = JSON.decode!(file.content)
+  test "keys each cell by its grid cells and direction and rounds its sums" do
+    file = build([{{-271_867, 158_666, 2}, 1.23456, 10.98765}])
+    assert %{"cells" => %{"-271867,158666,2" => [1.235, 10.988]}} = JSON.decode!(file.content)
   end
 
-  test "keeps the bands of one place apart" do
-    file = build([{{1, 2, 0, 0}, 1.0, 1.0}, {{1, 2, 0, 1}, 2.0, 2.0}])
+  test "keeps the directions of one place apart" do
+    file = build([{{1, 2, 0}, 1.0, 1.0}, {{1, 2, 4}, 2.0, 2.0}])
     assert %{"cells" => cells} = JSON.decode!(file.content)
-    assert Map.keys(cells) == ["1,2,0,0", "1,2,0,1"]
+    assert Map.keys(cells) == ["1,2,0", "1,2,4"]
   end
 
   test "states the format in its meta" do
-    file = build([{{1, 2, 0, 0}, 1.0, 40.0}, {{1, 2, 0, 1}, 2.0, 2.0}])
+    file = build([{{1, 2, 0}, 1.0, 40.0}, {{1, 2, 4}, 2.0, 2.0}])
 
     assert %{"meta" => meta} = JSON.decode!(file.content)
 
     assert meta == %{
-             "bandStartHours" => [0, 6, 9, 15, 19],
              "cellCount" => 2,
              "cellDegrees" => %{"lat" => 0.0003, "lon" => 0.00045},
              "date" => "2026-11-11",
@@ -62,6 +61,6 @@ defmodule Gobusgo.Pace.AggregateTest do
   end
 
   test "refuses an empty file id" do
-    assert_raise FunctionClauseError, fn -> build([{{1, 2, 0, 0}, 1.0, 1.0}], %{file_id: ""}) end
+    assert_raise FunctionClauseError, fn -> build([{{1, 2, 0}, 1.0, 1.0}], %{file_id: ""}) end
   end
 end

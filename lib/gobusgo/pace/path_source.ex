@@ -65,7 +65,7 @@ defmodule Gobusgo.Pace.PathSource do
           stop_positions: %{String.t() => TripPath.position()},
           trip: %{id: String.t(), stop_times: [TripPath.stop_time()]}
         }) :: {:ok, Learning.path()} | :unavailable
-  def build(%{trip: %{stop_times: [first_stop | _rest]}} = input) do
+  def build(%{trip: %{stop_times: [_first_stop | _rest]}} = input) do
     %{trip: %{id: trip_id}} = input
 
     built =
@@ -79,8 +79,7 @@ defmodule Gobusgo.Pace.PathSource do
       %{^trip_id => {:ok, encoded}} ->
         %{points: points} = TripPath.decode(encoded)
 
-        {:ok,
-         Learning.prepare_path(%{points: points, band: Learning.band(first_stop.departure_s)})}
+        {:ok, Learning.prepare_path(%{points: points})}
 
       %{} ->
         :unavailable

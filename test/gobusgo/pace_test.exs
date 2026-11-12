@@ -31,8 +31,7 @@ defmodule Gobusgo.PaceTest do
 
   defp east_path do
     Learning.prepare_path(%{
-      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.01, @origin_lat]],
-      band: 2
+      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.01, @origin_lat]]
     })
   end
 

@@ -8,9 +8,6 @@ defmodule Gobusgo.Pace.Learning do
   @cell_lat_degrees 0.0003
   @direction_count 8
   @degrees_per_turn 360
-  @band_start_hours [0, 6, 9, 15, 19]
-  @seconds_per_hour 3600
-  @hours_per_day 24
   @ms_per_second 1000
 
   @moduledoc """
@@ -36,17 +33,14 @@ defmodule Gobusgo.Pace.Learning do
   grid of #{@cell_lon_degrees} degrees of longitude by #{@cell_lat_degrees}
   degrees of latitude, with the direction of travel, the initial bearing of
   the path segment at that position in #{@direction_count} buckets of
-  #{div(@degrees_per_turn, @direction_count)} degrees centered on north,
-  and the time-of-day band, which starts at the local hours
-  #{inspect(@band_start_hours)} and is picked by the trip's first
-  scheduled departure.
+  #{div(@degrees_per_turn, @direction_count)} degrees centered on north.
+  One table covers every hour of the day.
   """
 
-  alias Gobusgo.Assert
   alias Gobusgo.Math.Geodesy
 
-  @typedoc "A cell of the table: grid longitude, grid latitude, direction, band."
-  @type key :: {integer(), integer(), 0..7, 0..4}
+  @typedoc "A cell of the table: grid longitude, grid latitude, direction."
+  @type key :: {integer(), integer(), 0..7}
 
   @typedoc "One vehicle report: where a vehicle was, on which trip, and when."
   @type report :: %{
@@ -72,8 +66,7 @@ defmodule Gobusgo.Pace.Learning do
           ys: tuple(),
           cumulative: tuple(),
           length_m: float(),
-          meters_per_degree_lon: float(),
-          band: 0..4
+          meters_per_degree_lon: float()
         }
 
   @doc """
@@ -89,10 +82,6 @@ defmodule Gobusgo.Pace.Learning do
   @spec step_m() :: pos_integer()
   def step_m, do: @step_m
 
-  @doc "The local hours the bands start at."
-  @spec band_start_hours() :: [non_neg_integer(), ...]
-  def band_start_hours, do: @band_start_hours
-
   @doc "The grid of a cell, as the degrees of longitude and of latitude it spans."
   @spec cell_degrees() :: %{lon: float(), lat: float()}
   def cell_degrees, do: %{lon: @cell_lon_degrees, lat: @cell_lat_degrees}
@@ -100,17 +89,6 @@ defmodule Gobusgo.Pace.Learning do
   @doc "The count of direction buckets."
   @spec direction_count() :: pos_integer()
   def direction_count, do: @direction_count
-
-  @doc """
-  The band of a trip whose first stop departs `departure_s` seconds after
-  its service date began: the last band that starts at or before the local
-  hour, the hour taken modulo a day.
-  """
-  @spec band(non_neg_integer()) :: 0..4
-  def band(departure_s) when is_integer(departure_s) and departure_s >= 0 do
-    hour = rem(div(departure_s, @seconds_per_hour), @hours_per_day)
-    Enum.count(@band_start_hours, &(&1 <= hour)) - 1
-  end
 
   @doc """
   The reports of the vehicles of one agency's fetch that name a trip, its
@@ -148,13 +126,11 @@ defmodule Gobusgo.Pace.Learning do
   @doc """
   Prepares `input.points`, a path's `[lon, lat]` points from its first to
   its last, at least two, for projection on the plane tangent at the first
-  point's latitude, with `input.band` the trip's band.
+  point's latitude.
   """
-  @spec prepare_path(%{points: [[number()]], band: 0..4}) :: path()
-  def prepare_path(%{points: [[_lon, first_lat] | _rest] = points, band: band})
+  @spec prepare_path(%{points: [[number()]]}) :: path()
+  def prepare_path(%{points: [[_lon, first_lat] | _rest] = points})
       when length(points) >= 2 do
-    Assert.condition(band in 0..4, "band must be 0 to 4, got: #{inspect(band)}")
-
     meters_per_degree_lon =
       Geodesy.meters_per_degree() * :math.cos(Geodesy.radians(first_lat))
 
@@ -171,8 +147,7 @@ defmodule Gobusgo.Pace.Learning do
       ys: List.to_tuple(ys),
       cumulative: List.to_tuple(cumulative),
       length_m: List.last(cumulative),
-      meters_per_degree_lon: meters_per_degree_lon,
-      band: band
+      meters_per_degree_lon: meters_per_degree_lon
     }
   end
 
@@ -284,7 +259,7 @@ defmodule Gobusgo.Pace.Learning do
     bucket_width = @degrees_per_turn / @direction_count
     direction = rem(floor(bearing / bucket_width + 0.5), @direction_count)
 
-    {floor(lon / @cell_lon_degrees), floor(lat / @cell_lat_degrees), direction, path.band}
+    {floor(lon / @cell_lon_degrees), floor(lat / @cell_lat_degrees), direction}
   end
 
   # The last index below `high` whose cumulative distance is at or before

@@ -13,10 +13,9 @@ defmodule Gobusgo.Pace.LearningTest do
   @start_ms 1_700_000_000_000
   @tolerance 1.0e-6
 
-  defp east_path(band \\ 2) do
+  defp east_path do
     Learning.prepare_path(%{
-      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.01, @origin_lat]],
-      band: band
+      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.01, @origin_lat]]
     })
   end
 
@@ -49,24 +48,6 @@ defmodule Gobusgo.Pace.LearningTest do
 
   defp placed_at(meters, seconds) do
     %{trip_key: @trip_key, meters: meters, at_ms: @start_ms + seconds * 1000}
-  end
-
-  describe "band/1" do
-    for {name, departure_s, band} <- [
-          {"midnight", 0, 0},
-          {"just before 6", 6 * 3600 - 1, 0},
-          {"6", 6 * 3600, 1},
-          {"9", 9 * 3600, 2},
-          {"15", 15 * 3600, 3},
-          {"19", 19 * 3600, 4},
-          {"23:59", 24 * 3600 - 1, 4},
-          {"1 after the service day's end", 25 * 3600, 0},
-          {"6 after the service day's end", 30 * 3600, 1}
-        ] do
-      test "puts #{name} in band #{band}" do
-        assert Learning.band(unquote(departure_s)) == unquote(band)
-      end
-    end
   end
 
   describe "spread/1" do
@@ -113,14 +94,14 @@ defmodule Gobusgo.Pace.LearningTest do
            [[@origin_lon, @origin_lat], [@origin_lon - 0.0001, @origin_lat + 0.01]], 0}
         ] do
       test "buckets travel #{name} as direction #{direction}" do
-        path = Learning.prepare_path(%{points: unquote(points), band: 3})
-        assert {_lon_cell, _lat_cell, unquote(direction), 3} = Learning.cell_key(path, 0)
+        path = Learning.prepare_path(%{points: unquote(points)})
+        assert {_lon_cell, _lat_cell, unquote(direction)} = Learning.cell_key(path, 0)
       end
     end
 
     test "floors the position into the grid" do
       assert Learning.cell_key(east_path(), 0) ==
-               {floor(@origin_lon / 0.00045), floor(@origin_lat / 0.0003), 2, 2}
+               {floor(@origin_lon / 0.00045), floor(@origin_lat / 0.0003), 2}
     end
 
     test "clamps a distance past the path's end to the end" do
@@ -224,8 +205,7 @@ defmodule Gobusgo.Pace.LearningTest do
 
   defp long_east_path do
     Learning.prepare_path(%{
-      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.1, @origin_lat]],
-      band: 2
+      points: [[@origin_lon, @origin_lat], [@origin_lon + 0.1, @origin_lat]]
     })
   end
 end

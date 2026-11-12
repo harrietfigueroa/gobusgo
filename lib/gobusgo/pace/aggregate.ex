@@ -22,17 +22,16 @@ defmodule Gobusgo.Pace.Aggregate do
   One JSON object of `meta` and `cells`, compressed as every `.gz`
   destination is.
 
-    * `cells` maps `"<longitude cell>,<latitude cell>,<direction>,<band>"` to
+    * `cells` maps `"<longitude cell>,<latitude cell>,<direction>"` to
       `[seconds, meters]`, each rounded to #{@precision} decimals. The
       longitude and latitude cells are the floors of the degrees over
       `meta.cellDegrees`, the direction is the initial bearing of the path
-      segment in `meta.directionCount` buckets centered on north, clockwise,
-      and the band indexes `meta.bandStartHours`, the local hours each band
-      starts at. Bands are kept apart, so a reader can sum them.
+      segment in `meta.directionCount` buckets centered on north, clockwise.
+      One table covers every hour of the day.
     * `meta.formatVersion` is #{@format_version}, and changes when a reader
       of version #{@format_version} would misread a file.
     * `meta` also holds `date`, `node`, `fileId`, `writtenAt`,
-      `stepMeters`, `cellDegrees`, `directionCount`, `bandStartHours`,
+      `stepMeters`, `cellDegrees`, `directionCount`,
       `cellCount`, `metersTotal`, and `droppedCellCount`, the cells the
       table's bound left out.
   """
@@ -76,7 +75,6 @@ defmodule Gobusgo.Pace.Aggregate do
     content =
       CanonicalJson.encode(%{
         "meta" => %{
-          "bandStartHours" => Learning.band_start_hours(),
           "cellCount" => cell_count,
           "cellDegrees" => %{
             "lat" => Learning.cell_degrees().lat,
@@ -117,8 +115,8 @@ defmodule Gobusgo.Pace.Aggregate do
     }
   end
 
-  defp encode_cell({lon_cell, lat_cell, direction, band}, seconds, meters) do
-    {"#{lon_cell},#{lat_cell},#{direction},#{band}",
+  defp encode_cell({lon_cell, lat_cell, direction}, seconds, meters) do
+    {"#{lon_cell},#{lat_cell},#{direction}",
      [round_to_precision(seconds), round_to_precision(meters)]}
   end
 
