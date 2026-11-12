@@ -23,6 +23,7 @@ import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {TableKind} from "./offline_answers"
 import {isFallbackDue} from "./scheduled_path"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
+import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRouteOf} from "./route_emphasis"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
 import {
   BADGE_FONT,
@@ -112,6 +113,8 @@ const HALVING_DIVISOR = 2
 const BADGE_INSET_PIXELS = 2
 const BADGE_OFFSET_PIXELS = [MARKER_RADIUS_PIXELS - BADGE_INSET_PIXELS, BADGE_INSET_PIXELS - MARKER_RADIUS_PIXELS]
 const STATUS_OPACITY_FALLBACK = 1
+// The opacity of a symbol layer's markers while no route is emphasized.
+const SYMBOL_OPACITY = 1
 // The key the scheduled markers are held under in place of every agency's.
 const SCHEDULED_KEY = "scheduled"
 const CAPTION_CLASS_NAME = "panel-detail-caption"
@@ -540,6 +543,9 @@ export const VehicleMarkers = {
     this.statusLabels = new Map(labelEntries)
     this.markersByAgency = new Map()
     this.map = null
+    // The route whose line is emphasized, or null; the markers of every
+    // other route are drawn dimmed while it is set.
+    this.emphasizedRouteId = null
     this.drawn = new Map()
     this.gliding = new Map()
     // The chevrons that turn back to their reported headings in the
@@ -629,6 +635,13 @@ export const VehicleMarkers = {
     }
 
     window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
+
+    this.onEmphasis = (event) => {
+      this.emphasizedRouteId = emphasizedRouteOf(event.detail)
+      this.applyEmphasis()
+    }
+
+    window.addEventListener(EMPHASIS_EVENT_NAME, this.onEmphasis)
 
     this.onBasemapReady = (event) => {
       const {map} = event.detail
@@ -775,6 +788,7 @@ export const VehicleMarkers = {
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
     this.overlay.markSelected(this.viewMarkerId)
     this.overlay.markYourBus(this.yourBus.current())
+    this.overlay.markEmphasis(this.emphasizedRouteId)
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -1018,7 +1032,7 @@ export const VehicleMarkers = {
     map.addSource(SOURCE_NAME, {type: "geojson", data: collection, promoteId: "markerId"})
 
     const colors = mapColors(currentTheme())
-    const opacity = statusOpacity(this.statuses)
+    const opacities = this.markerOpacities()
     const theme = currentTheme()
 
     // The selected vehicle's halo and ring stand under every marker, round
@@ -1050,14 +1064,14 @@ export const VehicleMarkers = {
       paint: {
         "circle-radius": MARKER_RADIUS_PIXELS,
         "circle-color": ["get", "color"],
-        "circle-opacity": opacity,
+        "circle-opacity": opacities.dot,
         "circle-stroke-color": colors.vehicleStroke,
         "circle-stroke-width": MARKER_STROKE_WIDTH_PIXELS,
-        "circle-stroke-opacity": dotStrokeOpacity({opacity, colors})
+        "circle-stroke-opacity": opacities.dotStroke
       }
     })
 
-    this.addBadgeLayer(map)
+    this.addBadgeLayer({map, opacity: opacities.symbol})
 
     // Closer in every vehicle is a bus glyph, however crowded the street.
     map.addLayer({
@@ -1069,7 +1083,8 @@ export const VehicleMarkers = {
         "icon-image": glyphImageExpression({part: "glyph", theme}),
         "icon-allow-overlap": true,
         "icon-ignore-placement": true
-      }
+      },
+      paint: {"icon-opacity": opacities.symbol}
     })
 
     // The chevron turns with the map, so a heading stays a compass direction
@@ -1087,7 +1102,8 @@ export const VehicleMarkers = {
         "icon-rotation-alignment": "map",
         "icon-offset": chevronOffsetPixels,
         "icon-allow-overlap": false
-      }
+      },
+      paint: {"icon-opacity": opacities.symbol}
     })
 
     // The route badge stands on the glyph's shoulder, and is left out where
@@ -1104,15 +1120,59 @@ export const VehicleMarkers = {
         "icon-anchor": "bottom-left",
         "icon-offset": routeBadgeOffsetPixels,
         "icon-allow-overlap": false
-      }
+      },
+      paint: {"icon-opacity": opacities.symbol}
     })
 
     this.yourBus.attach(map)
   },
 
+  // The opacity of each marker layer's paint for the emphasized route: a
+  // marker of another route keeps `VEHICLE_DIM_FACTOR` of its own opacity,
+  // its status's for a dot, and shape and glyph are drawn at it too, so a
+  // status stays told by form.
+  markerOpacities() {
+    const {emphasizedRouteId} = this
+    const colors = mapColors(currentTheme())
+    const statusOpacities = statusOpacity(this.statuses)
+    const dot = dimmedOpacity({emphasizedRouteId, opacity: statusOpacities})
+    const dotStroke = dimmedOpacity({emphasizedRouteId, opacity: dotStrokeOpacity({opacity: statusOpacities, colors})})
+    const symbol = dimmedOpacity({emphasizedRouteId, opacity: SYMBOL_OPACITY})
+    return {dot, dotStroke, symbol}
+  },
+
+  // Sets the opacity of every marker layer the map holds, and the canvas's,
+  // to those of the emphasized route. It sets paint only, never source data.
+  applyEmphasis() {
+    if (this.overlay !== null) {
+      this.overlay.markEmphasis(this.emphasizedRouteId)
+    }
+
+    if (this.map === null) {
+      return
+    }
+
+    const opacities = this.markerOpacities()
+    const paints = [
+      [DOT_LAYER_NAME, "circle-opacity", opacities.dot],
+      [DOT_LAYER_NAME, "circle-stroke-opacity", opacities.dotStroke],
+      [BADGE_LAYER_NAME, "icon-opacity", opacities.symbol],
+      [GLYPH_LAYER_NAME, "icon-opacity", opacities.symbol],
+      [CHEVRON_LAYER_NAME, "icon-opacity", opacities.symbol],
+      [ROUTE_BADGE_LAYER_NAME, "icon-opacity", opacities.symbol]
+    ]
+
+    for (const [layerName, property, value] of paints) {
+      if (this.map.getLayer(layerName) !== undefined) {
+        this.map.setPaintProperty(layerName, property, value)
+      }
+    }
+  },
+
   // A marker of a status a recent report lacks carries that status's badge
-  // on its upper right edge, at full opacity whatever the marker's.
-  addBadgeLayer(map) {
+  // on its upper right edge, at full opacity whatever the marker's, and
+  // dimmed with the rest of its route's markers.
+  addBadgeLayer({map, opacity}) {
     const badged = this.statuses.filter(hasBadge)
     const badgeCases = badged.flatMap(badgeCase)
     const badgedStatuses = Array.from(badged, statusOf)
@@ -1129,7 +1189,8 @@ export const VehicleMarkers = {
         "icon-offset": BADGE_OFFSET_PIXELS,
         "icon-allow-overlap": true,
         "icon-ignore-placement": true
-      }
+      },
+      paint: {"icon-opacity": opacity}
     })
   },
 
@@ -1752,6 +1813,7 @@ export const VehicleMarkers = {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
     window.removeEventListener(OPEN_EVENT_NAME, this.onItemOpen)
+    window.removeEventListener(EMPHASIS_EVENT_NAME, this.onEmphasis)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
     this.yourBus.destroy()

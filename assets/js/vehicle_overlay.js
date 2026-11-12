@@ -14,6 +14,7 @@ import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"
 import {YourBusLabelKind} from "./journey_labels"
+import {markerAlpha} from "./route_emphasis"
 import {SpriteCache} from "./vehicle_sprites"
 import {BADGE_FONT, GLYPH_RADIUS_PIXELS, MARKER_RADIUS_PIXELS, dotStrokeOpacity, glyphStyle, routeBadgeStyle} from "./vehicle_marker_shapes"
 import {selectionColor, selectionHaloOpacity, selectionHaloRadius, selectionRingRadius, selectionRingWidth} from "./selection_mark"
@@ -181,6 +182,9 @@ class VehicleOverlay {
     // The label of the first bus of the chosen journey, a `yourBusLabel`
     // answer, which the canvas writes beside that vehicle while it draws it.
     this.yourBus = {kind: YourBusLabelKind.none}
+    // The route whose line is emphasized, or null; the markers of every
+    // other route are drawn dimmed, as the map's layers draw them.
+    this.emphasizedRouteId = null
 
     this.onRender = () => {
       const isShowing = this.vehiclesAt !== null || this.tiesAt !== null
@@ -265,6 +269,18 @@ class VehicleOverlay {
   markYourBus(label) {
     this.yourBus = label
     this.drawIfRunning()
+  }
+
+  // Draws the markers of routes other than `routeId` dimmed while the canvas
+  // draws them, as the map's layers dim those in the source; null dims none.
+  markEmphasis(routeId) {
+    this.emphasizedRouteId = routeId
+    this.drawIfRunning()
+  }
+
+  // The share of its opacity a vehicle's marker is drawn at.
+  alphaOf(properties) {
+    return markerAlpha({emphasizedRouteId: this.emphasizedRouteId, routeId: properties.routeId})
   }
 
   // Clears the ties' canvas and draws no tie until they are shown again.
@@ -545,6 +561,8 @@ class VehicleOverlay {
     const context = this.canvas.getContext("2d")
 
     for (const {x, y, marker, feature: {properties}} of drawn) {
+      context.globalAlpha = this.alphaOf(properties)
+
       if (marker.kind === MarkerKind.round) {
         const opacity = this.opacityOf(properties)
         const strokeOpacity = dotStrokeOpacity({opacity, colors})
@@ -564,6 +582,8 @@ class VehicleOverlay {
         }
       }
     }
+
+    context.globalAlpha = 1
   }
 
   // A dot's status badge is drawn at full opacity whatever its dot's, and
@@ -577,6 +597,7 @@ class VehicleOverlay {
       const isBadgedDot = isDot && badge !== undefined
 
       if (isBadgedDot) {
+        context.globalAlpha = this.alphaOf(vehicle.feature.properties)
         const corner = badgeCorner(vehicle)
         const sprite = this.sprites.badge({badge, ink: colors.badgeInk, paper: colors.badgePaper})
         const left = snapToPixel({value: corner.x, ratio})
@@ -584,6 +605,8 @@ class VehicleOverlay {
         context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
       }
     }
+
+    context.globalAlpha = 1
   }
 
   // A glyph's route badge is measured once, when its bitmap is made, and is
@@ -618,9 +641,12 @@ class VehicleOverlay {
         const corner = routeBadgeCorner(vehicle)
         const left = snapToPixel({value: corner.x, ratio})
         const top = snapToPixel({value: corner.y, ratio})
+        context.globalAlpha = this.alphaOf(vehicle.feature.properties)
         context.drawImage(sprite.image, left, top, sprite.width, sprite.height)
       }
     }
+
+    context.globalAlpha = 1
   }
 
   detach() {
