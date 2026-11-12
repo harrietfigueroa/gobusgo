@@ -83,7 +83,7 @@ With a bucket configured the hourly cleanup is not scheduled: the bucket's lifec
 
 `mix gobusgo.basemap.extract`, in `lib/mix/tasks/gobusgo.basemap.extract.ex`, cuts the regional basemap archives from a Protomaps build by hand; nothing schedules it. `Gobusgo.Basemap.ExtractPlan` plans the extraction and is pure, `Extractor` reads a stored agency response and runs the `pmtiles` command, and `Gobusgo.Basemap.Manifest` holds the manifest's rules and is pure. The endpoint serves the archives under `/basemap`.
 
-With an offline zoom bound, 13 as decided in GOB-271 and set with `--offline-zoom-max`, the extractor also cuts each archive's offline extract, `basemap-<snapshot>-<number>-z<zoom>.pmtiles`, and the manifest names it beside its archive with its size and highest zoom. The README's "Basemap archives" section holds the process and the measured archive sizes.
+With an offline zoom bound, 13 as decided in GOB-271 and set with `--offline-zoom-max`, the extractor also cuts each archive's offline extract, `basemap-<snapshot>-<number>-z<zoom>.pmtiles`, and the manifest names it beside its archive with its size and highest zoom. `docs/development.md` ("Basemap") holds the process and the archive sizes.
 
 ## Start-memory check
 
