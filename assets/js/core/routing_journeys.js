@@ -536,13 +536,13 @@ function decodeHeldChunks({entry, part, files}) {
 // names, and the index of the chunk it asks for next, or NO_CHUNK_INDEX
 // where it needs none.
 function scanOf({entry, tables, timeKind, origin, target, part, chunks}) {
-  const minimumTransferS = entry.transferRules.minimumTransferS
+  const transferSMin = entry.transferRules.minimumTransferS
   const connectionChunks = entry.connectionChunks
 
   switch (timeKind) {
     case TimeKind.leaving: {
       const query = {origin, target, departureS: part.seconds}
-      const scan = routeLoaded({tables, chunks, minimumTransferS, query})
+      const scan = routeLoaded({tables, chunks, minimumTransferS: transferSMin, query})
       const index = nextChunkLeaving({chunks: connectionChunks, frontier: scan.frontier, part})
       let nextIndex = index
 
@@ -554,7 +554,7 @@ function scanOf({entry, tables, timeKind, origin, target, part, chunks}) {
     }
     case TimeKind.arrivingBy: {
       const query = {origin, target, arrivalS: part.seconds}
-      const scan = routeLoadedBack({tables, chunks, minimumTransferS, query})
+      const scan = routeLoadedBack({tables, chunks, minimumTransferS: transferSMin, query})
       const nextIndex = nextChunkArrivingBy({chunks: connectionChunks, frontier: scan.frontier, part})
       return {scan, nextIndex}
     }
@@ -976,8 +976,9 @@ function advance({manifest, state, files}) {
 
     if (partStep.kind !== RoutedKind.routed) {
       const isSecondFailed = !isFirstPart && partStep.kind === JourneysKind.failed
+      const isUnanswerable = isFirstPart || isSecondFailed
 
-      if (isFirstPart || isSecondFailed) {
+      if (isUnanswerable) {
         return {state: current, step: done(partStep)}
       }
 

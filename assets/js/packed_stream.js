@@ -1,6 +1,5 @@
 // Expands a stored packed container, one gzip stream, under a bound, with
-// the browser's DecompressionStream, so the pure reader of
-// core/packed_container.js reads the expanded bytes.
+// the browser's DecompressionStream, so its sections are read once expanded.
 
 import {assertCondition} from "./core/assert.js"
 import {PackedOutcome, PackedRefusal} from "./core/packed_container.js"

@@ -1,8 +1,8 @@
-// Drives a journey query of core/routing_journeys.js: fetches the files each
-// step asks for through the fetch function the caller hands in, each within
-// the core's FETCH_TIMEOUT_MS, holds their bytes for the query, and resumes
-// the core with every held file until it answers. The fetch function sees
-// nothing but paths the manifest names.
+// Drives a journey query: starts it, fetches the files each step asks for
+// through the fetch function the caller hands in, each within
+// FETCH_TIMEOUT_MS, holds their bytes for the query, and resumes it with
+// every held file until it answers. The fetch function sees nothing but
+// paths the manifest names.
 
 import {assertCondition} from "./core/assert.js"
 import {
@@ -103,7 +103,7 @@ async function driveQuery({manifest, request, fetchFile}) {
 /**
  * The journeys of `serviceDate` in `manifest` from `from` to the stop
  * `toStopId`, leaving at or after `departureS`, seconds from that date's
- * start, as `startQuery` of core/routing_journeys.js answers them.
+ * start, as `startQuery` answers them.
  * `fetchFile({path, signal})` hands back `{kind: FetchKind.fetched, buffer}`
  * with an ArrayBuffer, or `{kind: FetchKind.failed, reason}`.
  */
@@ -115,8 +115,8 @@ export async function routeJourneys({manifest, serviceDate, departureS, from, to
 /**
  * The journeys of `serviceDate` in `manifest` from `from` to the stop
  * `toStopId`, arriving at or before `arrivalS`, seconds from that date's
- * start, as `startQuery` of core/routing_journeys.js answers them, with
- * `fetchFile` as `routeJourneys` takes it.
+ * start, as `startQuery` answers them, with `fetchFile` as `routeJourneys`
+ * takes it.
  */
 export async function routeJourneysArrivingBy({manifest, serviceDate, arrivalS, from, toStopId, fetchFile}) {
   const request = {kind: TimeKind.arrivingBy, serviceDate, seconds: arrivalS, from, toStopId}

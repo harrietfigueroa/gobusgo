@@ -519,7 +519,8 @@ function driveInMemory({manifest, request, snapshot}) {
       return {answer: step.answer, rounds}
     }
 
-    rounds.push(Array.from(step.files, pathOf))
+    const paths = Array.from(step.files, pathOf)
+    rounds.push(paths)
     const fetched = []
 
     for (const file of step.files) {
@@ -557,25 +558,30 @@ const lateServed = served(today, tomorrow)
 const lateDriven = driveInMemory({manifest: manifestOf(today, tomorrow), request: lateRequest, snapshot: lateServed})
 const lateDriver = await routeJourneys({manifest: manifestOf(today, tomorrow), fetchFile: memoryFetch(lateServed).fetchFile, ...lateQuery, departureS: seconds("23:00")})
 deepStrictEqual(lateDriven.answer, lateDriver)
-deepStrictEqual(lateDriven.rounds.some(isTomorrowPathList), true)
+const isTomorrowAsked = lateDriven.rounds.some(isTomorrowPathList)
+deepStrictEqual(isTomorrowAsked, true)
 
 function isTomorrowPathList(paths) {
   return paths.some(isTomorrowPath)
+}
+
+function failedOutcome() {
+  return {kind: FetchKind.failed, reason: FailureReason.timedOut}
+}
+
+function shortOutcome() {
+  return {kind: FetchKind.fetched, buffer: new ArrayBuffer(1)}
 }
 
 // A failed fetch and a file of another size are outcomes naming the file,
 // decided by the core from the outcome the caller hands it.
 const startedWindow = startQuery({manifest: manifestOf(windowSnapshot), request: windowRequest})
 const tableFiles = startedWindow.step.files
-const failedOutcomes = Array.from(tableFiles, function failedOutcome() {
-  return {kind: FetchKind.failed, reason: FailureReason.timedOut}
-})
+const failedOutcomes = Array.from(tableFiles, failedOutcome)
 const failedStep = resumeQuery({manifest: manifestOf(windowSnapshot), state: startedWindow.state, fetched: failedOutcomes, files: new Map()}).step
 deepStrictEqual(failedStep, {kind: StepKind.done, answer: {kind: JourneysKind.failed, reason: FailureReason.timedOut, path: "/fixture/stops.bin"}})
 
-const shortOutcomes = Array.from(tableFiles, function shortOutcome() {
-  return {kind: FetchKind.fetched, buffer: new ArrayBuffer(1)}
-})
+const shortOutcomes = Array.from(tableFiles, shortOutcome)
 const shortStep = resumeQuery({manifest: manifestOf(windowSnapshot), state: startedWindow.state, fetched: shortOutcomes, files: new Map()}).step
 deepStrictEqual(shortStep, {kind: StepKind.done, answer: {kind: JourneysKind.failed, reason: FailureReason.sizeMismatch, path: "/fixture/stops.bin"}})
 

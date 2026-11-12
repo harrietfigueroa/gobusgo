@@ -1,6 +1,6 @@
 // Expands the names file of a routing snapshot, one gzip stream, with the
-// browser's DecompressionStream, so the pure reader of core/routing_names.js
-// reads the expanded JSON.
+// browser's DecompressionStream, under the bound the file's reader names, so
+// its JSON is read once expanded.
 
 import {NAMES_EXPANDED_BYTES_MAX, NamesRefusalReason} from "./core/routing_names.js"
 import {DecodeKind} from "./core/routing_snapshot.js"
