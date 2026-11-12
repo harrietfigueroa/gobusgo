@@ -2,12 +2,18 @@
 // between fetches. Cases written out by hand cover a moving bus, a dwell, a
 // bus standing and leaving its stand, a layover before a trip's first
 // departure, a trip's end, a layover, a loop route, a stale report, a missing path, a report off
-// its path, a path of straight lines, each correction, and invalid inputs. A
-// replay of real King County Metro fetches stored on 2026-11-08 then
-// measures the error at the time of each later report and fails when its
-// median or its 90th percentile moves more than 10 m from what was measured
-// on the same cut, and replays the corrections a marker makes as each
-// report arrives. Run it with
+// its path, a path of straight lines, each correction at and either side of
+// its bounds, a slowed marker at a third of the prediction's pace that stands
+// while the prediction stands and never moves back, a sped-up marker's
+// duration from its extra pace and its floor, and invalid inputs. A replay of
+// real King County Metro fetches stored on 2026-11-08 then measures the error
+// at the time of each later report and fails when its median or its 90th
+// percentile moves more than 10 m from what was measured on the same cut,
+// replays the corrections a marker makes as each report arrives and bounds
+// how far the drawn error exceeds the prediction's, and replays the drawn
+// marker frame by frame and fails when its backward jumps, its surges, or the
+// share of the bus's moving time it is drawn frozen for move more than 10%
+// from what was measured on the same cut. Run it with
 // `node test/scripts/vehicle_prediction_check.mjs`, or name the whole
 // store's cut as its argument; it exits non-zero on the first case that
 // differs.
@@ -16,7 +22,9 @@ import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {gunzipSync} from "node:zlib"
 import {AssertionError} from "../../assets/js/core/assert.js"
-import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
+import {LAT, LON, METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
+import {lerp} from "../../assets/js/core/math/interpolation.js"
+import {nearestAlong} from "../../assets/js/core/math/polyline.js"
 import {
   CorrectionKind,
   DrawnKind,
@@ -365,11 +373,15 @@ function correctionOf({report: entry, drawn, seconds}) {
   return beginCorrection({drawn: drawnAlong(drawn), prediction, atMs: msAt(seconds)})
 }
 
+// The bounds are tried half a meter either side, since the prediction's
+// distance carries the rounding of the schedule's interpolation.
 const correctionKindCases = [
-  {name: "a report up to 150 m behind the marker holds it", drawn: {meters: 900}, kind: CorrectionKind.hold},
-  {name: "a report up to 500 m ahead of the marker catches it up", drawn: {meters: 700}, kind: CorrectionKind.catchUp},
-  {name: "a report 300 m behind the marker glides it back", drawn: {meters: 1100}, kind: CorrectionKind.glide},
-  {name: "a report 600 m ahead of the marker snaps it there", drawn: {meters: 200}, kind: CorrectionKind.snap},
+  {name: "a report 100 m behind the marker slows it down", drawn: {meters: 900}, kind: CorrectionKind.slowDown},
+  {name: "a report 299.5 m behind the marker slows it down", drawn: {meters: 1099.5}, kind: CorrectionKind.slowDown},
+  {name: "a report 300.5 m behind the marker glides it back", drawn: {meters: 1100.5}, kind: CorrectionKind.glide},
+  {name: "a report 100 m ahead of the marker speeds it up", drawn: {meters: 700}, kind: CorrectionKind.speedUp},
+  {name: "a report 499.5 m ahead of the marker speeds it up", drawn: {meters: 300.5}, kind: CorrectionKind.speedUp},
+  {name: "a report 500.5 m ahead of the marker snaps it there", drawn: {meters: 299.5}, kind: CorrectionKind.snap},
   {name: "a marker moving onto another trip glides", drawn: {meters: 700, tripId: OTHER_TRIP_ID}, kind: CorrectionKind.glide},
   {name: "a report that agrees with the marker changes nothing", drawn: {meters: 800}, kind: CorrectionKind.settled}
 ]
@@ -384,25 +396,36 @@ function drawnAt({report: entry, correction, seconds}) {
   return drawCorrected({path: entry.path, correction, prediction, atMs: msAt(seconds)})
 }
 
-// The prediction advances 5 m/s, so a marker held 100 m ahead of it is
-// passed after 20 s; a catch-up of 100 m closes over 2 s while the
-// prediction moves on; a glide of 300 m is halfway to the moving prediction
-// after half a second.
-// The dwell schedule's prediction stops at 1,000 m, short of a marker held
-// at 1,100 m, so that hold ends with the report's horizon at 312 s.
+// The prediction advances 5 m/s. A marker 100 m ahead of it closes the gap
+// over 150 m of the prediction's progress, 30 s, at a third of its pace; a
+// marker 100 m behind it closes the gap at 8 m/s more than its pace, over
+// 12.5 s; a marker 10 m behind it closes the gap over the 2 s floor; a glide
+// of 400 m is halfway to the moving prediction after half a second.
+// The dwell schedule's prediction stops at 1,000 m, short of a marker at
+// 1,100 m, 140 m ahead of the report's 960 m, so that slowed marker stands
+// at 1,000 + 140 * (1 - 40 / 210) m until the report's horizon at 312 s.
+const WAITING_STANDING_METERS = 1000 + 140 * (1 - 40 / 210)
 const WAITING = {path: dwellPath, last: {east: 960, seconds: 192}, previous: {east: 860, seconds: 172}}
 const WAITING_SECONDS = 192
 
 const drawnCases = [
-  {name: "a held marker stays while the prediction is behind it", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 170, expected: {east: 900}},
-  {name: "a held marker moves on once the prediction passes it", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 190, expected: {east: 950}},
-  {name: "a catch-up starts at the drawn marker", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 160, expected: {east: 700}},
-  {name: "a catch-up is halfway after 1 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 161, expected: {east: 755}},
-  {name: "a catch-up ends at the prediction after 2 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 162, expected: {east: 810}},
-  {name: "a glide is halfway after half a second", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 1100}, seconds: 160.5, expected: {east: 951.25}},
-  {name: "a hold lasts until the report reaches the horizon", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 311, expected: {east: 1100}},
-  {name: "an expired hold glides back to the prediction", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 312.5, expected: {east: 1050}},
-  {name: "an expired hold ends at the prediction", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 314, expected: {east: 1000}}
+  {name: "a slowed marker starts at the drawn marker", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 160, expected: {east: 900}},
+  // After 10 s the prediction is at 850 m, 50 m on, and the gap has 2/3 left.
+  {name: "a slowed marker moves at a third of the prediction's pace", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 170, expected: {east: 850 + 100 * (2 / 3)}},
+  {name: "a slowed marker is at the prediction once the gap has closed", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 190, expected: {east: 950}},
+  {name: "a slowed marker stays at the prediction after the gap has closed", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 900}, seconds: 200, expected: {east: 1000}},
+  {name: "a slowed marker stands while the prediction stands", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 250, expected: {east: WAITING_STANDING_METERS}},
+  {name: "a slowed marker stands as long as the prediction does", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 311, expected: {east: WAITING_STANDING_METERS}},
+  {name: "a slowed marker glides to the prediction from where it is drawn at the report's horizon", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 312.5, expected: {east: (WAITING_STANDING_METERS + 1000) / 2}},
+  {name: "a slowed marker ends at the prediction after the horizon's glide", report: WAITING, startSeconds: WAITING_SECONDS, drawn: {meters: 1100}, seconds: 314, expected: {east: 1000}},
+  {name: "a speed-up starts at the drawn marker", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 160, expected: {east: 700}},
+  // After 6.25 s the prediction is at 831.25 m and half the 100 m gap is left.
+  {name: "a speed-up of 100 m is halfway after 6.25 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 166.25, expected: {east: 831.25 - 50}},
+  {name: "a speed-up of 100 m is still closing after 2 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 162, expected: {east: 810 - 100 * (1 - 2 / 12.5)}},
+  {name: "a speed-up of 100 m ends at the prediction after 12.5 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 700}, seconds: 172.5, expected: {east: 862.5}},
+  {name: "a speed-up of 10 m is halfway after 1 s", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 790}, seconds: 161, expected: {east: 805 - 5}},
+  {name: "a speed-up of 10 m ends at the prediction after the 2 s floor", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 790}, seconds: 162, expected: {east: 810}},
+  {name: "a glide is halfway after half a second", report: NEW_REPORT, startSeconds: NEW_REPORT_SECONDS, drawn: {meters: 1200}, seconds: 160.5, expected: {east: 1001.25}}
 ]
 
 for (const {name, report: entry, startSeconds, drawn, seconds, expected} of drawnCases) {
@@ -410,6 +433,27 @@ for (const {name, report: entry, startSeconds, drawn, seconds, expected} of draw
   const drawnMarker = drawnAt({report: entry, correction, seconds})
   isAt({position: drawnMarker.position, expected, message: name})
 }
+
+// A slowed marker never moves back before the report's horizon: sampled
+// every second from the report's arrival, over a prediction that moves and
+// then stands.
+const SLOWED_SAMPLE_COUNT = 120
+const slowedCorrection = correctionOf({report: WAITING, drawn: {meters: 1100}, seconds: WAITING_SECONDS})
+let slowedMetersBefore = 1100
+for (let sample = 0; sample < SLOWED_SAMPLE_COUNT; sample++) {
+  const slowedDrawn = drawnAt({report: WAITING, correction: slowedCorrection, seconds: WAITING_SECONDS + sample})
+  ok(slowedDrawn.distanceMeters >= slowedMetersBefore, `a slowed marker moved back at sample ${sample}: ${slowedDrawn.distanceMeters} m from ${slowedMetersBefore} m`)
+  slowedMetersBefore = slowedDrawn.distanceMeters
+}
+
+// The glide begins where the marker is drawn at the horizon: a frame before
+// it and at it, the marker is at the same place.
+const HORIZON_SECONDS = WAITING_SECONDS + PREDICTION_HORIZON_MS / MS_PER_SECOND
+const FRAME_SECONDS = 0.001
+const beforeHorizon = drawnAt({report: WAITING, correction: slowedCorrection, seconds: HORIZON_SECONDS - FRAME_SECONDS})
+const atHorizon = drawnAt({report: WAITING, correction: slowedCorrection, seconds: HORIZON_SECONDS})
+isAt({position: atHorizon.position, expected: {east: WAITING_STANDING_METERS}, message: "the horizon's glide begins where the slowed marker stands"})
+isAt({position: beforeHorizon.position, expected: {east: WAITING_STANDING_METERS}, message: "the slowed marker stands a frame before the horizon"})
 
 // Invalid inputs are programmer errors.
 const OUT_OF_ORDER_TIMES = [
@@ -452,7 +496,12 @@ const DESIGN_TOLERANCE_METERS = 10
 // pairs), the cut an argument names. The whole store's 128 m and 416 m are
 // unmeasured under the rule that has a standing vehicle leave, for want
 // of a Sunday store.
-const SAMPLE_EXPECTED = Object.freeze({p50Meters: 131, p90Meters: 411, tripEndP90Meters: 65})
+const SAMPLE_EXPECTED = Object.freeze({
+  p50Meters: 131,
+  p90Meters: 411,
+  tripEndP90Meters: 65,
+  jitter: Object.freeze({backwardPerHour: 3.46, surgePerHour: 3.64, frozenPercent: 0.116})
+})
 const WHOLE_STORE_EXPECTED = Object.freeze({p50Meters: 128, p90Meters: 416, tripEndP90Meters: 21})
 
 // A vehicle that has just stopped is driven on until its next report shows
@@ -464,6 +513,29 @@ const MOVED_METERS_MIN = 15
 // prediction judges it.
 const STAND_METERS_MAX = 10
 const TRIP_END_METERS = 150
+
+// The corrections keep the marker off the prediction while a gap closes, so
+// the drawn error exceeds the prediction's by at most these distances, at
+// the median and at the 90th percentile.
+const DRAWN_P50_EXCESS_METERS_MAX = 25
+const DRAWN_P90_EXCESS_METERS_MAX = 70
+
+// The frames of the jitter replay, and what each measure counts: a step back
+// of more than the noise of two projections, a speed no bus reaches, and a
+// drawn speed under what a standing marker shows while the bus moves faster
+// than walking pace.
+const FRAME_MS = 250
+const TRACK_OFFSET_METERS_MAX = 60
+const TRACK_GAP_MS_MAX = 3 * 60 * 1000
+const PROJECTION_SLACK_METERS = 1
+const BACKWARD_METERS_MIN = 0.5
+const SURGE_METERS_PER_SECOND_MIN = 20
+const MOVING_METERS_PER_SECOND_MIN = 3
+const FROZEN_METERS_PER_SECOND_MAX = 0.3
+const MS_PER_HOUR = 60 * 60 * 1000
+const PERCENT = 100
+const HALF = 2
+const JITTER_TOLERANCE_FRACTION = 0.1
 const MEDIAN = 0.5
 const NINETIETH = 0.9
 const POLYLINE_PRECISION = 1e5
@@ -703,6 +775,23 @@ function countCorrection(kind) {
   correctionCounts.set(kind, count + 1)
 }
 
+// What the page shows once the report at `index` arrives at `atMs`: the
+// report's prediction, and the correction that meets it from where the
+// marker was drawn, or none for a vehicle's first report.
+function shownAfterArrival({shown, entries, reports, previousReports, index, atMs}) {
+  const tripIndex = entries[index][REPORT_TRIP_FIELD]
+  const path = pathParameterOf(tripIndex)
+  const anchor = anchorReport({path, lastReport: reports[index], previousReport: previousReports[index]})
+  const prediction = predictPosition({path, anchor, atMs})
+  let correction = {kind: CorrectionKind.settled}
+  if (shown !== null) {
+    const shownPrediction = predictPosition({path: shown.path, anchor: shown.anchor, atMs})
+    const drawn = drawCorrected({path: shown.path, correction: shown.correction, prediction: shownPrediction, atMs})
+    correction = beginCorrection({drawn, prediction, atMs})
+  }
+  return {path, anchor, correction, index, tripIndex}
+}
+
 function replayCorrections(entries) {
   const reports = reportsOf(entries)
   const previousReports = previousReportsOf(reports)
@@ -710,17 +799,11 @@ function replayCorrections(entries) {
 
   for (const {atMs, index, isArrival} of eventsOf(entries)) {
     if (isArrival) {
-      const path = pathParameterOf(entries[index][REPORT_TRIP_FIELD])
-      const anchor = anchorReport({path, lastReport: reports[index], previousReport: previousReports[index]})
-      const prediction = predictPosition({path, anchor, atMs})
-      let correction = {kind: CorrectionKind.settled}
-      if (shown !== null) {
-        const shownPrediction = predictPosition({path: shown.path, anchor: shown.anchor, atMs})
-        const drawn = drawCorrected({path: shown.path, correction: shown.correction, prediction: shownPrediction, atMs})
-        correction = beginCorrection({drawn, prediction, atMs})
-        countCorrection(correction.kind)
+      const isCounted = shown !== null
+      shown = shownAfterArrival({shown, entries, reports, previousReports, index, atMs})
+      if (isCounted) {
+        countCorrection(shown.correction.kind)
       }
-      shown = {path, anchor, correction, index}
       continue
     }
 
@@ -748,6 +831,213 @@ for (const vehicle of fixture.vehicles) {
 const countsText = JSON.stringify(Object.fromEntries(correctionCounts))
 console.log(`replay: corrections ${countsText}`)
 console.log(`replay: along the path, drawn ${summary(corrected.drawn)}; predicted ${summary(corrected.predicted)}`)
+const drawnP50 = percentile(corrected.drawn, MEDIAN)
+const predictedP50 = percentile(corrected.predicted, MEDIAN)
 const drawnP90 = percentile(corrected.drawn, NINETIETH)
 const predictedP90 = percentile(corrected.predicted, NINETIETH)
-ok(drawnP90 <= predictedP90 + DESIGN_TOLERANCE_METERS, `the corrections' 90th percentile ${drawnP90} m is within ${DESIGN_TOLERANCE_METERS} m of the prediction's ${predictedP90} m`)
+ok(drawnP50 <= predictedP50 + DRAWN_P50_EXCESS_METERS_MAX, `the drawn median ${drawnP50} m is within ${DRAWN_P50_EXCESS_METERS_MAX} m of the prediction's ${predictedP50} m`)
+ok(drawnP90 <= predictedP90 + DRAWN_P90_EXCESS_METERS_MAX, `the drawn 90th percentile ${drawnP90} m is within ${DRAWN_P90_EXCESS_METERS_MAX} m of the prediction's ${predictedP90} m`)
+
+// The jitter, replayed frame by frame as the canvas draws a vehicle: at
+// FRAME_MS steps the drawn marker's distance along its path is compared with
+// the frame before, on the same trip. Only frames within the horizon of the
+// newest report, along its path, count. The track a frame is judged against
+// is the reports' own distances along the path, interpolated between them.
+const jitter = {frameCount: 0, backwardCount: 0, surgeCount: 0, movingSeconds: 0, frozenSeconds: 0}
+
+function alongOf({path, position, floorMeters}) {
+  const x = position[LON] * path.metersPerDegreeLon
+  const y = position[LAT] * METERS_PER_DEGREE
+  const nearest = nearestAlong({xs: path.xs, ys: path.ys, cumulative: path.cumulativeMeters, x, y, alongMin: floorMeters - PROJECTION_SLACK_METERS})
+  return {meters: nearest.along, offsetMeters: nearest.offset}
+}
+
+// The report's distance along its trip's path, no further back than that of
+// the report before it on the same trip, or null for a report off the path.
+function trackPointOf({path, tripIndex, report, before}) {
+  let floorMeters = 0
+  const isContinued = before !== null && before.tripIndex === tripIndex
+  if (isContinued) {
+    floorMeters = before.meters
+  }
+  const projected = alongOf({path, position: report.position, floorMeters})
+  if (projected.offsetMeters > TRACK_OFFSET_METERS_MAX) {
+    return null
+  }
+  return {tripIndex, meters: projected.meters, atMs: report.reportedAtMs}
+}
+
+function trackOf({entries, reports}) {
+  const track = []
+  let before = null
+  for (let index = 0; index < reports.length; index++) {
+    const tripIndex = entries[index][REPORT_TRIP_FIELD]
+    const path = pathParameterOf(tripIndex)
+    let point = null
+    if (path !== null) {
+      point = trackPointOf({path, tripIndex, report: reports[index], before})
+    }
+    track.push(point)
+    before = point
+  }
+  return track
+}
+
+// The index of the last report at or before `atMs`, or -1 for none.
+function lastReportIndexAt({reports, atMs}) {
+  let low = 0
+  let high = reports.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / HALF)
+    if (reports[middle].reportedAtMs <= atMs) {
+      low = middle + 1
+    } else {
+      high = middle
+    }
+  }
+  return low - 1
+}
+
+// Where the bus is at `atMs` on trip `tripIndex`, in meters along its path,
+// and how fast it moves, from the two reports around that time; null where
+// either is off the path, on another trip, or more than TRACK_GAP_MS_MAX apart.
+function trackAt({track, reports, tripIndex, atMs}) {
+  const sourceIndex = lastReportIndexAt({reports, atMs})
+  const targetIndex = sourceIndex + 1
+  if (sourceIndex < 0 || targetIndex >= track.length) {
+    return null
+  }
+
+  const source = track[sourceIndex]
+  const target = track[targetIndex]
+  if (source === null || target === null) {
+    return null
+  }
+
+  const isSourceOnTrip = source.tripIndex === tripIndex
+  const isTargetOnTrip = target.tripIndex === tripIndex
+  const isOnTrip = isSourceOnTrip && isTargetOnTrip
+  const spanMs = target.atMs - source.atMs
+  const isNear = spanMs <= TRACK_GAP_MS_MAX
+  const isTracked = isOnTrip && isNear
+  if (!isTracked) {
+    return null
+  }
+
+  const metersPerSecond = ((target.meters - source.meters) * MS_PER_SECOND) / spanMs
+  return {metersPerSecond}
+}
+
+function drawnMetersOf({path, drawn}) {
+  if (drawn.kind === DrawnKind.alongPath) {
+    return drawn.distanceMeters
+  }
+  return alongOf({path, position: drawn.position, floorMeters: 0}).meters
+}
+
+// Adds the step from `previous` to `frame` to the jitter measures: a run of
+// frames that move back counts once, and so does a run that surges.
+function scoreFrame({previous, frame, point}) {
+  const stepMeters = frame.meters - previous.meters
+  const metersPerSecond = (stepMeters * MS_PER_SECOND) / FRAME_MS
+  jitter.frameCount++
+
+  const isBackward = stepMeters < -BACKWARD_METERS_MIN
+  const isBackwardBegun = isBackward && !previous.isBackward
+  if (isBackwardBegun) {
+    jitter.backwardCount++
+  }
+  const isSurge = metersPerSecond > SURGE_METERS_PER_SECOND_MIN
+  const isSurgeBegun = isSurge && !previous.isSurge
+  if (isSurgeBegun) {
+    jitter.surgeCount++
+  }
+
+  const isTracked = point !== null
+  if (isTracked && point.metersPerSecond > MOVING_METERS_PER_SECOND_MIN) {
+    jitter.movingSeconds += FRAME_MS / MS_PER_SECOND
+    if (Math.abs(metersPerSecond) < FROZEN_METERS_PER_SECOND_MAX) {
+      jitter.frozenSeconds += FRAME_MS / MS_PER_SECOND
+    }
+  }
+  return {...frame, isBackward, isSurge}
+}
+
+// The frame at `atMs` of the page showing `shown`, scored against `previous`,
+// the frame before it, or null where the marker is not drawn along a path
+// under a fresh report. The frame it returns is what the next is scored
+// against.
+function measureFrame({shown, previous, atMs, reports, track}) {
+  const isAlong = shown !== null && shown.anchor.kind === PredictionKind.alongPath
+  if (!isAlong) {
+    return null
+  }
+  const isFresh = atMs - reports[shown.index].reportedAtMs <= PREDICTION_HORIZON_MS
+  if (!isFresh) {
+    return null
+  }
+
+  const prediction = predictPosition({path: shown.path, anchor: shown.anchor, atMs})
+  const drawn = drawCorrected({path: shown.path, correction: shown.correction, prediction, atMs})
+  const meters = drawnMetersOf({path: shown.path, drawn})
+  const frame = {tripIndex: shown.tripIndex, meters, isBackward: false, isSurge: false}
+  const isContinued = previous !== null && previous.tripIndex === shown.tripIndex
+  if (!isContinued) {
+    return frame
+  }
+
+  const point = trackAt({track, reports, tripIndex: shown.tripIndex, atMs})
+  return scoreFrame({previous, frame, point})
+}
+
+// A report older than the newest one that arrived is ignored, as the page
+// ignores it.
+function replayFrames(entries) {
+  const reports = reportsOf(entries)
+  const previousReports = previousReportsOf(reports)
+  const track = trackOf({entries, reports})
+  const arrivals = []
+  for (const event of eventsOf(entries)) {
+    if (event.isArrival) {
+      arrivals.push(event)
+    }
+  }
+
+  const startMs = arrivals[0].atMs
+  const endMs = arrivals[arrivals.length - 1].atMs
+  let shown = null
+  let newestMs = -1
+  let arrivalIndex = 0
+  let previous = null
+  for (let atMs = startMs; atMs <= endMs; atMs += FRAME_MS) {
+    while (arrivalIndex < arrivals.length && arrivals[arrivalIndex].atMs <= atMs) {
+      const {index} = arrivals[arrivalIndex]
+      arrivalIndex++
+      const isNewest = reports[index].reportedAtMs > newestMs
+      if (isNewest) {
+        newestMs = reports[index].reportedAtMs
+        shown = shownAfterArrival({shown, entries, reports, previousReports, index, atMs})
+      }
+    }
+    previous = measureFrame({shown, previous, atMs, reports, track})
+  }
+}
+
+for (const vehicle of fixture.vehicles) {
+  replayFrames(vehicle.reports)
+}
+
+const vehicleHours = (jitter.frameCount * FRAME_MS) / MS_PER_HOUR
+const measured = {
+  backwardPerHour: jitter.backwardCount / vehicleHours,
+  surgePerHour: jitter.surgeCount / vehicleHours,
+  frozenPercent: (PERCENT * jitter.frozenSeconds) / jitter.movingSeconds
+}
+console.log(`replay: jitter over ${vehicleHours.toFixed(1)} vehicle-hours: ${measured.backwardPerHour.toFixed(2)} backward jumps an hour, ${measured.surgePerHour.toFixed(2)} surges over ${SURGE_METERS_PER_SECOND_MIN} m/s an hour, drawn frozen ${measured.frozenPercent.toFixed(2)}% of the bus's moving time`)
+if (expected.jitter !== undefined) {
+  for (const [name, value] of Object.entries(measured)) {
+    const expectedValue = expected.jitter[name]
+    const toleranceValue = JITTER_TOLERANCE_FRACTION * expectedValue
+    ok(Math.abs(value - expectedValue) <= toleranceValue, `the jitter ${name} ${value} is the measured ${expectedValue} within ${JITTER_TOLERANCE_FRACTION * PERCENT}%`)
+  }
+}

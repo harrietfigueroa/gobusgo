@@ -142,24 +142,25 @@ const glidedHalf = drawnVehicle({tracked: pathArrived, atMs: msAt({seconds: 25})
 ok(eastOf(glidedHalf.drawn.position) > 100, "halfway through the glide the vehicle has left its report")
 ok(eastOf(glidedHalf.drawn.position) < PREDICTION_AT_HALF_GLIDE_METERS, "halfway through the glide the vehicle has not reached its prediction")
 
-// A new report behind the drawn marker holds it until the prediction
-// passes it.
+// A new report behind the drawn marker slows it down until the prediction
+// reaches it: after 10 m of the prediction's progress, a 25 m gap that
+// closes over 37.5 m has 25 * (1 - 10 / 37.5) m left.
 const ahead = drawnVehicle({tracked, atMs: msAt({seconds: 40})})
 isNear({position: ahead.drawn.position, east: 200, message: "the marker has driven to 200 m"})
 const behindReport = marker({east: 150, seconds: 35})
 const held = trackedVehicle({tracked: ahead, marker: behindReport, path: street, atMs: msAt({seconds: 40})})
-deepStrictEqual(held.correction.kind, CorrectionKind.hold, "a report 25 m behind holds the marker")
-isNear({position: drawnVehicle({tracked: held, atMs: msAt({seconds: 42})}).drawn.position, east: 200, message: "the held marker stays"})
-isNear({position: drawnVehicle({tracked: held, atMs: msAt({seconds: 50})}).drawn.position, east: 225, message: "the held marker moves once the prediction passes it"})
+deepStrictEqual(held.correction.kind, CorrectionKind.slowDown, "a report 25 m behind slows the marker down")
+isNear({position: drawnVehicle({tracked: held, atMs: msAt({seconds: 42})}).drawn.position, east: 185 + 25 * (1 - 10 / 37.5), message: "the slowed marker keeps part of its lead"})
+isNear({position: drawnVehicle({tracked: held, atMs: msAt({seconds: 50})}).drawn.position, east: 225, message: "the slowed marker is at the prediction once it has converged"})
 
-// A new report ahead catches the marker up over 2 s.
+// A new report 100 m ahead speeds the marker up over 100 / 8 = 12.5 s.
 const aheadReport = marker({east: 300, seconds: 40})
 const caught = trackedVehicle({tracked: ahead, marker: aheadReport, path: street, atMs: msAt({seconds: 40})})
-deepStrictEqual(caught.correction.kind, CorrectionKind.catchUp, "a report 100 m ahead catches the marker up")
+deepStrictEqual(caught.correction.kind, CorrectionKind.speedUp, "a report 100 m ahead speeds the marker up")
 const caughtMidway = eastOf(drawnVehicle({tracked: caught, atMs: msAt({seconds: 41})}).drawn.position)
-ok(caughtMidway > 205, "a second into the catch-up the marker has gained")
-ok(caughtMidway < 305, "a second into the catch-up the marker has not arrived")
-isNear({position: drawnVehicle({tracked: caught, atMs: msAt({seconds: 42})}).drawn.position, east: 310, message: "after 2 s the marker is at the prediction"})
+ok(caughtMidway > 205, "a second into the speed-up the marker has gained")
+ok(caughtMidway < 305, "a second into the speed-up the marker has not arrived")
+isNear({position: drawnVehicle({tracked: caught, atMs: msAt({seconds: 52.5})}).drawn.position, east: 362.5, message: "after 12.5 s the marker is at the prediction"})
 
 // A vehicle that keeps standing is anchored against the first report of its
 // stand: after 100 s at 1,000 m it stays, where two reports 30 s apart
@@ -184,7 +185,7 @@ deepStrictEqual(placed.correction.kind, CorrectionKind.settled, "a placed vehicl
 // and gliding from a point where a glide had it elsewhere.
 const resumedAlong = resumedOnCanvas({tracked: placed, sourcePosition: placed.drawn.position, atMs: msAt({seconds: 45})})
 deepStrictEqual(resumedAlong.drawn.kind, DrawnKind.alongPath, "a vehicle at its placed prediction stays along its path")
-deepStrictEqual(resumedAlong.correction.kind, CorrectionKind.catchUp, "it catches up to where the time has taken it")
+deepStrictEqual(resumedAlong.correction.kind, CorrectionKind.speedUp, "it speeds up to where the time has taken it")
 isNear({position: drawnVehicle({tracked: resumedAlong, atMs: msAt({seconds: 45})}).drawn.position, east: 175, message: "it starts where the source drew it"})
 const resumedGliding = resumedOnCanvas({tracked: placed, sourcePosition: at({east: MID_GLIDE_METERS}), atMs: msAt({seconds: 45})})
 deepStrictEqual(resumedGliding.correction.kind, CorrectionKind.glide, "a vehicle mid-glide glides on from where it was drawn")

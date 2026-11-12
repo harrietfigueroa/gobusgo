@@ -92,12 +92,12 @@ isNear({position: joinPoint, expected: at({east: 400}), message: "the line joins
 isNear({position: cornerPoint, expected: at({east: CORNER_METERS}), message: "the line turns the corner"})
 isNear({position: markerPoint, expected: roundCorner.drawn.position, message: "the line ends at the marker"})
 
-// A report ahead of the marker catches it up, and the line runs back from
+// A report ahead of the marker speeds it up, and the line runs back from
 // the ring to the marker until it has.
 const aheadReport = at({east: CORNER_METERS, north: 300})
 const caught = trackedVehicle({tracked: roundCorner, marker: marker({position: aheadReport, seconds: 120}), path: street, atMs: msAt({seconds: 120})})
 const caughtTie = reportTie(caught)
-deepStrictEqual(caughtTie.kind, TieKind.tie, "a vehicle catching up has a tie")
+deepStrictEqual(caughtTie.kind, TieKind.tie, "a vehicle speeding up has a tie")
 isNear({position: caughtTie.line[caughtTie.line.length - 1], expected: caught.drawn.position, message: "a backward line ends at the marker"})
 
 // A stale vehicle, one with no path, and one gliding off its path have none.
