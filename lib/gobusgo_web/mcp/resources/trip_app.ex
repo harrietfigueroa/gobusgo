@@ -15,7 +15,8 @@ defmodule GobusgoWeb.Mcp.Resources.TripApp do
 
   @behaviour GobusgoWeb.Mcp.Resource
 
-  alias Gobusgo.Config
+  import GobusgoWeb.Mcp.AppOrigin, only: [origin: 0]
+
   alias GobusgoWeb.Endpoint
   alias GobusgoWeb.Mcp.TripAppDocument
 
@@ -62,12 +63,5 @@ defmodule GobusgoWeb.Mcp.Resources.TripApp do
         "prefersBorder" => true
       }
     }
-  end
-
-  defp origin do
-    case Config.public_host() do
-      {:ok, nil} -> Endpoint.url()
-      {:ok, host} -> "https://" <> host
-    end
   end
 end

@@ -30,6 +30,7 @@ export const HostMethod = Object.freeze({
   toolResult: "ui/notifications/tool-result",
   hostContextChanged: "ui/notifications/host-context-changed",
   resourceTeardown: "ui/resource-teardown",
+  toolsCall: "tools/call",
   ping: "ping",
 })
 
@@ -127,6 +128,7 @@ export function incomingOf(data) {
 export function createHost({target, events, appInfo, timers}) {
   const pending = new Map()
   const handlers = new Map()
+  const teardown = {handler: null}
   let nextId = 1
 
   function post(message) {
@@ -150,6 +152,13 @@ export function createHost({target, events, appInfo, timers}) {
 
   function answerRequest({id, method}) {
     const isAnswerable = method === HostMethod.ping || method === HostMethod.resourceTeardown
+
+    const isTeardown = method === HostMethod.resourceTeardown
+    const isHandled = isTeardown && teardown.handler !== null
+
+    if (isHandled) {
+      teardown.handler()
+    }
 
     if (isAnswerable) {
       post(resultMessage({id, result: {}}))
@@ -210,6 +219,11 @@ export function createHost({target, events, appInfo, timers}) {
       handlers.set(method, handler)
     },
 
+    // Runs `handler` when the host asks the app to tear down, before the answer goes out.
+    onTeardown(handler) {
+      teardown.handler = handler
+    },
+
     async connect() {
       const params = {appInfo, appCapabilities: {availableDisplayModes: ["inline"]}, protocolVersion: MCP_APPS_PROTOCOL_VERSION}
       const outcome = await request({method: HostMethod.initialize, params})
@@ -263,6 +277,19 @@ export function isContextAccepted(hostCapabilities) {
   return isRecord(hostCapabilities.updateModelContext)
 }
 
+/**
+ * Whether the host proxies the app's tool calls to the server, from the
+ * `hostCapabilities` of its initialize result: it declares `serverTools`. A
+ * host that omits the field takes no `tools/call`, so the app sends none.
+ */
+export function isServerToolsDeclared(hostCapabilities) {
+  if (!isRecord(hostCapabilities)) {
+    return false
+  }
+
+  return isRecord(hostCapabilities.serverTools)
+}
+
 /** The theme, `light` or `dark`, of `hostContext`, a context or the part of one the host changed, or none. */
 export function themeOf(hostContext) {
   if (!isRecord(hostContext)) {
@@ -309,6 +336,18 @@ export async function updateModelContext({host, structuredContent}) {
   const text = JSON.stringify(structuredContent)
   const outcome = await host.request({method: HostMethod.updateModelContext, params: {content: [{type: "text", text}], structuredContent}})
   return takenOutcome(outcome)
+}
+
+/**
+ * Calls the tool `name` of the server through the host, with `toolArguments`
+ * as the tool's arguments, as the standard MCP `tools/call` request the
+ * specification lets an app send. Resolves on an OutcomeKind member; an
+ * answered outcome's result is the tool's result as the server sent it, a
+ * tool's own error with `isError` true included, since that is the tool's
+ * answer and not the host's refusal.
+ */
+export function callTool({host, name, toolArguments}) {
+  return host.request({method: HostMethod.toolsCall, params: {name, arguments: toolArguments}})
 }
 
 /** Sends `text` to the conversation as the rider's message, in the list of content blocks the SDK types give, and resolves on an OutcomeKind member. */

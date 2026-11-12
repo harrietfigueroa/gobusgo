@@ -15,8 +15,12 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
 
   @endpoint GobusgoWeb.Endpoint
   @legacy "2025-11-25"
-  @transit_tool_names ["alerts", "arrivals", "find", "route", "vehicles"]
-  @transit_resource_uris ["gobusgo://api/agencies", "gobusgo://api/routing/manifest"]
+  @transit_tool_names ["alerts", "arrivals", "arrivals_board", "find", "route", "vehicles"]
+  @transit_resource_uris [
+    "gobusgo://api/agencies",
+    "gobusgo://api/routing/manifest",
+    "ui://gobusgo/arrivals-board"
+  ]
 
   setup do
     TransitSeeds.restart_views()
@@ -50,7 +54,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
     rpc("tools/call", %{"name" => name, "arguments" => arguments})
   end
 
-  test "lists the five transit tools, each with an output schema" do
+  test "lists the six transit tools, each with an output schema" do
     assert %{"result" => %{"tools" => tools}} = rpc("tools/list", %{})
 
     transit_tools = for tool <- tools, tool["name"] in @transit_tool_names, do: tool
@@ -58,7 +62,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
     assert Enum.all?(transit_tools, &is_map(&1["outputSchema"]))
   end
 
-  test "lists the two transit resources" do
+  test "lists the two transit resources and the arrivals board" do
     assert %{"result" => %{"resources" => resources}} = rpc("resources/list", %{})
 
     uris =
@@ -125,6 +129,16 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
   test "calls arrivals for a stop with no fetch" do
     assert %{"result" => %{"structuredContent" => %{"data" => %{"status" => "fetching"}}}} =
              call("arrivals", %{"stopId" => "1_1"})
+  end
+
+  test "calls arrivals_board for a stop with no fetch, with the stop's name" do
+    assert %{
+             "result" => %{
+               "structuredContent" => %{
+                 "data" => %{"status" => "fetching", "stopName" => "Capitol Hill Station"}
+               }
+             }
+           } = call("arrivals_board", %{"stopId" => "1_1"})
   end
 
   test "answers invalid params for a call whose arguments do not match" do
