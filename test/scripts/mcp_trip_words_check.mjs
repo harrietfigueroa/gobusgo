@@ -19,9 +19,13 @@ const fixtureUrl = new URL("../fixtures/places/queries/places.json", import.meta
 const fixture = JSON.parse(readFileSync(fixtureUrl, "utf8"))
 const index = buildPlaceIndex(tableOfJsonColumns(fixture.table))
 
+function nameOf(result) {
+  return result.name
+}
+
 function namesFound(query) {
   const results = searchPlaces({index, query, center: fixture.center, resultCountMax: RESULT_COUNT})
-  return Array.from(results, (result) => result.name)
+  return Array.from(results, nameOf)
 }
 
 // What the search finds for the rider's words as they stand: the leading
@@ -48,4 +52,4 @@ for (const {name, text, first} of cases) {
   deepStrictEqual(found.includes(first), true, `${name}: ${JSON.stringify(found)} holds ${first}`)
 }
 
-console.log(`mcp_trip_words_check: ${cases.length + 3} cases passed`)
+console.log(`mcp_trip_words_check: ${cases.length} searches passed`)

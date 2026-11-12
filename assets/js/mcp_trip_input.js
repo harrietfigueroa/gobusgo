@@ -37,6 +37,9 @@ const NO_ARGUMENTS = Object.freeze({})
 /** The most comma-separated parts of a trailing region dropped: a city, a state, and a ZIP. */
 export const REGION_PARTS_MAX = 3
 
+// A name and one region part: the fewest comma-separated parts that hold a region.
+const NAME_AND_REGION_COUNT_MIN = 2
+
 // A ZIP code after other words, five digits and optionally four more.
 const TRAILING_ZIP = /\s+\d{5}(?:-\d{4})?$/
 const LEADING_THE = /^the\s+(?=\S)/i
@@ -62,7 +65,7 @@ function withoutCommaRegion(text) {
     }
   }
 
-  if (parts.length < 2) {
+  if (parts.length < NAME_AND_REGION_COUNT_MIN) {
     return text
   }
 

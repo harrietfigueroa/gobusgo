@@ -24,9 +24,23 @@ const both = unmatchedContext({unmatched: [{end: TripEnd.to, words: "the hospita
 deepStrictEqual(both.ends, [{end: "from", words: "my office"}, {end: "to", words: "the hospital"}], "both ends, from first")
 deepStrictEqual(unmatchedProblem(JSON.parse(JSON.stringify(both))), VALID, "both ends are valid after a JSON round trip")
 
-throws(() => unmatchedContext({unmatched: []}), AssertionError, "no end is refused")
-throws(() => unmatchedContext({unmatched: [{end: "to", words: "A"}, {end: "to", words: "B"}]}), AssertionError, "an end twice is refused")
-throws(() => unmatchedContext({unmatched: [{end: "to", words: " "}]}), AssertionError, "blank words are refused")
+function writeNoEnd() {
+  return unmatchedContext({unmatched: []})
+}
+
+function writeEndTwice() {
+  const twice = [{end: "to", words: "A"}, {end: "to", words: "B"}]
+  return unmatchedContext({unmatched: twice})
+}
+
+function writeBlankWords() {
+  const blank = [{end: "to", words: " "}]
+  return unmatchedContext({unmatched: blank})
+}
+
+throws(writeNoEnd, AssertionError, "no end is refused")
+throws(writeEndTwice, AssertionError, "an end twice is refused")
+throws(writeBlankWords, AssertionError, "blank words are refused")
 
 const problems = [
   {name: "not an object", value: "text", path: "root"},
@@ -46,4 +60,4 @@ for (const {name, value, path} of problems) {
   deepStrictEqual(unmatchedProblem(value), {kind: ProblemKind.invalid, path}, name)
 }
 
-console.log(`mcp_trip_unmatched_check: ${problems.length + 6} cases passed`)
+console.log(`mcp_trip_unmatched_check: ${problems.length} refusals passed`)

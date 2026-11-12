@@ -8,7 +8,7 @@
 // that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {END_TEXT_LENGTH_MAX, InputKind, REGION_PARTS_MAX, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "../../assets/js/mcp_trip_input.js"
+import {END_TEXT_LENGTH_MAX, InputKind, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "../../assets/js/mcp_trip_input.js"
 import {DayChoice, TimeMode} from "../../assets/js/trip_plan.js"
 
 const NOW = {mode: TimeMode.now, day: DayChoice.today, clockText: ""}
@@ -112,7 +112,5 @@ const searchCases = [
 for (const {name, text, expected} of searchCases) {
   deepStrictEqual(searchWords(text), expected, name)
 }
-
-deepStrictEqual(REGION_PARTS_MAX, 3, "a city, a state, and a ZIP")
 
 console.log(`mcp_trip_input_check: ${cases.length + searchCases.length} cases passed`)

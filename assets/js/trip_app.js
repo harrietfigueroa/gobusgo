@@ -323,8 +323,9 @@ export function startTripApp({root, origin, host}) {
     for (const end of END_ORDER) {
       const state = app.ends[end]
       const isNone = state.kind === EndStateKind.none
+      const isUnmatched = isNone && state.isAutomatic
 
-      if (isNone && state.isAutomatic) {
+      if (isUnmatched) {
         unmatched.push({end, words: state.text})
       }
     }

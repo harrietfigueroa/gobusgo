@@ -40,7 +40,7 @@ function endsProblem(ends) {
     return countFailure
   }
 
-  let previousOrder = -1
+  let orderMin = 0
 
   for (const [index, entry] of ends.entries()) {
     const path = `ends.${index}`
@@ -51,7 +51,7 @@ function endsProblem(ends) {
 
     const order = END_ORDER.indexOf(entry.end)
     const isKnown = order >= 0
-    const isAfterPrevious = order > previousOrder
+    const isAfterPrevious = order >= orderMin
     const isWordsText = isText(entry.words) && entry.words.trim() !== ""
     const orderFailure = firstFailure([{path: path + ".end", isValid: isKnown}, {path: path + ".end", isValid: isAfterPrevious}, {path: path + ".words", isValid: isWordsText}])
 
@@ -59,7 +59,7 @@ function endsProblem(ends) {
       return orderFailure
     }
 
-    previousOrder = order
+    orderMin = order + 1
   }
 
   return VALID
