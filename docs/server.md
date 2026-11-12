@@ -94,6 +94,8 @@ Stored files are deleted once past their dataset's retention:
 
 | Files | Kept |
 | --- | --- |
-| Vehicle and arrival responses | 1 day |
+| Vehicle responses | 7 days |
+| Route schedule responses | 9 days |
+| Arrival responses | 1 day |
 | Agency, route, and route path responses | 30 days |
 | Usage records | 3 days |
