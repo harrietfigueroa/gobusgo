@@ -1,6 +1,6 @@
 /* Class names are collected from the sources named here and nowhere else. */
 @import "tailwindcss" source(none);
-@import "../vendor/maplibre-gl/dist/maplibre-gl.css";
+@import "../vendor/maplibre-gl/dist/maplibre-gl.css" layer(vendor);
 @source "../css";
 @source "../js";
 @source "../../lib/gobusgo_web";
@@ -90,9 +90,9 @@
   --popup-tip-size: 12px;
   /* The tip is a square turned 45 degrees about its center, which stands on
      the popup's edge: half of it lies over the popup, and its far corner
-     reaches (sqrt(2) - 1) / 2 of its side past its own box. */
+     reaches past its own box. */
   --popup-tip-overlap: calc(var(--popup-tip-size) / -2);
-  --popup-tip-reach: calc(var(--popup-tip-size) * 0.2071);
+  --popup-tip-reach: calc(var(--popup-tip-size) * (sqrt(2) - 1) / 2);
 }
 
 /* The dark theme, which the document's root element names. The page's
@@ -163,9 +163,6 @@
   pointer-events: none;
 }
 
-/* The rules stand after MapLibre's, which give a popup and a group of
-   controls a white fill and corners of their own with the same
-   specificity. */
 .surface,
 .maplibregl-popup-content,
 .maplibregl-ctrl-group {
@@ -240,13 +237,29 @@
   transform: rotate(315deg);
 }
 
-/* A popup anchored on a corner points with that corner, which MapLibre
-   leaves square, and has no tip. */
+/* A popup anchored on a corner points with that corner, which stays
+   square, and has no tip. */
 .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
 .maplibregl-popup-anchor-top-right .maplibregl-popup-tip,
 .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
 .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
   display: none;
+}
+
+.maplibregl-popup-anchor-top-left .maplibregl-popup-content {
+  border-top-left-radius: 0;
+}
+
+.maplibregl-popup-anchor-top-right .maplibregl-popup-content {
+  border-top-right-radius: 0;
+}
+
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-content {
+  border-bottom-left-radius: 0;
+}
+
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-content {
+  border-bottom-right-radius: 0;
 }
 
 /* MapLibre rings a group of controls with a gray line where the surface
@@ -256,16 +269,13 @@
 }
 
 /* The first and the last button of a group follow the group's corners, so
-   a button's hover fill stays inside the border. The selectors with :focus
-   stand in for MapLibre's, which give a focused button 4px corners. */
-.maplibregl-ctrl-group button:first-child,
-.maplibregl-ctrl-group button:focus:first-child {
+   a button's hover fill stays inside the border. */
+.maplibregl-ctrl-group button:first-child {
   border-top-left-radius: var(--control-radius-inner);
   border-top-right-radius: var(--control-radius-inner);
 }
 
-.maplibregl-ctrl-group button:last-child,
-.maplibregl-ctrl-group button:focus:last-child {
+.maplibregl-ctrl-group button:last-child {
   border-bottom-right-radius: var(--control-radius-inner);
   border-bottom-left-radius: var(--control-radius-inner);
 }
@@ -294,8 +304,6 @@
   right: var(--close-button-inset);
 }
 
-/* The rule stands after MapLibre's hover rule, which has the same
-   specificity and gives the button a gray fill. */
 .close-button:hover,
 .maplibregl-popup-close-button:hover {
   background-color: var(--close-button-fill-hover);
@@ -469,9 +477,7 @@ a.inline-target {
   filter: var(--map-control-icon-filter);
 }
 
-/* The rule stands after MapLibre's, which gives the attribution a white
-   fill and black text with the same specificity. */
-.maplibregl-ctrl.maplibregl-ctrl-attrib {
+.maplibregl-ctrl-attrib {
   background-color: var(--map-attribution-fill);
   color: var(--map-attribution-color);
 }
@@ -559,7 +565,7 @@ a.inline-target {
   z-index: 10;
 }
 
-@media (width >= 48rem) {
+@variant md {
   .donation-button-map {
     left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
   }
@@ -598,7 +604,7 @@ a.inline-target {
   display: flex;
 }
 
-@media (width >= 48rem) {
+@variant md {
   .connection-signal {
     left: calc((100vw + 2 * var(--panel-sheet-margin) + var(--panel-sheet-width)) / 2);
     max-width: calc(100vw - 2 * var(--panel-sheet-margin) - var(--panel-sheet-width) - 2 * (var(--donation-button-inset) + var(--map-control-size) + 8px));
@@ -695,7 +701,7 @@ a.inline-target {
 
 /* On a phone the signal and the collapsed sheet stand at opposite ends of
    the screen, so the sheet's summary line says offline as well. */
-@media (width < 48rem) {
+@variant max-md {
   :root[data-connection="offline"] .offline-prefix {
     display: inline;
     font-weight: 600;
@@ -792,7 +798,7 @@ a.inline-target {
   gap: 2px;
   min-height: var(--panel-sheet-tab-height);
   border-bottom: 3px solid transparent;
-  font-size: 11px;
+  font-size: 0.6875rem;
   cursor: pointer;
 }
 
@@ -810,16 +816,16 @@ a.inline-target {
   position: absolute;
   top: 2px;
   left: 50%;
-  min-width: 16px;
-  height: 16px;
+  min-width: 1.6em;
+  height: 1.6em;
   margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 8px;
+  padding: 0 0.5em;
+  border-radius: 0.8em;
   background-color: var(--panel-sheet-badge-fill);
   color: var(--panel-sheet-badge-color);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 1.6em;
   white-space: nowrap;
 }
 
@@ -830,11 +836,6 @@ a.inline-target {
 
 #panel-tab-alerts-badge {
   background-color: var(--panel-sheet-alert-badge-fill);
-}
-
-.panel-sheet-badge[hidden],
-.panel-sheet-panel[hidden] {
-  display: none;
 }
 
 .panel-sheet-body {
@@ -861,10 +862,6 @@ a.inline-target {
   padding: 0 16px 6px;
 }
 
-.trip-strip[hidden] {
-  display: none;
-}
-
 .panel-sheet:has(> .trip-strip:not([hidden])) > .panel-sheet-summary {
   display: none;
 }
@@ -872,13 +869,13 @@ a.inline-target {
 /* The strip stands aside while the Trip tab's panel shows, which the
    panel's card already says: always from `md` up, and on a phone while the
    sheet is expanded or dragged. A collapsed sheet shows it over every tab. */
-@media (width < 48rem) {
+@variant max-md {
   .panel-sheet:is([data-expanded="true"], [data-dragging]):has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
     display: none;
   }
 }
 
-@media (width >= 48rem) {
+@variant md {
   .panel-sheet:has(> .panel-sheet-tabs > #panel-tab-trip[aria-selected="true"]) > .trip-strip {
     display: none;
   }
@@ -972,10 +969,6 @@ a.inline-target {
   padding: 0 12px 12px;
 }
 
-.panel-sheet-detail[hidden] {
-  display: none;
-}
-
 .panel-sheet-back {
   display: flex;
   align-items: center;
@@ -1055,10 +1048,6 @@ a.inline-target {
   cursor: pointer;
 }
 
-.panel-detail-trip[hidden] {
-  display: none;
-}
-
 /* The stop view's header: pills of the stop's code and direction, and the
    favorite button, a star of a map control's size. */
 .panel-detail-header {
@@ -1129,10 +1118,6 @@ a.inline-target {
   margin: 0;
   font-weight: 600;
   text-align: right;
-}
-
-.panel-detail-caption[hidden] {
-  display: none;
 }
 
 /* A favorite's entry: a drag handle, its name, which centers the map on
@@ -1211,11 +1196,6 @@ a.inline-target {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-
-.filter-tokens[hidden],
-.filter-suggestions[hidden] {
-  display: none;
 }
 
 .filter-token {
@@ -1371,11 +1351,6 @@ a.inline-target {
   overflow-y: auto;
 }
 
-.trip-suggestions[hidden],
-.trip-credit[hidden] {
-  display: none;
-}
-
 .trip-suggestion-group {
   display: flex;
   flex-direction: column;
@@ -1506,11 +1481,11 @@ a.inline-target {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: calc(14em / 9);
+  height: calc(14em / 9);
   border-radius: 50%;
   color: var(--shared-vehicle-letter-color);
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 700;
   line-height: 1;
   forced-color-adjust: none;
@@ -1549,10 +1524,6 @@ a.inline-target {
   mask-image: radial-gradient(circle closest-side, rgb(0 0 0 / 0.85) 15%, transparent 100%);
   transition-property: transform;
   transition-timing-function: ease-out;
-}
-
-.rider-heading-cone-shape[hidden] {
-  display: none;
 }
 
 /* The location hook writes each turn's duration inline, so the rule takes
@@ -1603,10 +1574,6 @@ a.inline-target {
   border-radius: var(--surface-radius);
 }
 
-.trip-sorts[hidden] {
-  display: none;
-}
-
 .trip-mode,
 .trip-sort {
   min-height: var(--close-button-hit-size);
@@ -1632,10 +1599,6 @@ a.inline-target {
 .trip-time {
   display: flex;
   gap: 8px;
-}
-
-.trip-time[hidden] {
-  display: none;
 }
 
 .trip-time-field {
@@ -1899,14 +1862,6 @@ a.inline-target {
   color: var(--filter-kind-color);
 }
 
-.trip-timeline-passed[hidden] {
-  display: none;
-}
-
-.trip-clear[hidden] {
-  display: none;
-}
-
 .trip-from-chip:focus-visible,
 .trip-mode:focus-visible,
 .trip-sort:focus-visible,
@@ -1932,7 +1887,7 @@ a.inline-target {
 
 /* The open tab is marked where its panel shows: on a narrow viewport while
    the sheet is expanded or dragged, and always on a wide one. */
-@media (width < 48rem) {
+@variant max-md {
   /* While the on-screen keyboard shows, a collapsed sheet stands above it
      and takes no more than the room above it, which the hook writes. */
   .panel-sheet:not([data-expanded="true"]) {
@@ -1964,7 +1919,7 @@ a.inline-target {
   }
 }
 
-@media (width >= 48rem) {
+@variant md {
   .panel-sheet,
   .panel-sheet[data-expanded="true"] {
     --panel-sheet-tabs-lift: 0px;
@@ -2077,7 +2032,7 @@ a.inline-target {
     border-bottom-color: Highlight;
   }
 
-  @media (width >= 48rem) {
+  @variant md {
     .panel-sheet-tab[aria-selected="true"] {
       border-bottom-color: Highlight;
     }
@@ -2153,7 +2108,7 @@ a.inline-target {
   font-size: 0.875rem;
 }
 
-@media (width >= 48rem) {
+@variant md {
   .map-items:focus-within {
     left: calc(2 * var(--panel-sheet-margin) + var(--panel-sheet-width));
   }
