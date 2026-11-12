@@ -4,7 +4,7 @@
 // destroys the instance, and the new instance takes it once when it
 // mounts. A hook that hands nothing over starts as it does on any page.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 /** The most states kept at once: one per hook element of a page, which holds far fewer. */
 export const HANDOFF_COUNT_MAX = 64

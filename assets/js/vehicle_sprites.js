@@ -7,7 +7,7 @@
 // the same paths and text again.
 // https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas — checked 2026-11-09
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {drawStatusBadge, MARK_SIZE_PIXELS} from "./status_badges"
 import {
   BADGE_HEIGHT_PIXELS,

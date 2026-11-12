@@ -13,7 +13,7 @@
 // The browser checks for a new worker on every page load; a page left open
 // checks again every UPDATE_CHECK_INTERVAL_MS.
 
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 import {writeMessage} from "./message.js"
 import {RELOAD_WAIT_MS, ReloadStepKind, TAKEOVER_LATE_MESSAGE, reloadStep} from "./release_offer.js"
 import {MessageKind} from "./service_worker_strategy.js"

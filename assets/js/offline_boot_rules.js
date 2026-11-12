@@ -11,8 +11,8 @@
 // FILTER_VALUE_BYTES_MAX bytes, at most FILTER_VALUE_COUNT_MAX values a
 // field, and an empty value dropped.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {TableKind} from "./offline_answers.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {TableKind} from "./core/offline_answers.js"
 import {FilterKind} from "./stored_settings.js"
 
 /** The most values a field of a filter holds, `Gobusgo.Filter`'s bound. */

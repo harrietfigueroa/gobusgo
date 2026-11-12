@@ -9,9 +9,9 @@
 // the range it asked for.
 // https://w3c.github.io/ServiceWorker/#cache-put — checked 2026-11-08
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {rangeAnswer, requestedRange} from "./byte_range.js"
-import {NOT_SAVED_HEADER} from "./offline_bundle.js"
+import {NOT_SAVED_HEADER} from "./core/offline_bundle.js"
 
 const NOT_SAVED_STATUS = 503
 const NOT_SAVED_TEXT = "Not saved for offline use."

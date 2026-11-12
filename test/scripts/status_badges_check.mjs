@@ -7,7 +7,7 @@
 // first case that differs.
 
 import {deepStrictEqual, notDeepStrictEqual, ok, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {
   BadgeKind,
   ImageNameKind,

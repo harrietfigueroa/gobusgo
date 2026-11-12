@@ -6,7 +6,7 @@
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {BUNDLE_MANIFEST_PATH} from "../../assets/js/offline_bundle.js"
+import {BUNDLE_MANIFEST_PATH} from "../../assets/js/core/offline_bundle.js"
 import {
   CacheRole,
   StrategyKind,

@@ -3,7 +3,7 @@
 // functions of a stop's texts, and each drawing function draws onto the
 // canvas it is handed. Nothing here reads the document.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {chipTextColor} from "./route_chip_color.js"
 
 /** The side of the square of the sign's image, in CSS pixels. */

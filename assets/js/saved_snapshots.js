@@ -9,10 +9,11 @@
 // position is refused, and a stop or route with no name keeps its
 // identifier.
 
-import {DecodeKind, decodeConnections, decodePositions, decodeStops, decodeTrips} from "./routing_snapshot"
-import {decodeNames, expandNames} from "./routing_names"
-import {IndexKind, OFFLINE_SCHEDULES_CACHE_NAME} from "./offline_bundle"
-import {TableKind, snapshotOrder} from "./offline_answers"
+import {DecodeKind, decodeConnections, decodePositions, decodeStops, decodeTrips} from "./core/routing_snapshot"
+import {decodeNames} from "./core/routing_names"
+import {expandNames} from "./names_stream.js"
+import {IndexKind, OFFLINE_SCHEDULES_CACHE_NAME} from "./core/offline_bundle"
+import {TableKind, snapshotOrder} from "./core/offline_answers"
 import {readSavedIndex} from "./offline_schedules"
 
 const MISSING = Object.freeze({kind: TableKind.missing})

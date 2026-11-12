@@ -7,11 +7,11 @@
 // Nothing here reads the document, the network, storage, or a clock: the
 // time the minutes are counted at arrives with the chosen journey.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {LegKind} from "./routing_engine.js"
-import {LEG_KIND_TO_POINT} from "./point_journeys.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {LegKind} from "./core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "./core/point_journeys.js"
 import {LiveKind, latenessMinutes, liveShiftMs} from "./journey_cards.js"
-import {clockText, journeyLeaveS, legCoordinates, routeChip, walkMinutes} from "./trip_plan.js"
+import {clockText, journeyLeaveS, legCoordinates, routeChip, walkMinutes} from "./core/trip_plan.js"
 
 /** The kinds of a label of the journey. */
 export const LabelKind = Object.freeze({leave: "leave", walk: "walk", board: "board", alight: "alight", arrive: "arrive"})

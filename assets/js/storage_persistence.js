@@ -1,7 +1,7 @@
 // Asks the browser to keep the page's storage, so what the page saved for
 // offline use is not evicted when the device runs short of space.
 
-import {PersistenceKind} from "./offline_bundle"
+import {PersistenceKind} from "./core/offline_bundle"
 
 /**
  * Asks the browser to keep the page's storage and resolves to its answer, a

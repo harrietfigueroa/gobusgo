@@ -26,7 +26,7 @@ import {
   PackedRefusal,
   UNKNOWN_MICRODEGREES,
   decodeContainer,
-} from "../../assets/js/packed_container.js"
+} from "../../assets/js/core/packed_container.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/places/v2/", import.meta.url))
 const versionOneDirectory = fileURLToPath(new URL("../fixtures/places/v1/", import.meta.url))

@@ -4,7 +4,7 @@
 // is pure and reads no map, clock, or document, so each decision is checked
 // against values written out by hand.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 
 // The shortest time between two announcements, so a rider who pans in
 // steps hears the view of a step at most this often.

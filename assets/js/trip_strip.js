@@ -5,11 +5,11 @@
 // hold, so it asks for nothing and reads the same offline. Nothing here
 // reads the document, the network, storage, or a clock.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {LegKind} from "./routing_engine.js"
-import {LEG_KIND_TO_POINT} from "./point_journeys.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {LegKind} from "./core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "./core/point_journeys.js"
 import {LiveKind, firstBusText, latenessText, liveShiftMs} from "./journey_cards.js"
-import {clockText, routeChip, stopName, walkMinutes} from "./trip_plan.js"
+import {clockText, routeChip, stopName, walkMinutes} from "./core/trip_plan.js"
 
 /** How many steps after the first the strip lists where it has room. */
 export const NEXT_STEP_COUNT_MAX = 2

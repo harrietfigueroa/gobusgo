@@ -2,8 +2,8 @@
 // it. Everything here is pure: positions and times are given, so a glide is
 // a function of its start, its end, and the time asked about.
 
-import {distanceMeters} from "./math/geodesy.js"
-import {lerp} from "./math/interpolation.js"
+import {distanceMeters} from "./core/math/geodesy.js"
+import {lerp} from "./core/math/interpolation.js"
 
 // A glide lasts this long, and a move shorter than the first bound or longer
 // than the second snaps: the first is noise in a reported position, the

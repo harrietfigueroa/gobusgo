@@ -17,7 +17,7 @@
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
 import {ConnectionKind} from "./connection_rules"
 import {HandoffKind, keepHandoffState} from "./hook_handoff"
-import {IndexKind} from "./offline_bundle"
+import {IndexKind} from "./core/offline_bundle"
 import {
   BootEventKind,
   BootPhase,

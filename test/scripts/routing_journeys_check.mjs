@@ -1,5 +1,5 @@
 // Checks the journey loader over hand-written timetables served from memory
-// through the fetch function it takes: that loading stops at the window
+// through the fetch function the driver takes: that loading stops at the window
 // after the earliest arrival and still returns the whole snapshot's frontier
 // cut at that cutoff, that a start from a position walks to the stops within
 // the walking radius, that no fetched path carries the position, that a
@@ -9,22 +9,26 @@
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {unreachable} from "../../assets/js/assert.js"
-import {LegKind, OriginKind} from "../../assets/js/routing_engine.js"
+import {unreachable} from "../../assets/js/core/assert.js"
+import {LegKind, OriginKind} from "../../assets/js/core/routing_engine.js"
 import {
   FailureReason,
   FetchKind,
   FromKind,
   JourneysKind,
+  ROUND_COUNT_MAX,
   ServiceDateKind,
+  StepKind,
+  TimeKind,
   WINDOW_SECONDS,
   loadEngine,
-  routeJourneys,
-  routeJourneysArrivingBy,
+  resumeQuery,
   serviceDateAt,
-} from "../../assets/js/routing_journeys.js"
-import {decodePositions} from "../../assets/js/routing_snapshot.js"
-import {startsNear} from "../../assets/js/routing_walk.js"
+  startQuery,
+} from "../../assets/js/core/routing_journeys.js"
+import {decodePositions} from "../../assets/js/core/routing_snapshot.js"
+import {startsNear} from "../../assets/js/core/routing_walk.js"
+import {routeJourneys, routeJourneysArrivingBy} from "../../assets/js/routing_driver.js"
 import {TRANSFER_RULES, clock, seconds, snapshotOf} from "./routing_timetable.js"
 
 // 2026-11-08 at midnight in Seattle, eight hours after midnight UTC.
@@ -496,5 +500,89 @@ deepStrictEqual(isTodayFetched, false)
 // With no earlier snapshot, the 9th's answer stands alone.
 const firstDateBy = await routeJourneysArrivingBy({manifest: manifestOf(tomorrow), fetchFile: memoryFetch(tomorrow).fetchFile, ...previousDayQuery, arrivalS: seconds("00:45")})
 deepStrictEqual(firstDateBy.kind, JourneysKind.none)
+
+// The core alone, with no fetch of its own: a query asks for files and is
+// resumed with every file the caller holds. Driven synchronously over the
+// files in memory, it asks for the four tables at once, then one chunk a
+// round, and ends with the answer the driver gives over the same files.
+function pathOf(file) {
+  return file.path
+}
+
+function driveInMemory({manifest, request, snapshot}) {
+  const held = new Map()
+  const rounds = []
+  let {state, step} = startQuery({manifest, request})
+
+  for (let round = 0; round < ROUND_COUNT_MAX; round++) {
+    if (step.kind === StepKind.done) {
+      return {answer: step.answer, rounds}
+    }
+
+    const paths = Array.from(step.files, pathOf)
+    rounds.push(paths)
+    const fetched = []
+
+    for (const file of step.files) {
+      const buffer = snapshot.filesByPath.get(file.path)
+      held.set(file.path, buffer)
+      fetched.push({kind: FetchKind.fetched, buffer})
+    }
+
+    const resumed = resumeQuery({manifest, state, fetched, files: held})
+    state = resumed.state
+    step = resumed.step
+  }
+
+  return unreachable(step.kind, "routing journeys check: a query asked for files past the round bound")
+}
+
+const windowRequest = {kind: TimeKind.leaving, serviceDate: windowFixture.serviceDate, seconds: windowQuery.departureS, from: windowQuery.from, toStopId: windowQuery.toStopId}
+const windowDriven = driveInMemory({manifest: manifestOf(windowSnapshot), request: windowRequest, snapshot: windowSnapshot})
+deepStrictEqual(windowDriven.answer, windowed)
+deepStrictEqual(windowDriven.rounds[0], ["/fixture/stops.bin", "/fixture/trips.bin", "/fixture/transfers.bin", "/fixture/positions.bin"])
+deepStrictEqual(windowDriven.rounds.length, 1 + WINDOW_LOADED_CHUNK_COUNT)
+
+for (const paths of windowDriven.rounds.slice(1)) {
+  deepStrictEqual(paths.length, 1)
+}
+
+const arriveByRequest = {kind: TimeKind.arrivingBy, serviceDate: arriveByQuery.serviceDate, seconds: arriveByQuery.arrivalS, from: arriveByQuery.from, toStopId: arriveByQuery.toStopId}
+const arriveByDriven = driveInMemory({manifest: manifestOf(arriveBySnapshot), request: arriveByRequest, snapshot: arriveBySnapshot})
+deepStrictEqual(arriveByDriven.answer, arrivingBy)
+
+// Into the next date, the core asks for the second date's tables after the
+// first date's chunks.
+const lateRequest = {kind: TimeKind.leaving, serviceDate: lateQuery.serviceDate, seconds: seconds("23:00"), from: lateQuery.from, toStopId: lateQuery.toStopId}
+const lateServed = served(today, tomorrow)
+const lateDriven = driveInMemory({manifest: manifestOf(today, tomorrow), request: lateRequest, snapshot: lateServed})
+const lateDriver = await routeJourneys({manifest: manifestOf(today, tomorrow), fetchFile: memoryFetch(lateServed).fetchFile, ...lateQuery, departureS: seconds("23:00")})
+deepStrictEqual(lateDriven.answer, lateDriver)
+const isTomorrowAsked = lateDriven.rounds.some(isTomorrowPathList)
+deepStrictEqual(isTomorrowAsked, true)
+
+function isTomorrowPathList(paths) {
+  return paths.some(isTomorrowPath)
+}
+
+function failedOutcome() {
+  return {kind: FetchKind.failed, reason: FailureReason.timedOut}
+}
+
+function shortOutcome() {
+  return {kind: FetchKind.fetched, buffer: new ArrayBuffer(1)}
+}
+
+// A failed fetch and a file of another size are outcomes naming the file,
+// decided by the core from the outcome the caller hands it.
+const startedWindow = startQuery({manifest: manifestOf(windowSnapshot), request: windowRequest})
+const tableFiles = startedWindow.step.files
+const failedOutcomes = Array.from(tableFiles, failedOutcome)
+const failedStep = resumeQuery({manifest: manifestOf(windowSnapshot), state: startedWindow.state, fetched: failedOutcomes, files: new Map()}).step
+deepStrictEqual(failedStep, {kind: StepKind.done, answer: {kind: JourneysKind.failed, reason: FailureReason.timedOut, path: "/fixture/stops.bin"}})
+
+const shortOutcomes = Array.from(tableFiles, shortOutcome)
+const shortStep = resumeQuery({manifest: manifestOf(windowSnapshot), state: startedWindow.state, fetched: shortOutcomes, files: new Map()}).step
+deepStrictEqual(shortStep, {kind: StepKind.done, answer: {kind: JourneysKind.failed, reason: FailureReason.sizeMismatch, path: "/fixture/stops.bin"}})
 
 console.log("routing journeys: every case holds")

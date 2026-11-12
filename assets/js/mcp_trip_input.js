@@ -8,7 +8,7 @@
 // The arguments come from a model, so each field is checked, and a refusal
 // is a value that names the field, never a throw.
 
-import {DayChoice, TimeMode} from "./trip_plan.js"
+import {DayChoice, TimeMode} from "./core/trip_plan.js"
 
 /** The most characters an end's text holds; the tool's schema bounds it the same. */
 export const END_TEXT_LENGTH_MAX = 200

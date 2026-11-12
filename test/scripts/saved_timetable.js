@@ -3,8 +3,8 @@
 // page's own readers. Everything here is pure.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {TableKind} from "../../assets/js/offline_answers.js"
-import {DecodeKind, decodeConnections, decodePositions, decodeTrips} from "../../assets/js/routing_snapshot.js"
+import {TableKind} from "../../assets/js/core/offline_answers.js"
+import {DecodeKind, decodeConnections, decodePositions, decodeTrips} from "../../assets/js/core/routing_snapshot.js"
 import {snapshotOf} from "./routing_timetable.js"
 
 /** A table the bundle holds. */

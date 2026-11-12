@@ -31,7 +31,7 @@ import {
   stalePaths,
   statusMessage,
   tripPathShardPlan
-} from "../../assets/js/offline_bundle.js"
+} from "../../assets/js/core/offline_bundle.js"
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000

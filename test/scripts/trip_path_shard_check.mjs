@@ -15,10 +15,10 @@ import {
   CONTAINER_EXPANDED_BYTES_MAX,
   HEADER_BYTES,
   PackedOutcome,
-  PackedRefusal,
-  expandStream
-} from "../../assets/js/packed_container.js"
-import {decodeTripPath} from "../../assets/js/trip_path.js"
+  PackedRefusal
+} from "../../assets/js/core/packed_container.js"
+import {expandStream} from "../../assets/js/packed_stream.js"
+import {decodeTripPath} from "../../assets/js/core/trip_path.js"
 import {
   TripPathLookup,
   TripPathRefusal,
@@ -26,7 +26,7 @@ import {
   decodeTripPathShard,
   indexEntries,
   tripPathFromShard
-} from "../../assets/js/trip_path_shard.js"
+} from "../../assets/js/core/trip_path_shard.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/routing/trip-paths-v1/", import.meta.url))
 const loopDirectory = fileURLToPath(new URL("../fixtures/one_bus_away/trip_path/", import.meta.url))

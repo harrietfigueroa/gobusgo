@@ -5,8 +5,8 @@
 // it exits non-zero on the first case that differs.
 
 import {ok, strictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {DEGREES_PER_HALF_TURN, degrees, normalizedDegrees, radians, turnDegrees} from "../../assets/js/math/angles.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {DEGREES_PER_HALF_TURN, degrees, normalizedDegrees, radians, turnDegrees} from "../../assets/js/core/math/angles.js"
 
 const TOLERANCE = 1e-12
 

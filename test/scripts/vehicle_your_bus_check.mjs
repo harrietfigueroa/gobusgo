@@ -8,7 +8,7 @@
 // first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {LegKind} from "../../assets/js/routing_engine.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
 import {ChosenKind} from "../../assets/js/chosen_journey.js"
 import {LiveKind} from "../../assets/js/journey_cards.js"
 import {YourBusLineKind, vehicleYourBusLine} from "../../assets/js/vehicle_your_bus.js"

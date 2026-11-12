@@ -15,7 +15,7 @@ const OK = 200
 const NOT_FOUND = 404
 const repository = fileURLToPath(new URL("../../../", import.meta.url))
 const ALLOWED_PREFIXES = ["experiments/routing/bench/", "experiments/routing/engine/", "experiments/routing/data/"]
-const ALLOWED_FILES = ["assets/js/routing_snapshot.js"]
+const ALLOWED_FILES = ["assets/js/core/routing_snapshot.js"]
 const CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".bin": "application/octet-stream"}
 
 function isAllowed(path) {

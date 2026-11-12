@@ -3,8 +3,8 @@
 // are given as values, so what the button does next, what it shows, and
 // whether the map moves are functions of them alone.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {radians} from "./math/angles.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {radians} from "./core/math/angles.js"
 
 /** A fix moves the map only when the dot stands farther than this from where the map keeps it. */
 export const FOLLOW_DISTANCE_PIXELS_MAX = 24

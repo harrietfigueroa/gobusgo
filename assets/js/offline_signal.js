@@ -7,9 +7,9 @@
 // a saved date is current, and by when they were saved once every date has
 // ended.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {ConnectionKind} from "./connection_rules.js"
-import {IndexKind} from "./offline_bundle.js"
+import {IndexKind} from "./core/offline_bundle.js"
 
 /** How often an offline page writes the signal's age again. */
 export const AGE_REFRESH_MS = 60 * 1000

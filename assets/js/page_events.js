@@ -16,7 +16,7 @@
 // server the stops closed while offline, and calls each hook's `whenLive`
 // callbacks, which send the server what the hook has open.
 
-import {assertCondition, unreachable} from "./assert"
+import {assertCondition, unreachable} from "./core/assert"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
 import {ConnectionKind} from "./connection_rules"
 import {
@@ -31,7 +31,7 @@ import {
   tripSummaryText,
   withClose,
   withoutClose
-} from "./offline_answers"
+} from "./core/offline_answers"
 import {KeptKind, elementRouteIds, endLocalRoutes, showLocalEveryRoute, showLocalRoutes} from "./route_stop_tiles"
 import {savedSnapshots} from "./saved_snapshots"
 import {refreshOfflineService, startOfflineService, stopOfflineService} from "./offline_service"

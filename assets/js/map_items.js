@@ -4,7 +4,7 @@
 // option. Everything here is pure and reads no map or document, so each
 // decision is checked against values written out by hand.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {rangeText} from "./shared_vehicle_view_text.js"
 
 export const MapItemKind = Object.freeze({vehicle: "vehicle", stop: "stop", sharedVehicle: "sharedVehicle"})

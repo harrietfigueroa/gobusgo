@@ -7,7 +7,7 @@
 // the first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {ARRIVAL_HORIZON_SECONDS} from "../../assets/js/scheduled_service.js"
+import {ARRIVAL_HORIZON_SECONDS} from "../../assets/js/core/scheduled_service.js"
 import {DepartureLoadKind} from "../../assets/js/departure_files.js"
 import {
   FromKind,

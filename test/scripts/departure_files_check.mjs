@@ -10,8 +10,8 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {gzipSync} from "node:zlib"
-import {KeptKind} from "../../assets/js/scheduled_service.js"
-import {FetchKind, FailureReason} from "../../assets/js/routing_journeys.js"
+import {KeptKind} from "../../assets/js/core/scheduled_service.js"
+import {FetchKind, FailureReason} from "../../assets/js/core/routing_journeys.js"
 import {DepartureLoadKind, EntriesKind, SERVICE_DAY_MS_MAX, entriesFor, loadDepartures} from "../../assets/js/departure_files.js"
 import {seconds, snapshotOf} from "./routing_timetable.js"
 

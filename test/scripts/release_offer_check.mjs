@@ -5,7 +5,7 @@
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {RELOAD_WAIT_MS, ReloadStepKind, reloadStep} from "../../assets/js/release_offer.js"
 
 const stepCases = [

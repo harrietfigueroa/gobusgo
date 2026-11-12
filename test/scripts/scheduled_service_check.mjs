@@ -9,9 +9,9 @@
 // exits non-zero on the first case that differs.
 
 import {deepStrictEqual, fail, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {distanceMeters} from "../../assets/js/math/geodesy.js"
-import {TableKind} from "../../assets/js/offline_answers.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {distanceMeters} from "../../assets/js/core/math/geodesy.js"
+import {TableKind} from "../../assets/js/core/offline_answers.js"
 import {
   ARRIVAL_COUNT_MAX,
   ARRIVAL_HORIZON_SECONDS,
@@ -24,7 +24,7 @@ import {
   scheduledArrivals,
   scheduledDepartures,
   scheduledMarkers
-} from "../../assets/js/scheduled_service.js"
+} from "../../assets/js/core/scheduled_service.js"
 import {seconds} from "./routing_timetable.js"
 import {found, savedOf} from "./saved_timetable.js"
 

@@ -7,7 +7,7 @@
 // `kind`, the table or the reason the file was refused; a bad file is never
 // a throw. Everything here is pure but the expansion.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {
   ColumnType,
   PackedKind,
@@ -16,10 +16,10 @@ import {
   SectionCursor,
   VARINT_VALUE_MAX,
   decodeContainer,
-  expandStream,
   openColumn,
   packedFileName,
-} from "./packed_container.js"
+} from "./core/packed_container.js"
+import {expandStream} from "./packed_stream.js"
 
 const ADDRESS_FILE_VERSION = 1
 const SHARD_SECTION_COUNT = 8

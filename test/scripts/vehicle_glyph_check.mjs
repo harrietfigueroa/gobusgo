@@ -8,7 +8,7 @@
 // non-zero on the first case that differs.
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
-import {contrastRatio} from "../../assets/js/math/color_contrast.js"
+import {contrastRatio} from "../../assets/js/core/math/color_contrast.js"
 import {Theme, mapColors} from "../../assets/js/theme.js"
 import {
   BadgeMark,

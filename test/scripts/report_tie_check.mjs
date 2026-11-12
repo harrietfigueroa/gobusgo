@@ -10,14 +10,14 @@
 // case that differs.
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/math/geodesy.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {METERS_PER_DEGREE, distanceMeters, metersPerDegreeLongitude} from "../../assets/js/core/math/geodesy.js"
 import {preparePath} from "../../assets/js/vehicle_prediction.js"
 import {drawnVehicle, trackedVehicle} from "../../assets/js/vehicle_motion.js"
 import {TIE_ZOOM_MIN, TieKind, reportTie, tiedMarkerIds} from "../../assets/js/report_tie.js"
 import {isTieRedrawDue, markerCoverPixels, screenTie, tieStrokes, trimmedLine} from "../../assets/js/report_tie_layout.js"
 import {MarkerKind} from "../../assets/js/vehicle_overlay_layout.js"
-import {contrastRatio} from "../../assets/js/math/color_contrast.js"
+import {contrastRatio} from "../../assets/js/core/math/color_contrast.js"
 import {Theme, mapColors} from "../../assets/js/theme.js"
 
 const LON_ORIGIN = -122.33

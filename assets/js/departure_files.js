@@ -11,12 +11,14 @@
 // stop from the time, since the list is the next scheduled departures and a
 // date that has some leaves nothing to read ahead for.
 
-import {assertCondition} from "./assert.js"
-import {TableKind} from "./offline_answers.js"
-import {FailureReason, JourneysKind, decodedOrFailed, fetchChecked} from "./routing_journeys.js"
-import {DecodeKind, decodeConnections, decodeStops, decodeTrips} from "./routing_snapshot.js"
-import {decodeNames, expandNames} from "./routing_names.js"
-import {DeparturesKind, chunksFrom, scheduledDepartures} from "./scheduled_service.js"
+import {assertCondition} from "./core/assert.js"
+import {TableKind} from "./core/offline_answers.js"
+import {FailureReason, JourneysKind, decodedOrFailed} from "./core/routing_journeys.js"
+import {fetchChecked} from "./routing_driver.js"
+import {DecodeKind, decodeConnections, decodeStops, decodeTrips} from "./core/routing_snapshot.js"
+import {decodeNames} from "./core/routing_names.js"
+import {expandNames} from "./names_stream.js"
+import {DeparturesKind, chunksFrom, scheduledDepartures} from "./core/scheduled_service.js"
 
 /** The longest a service day lasts: a day of 24 hours and the hour a change of daylight saving time adds. */
 export const SERVICE_DAY_MS_MAX = 25 * 60 * 60 * 1000

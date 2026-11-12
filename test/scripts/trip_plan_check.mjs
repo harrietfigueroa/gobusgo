@@ -8,10 +8,10 @@
 // case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {LegKind} from "../../assets/js/routing_engine.js"
-import {FailureReason, JourneysKind} from "../../assets/js/routing_journeys.js"
-import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
+import {FailureReason, JourneysKind} from "../../assets/js/core/routing_journeys.js"
+import {LEG_KIND_TO_POINT} from "../../assets/js/core/point_journeys.js"
 import {
   BoundsKind,
   ClockKind,
@@ -41,7 +41,7 @@ import {
   tripRouteIds,
   wallClockMs,
   windowText,
-} from "../../assets/js/trip_plan.js"
+} from "../../assets/js/core/trip_plan.js"
 
 const TIME_ZONE = "America/Los_Angeles"
 // 2026-11-08 and 2026-11-09 at midnight in Seattle, eight hours after

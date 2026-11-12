@@ -6,9 +6,9 @@
 // vehicle on a trip moves. Each state is a frozen value the page
 // keeps, and each function returns another.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees} from "./math/angles.js"
-import {LAT, LON} from "./math/geodesy.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, normalizedDegrees} from "./core/math/angles.js"
+import {LAT, LON} from "./core/math/geodesy.js"
 import {
   CorrectionKind,
   DrawnKind,

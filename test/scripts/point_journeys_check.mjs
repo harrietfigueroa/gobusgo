@@ -7,11 +7,11 @@
 // the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {LegKind} from "../../assets/js/routing_engine.js"
-import {FailureReason, JourneysKind, WINDOW_SECONDS} from "../../assets/js/routing_journeys.js"
-import {POSITION_UNKNOWN_MICRODEGREES} from "../../assets/js/routing_snapshot.js"
-import {FrontierKind, LEG_KIND_TO_POINT, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "../../assets/js/point_journeys.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
+import {FailureReason, JourneysKind, WINDOW_SECONDS} from "../../assets/js/core/routing_journeys.js"
+import {POSITION_UNKNOWN_MICRODEGREES} from "../../assets/js/core/routing_snapshot.js"
+import {FrontierKind, LEG_KIND_TO_POINT, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "../../assets/js/core/point_journeys.js"
 
 const MICRODEGREES = 1_000_000
 const MINUTE_S = 60

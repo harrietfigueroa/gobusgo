@@ -5,7 +5,7 @@
 // the page. The settings carry every value of the band, so nothing here
 // names a zoom, a rate, or a count of its own.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {RATE_HZ_MAX, VEHICLE_COUNT_MAX} from "./vehicle_overlay_layout.js"
 
 /** Whether the markers move continuously, and at what rate, or stand still between fetches. */

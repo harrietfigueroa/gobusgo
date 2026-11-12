@@ -1,7 +1,7 @@
 // The text color of a route chip, whose fill is the route's color as the
 // agency supplies it. Pure: nothing here reads the document.
 
-import {contrastRatio} from "./math/color_contrast.js"
+import {contrastRatio} from "./core/math/color_contrast.js"
 
 const DARK_TEXT_COLOR = "#0f172a"
 const LIGHT_TEXT_COLOR = "#ffffff"

@@ -8,7 +8,7 @@
 // place it is named for, is the rider's to choose, since a wrong end routes a
 // different trip with no sign that it did.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {ChoiceKind, suggestionList} from "./where_to.js"
 
 /** The kinds of what the search decides of an end's words. */

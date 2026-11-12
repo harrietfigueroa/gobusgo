@@ -7,10 +7,10 @@
 // differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {FetchKind, FailureReason, JourneysKind} from "../../assets/js/routing_journeys.js"
-import {PointJourneysKind} from "../../assets/js/point_journeys.js"
-import {NOT_SAVED_HEADER} from "../../assets/js/offline_bundle.js"
-import {PlannedKind, StateKind} from "../../assets/js/trip_plan.js"
+import {FetchKind, FailureReason, JourneysKind} from "../../assets/js/core/routing_journeys.js"
+import {PointJourneysKind} from "../../assets/js/core/point_journeys.js"
+import {NOT_SAVED_HEADER} from "../../assets/js/core/offline_bundle.js"
+import {PlannedKind, StateKind} from "../../assets/js/core/trip_plan.js"
 import {AnswerKind, answerOutcome, fetchManifest, serviceDayStartsOf, walkSpeedsOf} from "../../assets/js/trip_route.js"
 
 const PATH = "/api/routing/manifest"

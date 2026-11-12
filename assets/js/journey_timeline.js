@@ -6,11 +6,11 @@
 // order the rider takes the steps. Nothing here reads the document, the
 // network, storage, or a clock.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {LegKind} from "./routing_engine.js"
-import {LEG_KIND_TO_POINT} from "./point_journeys.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {LegKind} from "./core/routing_engine.js"
+import {LEG_KIND_TO_POINT} from "./core/point_journeys.js"
 import {LiveKind} from "./journey_cards.js"
-import {clockText, journeyLeaveS, routeChip, stopName, walkMinutes} from "./trip_plan.js"
+import {clockText, journeyLeaveS, routeChip, stopName, walkMinutes} from "./core/trip_plan.js"
 
 /** The kinds of a timeline row. */
 export const TimelineRowKind = Object.freeze({

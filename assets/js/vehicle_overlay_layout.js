@@ -6,7 +6,7 @@
 // nothing here reads the document or the map, which lets it be run apart
 // from both.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {
   BADGE_HEIGHT_PIXELS,
   BADGE_SHOULDER_PIXELS,

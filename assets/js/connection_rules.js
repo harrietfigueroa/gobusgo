@@ -9,7 +9,7 @@
 // with no join; a join makes it live from any state, and so does the
 // browser's network coming back to a socket that stayed joined.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 
 /** A page that waits this long with no join is offline. */
 export const JOIN_WAIT_MS = 10 * 1000

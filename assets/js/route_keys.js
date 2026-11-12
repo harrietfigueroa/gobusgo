@@ -7,7 +7,7 @@
 // what is in view takes its arrows, Home, End, and Enter inside itself.
 // https://maplibre.org/maplibre-gl-js/docs/API/classes/KeyboardHandler/ — checked 2026-11-11
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {ListKey, nextActiveIndex} from "./map_items.js"
 
 const OPEN_KEY = "r"

@@ -35,7 +35,7 @@ import {
 } from "./rider_heading"
 import {CHANGE_EVENT_NAME as DIRECTION_CHANGE_EVENT_NAME, isDirectionShown} from "./show_direction"
 import {storedSettings} from "./stored_settings"
-import {assertCondition, unreachable} from "./assert"
+import {assertCondition, unreachable} from "./core/assert"
 import {
   BUTTON_CLASS_NAMES,
   CenterZoom,

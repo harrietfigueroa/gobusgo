@@ -174,6 +174,22 @@ jobs:
       - run: npm run --prefix tools/lint check
       - run: npm run --prefix tools/lint lint:openapi
 
+  # Keeps the modules of assets/js/core/ free of async work, after checking that the lint still reports each kind of it.
+  core-lint:
+    name: core-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      - run: npm ci --prefix tools/lint
+      - run: npm run --prefix tools/lint check
+      - run: npm run --prefix tools/lint lint:core
+
   image:
     name: image
     runs-on: ubuntu-24.04-arm
@@ -229,7 +245,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, openapi, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:

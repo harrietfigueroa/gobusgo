@@ -2,7 +2,7 @@
 // tells one shared vehicle from another, as pure functions of the values its
 // feature carries. Nothing here reads the document or a clock.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 const METERS_PER_KILOMETER = 1000
 const MS_PER_MINUTE = 60_000

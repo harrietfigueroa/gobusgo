@@ -13,7 +13,7 @@ import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {decodeAddressIndex, decodeAddressShard} from "../../assets/js/address_file.js"
 import {LookupKind, PlacementKind, RESULT_COUNT_MAX, mergedResults, searchAddress, shardFor} from "../../assets/js/address_lookup.js"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 
 const fixtureDirectory = fileURLToPath(new URL("../fixtures/addresses/", import.meta.url))
 const MICRODEGREES = 1_000_000

@@ -80,7 +80,7 @@
 // and writes nothing, and every call that throws is logged through `warn`.
 
 import contract from "./stored_settings.json" with {type: "json"}
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {Theme, ThemeSetting, parseSetting} from "./theme.js"
 
 /** The schema version of the stored keys. */

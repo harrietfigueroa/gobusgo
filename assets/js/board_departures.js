@@ -5,15 +5,15 @@
 // host takes it. No request names the time, the stop, or the routes: a fetch
 // names only a file.
 
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 import {DepartureLoadKind, loadDepartures} from "./departure_files.js"
 import {NO_HEADING, departuresView} from "./departures_view.js"
 import {BoardInputKind} from "./mcp_board_input.js"
 import {departuresContext, isOffered} from "./mcp_board_context.js"
 import {FromKind, departureRows, fromMsOf, fromText, loadStatusText, refusalText} from "./mcp_board_departures.js"
 import {OutcomeKind, updateModelContext} from "./mcp_host.js"
-import {FetchKind} from "./routing_journeys.js"
-import {DEPARTURE_COUNT_MAX, KeptKind} from "./scheduled_service.js"
+import {FetchKind} from "./core/routing_journeys.js"
+import {DEPARTURE_COUNT_MAX, KeptKind} from "./core/scheduled_service.js"
 import {fetchFileFrom, fetchManifest} from "./trip_route.js"
 
 const ROUTING_MANIFEST_PATH = "/api/routing/manifest"

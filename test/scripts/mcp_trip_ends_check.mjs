@@ -7,9 +7,9 @@
 // that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {FallbackKind, ResolutionKind, fallbackWords, resolution} from "../../assets/js/mcp_trip_ends.js"
-import {TripEnd, pointEnd, stopEnd} from "../../assets/js/trip_plan.js"
+import {TripEnd, pointEnd, stopEnd} from "../../assets/js/core/trip_plan.js"
 import {GROUP_COUNT_MAX, GroupKind} from "../../assets/js/where_to.js"
 
 const none = {places: [], addresses: [], intersections: [], stops: []}

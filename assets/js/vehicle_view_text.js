@@ -4,7 +4,7 @@
 // last report, where its marker stands, its lateness, and its next stop, and
 // a muted note on where its marker stands. Nothing here reads the document.
 
-import {unreachable} from "./assert.js"
+import {unreachable} from "./core/assert.js"
 import {MarkerPositionKind} from "./vehicle_motion.js"
 
 const PART_SEPARATOR = " · "

@@ -9,7 +9,7 @@
 // map's `idle` event keeps meaning that the map has come to rest.
 // https://maplibre.org/maplibre-gl-js/docs/API/classes/Map/#project — checked 2026-11-09
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {RESTYLED_EVENT_NAME} from "./basemap"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {mapColors} from "./theme"

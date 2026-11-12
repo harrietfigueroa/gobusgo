@@ -1,8 +1,10 @@
-// Checks eslint.config.mjs and eslint.openapi.config.mjs against documents
-// written out by hand: each accessibility rule the first turns on still
-// reports its failure, each narrowed rule passes over only the tags its
-// exemption names, and the second reports malformed JSON and a document
-// that breaks the OpenAPI schema. Run it with `npm run check` in this
+// Checks eslint.config.mjs, eslint.openapi.config.mjs, and
+// eslint.core.config.mjs against documents written out by hand: each
+// accessibility rule the first turns on still reports its failure, each
+// narrowed rule passes over only the tags its exemption names, the second
+// reports malformed JSON and a document that breaks the OpenAPI schema, and
+// the third reports each kind of async work in a module of the core and
+// passes over synchronous code. Run it with `npm run check` in this
 // directory; it exits non-zero on the first case that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
@@ -17,6 +19,13 @@ const repositoryRoot = resolve(import.meta.dirname, "..", "..")
 const openapiEslint = new ESLint({
   cwd: repositoryRoot,
   overrideConfigFile: resolve(import.meta.dirname, "eslint.openapi.config.mjs")
+})
+
+// The core config runs with the repository root as its base path, as
+// `npm run lint:core` runs it.
+const coreEslint = new ESLint({
+  cwd: repositoryRoot,
+  overrideConfigFile: resolve(import.meta.dirname, "eslint.core.config.mjs")
 })
 
 function documentWith(body) {
@@ -99,5 +108,45 @@ const openapiCases = [
 
 for (const {name, text, rules} of openapiCases) {
   const reported = await reportedOpenapiRules(text)
+  deepStrictEqual(reported, rules, name)
+}
+
+const CORE_FILE_PATH = resolve(repositoryRoot, "assets", "js", "core", "case.js")
+const SHELL_FILE_PATH = resolve(repositoryRoot, "assets", "js", "case.js")
+const ASYNC_RULE = "local/no-async-work"
+
+async function reportedCoreRules({text, filePath}) {
+  const [result] = await coreEslint.lintText(text, {filePath})
+  const messageRuleIds = Array.from(result.messages, ruleIdOf)
+  const ruleIds = Array.from(new Set(messageRuleIds))
+  return ruleIds.sort()
+}
+
+const coreCases = [
+  {name: "synchronous code", text: "export function sum(values) {\n  let total = 0\n  for (const value of values) {\n    total += value\n  }\n  return total\n}\n", rules: []},
+  {name: "a generator", text: "export function* counted(count) {\n  for (let index = 0; index < count; index++) {\n    yield index\n  }\n}\n", rules: []},
+  {name: "an async function", text: "export async function read() {\n  return 1\n}\n", rules: [ASYNC_RULE]},
+  {name: "an async arrow", text: "export const read = async () => 1\n", rules: [ASYNC_RULE]},
+  {name: "an async method", text: "export const reader = {async read() {\n  return 1\n}}\n", rules: [ASYNC_RULE]},
+  {name: "a top-level await", text: "export const value = await import(\"./other.js\")\n", rules: [ASYNC_RULE]},
+  {name: "a for await", text: "export function drain(source) {\n  return (async () => {\n    for await (const value of source) {\n      console.log(value)\n    }\n  })()\n}\n", rules: [ASYNC_RULE]},
+  {name: "a promise", text: "export function later() {\n  return new Promise(function settle(resolve) {\n    resolve(1)\n  })\n}\n", rules: [ASYNC_RULE]},
+  {name: "a promise's then", text: "export function next(pending) {\n  return pending.then(function value(result) {\n    return result\n  })\n}\n", rules: [ASYNC_RULE]},
+  {name: "a fetch", text: "export function load(path) {\n  return fetch(path)\n}\n", rules: [ASYNC_RULE]},
+  {name: "a timer", text: "export function soon(work) {\n  setTimeout(work, 0)\n}\n", rules: [ASYNC_RULE]},
+  {name: "a stream", text: "export function expand(bytes) {\n  return new Blob([bytes]).stream().pipeThrough(new DecompressionStream(\"gzip\"))\n}\n", rules: [ASYNC_RULE]},
+  {name: "a local binding named like a global", text: "export function load({fetch}) {\n  return fetch\n}\n", rules: []},
+  {name: "a property named then", text: "export const step = {then: 1}\n", rules: []},
+  {name: "async work outside the core", text: "export async function read() {\n  return await fetch(\"/x\")\n}\n", rules: [], filePath: SHELL_FILE_PATH}
+]
+
+for (const {name, text, rules, filePath} of coreCases) {
+  let path = CORE_FILE_PATH
+
+  if (filePath !== undefined) {
+    path = filePath
+  }
+
+  const reported = await reportedCoreRules({text, filePath: path})
   deepStrictEqual(reported, rules, name)
 }

@@ -3,7 +3,7 @@
 // pure and reads no map or document, so each decision is checked against
 // values written out by hand.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 /**
  * The DOM event the window gets when the emphasized route changes, whose

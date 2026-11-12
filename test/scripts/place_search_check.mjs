@@ -8,7 +8,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
-import {AssertionError} from "../../assets/js/assert.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {
   AREA_MAX,
   buildPlaceIndex,

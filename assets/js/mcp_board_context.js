@@ -24,11 +24,11 @@
 // A change to a field's meaning, or a field removed, is a new version; a
 // field added keeps the version.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 import {DepartureLoadKind} from "./departure_files.js"
 import {LIVE_NOTE, isInLiveWindow} from "./mcp_board_departures.js"
 import {ProblemKind, VALID, firstFailure, invalid, isInstant, isRecord, isText} from "./mcp_trip_journey.js"
-import {DEPARTURE_COUNT_MAX} from "./scheduled_service.js"
+import {DEPARTURE_COUNT_MAX} from "./core/scheduled_service.js"
 
 /** The name that tells the object from any other the model holds. */
 export const DEPARTURES_SCHEMA_NAME = "gobusgo.departures"

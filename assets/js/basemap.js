@@ -1,6 +1,6 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
-import {assertCondition} from "./assert"
+import {assertCondition} from "./core/assert"
 import {sheetInsets} from "./panel_sheet"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"

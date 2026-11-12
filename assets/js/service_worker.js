@@ -15,9 +15,9 @@
 // stored when the worker installs, and the content identifier of the
 // basemap's fonts and sprites.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {OFFLINE_BASEMAP_CACHE_NAME} from "./offline_basemap.js"
-import {OFFLINE_SCHEDULES_CACHE_NAME} from "./offline_bundle.js"
+import {OFFLINE_SCHEDULES_CACHE_NAME} from "./core/offline_bundle.js"
 import {answerNetworkFirst, answerSavedFile, savedFileReader, storedOf} from "./saved_files.js"
 import {
   CacheRole,

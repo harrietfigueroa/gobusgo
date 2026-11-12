@@ -1,7 +1,7 @@
 {
   "name": "gobusgo-lint",
   "private": true,
-  "description": "Lints the HTML the application renders against html-eslint's rules and the OpenAPI documents in priv/ against the OpenAPI 3.1 schema. A development tool only: nothing here reaches the browser bundle or the release image.",
+  "description": "Lints the HTML the application renders against html-eslint's rules and the OpenAPI documents in priv/ against the OpenAPI 3.1 schema, and keeps the modules of assets/js/core/ free of async work. A development tool only: nothing here reaches the browser bundle or the release image.",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -9,7 +9,8 @@
   "scripts": {
     "check": "node check_config.mjs",
     "lint": "eslint --max-warnings 0 rendered",
-    "lint:openapi": "cd ../.. && eslint --max-warnings 0 --config tools/lint/eslint.openapi.config.mjs priv/openapi.json priv/openapi.private.json"
+    "lint:openapi": "cd ../.. && eslint --max-warnings 0 --config tools/lint/eslint.openapi.config.mjs priv/openapi.json priv/openapi.private.json",
+    "lint:core": "cd ../.. && eslint --max-warnings 0 --config tools/lint/eslint.core.config.mjs assets/js/core"
   },
   "devDependencies": {
     "@eslint/json": "2.1.1",

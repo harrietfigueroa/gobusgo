@@ -8,14 +8,14 @@
 
 import {deepStrictEqual, ok, throws} from "node:assert/strict"
 import {readFileSync} from "node:fs"
-import {AssertionError} from "../../assets/js/assert.js"
-import {distanceMeters} from "../../assets/js/math/geodesy.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {distanceMeters} from "../../assets/js/core/math/geodesy.js"
 import {
   TRIP_PATH_COUNT_MAX,
   decodeTripPath,
   tripPathKey,
   withTripPaths
-} from "../../assets/js/trip_path.js"
+} from "../../assets/js/core/trip_path.js"
 
 const fixtureUrl = new URL("../fixtures/one_bus_away/trip_path/encoded_loop.json", import.meta.url)
 const fixtureText = readFileSync(fixtureUrl, "utf8")

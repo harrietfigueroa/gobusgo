@@ -6,8 +6,8 @@
 // first case that differs.
 
 import {strictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {clamp, lerp} from "../../assets/js/math/interpolation.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {clamp, lerp} from "../../assets/js/core/math/interpolation.js"
 
 const lerpCases = [
   {name: "the start", from: 10, to: 30, fraction: 0, value: 10},

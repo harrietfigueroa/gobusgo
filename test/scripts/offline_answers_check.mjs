@@ -8,8 +8,8 @@
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {ROUTE_COLOR_DEFAULT} from "../../assets/js/trip_plan.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {ROUTE_COLOR_DEFAULT} from "../../assets/js/core/trip_plan.js"
 import {
   DEFERRED_CLOSE_COUNT_MAX,
   FILTER_RESTORE_REPLY,
@@ -26,7 +26,7 @@ import {
   tripSummaryText,
   withClose,
   withoutClose
-} from "../../assets/js/offline_answers.js"
+} from "../../assets/js/core/offline_answers.js"
 
 const NAME_COUNT_MAX = 3
 const ROUTE_COUNT_MAX = 2

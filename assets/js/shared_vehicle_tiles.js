@@ -4,8 +4,8 @@
 // The tiles are Web Mercator tiles of the index's zoom, numbered as
 // `Gobusgo.Gbfs.VehicleTileSet` numbers them.
 
-import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, radians} from "./math/angles.js"
-import {clamp} from "./math/interpolation.js"
+import {DEGREES_PER_HALF_TURN, DEGREES_PER_TURN, radians} from "./core/math/angles.js"
+import {clamp} from "./core/math/interpolation.js"
 import {tileKey} from "./shared_vehicle_format.js"
 
 const HALVING_DIVISOR = 2

@@ -11,7 +11,7 @@
 // on the other end. A message counts only when it comes from the window the
 // app posts to, and a request waits `HOST_REQUEST_TIMEOUT_MS` for its answer.
 
-import {assertCondition} from "./assert.js"
+import {assertCondition} from "./core/assert.js"
 
 /** The revision of the MCP Apps specification this module speaks. */
 export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26"

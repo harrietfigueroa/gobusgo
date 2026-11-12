@@ -3,8 +3,8 @@
 // taps on the map while the tab waits for one. Each reaches the tab as the
 // "gobusgo:trip-end" DOM event on the window, naming the end and the stop.
 
-import {assertCondition} from "./assert.js"
-import {TripEnd} from "./trip_plan.js"
+import {assertCondition} from "./core/assert.js"
+import {TripEnd} from "./core/trip_plan.js"
 
 /** The DOM event the window gets for a stop chosen as an end of the trip. */
 export const END_EVENT_NAME = "gobusgo:trip-end"

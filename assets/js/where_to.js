@@ -11,10 +11,10 @@
 // condition on which the OpenStreetMap places and intersections stand
 // beside the agencies' stops as a Collective Database under the ODbL.
 
-import {assertCondition, unreachable} from "./assert.js"
-import {distanceMeters} from "./math/geodesy.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {distanceMeters} from "./core/math/geodesy.js"
 import {normalizedWords} from "./place_search.js"
-import {EndKind, LOCATION_END, TripEnd, pointEnd, stopEnd} from "./trip_plan.js"
+import {EndKind, LOCATION_END, TripEnd, pointEnd, stopEnd} from "./core/trip_plan.js"
 
 /** The groups of the list, in the order they stand. */
 export const GroupKind = Object.freeze({

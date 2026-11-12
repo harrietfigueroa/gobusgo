@@ -6,7 +6,7 @@
 // here reads the document, the clock, or a timer.
 
 import {shownAt} from "./arrival_countdown.js"
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 import {OutcomeKind} from "./mcp_host.js"
 
 /** The kinds of what one result of the tool says. */

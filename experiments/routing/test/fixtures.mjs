@@ -9,8 +9,8 @@
 
 import {readFileSync} from "node:fs"
 import {deepStrictEqual} from "node:assert/strict"
-import {LegKind, OriginKind} from "../../../assets/js/routing_engine.js"
-import {loadEngine} from "../../../assets/js/routing_journeys.js"
+import {LegKind, OriginKind} from "../../../assets/js/core/routing_engine.js"
+import {loadEngine} from "../../../assets/js/core/routing_journeys.js"
 import {clock, seconds, snapshotOf} from "../../../test/scripts/routing_timetable.js"
 
 const TRANSFER_S_MIN = 120

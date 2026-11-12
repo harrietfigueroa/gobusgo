@@ -2,7 +2,7 @@
 // functions of the arrivals and a clock they are given. Nothing here reads
 // the time, the document, or a timer, so a check replays any moment.
 
-import {assertCondition, unreachable} from "./assert.js"
+import {assertCondition, unreachable} from "./core/assert.js"
 
 /** How often a page writes its arrivals again from the clock while it is visible. */
 export const COUNTDOWN_INTERVAL_MS = 15 * 1000

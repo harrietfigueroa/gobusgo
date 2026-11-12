@@ -8,10 +8,10 @@
 // first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/assert.js"
-import {LegKind} from "../../assets/js/routing_engine.js"
-import {journeyRows} from "../../assets/js/trip_plan.js"
-import {LEG_KIND_TO_POINT} from "../../assets/js/point_journeys.js"
+import {AssertionError} from "../../assets/js/core/assert.js"
+import {LegKind} from "../../assets/js/core/routing_engine.js"
+import {journeyRows} from "../../assets/js/core/trip_plan.js"
+import {LEG_KIND_TO_POINT} from "../../assets/js/core/point_journeys.js"
 import {LiveKind, SegmentKind, SortKind, barSegments, firstRideLive, journeyCard, liveStopIds, sortedCards} from "../../assets/js/journey_cards.js"
 
 const TIME_ZONE = "America/Los_Angeles"
