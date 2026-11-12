@@ -54,8 +54,27 @@ for (const {name, given, action} of listCases) {
   deepStrictEqual(listKeyAction(given), action, name)
 }
 
-throws(() => listKeyAction({key: "ArrowDown", index: 3, count: 3}), "an index past the entries")
-throws(() => listKeyAction({key: "ArrowDown", index: 0, count: 0}), "a list with no entry")
+function listKeyPastEntries() {
+  return listKeyAction({key: "ArrowDown", index: 3, count: 3})
+}
+
+function listKeyWithNoEntry() {
+  return listKeyAction({key: "ArrowDown", index: 0, count: 0})
+}
+
+function openedTextWithNoRoute() {
+  return openedText({count: 0, hiddenCount: 0})
+}
+
+const invalidCases = [
+  {name: "an index past the entries", run: listKeyPastEntries},
+  {name: "a list with no entry", run: listKeyWithNoEntry},
+  {name: "an opened list names a route", run: openedTextWithNoRoute}
+]
+
+for (const {name, run} of invalidCases) {
+  throws(run, name)
+}
 
 const leaveCases = [
   {name: "focus moves to another entry", given: {isStillInList: true}, action: FocusLeaveAction.keep},
@@ -77,7 +96,5 @@ for (const {name, text, expected} of textCases) {
   deepStrictEqual(text, expected, name)
 }
 
-throws(() => openedText({count: 0, hiddenCount: 0}), "an opened list names a route")
-
-const caseCount = canvasCases.length + listCases.length + leaveCases.length + textCases.length + 3
+const caseCount = canvasCases.length + listCases.length + leaveCases.length + textCases.length + invalidCases.length
 console.log(`route keys: ${caseCount} cases hold`)

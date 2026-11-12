@@ -29,7 +29,9 @@ const listKeysByKey = Object.freeze({
  * handler's.
  */
 export function isOpenKeyPress({key, altKey, ctrlKey, metaKey, shiftKey}) {
-  const hasModifier = altKey || ctrlKey || metaKey || shiftKey
+  const hasCommandModifier = altKey || ctrlKey
+  const hasOtherModifier = metaKey || shiftKey
+  const hasModifier = hasCommandModifier || hasOtherModifier
   const isLetter = key.toLowerCase() === OPEN_KEY
   return isLetter && !hasModifier
 }
