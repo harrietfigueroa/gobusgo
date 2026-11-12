@@ -12,7 +12,6 @@ import {DepartureLoadKind} from "../../assets/js/departure_files.js"
 import {
   FromKind,
   LIVE_NOTE,
-  arriveByText,
   departureRows,
   fromMsOf,
   fromText,
@@ -43,7 +42,8 @@ const fromCases = [
   {name: "leaving now is the clock's instant", when: {mode: "now", day: "today", clockText: ""}, expected: {kind: FromKind.found, ms: NOW_MS}},
   {name: "a time today", when: {mode: "departAt", day: "today", clockText: "23:00"}, expected: {kind: FromKind.found, ms: TODAY_2300_MS}},
   {name: "a time tomorrow", when: {mode: "departAt", day: "tomorrow", clockText: "05:00"}, expected: {kind: FromKind.found, ms: TOMORROW_0500_MS}},
-  {name: "a time to arrive by lists no departures", when: {mode: "arriveBy", day: "today", clockText: "23:00"}, expected: {kind: FromKind.arriveBy}},
+  {name: "a mode the board does not take, such as a time to arrive by, is refused", when: {mode: "arriveBy", day: "today", clockText: "23:00"}, expected: {kind: FromKind.invalid}},
+  {name: "a mode of no kind is refused", when: {mode: "teleport", day: "today", clockText: "23:00"}, expected: {kind: FromKind.invalid}},
   {name: "a clock that is none", when: {mode: "departAt", day: "today", clockText: "25:99"}, expected: {kind: FromKind.invalid}}
 ]
 
@@ -112,6 +112,4 @@ for (const {name, loaded, expected} of loadCases) {
 
 deepStrictEqual(refusalText("when"), "The time asked for is not one the board can show.", "a refused time")
 deepStrictEqual(refusalText("route"), "The routes asked for are not ones the board can show.", "refused routes")
-deepStrictEqual(arriveByText(), "This board lists departures from a time. Ask your assistant for a departure time.", "a time to arrive by")
-
 console.log("mcp board departures: every case passed")

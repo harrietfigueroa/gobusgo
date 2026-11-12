@@ -10,7 +10,7 @@ import {DepartureLoadKind, loadDepartures} from "./departure_files.js"
 import {NO_HEADING, departuresView} from "./departures_view.js"
 import {BoardInputKind} from "./mcp_board_input.js"
 import {departuresContext, isOffered} from "./mcp_board_context.js"
-import {FromKind, arriveByText, departureRows, fromMsOf, fromText, loadStatusText, refusalText} from "./mcp_board_departures.js"
+import {FromKind, departureRows, fromMsOf, fromText, loadStatusText, refusalText} from "./mcp_board_departures.js"
 import {OutcomeKind, updateModelContext} from "./mcp_host.js"
 import {FetchKind} from "./routing_journeys.js"
 import {DEPARTURE_COUNT_MAX, KeptKind} from "./scheduled_service.js"
@@ -87,11 +87,6 @@ export async function showDepartures({root, host, origin, input, isContextAccept
 
   const nowMs = Date.now()
   const from = fromMsOf({when: input.when, nowMs, timeZone})
-
-  if (from.kind === FromKind.arriveBy) {
-    view.write({heading: NO_HEADING, fromLine: "", status: arriveByText(), rows: NO_ROWS})
-    return
-  }
 
   if (from.kind === FromKind.invalid) {
     view.write({heading: NO_HEADING, fromLine: "", status: refusalText("when"), rows: NO_ROWS})

@@ -10,11 +10,14 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoard do
   `data.stopName` where the stop view holds the stop's name, so the app's
   first render needs no further call.
 
-  `when` is the `when` of `plan_trip` and is checked by it. `route` lists the
-  routes a list of departures keeps, and the board ignores it without a
-  `when`. The server answers the same with or without them: the app reads
-  both from the call's arguments and lists the departures on the device from
-  the routing snapshots, so the server reads no schedule.
+  `when` is the `when` of `plan_trip` and is checked by it, except that a mode
+  of `arriveBy` is an error, since the board lists departures from a time.
+  `route` lists the routes a list of departures keeps, and the board ignores
+  it without a `when`. With a `when` the tool holds no stop and reads no
+  arrivals: it answers `data.status` `scheduled` with the stop's name, or
+  `unknown_stop`, and the app reads the time and routes from the call's
+  arguments and lists the departures on the device from the routing
+  snapshots, so the server reads no schedule.
   """
 
   @behaviour GobusgoWeb.Mcp.Tool
@@ -65,12 +68,49 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoard do
 
   @impl GobusgoWeb.Mcp.Tool
   def call(%{"stopId" => stop_id} = arguments) do
-    with :ok <- PlanTrip.check_when(Map.get(arguments, "when")),
-         :ok <- check_routes(Map.get(arguments, "route")),
-         {:ok, %{"structuredContent" => answer}} <- Arrivals.call(arguments) do
+    with :ok <- check_mode(Map.get(arguments, "when")),
+         :ok <- PlanTrip.check_when(Map.get(arguments, "when")),
+         :ok <- check_routes(Map.get(arguments, "route")) do
+      answer(arguments, stop_id)
+    end
+  end
+
+  # A board for a later time never polls, so its call neither reads arrivals
+  # nor holds the stop, which would take one of the held stops for a minute.
+  defp answer(%{"when" => _time}, "") do
+    Arrivals.call(%{"stopId" => ""})
+  end
+
+  defp answer(%{"when" => _time}, stop_id) do
+    case TransitQuery.stop_name(stop_id) do
+      {:ok, name} ->
+        scheduled(%{"status" => "scheduled", "stopId" => stop_id, "stopName" => name})
+
+      :unknown ->
+        case TransitQuery.stop_known?(stop_id) do
+          true -> scheduled(%{"status" => "scheduled", "stopId" => stop_id})
+          false -> scheduled(%{"status" => "unknown_stop", "stopId" => stop_id})
+        end
+    end
+  end
+
+  defp answer(_arguments, stop_id) do
+    with {:ok, %{"structuredContent" => answer}} <- Arrivals.call(%{"stopId" => stop_id}) do
       named(answer, TransitQuery.stop_name(stop_id))
     end
   end
+
+  defp scheduled(data) do
+    Answer.result(%{"data" => data, "meta" => Answer.meta(%{fetch: nil, count: 0, extra: %{}})})
+  end
+
+  defp check_mode(%{"mode" => "arriveBy"}) do
+    {:error,
+     "when.mode arriveBy is not one the board takes: the board lists departures from a time. " <>
+       "Ask again with when.mode departAt, or now."}
+  end
+
+  defp check_mode(_time), do: :ok
 
   defp check_routes(nil), do: :ok
 
@@ -112,6 +152,10 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoard do
     stop_name = %{"type" => "string"}
     schema = Arrivals.definition()["outputSchema"]
 
-    update_in(schema, ["properties", "data", "properties"], &Map.put(&1, "stopName", stop_name))
+    update_in(schema, ["properties", "data", "properties"], fn properties ->
+      properties
+      |> Map.put("stopName", stop_name)
+      |> update_in(["status", "enum"], &(&1 ++ ["scheduled"]))
+    end)
   end
 end
