@@ -61,8 +61,10 @@ for (const {name, text, first} of cases) {
 // the shard holds, and the stripped words are searched only where the words
 // as given find no street.
 const addressDirectory = fileURLToPath(new URL("../fixtures/addresses/", import.meta.url))
-const addressShard = decodeAddressShard(new Uint8Array(readFileSync(addressDirectory + "v1/shard.bin"))).table
-const addressCenter = JSON.parse(readFileSync(addressDirectory + "lookup.json", "utf8")).center
+const shardBytes = new Uint8Array(readFileSync(addressDirectory + "v1/shard.bin"))
+const addressShard = decodeAddressShard(shardBytes).table
+const lookupCases = JSON.parse(readFileSync(addressDirectory + "lookup.json", "utf8"))
+const addressCenter = lookupCases.center
 
 function addressKind(text) {
   return searchAddress({text, table: addressShard, near: addressCenter}).kind
@@ -70,6 +72,7 @@ function addressKind(text) {
 
 deepStrictEqual(addressKind("3 main st, kent wa 98032"), LookupKind.found, "an address with its locality is found as given")
 deepStrictEqual(addressKind("3 main st, kirkland"), LookupKind.noStreet, "an address in another locality finds no street as given")
-deepStrictEqual(addressKind(searchWords("3 main st, kirkland")), LookupKind.found, "the stripped words of that address find the street")
+const strippedAddress = searchWords("3 main st, kirkland")
+deepStrictEqual(addressKind(strippedAddress), LookupKind.found, "the stripped words of that address find the street")
 
 console.log(`mcp_trip_words_check: ${cases.length} searches passed`)
