@@ -129,8 +129,7 @@ defmodule Gobusgo.Pace.Learning do
   point's latitude.
   """
   @spec prepare_path(%{points: [[number()]]}) :: path()
-  def prepare_path(%{points: [[_lon, first_lat] | _rest] = points})
-      when length(points) >= 2 do
+  def prepare_path(%{points: [[_lon, first_lat] | _rest] = points}) when length(points) >= 2 do
     meters_per_degree_lon =
       Geodesy.meters_per_degree() * :math.cos(Geodesy.radians(first_lat))
 
