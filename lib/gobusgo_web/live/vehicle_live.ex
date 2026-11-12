@@ -775,7 +775,7 @@ defmodule GobusgoWeb.VehicleLive do
       <p id="map-description-filter">{@filter_sentence}</p>
       <div id="map-description-view" phx-update="ignore"></div>
       <p id="map-description-keys">
-        Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it.
+        Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it. The R key lists the routes at the middle of the map.
       </p>
     </div>
 
