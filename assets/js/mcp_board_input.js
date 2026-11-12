@@ -29,7 +29,8 @@ function isRecord(value) {
 
 function isRouteId(value) {
   const isText = typeof value === "string"
-  return isText && value.length >= 1 && value.length <= ROUTE_ID_LENGTH_MAX
+  const isLongEnough = isText && value.length >= 1
+  return isLongEnough && value.length <= ROUTE_ID_LENGTH_MAX
 }
 
 // The routes the list keeps, none meaning every route, or refused.

@@ -473,7 +473,9 @@ function listed(departures, droppedCount = 0) {
   return {kind: DeparturesKind.found, departures, droppedCount}
 }
 
-deepStrictEqual(DEPARTURE_COUNT_MAX, 40, "a stop's list holds at most 40 departures")
+const DEPARTURE_COUNT_EXPECTED = 40
+const S1_DEPARTURE_COUNT = 3
+deepStrictEqual(DEPARTURE_COUNT_MAX, DEPARTURE_COUNT_EXPECTED, "a stop's list holds at most 40 departures")
 
 const departureCases = [
   [{snapshots: [today], stopId: "S1", fromMs: todayAt("07:00")}, listed([A1_DEPARTURE_S1, UNK_DEPARTURE_S1, LATE_DEPARTURE_S1]), "the departures from a time are each boarding there, the soonest first, with the route, color, and headsign without the route's number"],
@@ -500,8 +502,9 @@ function routeAndHeadsignOf(departure) {
 }
 
 const unnamedDepartures = departuresAt({snapshots: [todayUnnamed], stopId: "S1", fromMs: todayAt("07:00")})
+const unnamedLines = Array.from(unnamedDepartures.departures, routeAndHeadsignOf)
 deepStrictEqual(
-  Array.from(unnamedDepartures.departures, routeAndHeadsignOf),
+  unnamedLines,
   [["R1", null, null], ["R2", null, null], ["R1", null, null]],
   "with no names file a departure shows its route's identifier, no color, and no headsign"
 )
@@ -524,7 +527,7 @@ function departuresAtNoTime() {
   return departuresAt({snapshots: [today], stopId: "S1", fromMs: Number.NaN})
 }
 
-deepStrictEqual(departuresAt({snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), countMax: 0}), listed([], 3), "a bound of none lists none and counts them all")
+deepStrictEqual(departuresAt({snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), countMax: 0}), listed([], S1_DEPARTURE_COUNT), "a bound of none lists none and counts them all")
 throws(departuresWithFractionalBound, AssertionError, "the bound is a whole number")
 throws(departuresAtNoTime, AssertionError, "the time is a number")
 
@@ -536,7 +539,9 @@ const departureChunkCases = [
 ]
 
 for (const [{entry, fromMs}, expected, message] of departureChunkCases) {
-  deepStrictEqual(Array.from(chunksFrom({entry, fromMs}), chunkPathOf), expected, message)
+  const chunks = chunksFrom({entry, fromMs})
+  const paths = Array.from(chunks, chunkPathOf)
+  deepStrictEqual(paths, expected, message)
 }
 
 console.log("scheduled service: every case passed")

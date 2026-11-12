@@ -27,7 +27,8 @@ export const DEPARTURE_CHUNK_COUNT_MAX = 48
 /** The kinds of what a read of the departures ends in. */
 export const DepartureLoadKind = Object.freeze({listed: "listed", noSchedule: "noSchedule", unknownStop: "unknownStop", failed: "failed"})
 
-const EntriesKind = Object.freeze({found: "found", none: "none"})
+/** The kinds of what the date a time falls in is: found with its entries, or none. */
+export const EntriesKind = Object.freeze({found: "found", none: "none"})
 const NO_POSITIONS = Object.freeze({kind: TableKind.missing})
 const NAMES_MISSING = Object.freeze({kind: TableKind.missing})
 
@@ -163,17 +164,17 @@ async function snapshotOf({fetchFile, entry}) {
 }
 
 function stopNameOf({names, stop}) {
-  if (names.kind === TableKind.missing) {
-    return null
+  let stopName = null
+
+  if (names.kind === TableKind.found) {
+    const name = names.table.stopNames[stop]
+
+    if (typeof name === "string") {
+      stopName = name
+    }
   }
 
-  const name = names.table.stopNames[stop]
-
-  if (typeof name === "string") {
-    return name
-  }
-
-  return null
+  return stopName
 }
 
 // The departures of one date: its chunks from the time onward, fetched one at a time until the list holds `countMax`.

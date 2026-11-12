@@ -8,6 +8,9 @@ import {element} from "./dom_element.js"
 import {appendSpaced, chipElements} from "./route_chips.js"
 
 const HEADING_DEFAULT = "Scheduled departures"
+
+/** The heading a list with no stop's name has, which the view replaces with its own. */
+export const NO_HEADING = ""
 const ROW_CLASS_NAME = "arrival-row"
 const ROW_WITH_NOTE_CLASS_NAME = "arrival-row arrival-row-with-note"
 const NOTE_CLASS_NAME = "arrival-note arrival-row-note"
@@ -67,20 +70,18 @@ export function departuresView(root) {
     write({heading: stopName, fromLine: fromText, status: statusText, rows}) {
       let headingText = HEADING_DEFAULT
 
-      if (stopName !== null) {
+      if (stopName !== NO_HEADING) {
         headingText = stopName
       }
 
       setText(heading, headingText)
       setText(fromLine, fromText)
       setText(status, statusText)
-      const items = []
+      list.replaceChildren()
 
       for (const row of rows) {
-        items.push(rowElement(row))
+        list.append(rowElement(row))
       }
-
-      list.replaceChildren(...items)
     }
   })
 }

@@ -727,12 +727,13 @@ function addDepartures({snapshot, stop, fromMs, kept, listed}) {
 // The route's color as a CSS color, or null where no names file is saved or it holds no such route.
 function routeColorOf({names, routeId}) {
   const saved = routeOf({names, routeId})
+  let color = null
 
-  if (saved.kind === TableKind.missing) {
-    return null
+  if (saved.kind === TableKind.found) {
+    color = savedRouteChip({route: saved.route, routeId}).color
   }
 
-  return savedRouteChip({route: saved.route, routeId}).color
+  return color
 }
 
 function departureLineOf(departure) {

@@ -23,16 +23,17 @@ import {
 
 const TIME_ZONE = "America/Los_Angeles"
 const SECOND_MS = 1000
-const MINUTE_MS = 60 * SECOND_MS
-const HOUR_MS = 60 * MINUTE_MS
+const LIVE_WINDOW_EXPECTED_MS = 35 * 60 * 1000
+const SOON_OFFSET_MS = 10 * 60 * 1000
+const LATER_OFFSET_MS = 2 * 60 * 60 * 1000
 const LIVE_WINDOW_MS = ARRIVAL_HORIZON_SECONDS * SECOND_MS
 
 // Sunday 2026-11-08 at 20:00 in Seattle, which is Monday 04:00 UTC, so the clock is on Pacific standard time.
-const NOW_MS = Date.UTC(2026, 10, 9, 4, 0, 0)
-const TODAY_2300_MS = Date.UTC(2026, 10, 9, 7, 0, 0)
-const TOMORROW_0500_MS = Date.UTC(2026, 10, 9, 13, 0, 0)
+const NOW_MS = Date.parse("2026-11-09T04:00:00Z")
+const TODAY_2300_MS = Date.parse("2026-11-09T07:00:00Z")
+const TOMORROW_0500_MS = Date.parse("2026-11-09T13:00:00Z")
 
-deepStrictEqual(LIVE_WINDOW_MS, 35 * MINUTE_MS, "the live window is the one arrivals answers")
+deepStrictEqual(LIVE_WINDOW_MS, LIVE_WINDOW_EXPECTED_MS, "the live window is the one arrivals answers")
 
 function fromOf(when) {
   return fromMsOf({when, nowMs: NOW_MS, timeZone: TIME_ZONE})
@@ -66,7 +67,7 @@ function departure({timeMs, route = "44", color = "#112233", headsign = "Ballard
   return {timeMs, tripId: `trip-${timeMs}`, routeId: `1_${route}`, route, color, headsign}
 }
 
-const SOON = departure({timeMs: NOW_MS + 10 * MINUTE_MS})
+const SOON = departure({timeMs: NOW_MS + SOON_OFFSET_MS})
 const TONIGHT = departure({timeMs: TODAY_2300_MS, headsign: "Montlake"})
 const NEXT_MORNING = departure({timeMs: TOMORROW_0500_MS, route: "8", color: null, headsign: null})
 
@@ -82,7 +83,7 @@ deepStrictEqual(
   "a row's clock time on the rider's clock, its day where it is not the day the list starts, and a note only within the live window"
 )
 
-const laterRows = departureRows({departures: [SOON], fromMs: NOW_MS + 2 * HOUR_MS, nowMs: NOW_MS, timeZone: TIME_ZONE})
+const laterRows = departureRows({departures: [SOON], fromMs: NOW_MS + LATER_OFFSET_MS, nowMs: NOW_MS, timeZone: TIME_ZONE})
 deepStrictEqual(laterRows[0].note, LIVE_NOTE, "the live window counts from now, not from the time asked for")
 
 // The line under the heading says what the list is from, with the day where it is not today.

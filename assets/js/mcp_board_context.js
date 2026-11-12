@@ -100,7 +100,8 @@ function isTextOrNull(value) {
 }
 
 function isStatus(value) {
-  return Object.values(DeparturesStatus).includes(value)
+  const statuses = Object.values(DeparturesStatus)
+  return statuses.includes(value)
 }
 
 function stopProblem(stop) {

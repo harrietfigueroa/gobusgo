@@ -12,14 +12,19 @@ import {deepStrictEqual} from "node:assert/strict"
 import {gzipSync} from "node:zlib"
 import {KeptKind} from "../../assets/js/scheduled_service.js"
 import {FetchKind, FailureReason} from "../../assets/js/routing_journeys.js"
-import {DepartureLoadKind, SERVICE_DAY_MS_MAX, entriesFor, loadDepartures} from "../../assets/js/departure_files.js"
+import {DepartureLoadKind, EntriesKind, SERVICE_DAY_MS_MAX, entriesFor, loadDepartures} from "../../assets/js/departure_files.js"
 import {seconds, snapshotOf} from "./routing_timetable.js"
 
 // 2026-11-08 and 2026-11-09 at midnight in Seattle, the second a day later.
 const DAY_START_MS = 1794124800000
 const DAY_MS = 24 * 60 * 60 * 1000
 const NEXT_DAY_START_MS = DAY_START_MS + DAY_MS
-const FAR_DAY_START_MS = DAY_START_MS + 4 * DAY_MS
+const FAR_DAY_OFFSET_MS = 4 * 24 * 60 * 60 * 1000
+const FAR_DAY_START_MS = DAY_START_MS + FAR_DAY_OFFSET_MS
+const SERVICE_DAY_MS_EXPECTED = 25 * 60 * 60 * 1000
+const BOUND_SMALL = 2
+const BOUND_EXACT = 5
+const HOUR_08_CHUNK_INDEX = 2
 const SECOND_MS = 1000
 const EVERY_ROUTE = Object.freeze({kind: KeptKind.every})
 const COUNT_MAX = 40
@@ -93,7 +98,11 @@ function filesFetch({broken = [], resized = []} = {}) {
   async function fetchFile({path}) {
     requested.push(path)
 
-    if (broken.includes(path) || !filesByPath.has(path)) {
+    const isBroken = broken.includes(path)
+    const isAbsent = filesByPath.has(path) === false
+    const isFailed = isBroken || isAbsent
+
+    if (isFailed) {
       return {kind: FetchKind.failed, reason: FailureReason.fetchFailed}
     }
 
@@ -114,30 +123,55 @@ async function loaded({fromMs, stopId, kept = EVERY_ROUTE, countMax = COUNT_MAX,
   return {outcome, requested: fetches.requested}
 }
 
+function timeOf(departure) {
+  return departure.timeMs
+}
+
+function tripOf(departure) {
+  return departure.tripId
+}
+
 function timesOf(outcome) {
-  return Array.from(outcome.departures, (departure) => departure.timeMs)
+  return Array.from(outcome.departures, timeOf)
 }
 
 function tripsOf(outcome) {
-  return Array.from(outcome.departures, (departure) => departure.tripId)
+  return Array.from(outcome.departures, tripOf)
+}
+
+function isChunkPath(path) {
+  return path.includes("connections-")
+}
+
+function isNextDatePath(path) {
+  return path.includes("/tomorrow/")
+}
+
+function hourOfPath(path) {
+  return path.slice(path.lastIndexOf("-") + 1, path.lastIndexOf("."))
 }
 
 function chunkHoursOf(requested) {
-  return Array.from(requested.filter((path) => path.includes("connections-")), (path) => path.slice(path.lastIndexOf("-") + 1, path.lastIndexOf(".")))
+  const chunkPaths = requested.filter(isChunkPath)
+  return Array.from(chunkPaths, hourOfPath)
+}
+
+function serviceDateOf(entry) {
+  return entry.serviceDate
 }
 
 // Which entries a time reads: the date it falls in, with no date for a time outside the days the snapshots hold.
 function serviceDatesOf(fromMs) {
   const found = entriesFor({manifest, fromMs})
 
-  if (found.kind !== "found") {
+  if (found.kind === EntriesKind.none) {
     return found.kind
   }
 
-  return Array.from(found.entries, (entry) => entry.serviceDate)
+  return Array.from(found.entries, serviceDateOf)
 }
 
-deepStrictEqual(SERVICE_DAY_MS_MAX, 25 * 60 * 60 * 1000, "a service day spans at most 25 hours")
+deepStrictEqual(SERVICE_DAY_MS_MAX, SERVICE_DAY_MS_EXPECTED, "a service day spans at most 25 hours")
 deepStrictEqual(serviceDatesOf(todayAt("12:00")), ["2026-11-08", "2026-11-09"], "a time falls in the latest date started, and the next date follows it")
 deepStrictEqual(serviceDatesOf(tomorrowAt("00:00")), ["2026-11-09"], "the first instant of a date falls in it")
 deepStrictEqual(serviceDatesOf(tomorrowAt("12:00")), ["2026-11-09"], "the last date has no next date")
@@ -153,7 +187,8 @@ deepStrictEqual(timesOf(evening.outcome), [todayAt("08:10"), todayAt("09:10"), t
 deepStrictEqual(evening.outcome.stopName, "First", "the stop's name from the names file")
 deepStrictEqual(evening.outcome.isBounded, false, "a list under the bound is not bounded")
 deepStrictEqual(chunkHoursOf(evening.requested), ["8", "9", "23", "24"], "only the chunks from the time onward are fetched")
-deepStrictEqual(evening.requested.some((path) => path.includes("/tomorrow/")), false, "the next date is not read while the date lists departures")
+const isNextDateRead = evening.requested.some(isNextDatePath)
+deepStrictEqual(isNextDateRead, false, "the next date is not read while the date lists departures")
 
 deepStrictEqual(
   [evening.outcome.departures[0].route, evening.outcome.departures[0].color, evening.outcome.departures[0].headsign],
@@ -162,12 +197,12 @@ deepStrictEqual(
 )
 
 // The bound stops the read: later chunks are not fetched once the list is full.
-const bounded = await loaded({fromMs: todayAt("06:00"), stopId: "S1", countMax: 2})
+const bounded = await loaded({fromMs: todayAt("06:00"), stopId: "S1", countMax: BOUND_SMALL})
 deepStrictEqual(tripsOf(bounded.outcome), ["H06", "H07"], "the list holds the earliest departures to the bound")
 deepStrictEqual(bounded.outcome.isBounded, true, "a full list is bounded")
 deepStrictEqual(chunkHoursOf(bounded.requested), ["6", "7"], "no chunk past the one that fills the list is fetched")
 
-const unbounded = await loaded({fromMs: todayAt("06:00"), stopId: "S1", countMax: 5})
+const unbounded = await loaded({fromMs: todayAt("06:00"), stopId: "S1", countMax: BOUND_EXACT})
 deepStrictEqual(tripsOf(unbounded.outcome), ["H06", "H07", "H08", "H09", "NIGHT"], "a list that fills the bound exactly holds it")
 deepStrictEqual(unbounded.outcome.isBounded, true, "and is bounded")
 
@@ -207,7 +242,7 @@ deepStrictEqual([unnamed.outcome.kind, unnamed.outcome.stopName, unnamed.outcome
 
 // A table or a chunk that fails, or arrives at another size, fails the read and names its file.
 const stopsPath = today.entry.files.stops.path
-const chunkPath = today.entry.connectionChunks[2].path
+const chunkPath = today.entry.connectionChunks[HOUR_08_CHUNK_INDEX].path
 const failureCases = [
   {name: "a stops file that does not arrive", fetches: filesFetch({broken: [stopsPath]}), expected: {kind: DepartureLoadKind.failed, reason: FailureReason.fetchFailed, path: stopsPath}},
   {name: "a chunk that does not arrive", fetches: filesFetch({broken: [chunkPath]}), expected: {kind: DepartureLoadKind.failed, reason: FailureReason.fetchFailed, path: chunkPath}},

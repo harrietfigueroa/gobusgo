@@ -7,7 +7,7 @@
 
 import {unreachable} from "./assert.js"
 import {DepartureLoadKind, loadDepartures} from "./departure_files.js"
-import {departuresView} from "./departures_view.js"
+import {NO_HEADING, departuresView} from "./departures_view.js"
 import {BoardInputKind} from "./mcp_board_input.js"
 import {departuresContext, isOffered} from "./mcp_board_context.js"
 import {FromKind, arriveByText, departureRows, fromMsOf, fromText, loadStatusText, refusalText} from "./mcp_board_departures.js"
@@ -48,11 +48,13 @@ function rowsOf({loaded, fromMs, nowMs, timeZone}) {
 }
 
 function headingOf(loaded) {
-  if (loaded.kind === DepartureLoadKind.listed) {
+  const isNamed = loaded.kind === DepartureLoadKind.listed && loaded.stopName !== null
+
+  if (isNamed) {
     return loaded.stopName
   }
 
-  return null
+  return NO_HEADING
 }
 
 async function offer({host, loaded, input, fromMs, nowMs, timeZone}) {
@@ -75,7 +77,7 @@ export async function showDepartures({root, host, origin, input, isContextAccept
   const view = departuresView(root)
 
   if (input.kind === BoardInputKind.refused) {
-    view.write({heading: null, fromLine: "", status: refusalText(input.field), rows: NO_ROWS})
+    view.write({heading: NO_HEADING, fromLine: "", status: refusalText(input.field), rows: NO_ROWS})
     return
   }
 
@@ -87,18 +89,18 @@ export async function showDepartures({root, host, origin, input, isContextAccept
   const from = fromMsOf({when: input.when, nowMs, timeZone})
 
   if (from.kind === FromKind.arriveBy) {
-    view.write({heading: null, fromLine: "", status: arriveByText(), rows: NO_ROWS})
+    view.write({heading: NO_HEADING, fromLine: "", status: arriveByText(), rows: NO_ROWS})
     return
   }
 
   if (from.kind === FromKind.invalid) {
-    view.write({heading: null, fromLine: "", status: refusalText("when"), rows: NO_ROWS})
+    view.write({heading: NO_HEADING, fromLine: "", status: refusalText("when"), rows: NO_ROWS})
     return
   }
 
   const fromMs = from.ms
   const fromLine = fromText({fromMs, nowMs, timeZone})
-  view.write({heading: null, fromLine, status: LOADING_TEXT, rows: NO_ROWS})
+  view.write({heading: NO_HEADING, fromLine, status: LOADING_TEXT, rows: NO_ROWS})
   const loaded = await loadedOf({origin, input, fromMs})
 
   if (loaded.kind === DepartureLoadKind.failed) {

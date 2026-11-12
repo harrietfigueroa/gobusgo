@@ -8,12 +8,12 @@
 // sends nothing.
 //
 // A call with a `when` makes the board a list of scheduled departures from
-// that time instead (`board_departures.js`): it asks for no arrivals, lists
-// the departures on the device from the routing files, and hands them to the
-// model's context. The live board's requests all go through the host; the
-// list's go to the origin the document names in `data-file-origin`, and name
-// only a file. Every text is a text node: names come from outside the
-// application and are never parsed as HTML.
+// that time instead: it asks for no arrivals, lists the departures on the
+// device from the routing files, and hands them to the model's context. The
+// live board's requests all go through the host; the list's go to the origin
+// the document names in `data-file-origin`, and name only a file. Every text
+// is a text node: names come from outside the application and are never
+// parsed as HTML.
 
 import {startArrivalTicker} from "./arrival_ticker.js"
 import {assertCondition, unreachable} from "./assert.js"

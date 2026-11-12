@@ -54,23 +54,39 @@ const refusedWhenCases = [
 ]
 
 for (const {name, when} of refusedWhenCases) {
-  deepStrictEqual(boardInput(paramsOf({stopId: "1_1", when})), {kind: BoardInputKind.refused, field: "when"}, `the time is refused: ${name}`)
+  const read = boardInput(paramsOf({stopId: "1_1", when}))
+  deepStrictEqual(read, {kind: BoardInputKind.refused, field: "when"}, `the time is refused: ${name}`)
 }
+
+function manyRouteAt(_value, index) {
+  return `1_${index}`
+}
+
+function longRouteAt(_value, index) {
+  return "1".repeat(ROUTE_ID_LENGTH_MAX - 1) + index
+}
+
+const NOT_TEXT = 7
+const ROUTE_COUNT_EXPECTED = 10
+const ROUTE_ID_LENGTH_EXPECTED = 100
+const tooManyRoutes = Array.from({length: ROUTE_COUNT_MAX + 1}, manyRouteAt)
 
 const refusedRouteCases = [
   {name: "routes that are not a list", route: "1_100"},
-  {name: "a route that is not text", route: ["1_100", 7]},
+  {name: "a route that is not text", route: ["1_100", NOT_TEXT]},
   {name: "an empty route identifier", route: ["1_100", ""]},
-  {name: "more routes than the bound", route: Array.from({length: ROUTE_COUNT_MAX + 1}, (_value, index) => `1_${index}`)},
+  {name: "more routes than the bound", route: tooManyRoutes},
   {name: "a route identifier over the bound", route: ["1".repeat(ROUTE_ID_LENGTH_MAX + 1)]}
 ]
 
 for (const {name, route} of refusedRouteCases) {
-  deepStrictEqual(boardInput(paramsOf({stopId: "1_1", when: DEPART_AT, route})), {kind: BoardInputKind.refused, field: "route"}, `the routes are refused: ${name}`)
+  const read = boardInput(paramsOf({stopId: "1_1", when: DEPART_AT, route}))
+  deepStrictEqual(read, {kind: BoardInputKind.refused, field: "route"}, `the routes are refused: ${name}`)
 }
 
-const atBound = Array.from({length: ROUTE_COUNT_MAX}, (_value, index) => "1".repeat(ROUTE_ID_LENGTH_MAX - 1) + index)
-deepStrictEqual(boardInput(paramsOf({stopId: "1_1", when: DEPART_AT, route: atBound})), scheduled({when: DEPART_AT_READ, routeIds: atBound}), "the most routes of the longest identifiers")
-deepStrictEqual([ROUTE_COUNT_MAX, ROUTE_ID_LENGTH_MAX], [10, 100], "the bounds the tool's schema states")
+const atBound = Array.from({length: ROUTE_COUNT_MAX}, longRouteAt)
+const readAtBound = boardInput(paramsOf({stopId: "1_1", when: DEPART_AT, route: atBound}))
+deepStrictEqual(readAtBound, scheduled({when: DEPART_AT_READ, routeIds: atBound}), "the most routes of the longest identifiers")
+deepStrictEqual([ROUTE_COUNT_MAX, ROUTE_ID_LENGTH_MAX], [ROUTE_COUNT_EXPECTED, ROUTE_ID_LENGTH_EXPECTED], "the bounds the tool's schema states")
 
 console.log("mcp board input: every case passed")

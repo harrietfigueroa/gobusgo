@@ -23,15 +23,18 @@ import {DEPARTURE_COUNT_MAX} from "../../assets/js/scheduled_service.js"
 
 const TIME_ZONE = "America/Los_Angeles"
 const MINUTE_MS = 60 * 1000
-const NOW_MS = Date.UTC(2026, 10, 9, 4, 0, 0)
-const FROM_MS = Date.UTC(2026, 10, 9, 7, 0, 0)
+const SOON_OFFSET_MS = 10 * 60 * 1000
+const LAST_OFFSET_MS = 20 * 60 * 1000
+const NOT_TEXT = 7
+const NOW_MS = Date.parse("2026-11-09T04:00:00Z")
+const FROM_MS = Date.parse("2026-11-09T07:00:00Z")
 
 function departure({timeMs, route, headsign}) {
   return {timeMs, tripId: `trip-${timeMs}`, routeId: `1_${route}`, route, color: "#112233", headsign}
 }
 
-const SOON = departure({timeMs: NOW_MS + 10 * MINUTE_MS, route: "44", headsign: "Ballard"})
-const LAST = departure({timeMs: FROM_MS + 20 * MINUTE_MS, route: "44", headsign: null})
+const SOON = departure({timeMs: NOW_MS + SOON_OFFSET_MS, route: "44", headsign: "Ballard"})
+const LAST = departure({timeMs: FROM_MS + LAST_OFFSET_MS, route: "44", headsign: null})
 
 function contextOf({loaded, routeIds = []}) {
   return departuresContext({loaded, stopId: "1_100", fromMs: FROM_MS, routeIds, nowMs: NOW_MS, timeZone: TIME_ZONE})
@@ -62,7 +65,8 @@ deepStrictEqual(
 
 deepStrictEqual([DEPARTURES_SCHEMA_NAME, DEPARTURES_SCHEMA_VERSION], ["gobusgo.departures", 1], "the schema's name and version")
 deepStrictEqual(departuresProblem(context), {kind: ProblemKind.valid}, "the object passes its own check")
-deepStrictEqual(JSON.parse(JSON.stringify(context)), context, "the object is JSON")
+const serialized = JSON.stringify(context)
+deepStrictEqual(JSON.parse(serialized), context, "the object is JSON")
 
 const bounded = contextOf({loaded: {...listed, isBounded: true}})
 deepStrictEqual([bounded.isBounded, bounded.routeIds], [true, []], "a bounded list says so, and no route asked for is every route")
@@ -92,8 +96,12 @@ function offerUnknownStop() {
   return contextOf({loaded: {kind: DepartureLoadKind.unknownStop}})
 }
 
+function tooManyDepartureAt(_value, index) {
+  return departure({timeMs: FROM_MS + index * MINUTE_MS, route: "44", headsign: null})
+}
+
 function offerTooMany() {
-  const many = Array.from({length: DEPARTURE_COUNT_MAX + 1}, (_value, index) => departure({timeMs: FROM_MS + index * MINUTE_MS, route: "44", headsign: null}))
+  const many = Array.from({length: DEPARTURE_COUNT_MAX + 1}, tooManyDepartureAt)
   return contextOf({loaded: {...listed, departures: many}})
 }
 
@@ -102,6 +110,12 @@ throws(offerTooMany, AssertionError, "a list over the bound writes no object")
 
 // Each field fails by its path, and a field the version does not name passes.
 const [firstDeparture] = context.departures
+
+function firstDepartureAgain() {
+  return firstDeparture
+}
+
+const tooManyWritten = Array.from({length: DEPARTURE_COUNT_MAX + 1}, firstDepartureAgain)
 const invalidCases = [
   ["root", null],
   ["schema", {...context, schema: "gobusgo.journey"}],
@@ -114,10 +128,10 @@ const invalidCases = [
   ["from", {...context, from: "2026-11-09T07:00:00"}],
   ["listedAt", {...context, listedAt: "tonight"}],
   ["routeIds", {...context, routeIds: "1_44"}],
-  ["routeIds.0", {...context, routeIds: [7]}],
+  ["routeIds.0", {...context, routeIds: [NOT_TEXT]}],
   ["isBounded", {...context, isBounded: "no"}],
   ["departures", {...context, departures: {}}],
-  ["departures", {...context, departures: Array.from({length: DEPARTURE_COUNT_MAX + 1}, () => firstDeparture)}],
+  ["departures", {...context, departures: tooManyWritten}],
   ["departures.0", {...context, departures: [null]}],
   ["departures.0.departsAt", {...context, departures: [{...firstDeparture, departsAt: "10 pm"}]}],
   ["departures.0.route", {...context, departures: [{...firstDeparture, route: "44"}]}],
