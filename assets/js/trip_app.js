@@ -23,7 +23,7 @@ import {InputKind, StartKind, searchWords, toolInputArguments, toolResultArgumen
 import {chosenMessage, journeyContext, journeysContext} from "./mcp_trip_journey"
 import {PlanKind, planTrip} from "./mcp_trip_plan"
 import {unmatchedContext} from "./mcp_trip_unmatched"
-import {SEARCH_CENTER_DEFAULT} from "./where_to"
+import {PositionKind, SEARCH_CENTER_DEFAULT, searchPoints} from "./where_to"
 import {createSearchFiles} from "./where_to_files"
 import {EndKind, LOCATION_END, QueryKind, StateKind, TimeMode, TripEnd, journeyRows, journeysAnnouncement, queryOf, stateMessage} from "./trip_plan"
 
@@ -32,6 +32,7 @@ const ROUTING_MANIFEST_PATH = "/api/routing/manifest"
 const LOCATION_TIMEOUT_MS = 10 * 1000
 const LOCATION_AGE_MS_MAX = 60 * 1000
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
+const OTHER_END = Object.freeze({[TripEnd.from]: TripEnd.to, [TripEnd.to]: TripEnd.from})
 const LOCATION_TEXT = "My location"
 const ASKING_TEXT = "Where are you? Type a street, a stop, or a place"
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
@@ -270,12 +271,16 @@ export function startTripApp({root, origin, host}) {
     offer: {kind: OfferKind.none},
   }
 
-  function searchNear() {
-    if (app.position !== null) {
-      return app.position
+  // The points the search of `end` takes: it ranks near the trip's other end once that end is resolved, and a distance shows only from the rider's position.
+  function searchPointsOf(end) {
+    const otherState = app.ends[OTHER_END[end]]
+    let anchor = {kind: PositionKind.unknown}
+
+    if (otherState.kind === EndStateKind.resolved) {
+      anchor = files.endPosition({end: otherState.end, rider: app.position})
     }
 
-    return SEARCH_CENTER_DEFAULT
+    return searchPoints({anchor, rider: app.position, fallback: SEARCH_CENTER_DEFAULT})
   }
 
   function setEnd({end, state}) {
@@ -288,7 +293,8 @@ export function startTripApp({root, origin, host}) {
     setEnd({end, state: {kind: EndStateKind.loading, isEditing: false, text}})
     files.warm({routingManifestUrl: ROUTING_MANIFEST_PATH})
     await Promise.allSettled(files.pendingLoads())
-    const found = await files.search({text, near: searchNear()})
+    const {near, rider} = searchPointsOf(end)
+    const found = await files.search({text, near, rider})
     const first = resolution({text, end, found})
     let decided = first
 
@@ -297,7 +303,7 @@ export function startTripApp({root, origin, host}) {
       const next = fallbackWords({first, text, words: searchWords(text)})
 
       if (next.kind === FallbackKind.search) {
-        const foundStripped = await files.search({text: next.words, near: searchNear()})
+        const foundStripped = await files.search({text: next.words, near, rider})
         decided = resolution({text: next.words, end, found: foundStripped})
       }
     }
@@ -495,14 +501,14 @@ export function startTripApp({root, origin, host}) {
     await offerUnmatched()
   }
 
-  function startFrom(from) {
+  async function startFrom(from) {
     switch (from.kind) {
       case StartKind.words:
-        resolveEnd({end: TripEnd.from, text: from.text, isAutomatic: true})
+        await resolveEnd({end: TripEnd.from, text: from.text, isAutomatic: true})
         break
       case StartKind.position:
         if (app.isLocationOffered) {
-          locate({isAutomatic: true})
+          await locate({isAutomatic: true})
         } else {
           setEnd({end: TripEnd.from, state: ASKING})
         }
@@ -511,6 +517,12 @@ export function startTripApp({root, origin, host}) {
       default:
         unreachable(from.kind, "trip app: a start of unknown kind")
     }
+  }
+
+  // The destination is resolved once the start has settled, resolved or not, so its search ranks near a resolved start.
+  async function startEnds(input) {
+    await startFrom(input.from)
+    await resolveEnd({end: TripEnd.to, text: input.to, isAutomatic: true})
   }
 
   // The journeys the plan found, as the Trip tab's rows, or none.
@@ -599,7 +611,7 @@ export function startTripApp({root, origin, host}) {
   }
 
   return Object.freeze({
-    // Starts the trip `input` asks for: the ends are resolved at once.
+    // Starts the trip `input` asks for: the start is resolved first, then the destination.
     start(input) {
       app.input = input
       app.planCount += 1
@@ -608,8 +620,7 @@ export function startTripApp({root, origin, host}) {
       app.isUnmatchedPending = true
       app.offer = {kind: OfferKind.none}
       render()
-      startFrom(input.from)
-      resolveEnd({end: TripEnd.to, text: input.to, isAutomatic: true})
+      startEnds(input)
     },
 
     // Offers the rider's location as a start, once the host has said it grants it.

@@ -15,14 +15,20 @@ import {
   GROUP_COUNT_MAX,
   GroupKind,
   OptionMove,
+  DistanceKind,
+  PositionKind,
+  SEARCH_CENTER_DEFAULT,
   ShardCacheKind,
   SuggestionKind,
   buildStopIndex,
   createShardCache,
   distanceText,
+  endPosition,
   movedOptionIndex,
   placeDetail,
+  placeDetailAt,
   recentMatches,
+  searchPoints,
   searchStops,
   streetLabelText,
   suggestionList,
@@ -333,13 +339,67 @@ for (const {meters, text} of DISTANCE_CASES) {
 
 // A place's detail line is its category, then its locality, then its distance, and drops the locality when the place has none.
 const PLACE_DETAIL_CASES = [
-  {name: "with a locality", given: {categoryName: "shop", locality: "Denny Triangle, Seattle", distanceMeters: 300}, expected: "Shop · Denny Triangle, Seattle · 300 m"},
-  {name: "with a street address", given: {categoryName: "food", locality: "400 Pine Street", distanceMeters: 1_500}, expected: "Food · 400 Pine Street · 1.5 km"},
-  {name: "with no locality", given: {categoryName: "tourism", locality: "", distanceMeters: 300}, expected: "Tourism · 300 m"}
+  {name: "with a locality", given: {categoryName: "shop", locality: "Denny Triangle, Seattle", distance: {kind: DistanceKind.known, meters: 300}}, expected: "Shop · Denny Triangle, Seattle · 300 m"},
+  {name: "with a street address", given: {categoryName: "food", locality: "400 Pine Street", distance: {kind: DistanceKind.known, meters: 1_500}}, expected: "Food · 400 Pine Street · 1.5 km"},
+  {name: "with no locality", given: {categoryName: "tourism", locality: "", distance: {kind: DistanceKind.known, meters: 300}}, expected: "Tourism · 300 m"},
+  {name: "with an unknown distance", given: {categoryName: "shop", locality: "Seattle", distance: {kind: DistanceKind.unknown}}, expected: "Shop · Seattle"}
 ]
 
 for (const {name, given, expected} of PLACE_DETAIL_CASES) {
   deepStrictEqual(placeDetail(given), expected, `place detail: ${name}`)
+}
+
+// A place's detail line shows a distance only from a known rider position, and measures it from that position.
+const RIDER = {lat: 47.6097, lon: -122.3331}
+const BALLARD = {lat: 47.6686, lon: -122.3846}
+const PLACE_DETAIL_AT_CASES = [
+  {name: "no rider position, so no distance", given: {categoryName: "shop", locality: "Seattle", rider: null, ...BALLARD}, expected: "Shop · Seattle"},
+  {name: "no rider position and no locality", given: {categoryName: "shop", locality: "", rider: null, ...BALLARD}, expected: "Shop"},
+  {name: "a rider position at the place", given: {categoryName: "shop", locality: "Seattle", rider: RIDER, ...RIDER}, expected: "Shop · Seattle · 0 m"},
+  {name: "a rider position far from the place", given: {categoryName: "shop", locality: "Seattle", rider: RIDER, ...BALLARD}, expected: "Shop · Seattle · 7.6 km"},
+]
+
+for (const {name, given, expected} of PLACE_DETAIL_AT_CASES) {
+  deepStrictEqual(placeDetailAt(given), expected, `place detail at: ${name}`)
+}
+
+// A search ranks near the other end once it is resolved, else near the rider, else near the fallback; the rider alone is where a distance is measured from.
+const FALLBACK = SEARCH_CENTER_DEFAULT
+const NO_ANCHOR = {kind: PositionKind.unknown}
+const BALLARD_ANCHOR = {kind: PositionKind.known, ...BALLARD}
+const SEARCH_POINTS_CASES = [
+  {name: "no rider and no end", given: {anchor: NO_ANCHOR, rider: null, fallback: FALLBACK}, expected: {near: FALLBACK, rider: null}},
+  {name: "no rider and a resolved end", given: {anchor: BALLARD_ANCHOR, rider: null, fallback: FALLBACK}, expected: {near: BALLARD, rider: null}},
+  {name: "a rider and no end", given: {anchor: NO_ANCHOR, rider: RIDER, fallback: FALLBACK}, expected: {near: RIDER, rider: RIDER}},
+  {name: "a rider and a resolved end", given: {anchor: BALLARD_ANCHOR, rider: RIDER, fallback: FALLBACK}, expected: {near: BALLARD, rider: RIDER}},
+]
+
+for (const {name, given, expected} of SEARCH_POINTS_CASES) {
+  deepStrictEqual(searchPoints(given), expected, `search points: ${name}`)
+}
+
+// The position of a resolved end: a point's own, the rider's for the location, a stop's from the stop index, and none otherwise.
+function knownAt(position) {
+  return {kind: PositionKind.known, lat: position.lat, lon: position.lon}
+}
+
+{
+  const pikeStop = stopEnd({stopId: "1_575", name: "3rd Ave & Pike St"})
+  const stopIndex = buildStopIndex({
+    stopIds: ["1_575"],
+    names: ["3rd Ave & Pike St"],
+    codes: ["575"],
+    latMicrodegrees: Int32Array.of(Math.round(NEAR.lat * MICRODEGREES)),
+    lonMicrodegrees: Int32Array.of(Math.round(NEAR.lon * MICRODEGREES)),
+  })
+  const ballardPoint = pointEnd({name: "Ballard", lat: BALLARD.lat, lon: BALLARD.lon})
+  deepStrictEqual(endPosition({end: ballardPoint, rider: null, stopIndex}), knownAt(BALLARD))
+  deepStrictEqual(endPosition({end: LOCATION_END, rider: RIDER, stopIndex}), knownAt(RIDER))
+  deepStrictEqual(endPosition({end: LOCATION_END, rider: null, stopIndex}), NO_ANCHOR)
+  deepStrictEqual(endPosition({end: pikeStop, rider: null, stopIndex}), knownAt(NEAR))
+  deepStrictEqual(endPosition({end: stopEnd({stopId: "9_9", name: "Elsewhere"}), rider: null, stopIndex}), NO_ANCHOR)
+  deepStrictEqual(endPosition({end: pikeStop, rider: null, stopIndex: null}), NO_ANCHOR)
+  deepStrictEqual(endPosition({end: {kind: EndKind.none}, rider: RIDER, stopIndex}), NO_ANCHOR)
 }
 
 // A point end keeps its kind, and one off the globe is refused.

@@ -133,17 +133,107 @@ export function distanceText(meters) {
   return `${Math.round(kilometers)} km`
 }
 
-/** The detail line of a place: its category, its locality when it has one, and its distance from the search's center. */
-export function placeDetail({categoryName, locality, distanceMeters: meters}) {
-  assertCondition(typeof locality === "string", "where to: a place's locality must be text")
-  const category = categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
-  const distance = distanceText(meters)
+/** The kinds of a place's distance from the rider: known where the rider's position is. */
+export const DistanceKind = Object.freeze({known: "known", unknown: "unknown"})
 
-  if (locality === "") {
-    return `${category} · ${distance}`
+/** The kinds of a position a search may or may not know. */
+export const PositionKind = Object.freeze({known: "known", unknown: "unknown"})
+
+const POSITION_UNKNOWN = Object.freeze({kind: PositionKind.unknown})
+
+function stopPosition({index, stopId}) {
+  const stop = index.stopIds.indexOf(stopId)
+
+  if (stop === NONE_INDEX) {
+    return POSITION_UNKNOWN
   }
 
-  return `${category} · ${locality} · ${distance}`
+  return {kind: PositionKind.known, lat: index.latMicrodegrees[stop] / MICRODEGREES_PER_DEGREE, lon: index.lonMicrodegrees[stop] / MICRODEGREES_PER_DEGREE}
+}
+
+/**
+ * The position of the resolved end `end`, a PositionKind member: `known`
+ * with `lat` and `lon` in degrees for a point, for the rider's location
+ * when `rider`, `{lat, lon}`, or null where the rider's position is
+ * unknown, gives one, and for a stop `stopIndex`, from `buildStopIndex`
+ * or null where the stops are not loaded, holds; otherwise `unknown`.
+ */
+export function endPosition({end, rider, stopIndex}) {
+  switch (end.kind) {
+    case EndKind.point:
+      return {kind: PositionKind.known, lat: end.lat, lon: end.lon}
+    case EndKind.location:
+      if (rider === null) {
+        return POSITION_UNKNOWN
+      }
+
+      return {kind: PositionKind.known, lat: rider.lat, lon: rider.lon}
+    case EndKind.stop:
+      if (stopIndex === null) {
+        return POSITION_UNKNOWN
+      }
+
+      return stopPosition({index: stopIndex, stopId: end.stopId})
+    case EndKind.none:
+      return POSITION_UNKNOWN
+    default:
+      return unreachable(end.kind, "where to: an end of unknown kind")
+  }
+}
+
+/**
+ * The two points a search takes, `{near, rider}`: `near`, the point its
+ * results rank by, is the position of the trip's other end `anchor`, an
+ * `endPosition` result, when known, else the rider's position `rider`,
+ * `{lat, lon}` or null where it is unknown, else `fallback`; `rider` is the
+ * only point a distance is measured from, and null leaves every result
+ * with no distance.
+ */
+export function searchPoints({anchor, rider, fallback}) {
+  if (anchor.kind === PositionKind.known) {
+    return {near: {lat: anchor.lat, lon: anchor.lon}, rider}
+  }
+
+  if (rider === null) {
+    return {near: fallback, rider}
+  }
+
+  return {near: rider, rider}
+}
+
+/**
+ * The detail line of the place at `lat`, `lon`: its category, its locality
+ * when it has one, and its distance from `rider`, `{lat, lon}`, left out
+ * where `rider` is null because the rider's position is unknown.
+ */
+export function placeDetailAt({categoryName, locality, rider, lat, lon}) {
+  if (rider === null) {
+    return placeDetail({categoryName, locality, distance: {kind: DistanceKind.unknown}})
+  }
+
+  const meters = distanceMeters([rider.lon, rider.lat], [lon, lat])
+  return placeDetail({categoryName, locality, distance: {kind: DistanceKind.known, meters}})
+}
+
+/**
+ * The detail line of a place: its category, its locality when it has one,
+ * and its `distance`, a DistanceKind member that is `known` with `meters`
+ * from the rider or `unknown`, which leaves the distance out.
+ */
+export function placeDetail({categoryName, locality, distance}) {
+  assertCondition(typeof locality === "string", "where to: a place's locality must be text")
+  const category = categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
+  const parts = [category]
+
+  if (locality !== "") {
+    parts.push(locality)
+  }
+
+  if (distance.kind === DistanceKind.known) {
+    parts.push(distanceText(distance.meters))
+  }
+
+  return parts.join(" · ")
 }
 
 /** The name an end reads as in a recent trip. */
