@@ -45,6 +45,40 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTripTest do
       assert tool["inputSchema"]["required"] == ["to"]
     end
 
+    # The model reads the description to decide what to pass for each end, so each rule is pinned by a phrase that names it.
+    for {rule, phrase} <- [
+          {"resolve references from the conversation", "earlier in the conversation"},
+          {"drop filler", "drop filler"},
+          {"add no city, state, or ZIP", "Never add a city, a state, a ZIP code"},
+          {"ask before calling when an end is missing or a kind of place",
+           "ask the rider in the chat"}
+        ] do
+      test "the tool description says to #{rule}" do
+        %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
+
+        assert tool["description"] =~ unquote(phrase)
+      end
+
+      test "the destination's description says to #{rule}" do
+        %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
+
+        assert tool["inputSchema"]["properties"]["to"]["description"] =~ unquote(phrase)
+      end
+
+      test "the start's description says to #{rule}" do
+        %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
+
+        assert tool["inputSchema"]["properties"]["from"]["description"] =~ unquote(phrase)
+      end
+    end
+
+    test "the tool description keeps the sentences about here and the journeys offered" do
+      %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
+
+      assert tool["description"] =~ ~s(says only "here")
+      assert tool["description"] =~ "the journeys it found reach the model as context"
+    end
+
     test "links a resource the server lists" do
       %{body: %{"result" => %{"tools" => [tool]}}} = respond(rpc("tools/list", %{}))
       %{body: %{"result" => %{"resources" => resources}}} = respond(rpc("resources/list", %{}))

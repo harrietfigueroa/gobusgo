@@ -8,7 +8,7 @@
 // that differs.
 
 import {deepStrictEqual} from "node:assert/strict"
-import {END_TEXT_LENGTH_MAX, InputKind, StartKind, toolInputArguments, toolResultArguments, tripInput} from "../../assets/js/mcp_trip_input.js"
+import {END_TEXT_LENGTH_MAX, InputKind, REGION_PARTS_MAX, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "../../assets/js/mcp_trip_input.js"
 import {DayChoice, TimeMode} from "../../assets/js/trip_plan.js"
 
 const NOW = {mode: TimeMode.now, day: DayChoice.today, clockText: ""}
@@ -75,4 +75,44 @@ deepStrictEqual(toolResultArguments("text"), {}, "tool result with params of ano
 const noArguments = toolInputArguments(undefined)
 deepStrictEqual(tripInput(noArguments), refused("to"), "no params refuse to")
 
-console.log(`mcp_trip_input_check: ${cases.length} cases passed`)
+// The words the search takes drop a trailing region after a comma, a trailing
+// ZIP, and a leading "the", and keep every name that holds a region word.
+const searchCases = [
+  {name: "a trailing city", text: "Space Needle, Seattle", expected: "Space Needle"},
+  {name: "a trailing state abbreviation", text: "Space Needle, WA", expected: "Space Needle"},
+  {name: "a trailing state name", text: "Space Needle, Washington", expected: "Space Needle"},
+  {name: "a city and a state", text: "Space Needle, Seattle, WA", expected: "Space Needle"},
+  {name: "a city, a state, and a ZIP", text: "Space Needle, Seattle, WA 98101", expected: "Space Needle"},
+  {name: "a city, a state, and a ZIP plus four", text: "Space Needle, Seattle, WA 98109-4601", expected: "Space Needle"},
+  {name: "a ZIP in its own part", text: "Space Needle, Seattle, 98109", expected: "Space Needle"},
+  {name: "a trailing ZIP with no comma", text: "400 Broad St 98109", expected: "400 Broad St"},
+  {name: "a trailing ZIP plus four with no comma", text: "400 Broad St 98109-4601", expected: "400 Broad St"},
+  {name: "a street address with its region", text: "400 Broad St, Seattle, WA 98109", expected: "400 Broad St"},
+  {name: "an intersection with its city", text: "Pine and 3rd, Seattle", expected: "Pine and 3rd"},
+  {name: "spaces around the commas", text: "  Space Needle ,  Seattle ,WA  ", expected: "Space Needle"},
+  {name: "only the last parts up to the bound", text: "A, B, C, D, E", expected: "A, B"},
+  {name: "a leading the", text: "the Space Needle", expected: "Space Needle"},
+  {name: "a leading The in capitals", text: "The Ballard Locks, Seattle, WA", expected: "Ballard Locks"},
+  {name: "a name ending in Washington", text: "University of Washington", expected: "University of Washington"},
+  {name: "a name ending in Seattle", text: "Russian Community Center of Seattle", expected: "Russian Community Center of Seattle"},
+  {name: "a name ending in Seattle after a dash", text: "VA Medical Center - Seattle", expected: "VA Medical Center - Seattle"},
+  {name: "a name beginning with Seattle", text: "Seattle Center", expected: "Seattle Center"},
+  {name: "a neighborhood named for the city", text: "West Seattle", expected: "West Seattle"},
+  {name: "a city alone", text: "Seattle", expected: "Seattle"},
+  {name: "a name with its own city after a comma", text: "University of Washington, Seattle", expected: "University of Washington"},
+  {name: "a leading city before a comma is the name", text: "Seattle, WA", expected: "Seattle"},
+  {name: "a ZIP alone keeps its words", text: "98101", expected: "98101"},
+  {name: "a ZIP after a comma alone keeps its words", text: ", 98101", expected: ", 98101"},
+  {name: "the alone keeps its words", text: "the", expected: "the"},
+  {name: "a word that only begins with the", text: "Theater District", expected: "Theater District"},
+  {name: "text with nothing to strip", text: "Pine and 3rd", expected: "Pine and 3rd"},
+  {name: "a four-digit number is no ZIP", text: "Highway 9999", expected: "Highway 9999"},
+]
+
+for (const {name, text, expected} of searchCases) {
+  deepStrictEqual(searchWords(text), expected, name)
+}
+
+deepStrictEqual(REGION_PARTS_MAX, 3, "a city, a state, and a ZIP")
+
+console.log(`mcp_trip_input_check: ${cases.length + searchCases.length} cases passed`)
