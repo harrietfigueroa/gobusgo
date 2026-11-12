@@ -90,6 +90,8 @@ Reports go to the table of the UTC date they are observed on. When that date is 
 
 The aggregate (`Gobusgo.Pace.Aggregate`) is stored through `Gobusgo.Writer` at `paces/daily/dt=<UTC date>/<node>-<fileId>.json.gz`, the node's name escaped as the agency segment of a vehicle response is and `fileId` a UUID version 7 per file, so two nodes, and two runs of one node, never write one destination. The content is canonical JSON, compressed, of `meta` and `cells`. `cells` maps `"<longitude cell>,<latitude cell>,<direction>"` to `[seconds, meters]` rounded to 3 decimals. `meta` holds `formatVersion` (1), `date`, `node`, `fileId`, `writtenAt`, `stepMeters`, `cellDegrees` (`lon`, `lat`), `directionCount`, `cellCount`, `metersTotal`, and `droppedCellCount`. A reader sums the cells of the files of one date, or of several, into one table.
 
+Parity with the research learner was checked on 2026-11-12: `Gobusgo.Pace.Learning` over King County Metro's whole 2026-11-11, the reports and trip paths of the research cut, gave the same 86,294 cells as the research learner's table, the same seconds and meters in total, and per cell a relative difference of at most 7e-9, which is float rounding from the order of summation; no cell is on one side only.
+
 The bucket's lifecycle rule for `paces/daily/` holds S3 retention at 30 days, matching `Gobusgo.RetentionPolicy`, as the rest of the datasets' rules do (the open decision in the root file).
 
 ## Filter contract
