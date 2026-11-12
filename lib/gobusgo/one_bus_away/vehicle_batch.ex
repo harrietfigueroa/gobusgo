@@ -54,6 +54,9 @@ defmodule Gobusgo.OneBusAway.VehicleBatch do
     * `:publish_options`: options for `Gobusgo.Publisher.publish/2`.
     * `:view`: the vehicle view that names the expired vehicles. Defaults to
       `Gobusgo.OneBusAway.VehicleView`.
+    * `:pace`: the `Gobusgo.Pace` process that learns from the vehicles'
+      reports once the fetch is published. Defaults to `Gobusgo.Pace`; a
+      process that is not running ignores the reports.
   """
 
   require Logger
@@ -64,6 +67,7 @@ defmodule Gobusgo.OneBusAway.VehicleBatch do
   alias Gobusgo.OneBusAway.VehicleBatch.Records
   alias Gobusgo.OneBusAway.VehicleBatch.SituationRecords
   alias Gobusgo.OneBusAway.VehicleView
+  alias Gobusgo.Pace
   alias Gobusgo.Publisher
   alias Gobusgo.Reader
   alias Gobusgo.RequestId
@@ -85,7 +89,14 @@ defmodule Gobusgo.OneBusAway.VehicleBatch do
   """
   @spec process(String.t(), Keyword.t()) :: {:ok, result()} | {:error, BatchFailure.t()}
   def process(destination, options) when is_binary(destination) and is_list(options) do
-    options = Keyword.validate!(options, read_options: [], publish_options: [], view: VehicleView)
+    options =
+      Keyword.validate!(options,
+        read_options: [],
+        publish_options: [],
+        view: VehicleView,
+        pace: Pace
+      )
+
     publish_options = Keyword.fetch!(options, :publish_options)
     view = Keyword.fetch!(options, :view)
     Assert.condition(is_atom(view), "view must be an atom, got: #{inspect(view)}")
@@ -99,6 +110,8 @@ defmodule Gobusgo.OneBusAway.VehicleBatch do
            :ok <- publish(:publish_tombstones, tombstones, publish_options),
            situations = SituationRecords.build(fetch),
            :ok <- publish(:publish_manifest, [manifest, situations], publish_options) do
+        :ok = Pace.observe(Keyword.fetch!(options, :pace), fetch)
+
         {:ok,
          %{
            destination: destination,
