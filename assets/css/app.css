@@ -40,6 +40,7 @@
   --panel-sheet-expanded-height: 60dvh;
   --panel-sheet-handle-height: 28px;
   --panel-sheet-tab-height: 52px;
+  --panel-sheet-tabs-lift: 10px;
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
   --connection-signal-age-color: #334155;
@@ -1930,6 +1931,12 @@ a.inline-target {
   .panel-sheet {
     bottom: var(--keyboard-inset-bottom, 0px);
     max-height: calc(100dvh - var(--keyboard-inset-bottom, 0px));
+  }
+
+  /* The tab row stands the lift above the bottom edge, past the safe area,
+     so the icons clear the home indicator and the thumb's reach. */
+  .panel-sheet {
+    padding-bottom: calc(env(safe-area-inset-bottom) + var(--panel-sheet-tabs-lift));
   }
 
   .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
