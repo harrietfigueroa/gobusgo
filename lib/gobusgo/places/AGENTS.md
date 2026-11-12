@@ -8,9 +8,10 @@ The places file is one published file of the names a rider searches for, such as
 - `selection.ex` reads the records of an `osmium export` into candidates, with the counts of what became of each record. Pure.
 - `words.ex` is the normalization a name is compared by, the same as the browser search's. Pure.
 - `merge.ex` merges the candidates that name one place twice and orders what is left. Pure.
+- `locality.ex` gives each merged place its locality from its address or the nearest settlement. Pure.
 - `bounds.ex` parses `--bounds` and takes the union of the basemap manifest's archive bounds. Pure.
 - `extractor.ex` runs `osmium` through `Gobusgo.Command` and splits the export into records. `plan/1` is the step arguments, pure.
-- `build.ex` runs the extractor, selection, and merge, and removes the files it wrote.
+- `build.ex` runs the extractor, selection, merge, and locality assignment, and removes the files it wrote.
 - `records.ex` is the row of a place and the JSON that shows the rows. Pure.
 - `format.ex` is the kind's encoder and decoder on `Gobusgo.Packed`, and implements `Gobusgo.Packed.Kind`. Pure.
 - `license.ex` holds the texts of the file's license, its notice, and the manifest's `license` object. Pure.
@@ -34,9 +35,22 @@ Two candidates of one normalized name (`words.ex`) are one place when they stand
 
 Candidates are taken in descending prominence plus area score, ties broken by name and then position, so the order does not depend on the input. The first of a group is kept, and it gains the aliases of the others. A park of prominence 135 and an area score of 20 therefore outlives a station of 140 with none. The places are then ordered by category, then name, which groups like text for compression.
 
+## Locality
+
+A place's locality is the text that tells two places of one name apart, shown in the "Where to?" suggestions between the category and the distance (GOB-404). `locality.ex` assigns it after the merge, so it is a property of the kept place:
+
+- **A street address wins.** A feature tagged both `addr:housenumber` and `addr:street` has the locality "400 Broad Street", the two joined by a space, cleaned as a name is. A feature with one of them has no address.
+- **Otherwise the nearest settlement names it.** The settlements are the features of category `place` tagged `place=neighbourhood`, `suburb`, `quarter`, `town`, or `city`, taken before the merge so a merge that keeps another feature of the same name loses none; a point or the centroid of an area. The nearest within 3,000 m (`@nearest_radius_m_max`), nearest first and then by name, names the place. A neighborhood, suburb, or quarter is followed by the nearest town or city within 20,000 m (`@city_radius_m_max`) when that city's name differs, as "Denny Triangle, Seattle"; a town or city stands alone.
+- **A settlement never names itself.** A settlement skips an anchor of its own name, and a town or city has no locality, since the nearest other city is a neighbor.
+- **Only the house number and street are read from `addr:*`.** `addr:city` and `addr:suburb` are tagged on a minority of features, so a city read from them would name some places and leave their neighbors bare; the settlements give every place a neighborhood and a city by one rule.
+- **Bounded.** A locality is at most 80 characters (`Gobusgo.Places.Locality.length_max/0`, `LOCALITY_LENGTH_MAX` in `place_file.js`), cut at the build, refused by the encoder past it, and refused by both readers past it. A place with none has the empty string.
+- **The search never matches on it.** The locality is shown, never indexed or ranked.
+
+A cell grid over the settlements, 0.05 degrees for the nearest and 0.3 for the cities, keeps the assignment to the cells around a place. The inputs are the build's own: the settlements are features the places build already selects, so the file adds no data source, and the locality is OpenStreetMap data under the same ODbL.
+
 ## The kind
 
-Kind 5, prefix `places`, version 1, one record per place, 8 sections after the string table:
+Kind 5, prefix `places`, version 2, one record per place, 9 sections after the string table:
 
 1. names, a `u32` column of string indexes;
 2. alias counts, a `u8` column, at most 255 a place, which the writer asserts;
@@ -45,17 +59,20 @@ Kind 5, prefix `places`, version 1, one record per place, 8 sections after the s
 5. categories, a `u8` column of indexes into the category names;
 6. prominences, a `u8` column;
 7. areas, a `u8` column;
-8. labels, a `u32` column of string indexes: the source date first, then the category names in index order.
+8. labels, a `u32` column of string indexes: the source date first, then the category names in index order;
+9. localities, a `u32` column of string indexes, the empty string for a place with none.
 
-The string table interns the names, then the aliases, then the labels, in order of first use, so a name two places share is stored once. `place_file.js` decodes a file into `{placeCount, names, aliasStarts, aliasNames, latitudeMicrodegrees, longitudeMicrodegrees, categories, prominences, areas, categoryNames, sourceDate}`: `names`, `aliasNames`, and `categoryNames` are arrays of strings, decoded eagerly, `aliasStarts` is a `Uint32Array` of `placeCount + 1` starts into `aliasNames`, and the rest are typed arrays. The decode of the real file measured 31 ms at 1x and 139 ms at 4x CPU throttle with eager strings, inside the prototype's 28 ms and 131 to 166 ms, so the reader keeps them eager.
+Version 1 holds the first 8 sections and no localities. `Gobusgo.Places.Format.decode/1` and `place_file.js` read both versions, and every place of a version 1 file has the empty locality, so a published version 1 file keeps working until the version 2 file is published. A reader of version 1 as it was before this version refuses a version 2 file as a value, the container's `unsupported_version`. The encoder writes version 2 only.
 
-A reader refuses another version, another section count, alias counts that do not sum to the alias column, a category index past the categories, a name or alias index past the string table, a place with an unknown position, and labels that hold no category, each as a value (`PlaceFileRefusal` and the container's own reasons). A file expands to at most `Gobusgo.Places.Format.expanded_bytes_max/0`, 8 MiB, which `PLACE_FILE_EXPANDED_BYTES_MAX` repeats in JavaScript; the real file is 2.4 MB.
+The string table interns the names, then the aliases, then the localities, then the labels, in order of first use, so a name two places share is stored once. `place_file.js` decodes a file into `{placeCount, names, aliasStarts, aliasNames, latitudeMicrodegrees, longitudeMicrodegrees, categories, prominences, areas, localities, categoryNames, sourceDate}`: `names`, `aliasNames`, `localities`, and `categoryNames` are arrays of strings, decoded eagerly, `aliasStarts` is a `Uint32Array` of `placeCount + 1` starts into `aliasNames`, and the rest are typed arrays. The decode of the real file measured 31 ms at 1x and 139 ms at 4x CPU throttle with eager strings, inside the prototype's 28 ms and 131 to 166 ms, so the reader keeps them eager.
+
+A reader refuses a version it does not read, another section count for the file's version, a locality index past the string table, a locality past 80 characters (`bad_locality`, `badLocality`), alias counts that do not sum to the alias column, a category index past the categories, a name or alias index past the string table, a place with an unknown position, and labels that hold no category, each as a value (`PlaceFileRefusal` and the container's own reasons). A file expands to at most `Gobusgo.Places.Format.expanded_bytes_max/0`, 8 MiB, which `PLACE_FILE_EXPANDED_BYTES_MAX` repeats in JavaScript; the real file is 3.6 MB.
 
 `mix gobusgo.packed.decode <file> --kind-module Gobusgo.Places.Format` prints a file as JSON.
 
 ## Fixtures
 
-`test/fixtures/places/v1/` holds `places.bin`, `places.bin.gz`, and `expected.json`, five hand-written places of `Gobusgo.Test.PlaceFixture` with ASCII and multibyte names, two places of one name, an alias list, no aliases, prominence and area at their caps, a negative longitude, and the origin. `test/scripts/place_fixtures.exs` writes them: `MIX_ENV=test mix run --no-start test/scripts/place_fixtures.exs`. ExUnit compares `places.bin` to the encoder's output byte for byte and `places.bin.gz` by its content. A change to the kind's columns raises its version and writes `v2/` beside `v1/`. `test/fixtures/places/normalized_words.json` is the shared cases of the name normalization, which the browser search's tests use too.
+`test/fixtures/places/v2/` holds `places.bin`, `places.bin.gz`, `expected.json`, and `locality_over_bound.bin`, five hand-written places of `Gobusgo.Test.PlaceFixture` with ASCII and multibyte names, two places of one name, an alias list, no aliases, prominence and area at their caps, a negative longitude, the origin, a street address, a neighborhood with its city, and places with no locality; `locality_over_bound.bin` is the same file with a locality one character past the bound, which both readers refuse. `test/fixtures/places/v1/` keeps the version 1 files as a published file of that version, which both readers still decode. `test/scripts/place_fixtures.exs` writes the version 2 files: `MIX_ENV=test mix run --no-start test/scripts/place_fixtures.exs`. ExUnit compares `places.bin` to the encoder's output byte for byte and `places.bin.gz` by its content. A change to the kind's columns raises its version and writes a new directory beside the older ones. `test/fixtures/places/normalized_words.json` is the shared cases of the name normalization, which the browser search's tests use too.
 
 ## Publication
 
@@ -112,3 +129,10 @@ On 2026-11-10 on a development machine, from Geofabrik's Washington extract of 2
 - The file is 2,437,932 bytes expanded and 1,092,528 bytes gzipped, against the prototype's 2.6 MB and 1.06 MB.
 - Steps: extract 5.7 to 8.4 s, `tags-filter` by name 2.1 to 2.3 s, by category 0.8 to 1.3 s, export 0.8 to 1.0 s, selection and merge 2.5 to 2.7 s. Peak resident memory of osmium: 3.08 GB for the extract (peak footprint 4.18 GB), 2.37 GB for each `tags-filter`, 95 MB for the export; the BEAM peaked at 270 MB.
 - Headless Chrome against `mix phx.server`, nine runs each, medians: fetch 1.9 ms and expand 7.2 ms, decode 31 ms at 1x; fetch 5.0 ms, expand 29.5 ms, decode 139 ms at 4x CPU throttle. The JavaScript heap after a collection held 2.0 MB with the table and 0.6 MB without it.
+
+On 2026-11-11 (GOB-404) the same extract, source date and bounds built version 2 with localities, into a scratch directory on a development machine, nothing published:
+
+- The 75,757 places are the same. 41,797 have a street address as their locality, 20,548 a neighborhood with its city, 8,807 a settlement alone, and 4,605 none; 34,913 distinct localities, the longest at the 80-character bound.
+- The file is 3,604,843 bytes expanded and 1,500,624 bytes gzipped, against version 1's 2,437,932 and 1,092,528: 1.17 MB and 408 KB more, inside the 8 MiB expansion bound.
+- The steps took extract 3.6 s, `tags-filter` by name 1.1 s, by category 0.5 s, export 0.5 s, and selection and merge 2.3 s. The locality assignment runs after them and is not in those figures; the task finished in the same run with no step near its 10-minute deadline.
+- `decodePlaceFile` in Node 24 took a median of 34.7 ms over nine runs on the expanded file. The headless Chrome figures above are version 1's and are not measured again for version 2.

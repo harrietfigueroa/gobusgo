@@ -1,7 +1,8 @@
 defmodule Gobusgo.Places.FormatTest do
   # Checks the places kind against the shared fixture under
-  # test/fixtures/places/v1/, which the JavaScript reader decodes too, and
-  # against the rules the kind refuses a file for.
+  # test/fixtures/places/v2/, which the JavaScript reader decodes too, against
+  # the published version 1 files, which it still reads, and against the rules
+  # the kind refuses a file for.
   use ExUnit.Case, async: true
 
   alias Gobusgo.Packed
@@ -10,8 +11,7 @@ defmodule Gobusgo.Places.FormatTest do
   alias Gobusgo.Test.PlaceFixture
 
   @directory PlaceFixture.directory()
-  @expectation %{kind: 5, versions: [1], section_count: 8}
-
+  @expectation %{kind: 5, versions: [2], section_count: 9}
   defp fixture_bytes, do: File.read!(Path.join(@directory, "places.bin"))
 
   # Replaces one section after the string table, counted from 0, in a container.
@@ -40,8 +40,49 @@ defmodule Gobusgo.Places.FormatTest do
   test "decodes the rows the fixture places were written from" do
     assert {:ok, decoded} = Format.decode(fixture_bytes())
     assert decoded.places == Enum.map(PlaceFixture.places(), &Records.row/1)
+
+    assert Enum.map(decoded.places, &List.last/1) ==
+             Enum.map(PlaceFixture.places(), & &1.locality)
+
     assert decoded.source_date == PlaceFixture.source_date()
     assert decoded.categories == Gobusgo.Places.Classification.categories()
+  end
+
+  test "reads a version 1 file with no locality for any place" do
+    bytes = File.read!(Path.join(PlaceFixture.version_one_directory(), "places.bin"))
+
+    assert {:ok, decoded} = Format.decode(bytes)
+    assert length(decoded.places) == 5
+    assert Enum.all?(decoded.places, &(List.last(&1) == ""))
+    assert Enum.map(decoded.places, &hd/1) == Enum.map(PlaceFixture.places(), & &1.name)
+  end
+
+  test "refuses a version 2 header that holds the 8 sections of version 1" do
+    {:ok, container} = Packed.decode(fixture_bytes(), @expectation)
+
+    bytes =
+      Packed.encode(%{
+        kind: container.kind,
+        version: container.version,
+        record_count: container.record_count,
+        strings: Tuple.to_list(container.strings),
+        sections: Enum.take(container.sections, 8)
+      })
+
+    assert Format.decode(bytes) == {:error, :section_count}
+  end
+
+  test "refuses a locality index past the string table" do
+    localities = Gobusgo.Packed.Columns.encode(:u32, [0, 0, 0, 0, 999])
+
+    assert Format.decode(with_section(fixture_bytes(), 8, localities)) ==
+             {:error, :bad_string_index}
+  end
+
+  test "refuses a locality past the length bound" do
+    bytes = File.read!(Path.join(@directory, "locality_over_bound.bin"))
+    assert bytes == PlaceFixture.encode_locality_over_bound()
+    assert Format.decode(bytes) == {:error, :bad_locality}
   end
 
   test "stores a name two places share once" do
@@ -52,7 +93,7 @@ defmodule Gobusgo.Places.FormatTest do
   test "refuses another version" do
     <<magic::binary-size(4), _version::little-16, rest::binary>> = fixture_bytes()
 
-    assert Format.decode(<<magic::binary, 2::little-16, rest::binary>>) ==
+    assert Format.decode(<<magic::binary, 3::little-16, rest::binary>>) ==
              {:error, :unsupported_version}
   end
 

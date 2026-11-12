@@ -12,14 +12,23 @@ defmodule Gobusgo.Places.RecordsTest do
     category: "amenity",
     prominence: 140,
     area: 5_000.0,
-    area_score: 14
+    area_score: 14,
+    locality: "First Hill, Seattle"
   }
 
-  test "row holds integer microdegrees, the category index, and the two scores" do
+  test "row holds integer microdegrees, the category index, the two scores, and the locality" do
     index = Enum.find_index(Classification.categories(), &(&1 == "amenity"))
 
-    assert Records.row(@place) ==
-             ["Central Library", ["Main Library"], 47_606_700, -122_332_500, index, 140, 14]
+    assert Records.row(@place) == [
+             "Central Library",
+             ["Main Library"],
+             47_606_700,
+             -122_332_500,
+             index,
+             140,
+             14,
+             "First Hill, Seattle"
+           ]
   end
 
   test "encode names the source date and the categories in index order" do
@@ -30,6 +39,8 @@ defmodule Gobusgo.Places.RecordsTest do
 
     assert decoded["sourceDate"] == "2026-11-08T21:21:00Z"
     assert decoded["categories"] == Classification.categories()
-    assert [[_name, _aliases, 47_606_700, -122_332_500, _index, 140, 14]] = decoded["places"]
+
+    assert [[_name, _aliases, 47_606_700, -122_332_500, _index, 140, 14, "First Hill, Seattle"]] =
+             decoded["places"]
   end
 end

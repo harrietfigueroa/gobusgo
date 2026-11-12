@@ -2,7 +2,8 @@ defmodule Gobusgo.Places.Build do
   @moduledoc """
   One build of the places: the osmium steps of `Gobusgo.Places.Extractor`,
   then `Gobusgo.Places.Selection` over the export, then
-  `Gobusgo.Places.Merge`.
+  `Gobusgo.Places.Merge`, then `Gobusgo.Places.Locality`, which names each
+  merged place from its address or the settlements of the selection.
 
   `run/2` takes `%{extract_path:, bounds:, working_dir:}`, where `working_dir`
   is a directory it is given or `nil` for a temporary one, and returns
@@ -16,6 +17,7 @@ defmodule Gobusgo.Places.Build do
   """
 
   alias Gobusgo.Places.Extractor
+  alias Gobusgo.Places.Locality
   alias Gobusgo.Places.Merge
   alias Gobusgo.Places.Selection
 
@@ -49,11 +51,12 @@ defmodule Gobusgo.Places.Build do
           end)
 
         {merge_us, merged} = :timer.tc(fn -> Merge.run(places) end)
+        located = Locality.assign(merged.places, Locality.anchors(places))
 
         {:ok,
          %{
            source_date: extracted.source_date,
-           places: merged.places,
+           places: located,
            selection: selection,
            merged_count: merged.merged_count,
            steps: extracted.steps,

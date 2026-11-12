@@ -25,7 +25,7 @@ The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/packed_c
 | 2 | trip path index | `trip-paths-index` | GOB-357, `lib/gobusgo/routing/AGENTS.md` |
 | 3 | address shard | `addresses` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
 | 4 | address index | `addresses-index` | GOB-361, `lib/gobusgo/addresses/AGENTS.md` |
-| 5 | places | `places` | GOB-366, `lib/gobusgo/places/AGENTS.md` |
+| 5 | places | `places` | GOB-366, GOB-404 (version 2 adds the localities column, versions 1 and 2 are read), `lib/gobusgo/places/AGENTS.md` |
 | 6 | intersection shard | `intersections` | GOB-364, `lib/gobusgo/intersections/AGENTS.md` |
 | 7 | intersection index | `intersections-index` | GOB-364, `lib/gobusgo/intersections/AGENTS.md` |
 

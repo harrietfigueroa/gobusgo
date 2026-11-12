@@ -4,9 +4,10 @@ defmodule Gobusgo.Places.Records do
   that shows them. Everything here is pure.
 
   A row is `[name, aliases, latitude, longitude, category_index, prominence,
-  area]` with the position in integer microdegrees, the category as its index
-  in `Gobusgo.Places.Classification.categories/0`, and `prominence` and
-  `area` the two separate scores, never added.
+  area, locality]` with the position in integer microdegrees, the category as
+  its index in `Gobusgo.Places.Classification.categories/0`, `prominence` and
+  `area` the two separate scores, never added, and `locality` the text of
+  `Gobusgo.Places.Locality`, empty for a place with none.
   """
 
   alias Gobusgo.CanonicalJson
@@ -29,7 +30,8 @@ defmodule Gobusgo.Places.Records do
       round(place.lon * @microdegrees_per_degree),
       index,
       place.prominence,
-      place.area_score
+      place.area_score,
+      place.locality
     ]
   end
 

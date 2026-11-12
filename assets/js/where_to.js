@@ -133,10 +133,17 @@ export function distanceText(meters) {
   return `${Math.round(kilometers)} km`
 }
 
-/** The detail line of a place: its category and its distance from the search's center. */
-export function placeDetail({categoryName, distanceMeters: meters}) {
+/** The detail line of a place: its category, its locality when it has one, and its distance from the search's center. */
+export function placeDetail({categoryName, locality, distanceMeters: meters}) {
+  assertCondition(typeof locality === "string", "where to: a place's locality must be text")
   const category = categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
-  return `${category} · ${distanceText(meters)}`
+  const distance = distanceText(meters)
+
+  if (locality === "") {
+    return `${category} · ${distance}`
+  }
+
+  return `${category} · ${locality} · ${distance}`
 }
 
 /** The name an end reads as in a recent trip. */

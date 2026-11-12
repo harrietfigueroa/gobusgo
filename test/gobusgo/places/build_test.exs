@@ -86,6 +86,33 @@ defmodule Gobusgo.Places.BuildTest do
            ]
   end
 
+  test "gives each place a locality from its address or the nearest settlement", context do
+    records =
+      record(
+        %{
+          "name" => "Corner Cafe",
+          "amenity" => "cafe",
+          "addr:housenumber" => "400",
+          "addr:street" => "Pine Street"
+        },
+        -122.34,
+        47.61
+      ) <>
+        record(%{"name" => "Bakery", "shop" => "bakery"}, -122.3375, 47.6113) <>
+        record(%{"name" => "Denny Triangle", "place" => "neighbourhood"}, -122.336, 47.618) <>
+        record(%{"name" => "Seattle", "place" => "city"}, -122.3301, 47.6038)
+
+    File.write!(context.extract_path, records)
+
+    assert {:ok, result} = Build.run(request(context, nil), executable: context.executable)
+
+    localities = Map.new(result.places, &{&1.name, &1.locality})
+    assert localities["Corner Cafe"] == "400 Pine Street"
+    assert localities["Bakery"] == "Denny Triangle, Seattle"
+    assert localities["Denny Triangle"] == "Seattle"
+    assert localities["Seattle"] == ""
+  end
+
   test "removes the files it wrote from a working directory it was given", context do
     working_dir = Path.join(context.tmp_dir, "work")
 

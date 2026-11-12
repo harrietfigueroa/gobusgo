@@ -1,14 +1,18 @@
 defmodule Gobusgo.Places.Format do
   @kind 5
-  @version 1
-  @section_count 8
+  @version 2
+  @versions_read [1, 2]
+  @section_counts %{1 => 8, 2 => 9}
+  @section_count Map.fetch!(@section_counts, @version)
   @expanded_bytes_max 8 * 1_024 * 1_024
   @alias_count_max 255
 
   @moduledoc """
   The places kind, version #{@version}, of the packed container
   (`Gobusgo.Packed`): kind number #{@kind}, one record per place. Everything
-  here is pure.
+  here is pure. `decode/1` also reads version 1, whose first
+  #{@section_counts[1]} sections these are, so every place of a version 1
+  file has the empty locality.
 
   After the string table the kind holds #{@section_count} sections, in order:
 
@@ -24,7 +28,10 @@ defmodule Gobusgo.Places.Format do
     6. prominences: a `u8` column;
     7. areas: a `u8` column;
     8. labels: a `u32` column of string indexes, the source date first, then
-       the category names in index order, at least one.
+       the category names in index order, at least one;
+    9. localities: a `u32` column, the string index of each place's locality
+       (`Gobusgo.Places.Locality`), the empty string for none, at most
+       `Gobusgo.Places.Locality.length_max/0` characters.
 
   Prominence and area are separate scores, never added in the file.
   `expanded_bytes_max/0` bounds the expanded size a reader accepts.
@@ -43,6 +50,7 @@ defmodule Gobusgo.Places.Format do
   alias Gobusgo.Packed.Positions
   alias Gobusgo.Packed.StringTable
   alias Gobusgo.Places.Classification
+  alias Gobusgo.Places.Locality
   alias Gobusgo.Places.Records
   alias Gobusgo.Places.Selection
 
@@ -52,6 +60,7 @@ defmodule Gobusgo.Places.Format do
           | :bad_category
           | :bad_string_index
           | :bad_labels
+          | :bad_locality
           | :unknown_position
 
   @type decoded :: %{
@@ -96,6 +105,13 @@ defmodule Gobusgo.Places.Format do
         Enum.map_reduce(aliases, table, &StringTable.intern(&2, &1))
       end)
 
+    {localities, table} =
+      Enum.map_reduce(rows, table, fn row, table ->
+        locality = List.last(row)
+        assert_locality(locality)
+        StringTable.intern(table, locality)
+      end)
+
     {labels, table} =
       Enum.map_reduce([source_date | categories], table, &StringTable.intern(&2, &1))
 
@@ -114,10 +130,20 @@ defmodule Gobusgo.Places.Format do
           :u8,
           for([_n, _a, _lat, _lon, _c, prominence | _row] <- rows, do: prominence)
         ),
-        Columns.encode(:u8, for([_n, _a, _lat, _lon, _c, _p, area] <- rows, do: area)),
-        Columns.encode(:u32, labels)
+        Columns.encode(:u8, for([_n, _a, _lat, _lon, _c, _p, area, _l] <- rows, do: area)),
+        Columns.encode(:u32, labels),
+        Columns.encode(:u32, localities)
       ]
     })
+  end
+
+  defp assert_locality(locality) do
+    count = locality |> String.codepoints() |> length()
+
+    Assert.condition(
+      count <= Locality.length_max(),
+      "a locality has at most #{Locality.length_max()} characters, got: #{count}"
+    )
   end
 
   defp alias_counts(alias_lists) do
@@ -149,15 +175,22 @@ defmodule Gobusgo.Places.Format do
   @doc "Returns the places `binary` holds, or the first rule it breaks."
   @spec decode(binary()) :: {:ok, decoded()} | {:error, refusal()}
   def decode(binary) when is_binary(binary) do
-    expectation = %{kind: @kind, versions: [@version], section_count: @section_count}
+    expectation = %{kind: @kind, versions: @versions_read, section_count: :any}
 
-    with {:ok, container} <- Packed.decode(binary, expectation) do
+    with {:ok, container} <- Packed.decode(binary, expectation),
+         :ok <- check_section_count(container) do
       read(container)
     end
   end
 
+  defp check_section_count(%{version: version, sections: sections}) do
+    if length(sections) == Map.fetch!(@section_counts, version),
+      do: :ok,
+      else: {:error, :section_count}
+  end
+
   defp read(%{record_count: count, strings: strings, sections: sections}) do
-    [names, alias_counts, alias_names, positions, categories, prominences, areas, labels] =
+    [names, alias_counts, alias_names, positions, categories, prominences, areas, labels | rest] =
       sections
 
     with {:ok, name_indexes} <- Columns.decode(:u32, names, count),
@@ -171,7 +204,8 @@ defmodule Gobusgo.Places.Format do
          {:ok, [source_date | category_names]} <- strings_at(strings, label_indexes),
          :ok <- check_categories(category_indexes, length(category_names)),
          {:ok, place_names} <- strings_at(strings, name_indexes),
-         {:ok, alias_texts} <- strings_at(strings, alias_indexes) do
+         {:ok, alias_texts} <- strings_at(strings, alias_indexes),
+         {:ok, locality_texts} <- read_localities(rest, strings, count) do
       aliases = alias_lists(counts, alias_texts)
 
       places =
@@ -179,10 +213,22 @@ defmodule Gobusgo.Places.Format do
           names: place_names,
           aliases: aliases,
           points: points,
-          columns: Enum.zip([category_indexes, prominence_values, area_values])
+          columns: Enum.zip([category_indexes, prominence_values, area_values, locality_texts])
         })
 
       {:ok, %{source_date: source_date, categories: category_names, places: places}}
+    end
+  end
+
+  # A version 1 file has no localities section, so every place has none.
+  defp read_localities([], _strings, count), do: {:ok, List.duplicate("", count)}
+
+  defp read_localities([section], strings, count) do
+    with {:ok, indexes} <- Columns.decode(:u32, section, count),
+         {:ok, texts} <- strings_at(strings, indexes) do
+      if Enum.all?(texts, &(length(String.codepoints(&1)) <= Locality.length_max())),
+        do: {:ok, texts},
+        else: {:error, :bad_locality}
     end
   end
 
@@ -231,20 +277,21 @@ defmodule Gobusgo.Places.Format do
   end
 
   defp place_rows(%{names: names, aliases: aliases, points: points, columns: columns}) do
-    for {{name, place_aliases}, {{lat, lon}, {category, prominence, area}}} <-
+    for {{name, place_aliases}, {{lat, lon}, {category, prominence, area, locality}}} <-
           Enum.zip(Enum.zip(names, aliases), Enum.zip(points, columns)) do
-      [name, place_aliases, lat, lon, category, prominence, area]
+      [name, place_aliases, lat, lon, category, prominence, area, locality]
     end
   end
 
   @doc "Describes a decoded container for `mix gobusgo.packed.decode --kind-module`."
   @impl Gobusgo.Packed.Kind
-  def inspect(%{kind: @kind, version: @version, record_count: count} = container) do
+  def inspect(%{kind: @kind, version: version, record_count: count} = container)
+      when version in @versions_read do
     case read(%{record_count: count, strings: container.strings, sections: container.sections}) do
       {:ok, decoded} ->
         %{
           "kind" => @kind,
-          "version" => @version,
+          "version" => version,
           "placeCount" => count,
           "sourceDate" => decoded.source_date,
           "categories" => decoded.categories,
@@ -256,5 +303,5 @@ defmodule Gobusgo.Places.Format do
     end
   end
 
-  def inspect(_container), do: %{"refused" => "not_places_v1"}
+  def inspect(_container), do: %{"refused" => "not_places"}
 end
