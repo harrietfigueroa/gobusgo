@@ -1,6 +1,6 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {attachRouteHover} from "./route_hover"
+import {attachRouteList} from "./route_hover"
 import {
   addSource,
   CHANGE_EVENT_NAME,
@@ -207,7 +207,7 @@ export const RouteLines = {
     addLineLayers(map, colors.routeCasing)
 
     if (!this.hoverAttached) {
-      attachRouteHover({
+      attachRouteList({
         map,
         maplibre: this.maplibre,
         layerName: LAYER_NAME,
