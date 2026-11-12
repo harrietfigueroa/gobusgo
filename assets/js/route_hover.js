@@ -1,4 +1,6 @@
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
+import {isItemAt} from "./map_view_reading"
+import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
 
@@ -6,12 +8,17 @@ import {HitKind, overlayHitAt} from "./vehicle_overlay"
 // the features under the pointer, which lets it be run apart from a map.
 
 const TOLERANCE_PIXELS = 4
+// Half of the 44 CSS pixel target a finger is given, so a tap within the
+// target's reach of a line reads as on it.
+// https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html — checked 2026-11-11
+const TAP_TOLERANCE_PIXELS = 22
 const ENTRY_COUNT_MAX = 12
 const POPUP_OFFSET_PIXELS = 12
 const POPUP_WIDTH_MAX = "22rem"
 const POPUP_CLASS_NAME = "route-hover"
 const HOLD_MS = 300
 const HOVER_MEDIA_QUERY = "(hover: hover)"
+const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
 const nameCollator = new Intl.Collator("en", {numeric: true, sensitivity: "base"})
 
 // The kinds of a read of the list under the pointer.
@@ -106,30 +113,47 @@ function textElement({tagName, className, text}) {
 
 // The list as elements. Every name comes from outside the application and
 // is written as text, never parsed as HTML. The entries touch, so a pointer
-// that crosses the list is on an entry all the way. `onEntry` is called
-// with the route of the entry the pointer enters and with null as it leaves.
-function listContent({entries, hiddenCount}, onEntry) {
+// that crosses the list is on an entry all the way. `onEntry`, a function
+// or null, is called with the route of the entry the pointer enters and
+// with null as it leaves; `onEntryTap`, a function or null, is called with
+// the route of the entry that is tapped.
+function listContent({list: {entries, hiddenCount}, onEntry, onEntryTap}) {
   const list = document.createElement("ul")
   list.className = "flex flex-col text-sm leading-tight"
 
   for (const entry of entries) {
     const item = document.createElement("li")
     item.className = "flex items-baseline gap-2 rounded-sm px-1 py-0.5 hover:bg-slate-200"
-    item.addEventListener("mouseenter", () => { onEntry(entry.routeId) })
-    item.addEventListener("mouseleave", () => { onEntry(null) })
+
+    if (onEntry !== null) {
+      item.addEventListener("mouseenter", () => { onEntry(entry.routeId) })
+      item.addEventListener("mouseleave", () => { onEntry(null) })
+    }
+
+    // A tap is a click on a button, which a keyboard and a screen reader
+    // reach as they reach no list item; the button is a finger's height.
+    let row = item
+
+    if (onEntryTap !== null) {
+      row = document.createElement("button")
+      row.type = "button"
+      row.className = "flex min-h-11 w-full items-center gap-2 text-left"
+      row.addEventListener("click", () => { onEntryTap(entry.routeId) })
+      item.appendChild(row)
+    }
 
     const swatch = document.createElement("span")
     swatch.className = "inline-block h-1 w-4 shrink-0 self-center rounded-sm"
     swatch.style.backgroundColor = entry.color
-    item.appendChild(swatch)
-    item.appendChild(textElement({tagName: "span", className: "font-semibold", text: entry.name}))
+    row.appendChild(swatch)
+    row.appendChild(textElement({tagName: "span", className: "font-semibold", text: entry.name}))
 
     if (entry.detail !== null) {
-      item.appendChild(textElement({tagName: "span", className: "", text: entry.detail}))
+      row.appendChild(textElement({tagName: "span", className: "", text: entry.detail}))
     }
 
     if (entry.agencyName !== null) {
-      item.appendChild(
+      row.appendChild(
         textElement({tagName: "span", className: "text-slate-500", text: entry.agencyName})
       )
     }
@@ -171,17 +195,17 @@ function onMarker({map, point}) {
   }
 }
 
-// The list of the routes whose lines are within the tolerance of `point`,
-// or none off every line and on a style that does not hold the lines, as
-// while a style set anew loads.
-function listAt({map, point, layerName}) {
+// The list of the routes whose lines are within `toleranceInPixels` of
+// `point`, or none off every line and on a style that does not hold the
+// lines, as while a style set anew loads.
+function listAt({map, point, layerName, toleranceInPixels}) {
   if (map.getLayer(layerName) === undefined) {
     return {kind: ListKind.none}
   }
 
   const box = [
-    [point.x - TOLERANCE_PIXELS, point.y - TOLERANCE_PIXELS],
-    [point.x + TOLERANCE_PIXELS, point.y + TOLERANCE_PIXELS]
+    [point.x - toleranceInPixels, point.y - toleranceInPixels],
+    [point.x + toleranceInPixels, point.y + toleranceInPixels]
   ]
   const features = map.queryRenderedFeatures(box, {layers: [layerName]})
   const list = routeList(features)
@@ -199,7 +223,7 @@ function listAtPointer({map, point, layerName}) {
   } else if (onMarker({map, point})) {
     return {kind: ListKind.none}
   } else {
-    return listAt({map, point, layerName})
+    return listAt({map, point, layerName, toleranceInPixels: TOLERANCE_PIXELS})
   }
 }
 
@@ -292,7 +316,7 @@ class RouteHover {
     const routeIds = Array.from(list.entries, entryRouteId)
     this.shown = {key: JSON.stringify(list), routeIds}
 
-    const content = listContent(list, this.emphasize)
+    const content = listContent({list, onEntry: this.emphasize, onEntryTap: null})
     const position = map.unproject(this.point)
     popup.setDOMContent(content)
     popup.setLngLat(position)
@@ -335,20 +359,76 @@ class RouteHover {
   }
 }
 
-// Shows the list of the routes under the pointer on `map`, whose lines are
-// the layer `layerName`. The list opens where the pointer meets a set of
-// routes and stays there while the pointer is on that set, inside the list,
-// or off both for less than `HOLD_MS`, the time a pointer has to travel
-// between the lines and the list, other lines on the way included.
-// `emphasize` is called with the route of the entry the pointer is on, and
-// with null when it is on none, and `routeDrawn` answers whether the layer
-// draws the route it is given. A page whose primary pointer cannot hover
-// gets no list.
-export function attachRouteHover({map, maplibre, layerName, emphasize, routeDrawn}) {
-  if (!window.matchMedia(HOVER_MEDIA_QUERY).matches) {
-    return
+// The state of one map's list on a device that cannot hover: its popup and
+// the routes the list shown names, or null while none is shown.
+class RouteTap {
+  constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
+    this.map = map
+    this.layerName = layerName
+    this.emphasize = emphasize
+    this.routeDrawn = routeDrawn
+    this.popup = new maplibre.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      className: POPUP_CLASS_NAME,
+      maxWidth: POPUP_WIDTH_MAX,
+      offset: POPUP_OFFSET_PIXELS
+    })
+    this.routeIds = null
   }
 
+  // The map fires `click` only for a press and release within its click
+  // tolerance of each other, so the end of a pan or a zoom is no tap.
+  // https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/MapOptions/#clicktolerance — checked 2026-11-10
+  onTap(event) {
+    const {map, layerName} = this
+    const isItemHit = isItemAt({map, point: event.point})
+    const read = listAt({map, point: event.point, layerName, toleranceInPixels: TAP_TOLERANCE_PIXELS})
+    const action = tapAction({
+      kind: DeviceKind.touch,
+      isItemHit,
+      hasLines: read.kind === ListKind.found,
+      isShown: this.routeIds !== null
+    })
+
+    if (action === TapAction.open) {
+      this.open({list: read.list, point: event.point})
+    } else if (action === TapAction.close) {
+      this.close()
+    }
+  }
+
+  // Opens `list`, anchored at `point`, in place of the list that is shown.
+  open({list, point}) {
+    this.close()
+    this.routeIds = Array.from(list.entries, entryRouteId)
+
+    const content = listContent({list, onEntry: null, onEntryTap: this.emphasize})
+    this.popup.setDOMContent(content)
+    this.popup.setLngLat(this.map.unproject(point))
+    this.popup.addTo(this.map)
+  }
+
+  close() {
+    if (this.routeIds !== null) {
+      this.popup.remove()
+      this.routeIds = null
+      this.emphasize(null)
+    }
+  }
+
+  // A filter can stop the layer drawing a route the list names.
+  onIdle() {
+    const isShown = this.routeIds !== null
+    const isStale = isShown && !this.routeIds.every(this.routeDrawn)
+
+    if (isStale) {
+      this.close()
+    }
+  }
+}
+
+function attachHover({map, maplibre, layerName, emphasize, routeDrawn}) {
   const hover = new RouteHover({map, maplibre, layerName, emphasize, routeDrawn})
 
   map.on("mousemove", (event) => { hover.pointAt(event.point) })
@@ -358,4 +438,37 @@ export function attachRouteHover({map, maplibre, layerName, emphasize, routeDraw
   // the lines or the markers are drawn again.
   map.on("idle", () => { hover.schedule() })
   map.on("remove", () => { hover.detach() })
+}
+
+function attachTap({map, maplibre, layerName, emphasize, routeDrawn}) {
+  const tap = new RouteTap({map, maplibre, layerName, emphasize, routeDrawn})
+
+  map.on("click", (event) => { tap.onTap(event) })
+  map.on("movestart", () => { tap.close() })
+  map.on("zoomstart", () => { tap.close() })
+  map.on("idle", () => { tap.onIdle() })
+  map.on("remove", () => { tap.close() })
+}
+
+// Shows the list of the routes under the pointer on `map`, whose lines are
+// the layer `layerName`. `emphasize` is called with the route of the entry
+// the pointer is on or that is tapped, and with null when the list closes
+// or the pointer is on none, and `routeDrawn` answers whether the layer
+// draws the route it is given. The device kind is read once, here. A device
+// whose primary pointer can hover opens the list where the pointer meets a
+// set of routes and keeps it there while the pointer is on that set, inside
+// the list, or off both for less than `HOLD_MS`, the time a pointer has to
+// travel between the lines and the list, other lines on the way included;
+// a tap does nothing. A device whose primary pointer cannot hover opens it
+// at a tap within `TAP_TOLERANCE_PIXELS` of a line that hits no marker, and
+// closes it at a tap elsewhere or a move or zoom of the map.
+export function attachRouteList({map, maplibre, layerName, emphasize, routeDrawn}) {
+  const isHoverNone = window.matchMedia(HOVER_NONE_MEDIA_QUERY).matches
+  const kind = deviceKind({isHoverNone})
+
+  if (kind === DeviceKind.touch) {
+    attachTap({map, maplibre, layerName, emphasize, routeDrawn})
+  } else if (window.matchMedia(HOVER_MEDIA_QUERY).matches) {
+    attachHover({map, maplibre, layerName, emphasize, routeDrawn})
+  }
 }
