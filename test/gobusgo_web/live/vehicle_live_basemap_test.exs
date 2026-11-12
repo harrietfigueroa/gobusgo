@@ -308,11 +308,11 @@ defmodule GobusgoWeb.VehicleLiveBasemapTest do
       assert text(view, "#map-description-view") == ""
     end
 
-    test "says in the description which keys move the map" do
+    test "says in the description which keys move the map and list its routes" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert text(view, "#map-description-keys") ==
-               "Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it."
+               "Arrow keys move the map, plus and minus zoom it, and Shift with the arrow keys turns and tilts it. The R key lists the routes at the middle of the map."
     end
 
     test "hands the map the address of the library at the version in use" do

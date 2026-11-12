@@ -1,5 +1,20 @@
+import {unreachable} from "./assert.js"
 import {MARKER_LAYER_NAME as STOP_MARKER_LAYER_NAME} from "./stop_markers"
 import {isItemAt} from "./map_view_reading"
+import {announce} from "./map_live_region"
+import {viewBox} from "./map_view_text"
+import {sheetInsets} from "./panel_sheet"
+import {
+  CanvasKeyAction,
+  FocusLeaveAction,
+  ListKeyAction,
+  canvasKeyAction,
+  focusLeaveAction,
+  isOpenKeyPress,
+  listKeyAction,
+  noRoutesText,
+  openedText
+} from "./route_keys"
 import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -19,6 +34,7 @@ const POPUP_CLASS_NAME = "route-hover"
 const HOLD_MS = 300
 const HOVER_MEDIA_QUERY = "(hover: hover)"
 const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
+const KEYBOARD_LIST_LABEL = "Routes at the middle of the map"
 const nameCollator = new Intl.Collator("en", {numeric: true, sensitivity: "base"})
 
 // The kinds of a read of the list under the pointer.
@@ -428,6 +444,177 @@ class RouteTap {
   }
 }
 
+// The state of one map's list for a keyboard, which a device of either kind
+// can have: its popup and the routes the list shown names, or null while
+// none is shown. Its entries are the buttons of the tap list, so a key
+// press on one emphasizes its route as a tap does, and focus on one
+// emphasizes the route as the pointer on one does.
+class RouteKeys {
+  constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
+    this.map = map
+    this.layerName = layerName
+    this.emphasize = emphasize
+    this.routeDrawn = routeDrawn
+    this.popup = new maplibre.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      className: POPUP_CLASS_NAME,
+      maxWidth: POPUP_WIDTH_MAX,
+      offset: POPUP_OFFSET_PIXELS,
+      focusAfterOpen: false
+    })
+    this.routeIds = null
+    this.buttons = []
+  }
+
+  // The middle of the part of the map the panel sheet leaves in sight, the
+  // place the list of what is in view counts from.
+  middle() {
+    const container = this.map.getContainer()
+    const {center} = viewBox({
+      width: container.clientWidth,
+      height: container.clientHeight,
+      insets: sheetInsets()
+    })
+    return center
+  }
+
+  onCanvasKeydown(event) {
+    const modifiers = {
+      key: event.key,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey
+    }
+
+    // Every key reaches the canvas, the arrows a held key repeats among
+    // them, and only the letter reads the map.
+    if (!isOpenKeyPress(modifiers)) {
+      return
+    }
+
+    event.preventDefault()
+    const point = this.middle()
+    const read = listAt({map: this.map, point, layerName: this.layerName, toleranceInPixels: TAP_TOLERANCE_PIXELS})
+    const action = canvasKeyAction({...modifiers, hasLines: read.kind === ListKind.found})
+
+    if (action === CanvasKeyAction.open) {
+      this.open({list: read.list, point})
+    } else if (action === CanvasKeyAction.announceNone) {
+      this.close()
+      announce(noRoutesText())
+    } else if (action === CanvasKeyAction.pass) {
+      return
+    } else {
+      unreachable(action, "an unknown canvas key action")
+    }
+  }
+
+  // Opens `list`, anchored at `point`, in place of the list that is shown,
+  // moves focus to its first entry, and has the list read.
+  open({list, point}) {
+    this.close()
+    this.routeIds = Array.from(list.entries, entryRouteId)
+
+    const content = listContent({list, onEntry: null, onEntryTap: this.emphasize})
+    content.setAttribute("aria-label", KEYBOARD_LIST_LABEL)
+    content.addEventListener("keydown", (event) => { this.onListKeydown(event) })
+    content.addEventListener("focusin", (event) => { this.onFocusIn(event) })
+    content.addEventListener("focusout", (event) => { this.onFocusOut({event, content}) })
+    this.buttons = Array.from(content.querySelectorAll("button"))
+    this.popup.setDOMContent(content)
+    this.popup.setLngLat(this.map.unproject(point))
+    this.popup.addTo(this.map)
+    this.buttons[0].focus()
+    announce(openedText({count: list.entries.length, hiddenCount: list.hiddenCount}))
+  }
+
+  onListKeydown(event) {
+    const index = this.buttons.indexOf(event.target)
+    const isEntry = index >= 0
+
+    if (!isEntry) {
+      return
+    }
+
+    const action = listKeyAction({key: event.key, index, count: this.buttons.length})
+
+    if (action.kind === ListKeyAction.close) {
+      event.preventDefault()
+      this.close()
+    } else if (action.kind === ListKeyAction.focus) {
+      event.preventDefault()
+      this.buttons[action.index].focus()
+    } else if (action.kind === ListKeyAction.pass) {
+      return
+    } else {
+      unreachable(action.kind, "an unknown list key action")
+    }
+  }
+
+  onFocusIn(event) {
+    const index = this.buttons.indexOf(event.target)
+
+    if (index >= 0) {
+      this.emphasize(this.routeIds[index])
+    }
+  }
+
+  onFocusOut({event, content}) {
+    const isStillInList = event.relatedTarget !== null && content.contains(event.relatedTarget)
+    const action = focusLeaveAction({isStillInList})
+
+    if (action === FocusLeaveAction.close) {
+      this.close()
+    } else if (action === FocusLeaveAction.keep) {
+      return
+    } else {
+      unreachable(action, "an unknown focus leave action")
+    }
+  }
+
+  close() {
+    if (this.routeIds !== null) {
+      const isFocusInList = this.popup.getElement().contains(document.activeElement)
+
+      // The state clears first: removing the popup from under the focused
+      // entry fires `focusout` at once, which closes the list again.
+      this.routeIds = null
+      this.buttons = []
+
+      // Focus on an entry goes back to the map, where the list was opened
+      // from, as the entry goes; it would fall to the page's body.
+      if (isFocusInList) {
+        this.map.getCanvas().focus()
+      }
+
+      this.popup.remove()
+      this.emphasize(null)
+    }
+  }
+
+  // A filter can stop the layer drawing a route the list names.
+  onIdle() {
+    const isShown = this.routeIds !== null
+    const isStale = isShown && !this.routeIds.every(this.routeDrawn)
+
+    if (isStale) {
+      this.close()
+    }
+  }
+}
+
+function attachKeys({map, maplibre, layerName, emphasize, routeDrawn}) {
+  const keys = new RouteKeys({map, maplibre, layerName, emphasize, routeDrawn})
+
+  map.getCanvas().addEventListener("keydown", (event) => { keys.onCanvasKeydown(event) })
+  map.on("movestart", () => { keys.close() })
+  map.on("zoomstart", () => { keys.close() })
+  map.on("idle", () => { keys.onIdle() })
+  map.on("remove", () => { keys.close() })
+}
+
 function attachHover({map, maplibre, layerName, emphasize, routeDrawn}) {
   const hover = new RouteHover({map, maplibre, layerName, emphasize, routeDrawn})
 
@@ -461,10 +648,17 @@ function attachTap({map, maplibre, layerName, emphasize, routeDrawn}) {
 // travel between the lines and the list, other lines on the way included;
 // a tap does nothing. A device whose primary pointer cannot hover opens it
 // at a tap within `TAP_TOLERANCE_PIXELS` of a line that hits no marker, and
-// closes it at a tap elsewhere or a move or zoom of the map.
+// closes it at a tap elsewhere or a move or zoom of the map. A device of
+// either kind opens it for a keyboard: the letter `r` on the focused map
+// lists the routes within `TAP_TOLERANCE_PIXELS` of the middle of the map,
+// and announces that there are none where there are none; focus moves to
+// the first entry, and focus on an entry emphasizes its route, until focus
+// leaves the list, Escape returns it to the map, or the map moves.
 export function attachRouteList({map, maplibre, layerName, emphasize, routeDrawn}) {
   const isHoverNone = window.matchMedia(HOVER_NONE_MEDIA_QUERY).matches
   const kind = deviceKind({isHoverNone})
+
+  attachKeys({map, maplibre, layerName, emphasize, routeDrawn})
 
   if (kind === DeviceKind.touch) {
     attachTap({map, maplibre, layerName, emphasize, routeDrawn})
