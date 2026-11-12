@@ -1,5 +1,6 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
+import {EMPHASIS_EVENT_NAME} from "./route_emphasis"
 import {attachRouteList} from "./route_hover"
 import {
   addSource,
@@ -52,9 +53,12 @@ function presentLayerNames(map, layerNames) {
 }
 
 // Draws the line of `routeId` emphasized and every other line dimmed, or
-// every line as it is without emphasis for null. It sets a filter and paint
-// and leaves the source as it is.
+// every line as it is without emphasis for null, and announces the route on
+// the window so the vehicle markers dim the other routes' vehicles. It sets
+// a filter and paint and leaves the source as it is.
 function emphasizeRoute(map, routeId) {
+  window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId}}))
+
   const emphasisLayers = presentLayerNames(map, emphasisLayerNames)
   const lineLayers = presentLayerNames(map, lineLayerNames)
 
@@ -159,6 +163,8 @@ export const RouteLines = {
       this.map = null
       this.attached = false
       this.hoverAttached = false
+      // The list of the map left behind can no longer clear its emphasis.
+      window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId: null}}))
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => {
         this.map = map
@@ -224,5 +230,6 @@ export const RouteLines = {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
+    window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId: null}}))
   }
 }
