@@ -25,7 +25,7 @@ import {DecodeKind, decodePositions, decodeStops, decodeTrips} from "./routing_s
 import {headsignsByTrip} from "./journey_timeline.js"
 import {decodeNames, expandNames} from "./routing_names.js"
 import {ServiceDateKind, serviceDateAt} from "./routing_journeys.js"
-import {GROUP_COUNT_MAX, GroupKind, SHARD_CACHE_COUNT_MAX, ShardCacheKind, buildStopIndex, createShardCache, placeDetail, searchStops} from "./where_to.js"
+import {GROUP_COUNT_MAX, GroupKind, SHARD_CACHE_COUNT_MAX, ShardCacheKind, buildStopIndex, createShardCache, endPosition, placeDetailAt, searchStops} from "./where_to.js"
 
 const PLACES_MANIFEST_PATH = "/places/manifest.json"
 const ADDRESS_MANIFEST_PATH = "/api/addresses/manifest"
@@ -263,13 +263,15 @@ function searchEntry(manifest) {
   return manifest.snapshots.find((entry) => entry.serviceDate === serviceDate)
 }
 
-function placeResult({table, match}) {
+function placeResult({table, match, rider}) {
   const lat = table.latitudeMicrodegrees[match.placeIndex] / MICRODEGREES_PER_DEGREE
   const lon = table.longitudeMicrodegrees[match.placeIndex] / MICRODEGREES_PER_DEGREE
-  const detail = placeDetail({
+  const detail = placeDetailAt({
     categoryName: table.categoryNames[match.category],
     locality: table.localities[match.placeIndex],
-    distanceMeters: match.distanceMeters,
+    rider,
+    lat,
+    lon,
   })
   return {name: match.name, detail, lat, lon}
 }
@@ -280,9 +282,12 @@ function placeResult({table, match}) {
  * its warm method and the searches ask: warm, with the routing manifest's address, starts the loads
  * of the places file, the two indexes, and the stops, once; pendingLoads
  * gives the loads still running; search, with a text and a point near
- * which to rank, `{lat, lon}` in degrees, resolves on the results of each
- * source for the text, each source that is not ready, or whose shard
- * fails, giving none; and snapshotStops, with a manifest entry, resolves
+ * which to rank, `{lat, lon}` in degrees, and the rider's position, the
+ * only point a place's distance is measured from, `{lat, lon}` or null
+ * where it is unknown and no distance is shown, resolves on the results of
+ * each source for the text, each source that is not ready, or whose shard
+ * fails, giving none; endPosition, with a resolved end and the rider's
+ * position, gives the end's position once the stops are loaded; and snapshotStops, with a manifest entry, resolves
  * on the entry's stop identifiers and positions, which the stops of a
  * point end are found in.
  */
@@ -393,7 +398,7 @@ export function createSearchFiles({origin}) {
     }
   }
 
-  function placeResults({text, near}) {
+  function placeResults({text, near, rider}) {
     const source = sources.places
 
     if (source.kind !== SourceKind.ready) {
@@ -401,7 +406,7 @@ export function createSearchFiles({origin}) {
     }
 
     const matches = searchPlaces({index: source.index, query: text, center: {latitude: near.lat, longitude: near.lon}, resultCountMax: GROUP_COUNT_MAX[GroupKind.places]})
-    return Array.from(matches, (match) => placeResult({table: source.table, match}))
+    return Array.from(matches, (match) => placeResult({table: source.table, match, rider}))
   }
 
   function stopResults({text, near}) {
@@ -435,14 +440,29 @@ export function createSearchFiles({origin}) {
       return pending
     },
 
-    async search({text, near}) {
+    async search({text, near, rider}) {
       const pending = [
         shardResults({name: "addresses", search: addressResults, text, near}),
         shardResults({name: "intersections", search: intersectionResults, text, near}),
       ]
       const settled = await Promise.allSettled(pending)
       const [addresses, intersections] = Array.from(settled, settledValue)
-      return {places: placeResults({text, near}), addresses, intersections, stops: stopResults({text, near})}
+      return {places: placeResults({text, near, rider}), addresses, intersections, stops: stopResults({text, near})}
+    },
+
+    /**
+     * The position of the resolved end `end`, as `endPosition` reads it
+     * with the stops this page has loaded: a stop's is unknown until they
+     * are.
+     */
+    endPosition({end, rider}) {
+      const source = sources.stops
+
+      if (source.kind !== SourceKind.ready) {
+        return endPosition({end, rider, stopIndex: null})
+      }
+
+      return endPosition({end, rider, stopIndex: source.index})
     },
 
     snapshotStops,

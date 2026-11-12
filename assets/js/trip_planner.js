@@ -48,7 +48,7 @@ import {
   tripRouteIds,
   windowText
 } from "./trip_plan"
-import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, suggestionList, suggestionsAnnouncement} from "./where_to"
+import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, searchPoints, suggestionList, suggestionsAnnouncement} from "./where_to"
 import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
 import {button, element} from "./dom_element"
 import {cardElement} from "./journey_card_view"
@@ -80,7 +80,8 @@ const ARRIVALS_EVENT_NAME = "stop-arrivals:arrivals"
 // The files are the page's own, so no origin goes in front of a path.
 const PAGE_ORIGIN = ""
 const FIELD_LABELS = Object.freeze({[TripEnd.from]: "From", [TripEnd.to]: "To"})
-const SEARCH_LABELS = Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
+const OTHER_END = Object.freeze({[TripEnd.from]: TripEnd.to, [TripEnd.to]: TripEnd.from})
+const SEARCH_LABELS =Object.freeze({[TripEnd.from]: "Where from?", [TripEnd.to]: "Where to?"})
 const EMPTY_FROM_TEXT = "Choose a start"
 const LOCATION_TEXT = "My location"
 const HIDDEN_TEXT_CLASS_NAME = "sr-only"
@@ -837,8 +838,10 @@ export const TripPlanner = {
     this.searchCount += 1
     const searchNumber = this.searchCount
     const text = this.searchText
-    const near = this.searchCenter()
-    const found = await this.searchFiles.search({text, near})
+    const rider = this.riderPosition()
+    const anchor = this.searchFiles.endPosition({end: this.ends[OTHER_END[this.searching]], rider})
+    const {near} = searchPoints({anchor, rider, fallback: this.mapSearchCenter()})
+    const found = await this.searchFiles.search({text, near, rider})
 
     if (searchNumber !== this.searchCount) {
       return
@@ -849,10 +852,10 @@ export const TripPlanner = {
     this.writeList(list)
   },
 
-  // The point a search ranks its results by: the rider's fix while the
-  // list holds the position watch, or the latest while it is fresh, which
-  // stays in this module, or else the map's center.
-  searchCenter() {
+  // The rider's position, the one point a distance is measured from: the
+  // fix while the list holds the position watch, or the latest while it is
+  // fresh, or else null, where it is unknown.
+  riderPosition() {
     if (this.searchFix !== null) {
       return {lat: this.searchFix.latitude, lon: this.searchFix.longitude}
     }
@@ -863,6 +866,12 @@ export const TripPlanner = {
       return {lat: latest.fix.latitude, lon: latest.fix.longitude}
     }
 
+    return null
+  },
+
+  // The point a search ranks its results by when it has neither the other
+  // end nor the rider's position: the map's center.
+  mapSearchCenter() {
     const center = this.tripMap.center()
 
     if (center.kind === CenterKind.center) {
