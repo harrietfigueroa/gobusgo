@@ -420,8 +420,9 @@ class RouteTap {
   // A filter can stop the layer drawing a route the list names.
   onIdle() {
     const isShown = this.routeIds !== null
+    const isStale = isShown && !this.routeIds.every(this.routeDrawn)
 
-    if (isShown && !this.routeIds.every(this.routeDrawn)) {
+    if (isStale) {
       this.close()
     }
   }
