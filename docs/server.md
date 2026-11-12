@@ -96,6 +96,8 @@ Stored files are deleted once past their dataset's retention:
 | --- | --- |
 | Vehicle responses | 7 days |
 | Route schedule responses | 9 days |
-| Arrival responses | 1 day |
+| Arrival responses | 7 days |
 | Agency, route, and route path responses | 30 days |
 | Usage records | 3 days |
+
+Arrival responses are OneBusAway's own predictions for the stops a vehicle page or an `arrivals` call holds open, kept a week as a baseline for vehicle-prediction research.
