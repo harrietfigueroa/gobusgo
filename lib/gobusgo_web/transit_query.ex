@@ -230,6 +230,15 @@ defmodule GobusgoWeb.TransitQuery do
   @spec stop_known?(String.t()) :: boolean()
   def stop_known?(stop_id) when is_binary(stop_id), do: StopView.stop(StopView, stop_id) != nil
 
+  @doc "The name the stop view holds for the stop `stop_id`, or `:unknown` where it holds none."
+  @spec stop_name(String.t()) :: {:ok, String.t()} | :unknown
+  def stop_name(stop_id) when is_binary(stop_id) do
+    case StopView.stop(StopView, stop_id) do
+      %{stop: %{"name" => name}} when is_binary(name) -> {:ok, name}
+      _absent -> :unknown
+    end
+  end
+
   @doc """
   What a page shows for the stop `stop_id` now, from the stop's fetch in the
   arrivals view and the vehicles the vehicle view holds, with that fetch.

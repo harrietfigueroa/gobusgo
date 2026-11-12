@@ -16,7 +16,8 @@ import {button, element} from "./dom_element"
 import {cardElement} from "./journey_card_view"
 import {firstRideLive, journeyCard} from "./journey_cards"
 import {appendMessage} from "./message"
-import {HostMethod, OutcomeKind, ThemeKind, createHost, isContextAccepted, isLocationGranted, sendMessage, themeOf, updateModelContext} from "./mcp_host"
+import {applyTheme, reportSize} from "./mcp_frame"
+import {HostMethod, OutcomeKind, createHost, isContextAccepted, isLocationGranted, sendMessage, updateModelContext} from "./mcp_host"
 import {ResolutionKind, resolution} from "./mcp_trip_ends"
 import {InputKind, StartKind, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
 import {chosenMessage, journeyContext, journeysContext} from "./mcp_trip_journey"
@@ -587,26 +588,8 @@ function planStateOf(kind) {
   }
 }
 
-// The theme the host names, as the stylesheet's `data-theme`.
-function applyTheme(hostContext) {
-  const theme = themeOf(hostContext)
-
-  if (theme.kind === ThemeKind.named) {
-    document.documentElement.dataset.theme = theme.theme
-  }
-}
-
 function showStandalone(root) {
   root.replaceChildren(element({tag: "h1", className: "mcp-trip-heading", text: "Trip planner"}), element({tag: "p", className: "trip-note", text: "This planner opens inside an AI assistant that supports MCP Apps."}))
-}
-
-// Tells the host how tall the app is, so it can size the frame.
-function reportSize({host, body}) {
-  const observer = new ResizeObserver(() => {
-    host.notify({method: HostMethod.sizeChanged, params: {width: Math.ceil(body.scrollWidth), height: Math.ceil(body.scrollHeight)}})
-  })
-
-  observer.observe(body)
 }
 
 async function main() {

@@ -1,0 +1,266 @@
+// What the arrivals board reads from the answers of the `arrivals` tool, as
+// pure functions: the result of a tool call as one answer of a known kind,
+// the arrivals of an answer as the rows the page draws take them, the board
+// that keeps the stop's name and the last arrivals across answers that carry
+// neither, and the texts of the status line and of the fetch time. Nothing
+// here reads the document, the clock, or a timer.
+
+import {shownAt} from "./arrival_countdown.js"
+import {assertCondition, unreachable} from "./assert.js"
+import {OutcomeKind} from "./mcp_host.js"
+
+/** The kinds of what one result of the tool says. */
+export const AnswerKind = Object.freeze({
+  arrivals: "arrivals",
+  fetching: "fetching",
+  capacityReached: "capacity_reached",
+  unknownStop: "unknown_stop",
+  refused: "refused",
+  invalid: "invalid"
+})
+
+/** The kinds of what the tool's arguments say of the stop. */
+export const InputStopKind = Object.freeze({found: "found", missing: "missing"})
+
+const INVALID =Object.freeze({kind: AnswerKind.invalid})
+const SECONDS_PLURAL_LIMIT = 1
+const MINUTE_MS = 60 * 1000
+const NARROW_NO_BREAK_SPACE = / /g
+
+function isRecord(value) {
+  const isObject = typeof value === "object" && value !== null
+  return isObject && !Array.isArray(value)
+}
+
+function nullableText(value) {
+  if (typeof value === "string") {
+    return value
+  }
+
+  return null
+}
+
+// An arrival the tool sent, in the shape the rows of the page take, or null where the tool's schema does not hold.
+function arrivalOf(json) {
+  if (!isRecord(json)) {
+    return null
+  }
+
+  const timeMs = Date.parse(json.time)
+  const isShaped = Number.isSafeInteger(json.minutes) && Number.isFinite(timeMs) && typeof json.predicted === "boolean"
+
+  if (isShaped === false) {
+    return null
+  }
+
+  return {route: nullableText(json.route), color: nullableText(json.color), headsign: nullableText(json.headsign), minutes: json.minutes, time_ms: timeMs, predicted: json.predicted}
+}
+
+function arrivalsAnswerOf({data, meta}) {
+  const fetchedAtMs = Date.parse(meta.fetchedAt)
+  const isShaped = typeof data.stopId === "string" && Array.isArray(data.arrivals) && Number.isFinite(fetchedAtMs)
+
+  if (isShaped === false) {
+    return INVALID
+  }
+
+  const arrivals = []
+
+  for (const json of data.arrivals) {
+    const arrival = arrivalOf(json)
+
+    if (arrival === null) {
+      return INVALID
+    }
+
+    arrivals.push(arrival)
+  }
+
+  return {kind: AnswerKind.arrivals, stopId: data.stopId, stopName: nullableText(data.stopName), fetchedAtMs, arrivals}
+}
+
+function waitingAnswerOf({kind, data}) {
+  const isShaped = typeof data.stopId === "string" && Number.isSafeInteger(data.retryAfterSeconds) && data.retryAfterSeconds >= 1
+
+  if (isShaped === false) {
+    return INVALID
+  }
+
+  return {kind, stopId: data.stopId, retryAfterSeconds: data.retryAfterSeconds}
+}
+
+function errorText(result) {
+  if (!Array.isArray(result.content)) {
+    return ""
+  }
+
+  const block = result.content.find((candidate) => isRecord(candidate) && typeof candidate.text === "string")
+
+  if (block === undefined) {
+    return ""
+  }
+
+  return block.text
+}
+
+/**
+ * What `result`, the result of a call of the `arrivals` or `arrivals_board`
+ * tool, says: an AnswerKind member with the fields the kind reads. A result
+ * the tool flagged with `isError` is `refused` with the text of its first
+ * block, and a result that is none of the tool's answers is `invalid`.
+ */
+export function answerOf(result) {
+  if (!isRecord(result)) {
+    return INVALID
+  }
+
+  if (result.isError === true) {
+    return {kind: AnswerKind.refused, text: errorText(result)}
+  }
+
+  const content = result.structuredContent
+  const isShaped = isRecord(content) && isRecord(content.data) && isRecord(content.meta)
+
+  if (isShaped === false) {
+    return INVALID
+  }
+
+  const {data, meta} = content
+
+  switch (data.status) {
+    case "arrivals":
+      return arrivalsAnswerOf({data, meta})
+    case "fetching":
+      return waitingAnswerOf({kind: AnswerKind.fetching, data})
+    case "capacity_reached":
+      return waitingAnswerOf({kind: AnswerKind.capacityReached, data})
+    case "unknown_stop":
+      if (typeof data.stopId !== "string") {
+        return INVALID
+      }
+
+      return {kind: AnswerKind.unknownStop, stopId: data.stopId}
+    default:
+      return INVALID
+  }
+}
+
+/**
+ * The stop `params`, the params of the host's `tool-input` notification,
+ * name in their arguments: `{kind: "found", stopId}` for a non-empty text,
+ * and `{kind: "missing"}` otherwise.
+ */
+export function inputStopOf(params) {
+  const hasStop = isRecord(params) && isRecord(params.arguments) && typeof params.arguments.stopId === "string" && params.arguments.stopId !== ""
+
+  if (hasStop) {
+    return {kind: InputStopKind.found, stopId: params.arguments.stopId}
+  }
+
+  return {kind: InputStopKind.missing}
+}
+
+/**
+ * What a call of the tool through the host ended in, `outcome`, an
+ * OutcomeKind member of `mcp_host.js`, as one answer: the tool's result read
+ * by `answerOf`, and a refusal or a timeout of the host as `refused`.
+ */
+export function answerOfOutcome(outcome) {
+  if (outcome.kind === OutcomeKind.answered) {
+    return answerOf(outcome.result)
+  }
+
+  return {kind: AnswerKind.refused, text: ""}
+}
+
+/**
+ * `answer`, of kind `arrivals`, as the page's rows take a stop's arrivals,
+ * counted from `nowMs`, Unix milliseconds, with the arrivals that have
+ * passed left out and at most `countMax` of them.
+ */
+export function shownOf({answer, nowMs, countMax}) {
+  assertCondition(answer.kind === AnswerKind.arrivals, "board answer: only an arrivals answer has rows, got: " + answer.kind)
+
+  const ageMinutes = Math.floor(Math.max(nowMs - answer.fetchedAtMs, 0) / MINUTE_MS)
+  const shown = {stop_id: answer.stopId, status: "arrivals", age_minutes: ageMinutes, arrivals: answer.arrivals}
+  return shownAt({shown, nowMs, countMax})
+}
+
+/**
+ * What the board holds after `answer`: the stop's name, kept from an answer
+ * that has one, the last arrivals answer, kept across answers that carry no
+ * arrivals and dropped for a stop the server does not know, and the latest
+ * answer, which the status line reads.
+ */
+export function boardAfter({board, answer}) {
+  let {stopName, arrivals} = board
+
+  if (answer.kind === AnswerKind.arrivals) {
+    arrivals = answer
+
+    if (answer.stopName !== null) {
+      stopName = answer.stopName
+    }
+  }
+
+  if (answer.kind === AnswerKind.unknownStop) {
+    arrivals = null
+  }
+
+  return {stopName, arrivals, latest: answer}
+}
+
+function secondsText(seconds) {
+  if (seconds === SECONDS_PLURAL_LIMIT) {
+    return "1 second"
+  }
+
+  return `${seconds} seconds`
+}
+
+function againText({isRefreshing, retryAfterSeconds}) {
+  if (isRefreshing) {
+    return `Trying again in ${secondsText(retryAfterSeconds)}.`
+  }
+
+  return `Ask again in ${secondsText(retryAfterSeconds)}.`
+}
+
+/**
+ * The line the board shows under its arrivals for `answer`, the latest one,
+ * or an empty text for arrivals. `isRefreshing` says whether the board
+ * asks again on its own, which changes who tries again.
+ */
+export function statusText({answer, isRefreshing}) {
+  switch (answer.kind) {
+    case AnswerKind.arrivals:
+      return ""
+    case AnswerKind.fetching:
+      if (isRefreshing) {
+        return `Fetching this stop's arrivals. ${againText({isRefreshing, retryAfterSeconds: answer.retryAfterSeconds})}`
+      }
+
+      return `This stop's arrivals are being fetched. ${againText({isRefreshing, retryAfterSeconds: answer.retryAfterSeconds})}`
+    case AnswerKind.capacityReached:
+      return `Too many stops are held to show this one. ${againText({isRefreshing, retryAfterSeconds: answer.retryAfterSeconds})}`
+    case AnswerKind.unknownStop:
+      return "This stop is not known."
+    case AnswerKind.refused:
+    case AnswerKind.invalid:
+      if (isRefreshing) {
+        return "The arrivals could not be fetched. Trying again soon."
+      }
+
+      return "The arrivals could not be fetched."
+    default:
+      return unreachable(answer.kind, "board answer: an answer of unknown kind")
+  }
+}
+
+/** When the arrivals were fetched, on the clock of `timeZone`, an IANA name, such as "Fetched at 3:04 PM". */
+export function fetchedText({fetchedAtMs, timeZone}) {
+  const format = new Intl.DateTimeFormat("en-US", {hour: "numeric", minute: "2-digit", timeZone})
+  // Recent ICU data writes a narrow no-break space before "PM"; a plain space reads the same and compares the same everywhere.
+  const clock = format.format(fetchedAtMs).replace(NARROW_NO_BREAK_SPACE, " ")
+  return `Fetched at ${clock}`
+}

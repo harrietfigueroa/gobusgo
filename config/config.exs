@@ -4,7 +4,7 @@ config :esbuild,
   version: "0.25.5",
   default: [
     args:
-      ~w(js/app.js js/trip_app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
+      ~w(js/app.js js/trip_app.js js/arrivals_board.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
@@ -132,6 +132,7 @@ config :gobusgo, GobusgoWeb.Mcp,
   tools: [
     GobusgoWeb.Mcp.Tools.Alerts,
     GobusgoWeb.Mcp.Tools.Arrivals,
+    GobusgoWeb.Mcp.Tools.ArrivalsBoard,
     GobusgoWeb.Mcp.Tools.Find,
     GobusgoWeb.Mcp.Tools.PlanTrip,
     GobusgoWeb.Mcp.Tools.Route,
@@ -139,6 +140,7 @@ config :gobusgo, GobusgoWeb.Mcp,
   ],
   resources: [
     GobusgoWeb.Mcp.Resources.Agencies,
+    GobusgoWeb.Mcp.Resources.ArrivalsBoard,
     GobusgoWeb.Mcp.Resources.RoutingManifest,
     GobusgoWeb.Mcp.Resources.TripApp
   ]

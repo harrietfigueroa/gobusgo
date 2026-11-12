@@ -20,6 +20,8 @@ import {
   incomingOf,
   isContextAccepted,
   isLocationGranted,
+  isServerToolsDeclared,
+  callTool,
   sendMessage,
   themeOf,
   updateModelContext,
@@ -147,6 +149,33 @@ function setup() {
   deepStrictEqual(seen, [["input", {arguments: {from: "A", to: "B"}}], ["result", {content: [], structuredContent: {from: "A", to: "B"}}]], "the notifications' handlers")
 }
 
+// The host's teardown request reaches its handler, and is answered once the handler has run.
+{
+  const {parent, host, send} = setup()
+  const seen = []
+  host.onTeardown(() => { seen.push(parent.posted.length) })
+  send({jsonrpc: "2.0", id: 8, method: HostMethod.resourceTeardown, params: {reason: "done"}})
+  deepStrictEqual(seen, [0], "the handler runs before the answer is posted")
+  deepStrictEqual(parent.posted[0].message, {jsonrpc: "2.0", id: 8, result: {}}, "the answer to teardown")
+}
+
+// A call of a tool is a tools/call request with the tool's name and arguments, and its result, error flag included, is handed back as the host sent it.
+{
+  const {parent, host, answer, send} = setup()
+  const calling = callTool({host, name: "arrivals", toolArguments: {stopId: "1_1"}})
+  const [{message: call}] = parent.posted
+  deepStrictEqual(call.method, HostMethod.toolsCall, "the call's method")
+  deepStrictEqual(call.method, "tools/call", "the call's method on the wire")
+  deepStrictEqual(call.params, {name: "arrivals", arguments: {stopId: "1_1"}}, "the call's params")
+  const result = {content: [{type: "text", text: "{}"}], structuredContent: {data: {}}, isError: true}
+  answer(call.id, result)
+  deepStrictEqual(await calling, {kind: OutcomeKind.answered, result}, "a result flagged as an error is still an answer")
+
+  const refusing = callTool({host, name: "arrivals", toolArguments: {stopId: "1_1"}})
+  send({jsonrpc: "2.0", id: parent.posted[1].message.id, error: {code: -32602, message: "Tool not callable"}})
+  deepStrictEqual(await refusing, {kind: OutcomeKind.refused, message: "Tool not callable"}, "a refused call")
+}
+
 // A message from another window, or of another protocol, is left alone.
 {
   const {events, host} = setup()
@@ -267,6 +296,14 @@ deepStrictEqual(isContextAccepted({message: {}}), false, "another capability")
 deepStrictEqual(isContextAccepted({updateModelContext: true}), false, "a context update that is no record")
 deepStrictEqual(isContextAccepted({}), false, "no capabilities named")
 deepStrictEqual(isContextAccepted(undefined), false, "no capabilities")
+
+// A host proxies tool calls to the server only where it declares `serverTools`.
+deepStrictEqual(isServerToolsDeclared({serverTools: {}}), true, "a declared proxy")
+deepStrictEqual(isServerToolsDeclared({serverTools: {listChanged: true}}), true, "a declared proxy with list changes")
+deepStrictEqual(isServerToolsDeclared({serverResources: {}}), false, "another capability")
+deepStrictEqual(isServerToolsDeclared({serverTools: true}), false, "a proxy that is no record")
+deepStrictEqual(isServerToolsDeclared({}), false, "no capabilities named")
+deepStrictEqual(isServerToolsDeclared(undefined), false, "no capabilities")
 
 deepStrictEqual(themeOf({theme: "dark"}), {kind: ThemeKind.named, theme: "dark"}, "a dark theme")
 deepStrictEqual(themeOf({theme: "light", displayMode: "inline"}), {kind: ThemeKind.named, theme: "light"}, "a light theme")
