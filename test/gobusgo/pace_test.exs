@@ -21,12 +21,19 @@ defmodule Gobusgo.PaceTest do
   @start_ms 1_700_000_000_000
   @prefix "paces/daily/"
 
-  defmodule FailingWriter do
+  defmodule FlakyWriter do
     @moduledoc false
     @behaviour Gobusgo.Writer
 
+    # Fails while the `:flaky` agent holds `:failing`, and stores through the
+    # file backend otherwise.
     @impl Gobusgo.Writer
-    def write(_request, _options), do: {:error, :storage_full}
+    def write(request, options) do
+      case Agent.get(Keyword.fetch!(options, :flaky), & &1) do
+        :failing -> {:error, :storage_full}
+        :working -> Gobusgo.Writer.LocalFile.write(request, Keyword.delete(options, :flaky))
+      end
+    end
   end
 
   defp east_path do
@@ -60,6 +67,28 @@ defmodule Gobusgo.PaceTest do
     start_supervised!({Pace, options})
     %{pace: name, clock: clock}
   end
+
+  defp run_step(%{flaky: flaky}, {:writer, mode}), do: Agent.update(flaky, fn _ -> mode end)
+
+  defp run_step(%{pace: pace}, {:pair, base_s}) do
+    # Each pair starts where the vehicle was, since a vehicle does not go
+    # back along its trip.
+    start_m = 5 + div(base_s, 10)
+    observe(pace, [vehicle(start_m, base_s)])
+    observe(pace, [vehicle(start_m + 100, base_s + 10)])
+  end
+
+  defp run_step(%{pace: pace}, {:day, date}) do
+    Agent.update(pace.clock, fn _ -> DateTime.new!(date, ~T[12:00:00], "Etc/UTC") end)
+  end
+
+  defp run_step(%{pace: pace}, :check) do
+    send(Process.whereis(pace.pace), :check)
+    _state = :sys.get_state(pace.pace)
+    :ok
+  end
+
+  defp run_step(%{pace: pace}, :write), do: Pace.write(pace.pace)
 
   defp vehicle(meters, seconds, overrides \\ %{}) do
     meters_per_degree_lon = Geodesy.meters_per_degree() * :math.cos(Geodesy.radians(@origin_lat))
@@ -183,17 +212,82 @@ defmodule Gobusgo.PaceTest do
 
       assert eventually(fn -> files(context) != [] end)
     end
+  end
 
-    test "keeps a table the writer did not store", context do
-      pace = start(context, write_options: [backend: FailingWriter])
-      observe(pace, [vehicle(5, 0)])
-      observe(pace, [vehicle(105, 10)])
-      Agent.update(pace.clock, fn _ -> ~U[2026-11-12 00:00:05Z] end)
+  describe "a table the writer did not store" do
+    # Each scenario runs its steps against a writer a step switches between
+    # failing and working, then reads the files written as `{date, seconds}`.
+    # `{:pair, base_s}` observes one vehicle's two reports ten seconds apart
+    # from `base_s`, `{:day, date}` moves the clock to noon of `date`, and
+    # `:check` is the minute check.
+    for {name, steps, expected_files, expected_log} <- [
+          {"is retried by the next check and written under its own date",
+           [
+             {:writer, :failing},
+             {:pair, 0},
+             {:day, ~D[2026-11-12]},
+             {:pair, 1000},
+             {:writer, :working},
+             :check
+           ], [{~D[2026-11-11], 10.0}], nil},
+          {"is not retried by an observation",
+           [
+             {:writer, :failing},
+             {:pair, 0},
+             {:day, ~D[2026-11-12]},
+             {:pair, 1000},
+             {:writer, :working},
+             {:pair, 2000}
+           ], [], nil},
+          {"keeps the new day's reports out of the finished day's table",
+           [
+             {:writer, :failing},
+             {:pair, 0},
+             {:day, ~D[2026-11-12]},
+             {:pair, 1000},
+             {:pair, 2000},
+             {:writer, :working},
+             :check,
+             :write
+           ], [{~D[2026-11-11], 10.0}, {~D[2026-11-12], 20.0}], nil},
+          {"is replaced, with a log of what was dropped, by a second one that fails to write",
+           [
+             {:writer, :failing},
+             {:pair, 0},
+             {:day, ~D[2026-11-12]},
+             {:pair, 1000},
+             {:day, ~D[2026-11-13]},
+             {:pair, 2000},
+             {:writer, :working},
+             :check
+           ], [{~D[2026-11-12], 10.0}], "Pace pending table dropped"}
+        ] do
+      test name, context do
+        flaky = start_supervised!({Agent, fn -> :working end}, id: :flaky)
 
-      capture_log(fn ->
-        observe(pace, [vehicle(205, 20)])
-        assert Pace.write(pace.pace) == {:error, :storage_full}
-      end)
+        pace =
+          start(context,
+            write_options: [backend: FlakyWriter, flaky: flaky, base_dir: context.tmp_dir]
+          )
+
+        log =
+          capture_log(fn ->
+            for step <- unquote(Macro.escape(steps)),
+                do: run_step(%{pace: pace, flaky: flaky}, step)
+          end)
+
+        written =
+          for {_destination, %{"meta" => %{"date" => date}, "cells" => cells}} <- files(context) do
+            {Date.from_iso8601!(date), Float.round(total(cells, 0), 1)}
+          end
+
+        assert Enum.sort(written) == unquote(Macro.escape(expected_files))
+
+        case unquote(expected_log) do
+          nil -> refute log =~ "Pace pending table dropped"
+          text -> assert log =~ text
+        end
+      end
     end
   end
 
@@ -212,6 +306,25 @@ defmodule Gobusgo.PaceTest do
       assert [{_destination, %{"meta" => meta}}] = files(context)
       assert meta["droppedCellCount"] > 0
       assert length(String.split(log, "Pace table full")) == 2
+    end
+
+    test "skip a fetch while the message queue holds more than the bound", context do
+      pace = start(context, message_queue_length_max: 1)
+      :ok = :sys.suspend(pace.pace)
+
+      # The suspended process handles no cast, so the queue holds one after
+      # the first call and two after the second, and the third finds it over
+      # the bound.
+      for {meters, seconds} <- [{5, 0}, {105, 10}, {205, 20}] do
+        :ok = Pace.observe(pace.pace, %{agency_id: "1", vehicles: [vehicle(meters, seconds)]})
+      end
+
+      :ok = :sys.resume(pace.pace)
+      _state = :sys.get_state(pace.pace)
+
+      assert {:ok, _cell_count} = Pace.write(pace.pace)
+      assert [{_destination, %{"cells" => cells}}] = files(context)
+      assert_in_delta total(cells, 0), 10, 0.01
     end
 
     test "read no more paths than the build bound in one call", context do

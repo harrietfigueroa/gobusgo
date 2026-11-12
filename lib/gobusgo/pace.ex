@@ -3,6 +3,7 @@ defmodule Gobusgo.Pace do
   @vehicle_count_max_default 20_000
   @path_count_max_default 2_500
   @path_build_count_max_default 200
+  @message_queue_length_max_default 30
 
   @moduledoc """
   The pace table of the node: it learns, from the vehicle reports of each
@@ -32,18 +33,27 @@ defmodule Gobusgo.Pace do
       call to `observe/2`, #{@path_build_count_max_default} by default, and a
       report whose path is not held and not read places its vehicle nowhere.
 
-  Every #{@check_interval_ms_default} ms by default the process compares the
-  UTC date with its table's, and when the date is later it writes the table
-  and starts the next one empty. It also writes the table it holds when it
-  shuts down, so a restart keeps what it learned; each file is its own
-  destination, and a reader sums the files of a date. A write that fails
-  logs `Pace table not written` at `error` and keeps the table, which then
-  takes the reports that follow, and is written at the next check. A table
-  with no cell is not written.
+    * `observe/2` skips a call, and counts the skip, while the process's
+      message queue holds more than `:message_queue_length_max` messages,
+      #{@message_queue_length_max_default} by default.
+
+  Reports go to the table of the UTC date they are observed on. When the
+  date is later than the table's, at an observation or at a check, the
+  process writes the finished table and starts the next day's empty. A write
+  that fails logs `Pace table not written` at `error` and sets the finished
+  table aside as the pending table, which only the check, every
+  #{@check_interval_ms_default} ms by default, writes again. The process
+  holds one pending table: a finished table that fails to write while one is
+  pending replaces it, and the replaced table's date, cells, and meters are
+  logged at `error` as `Pace pending table dropped`. The process also writes
+  both tables when it shuts down, so a restart keeps what it learned; each
+  file is its own destination, and a reader sums the files of a date. A
+  table with no cell is not written.
 
   The file's form is `Gobusgo.Pace.Aggregate`. A write logs `Pace table
   written` at `info` with the date, the count of cells, the meters, and the
-  cells the bound left out. A path read that raises is logged once per call
+  cells the bound left out, and the count of observations skipped since the
+  last write. A path read that raises is logged once per call
   as `Pace paths not read` at `warning`, and the report is dropped.
   """
 
@@ -67,8 +77,28 @@ defmodule Gobusgo.Pace do
   @spec observe(GenServer.server(), %{agency_id: String.t(), vehicles: [map()]}) :: :ok
   def observe(server, %{agency_id: agency_id, vehicles: vehicles})
       when is_binary(agency_id) and is_list(vehicles) do
-    reports = Learning.reports(%{agency_id: agency_id, vehicles: vehicles})
-    GenServer.cast(server, {:observe, reports})
+    case GenServer.whereis(server) do
+      nil ->
+        :ok
+
+      pid ->
+        observe_pid(pid, server, %{agency_id: agency_id, vehicles: vehicles})
+    end
+  end
+
+  defp observe_pid(pid, server, fetch) do
+    {:message_queue_len, queue_length} = Process.info(pid, :message_queue_len)
+    skip = :persistent_term.get({__MODULE__, server}, nil)
+
+    case skip do
+      %{counter: counter, queue_length_max: queue_length_max}
+      when queue_length > queue_length_max ->
+        :counters.add(counter, 1, 1)
+
+      _no_skip ->
+        reports = Learning.reports(fetch)
+        GenServer.cast(pid, {:observe, reports})
+    end
   end
 
   @doc """
@@ -86,7 +116,8 @@ defmodule Gobusgo.Pace do
   path, `:node` the node's name in a file's destination, `:clock` a function
   that returns the time in UTC, and `:file_id` one that returns a name no
   other file has. `:cell_count_max`, `:vehicle_count_max`,
-  `:path_count_max`, `:path_build_count_max`, and `:check_interval_ms`
+  `:path_count_max`, `:path_build_count_max`, `:message_queue_length_max`,
+  and `:check_interval_ms`
   replace the defaults.
   """
   @spec start_link(Keyword.t()) :: GenServer.on_start()
@@ -108,13 +139,20 @@ defmodule Gobusgo.Pace do
         vehicle_count_max: @vehicle_count_max_default,
         path_count_max: @path_count_max_default,
         path_build_count_max: @path_build_count_max_default,
+        message_queue_length_max: @message_queue_length_max_default,
         check_interval_ms: @check_interval_ms_default
       ])
 
     name = Keyword.fetch!(options, :name)
     Assert.condition(is_atom(name), "name must be an atom, got: #{inspect(name)}")
 
-    for key <- [:cell_count_max, :vehicle_count_max, :path_count_max, :check_interval_ms] do
+    for key <- [
+          :cell_count_max,
+          :vehicle_count_max,
+          :path_count_max,
+          :check_interval_ms,
+          :message_queue_length_max
+        ] do
       value = Keyword.fetch!(options, key)
       Assert.condition(is_integer(value) and value >= 1, "#{key} must be a positive integer")
     end
@@ -128,13 +166,20 @@ defmodule Gobusgo.Pace do
 
   @impl GenServer
   def init(options) do
-    # The process writes its table in terminate/2, which a shutdown reaches
+    # The process writes its tables in terminate/2, which a shutdown reaches
     # only in a process that traps exits.
     Process.flag(:trap_exit, true)
 
+    # Callers of observe/2 read the bound and add to the skip count without a
+    # message to this process.
+    skip = %{counter: :counters.new(1, []), queue_length_max: options.message_queue_length_max}
+    :persistent_term.put({__MODULE__, options.name}, skip)
+
     pace = %{
       options: options,
+      skip_counter: skip.counter,
       table: new_table(options),
+      pending: nil,
       table_is_full_logged: false,
       vehicles: %{},
       paths: %{}
@@ -150,14 +195,13 @@ defmodule Gobusgo.Pace do
   end
 
   @impl GenServer
-  def handle_call(:write, _from, pace) do
-    {result, pace} = write_table(pace)
-    {:reply, result, pace}
+  def handle_call(:write, _from, %{table: table} = pace) do
+    {:reply, store(table, pace), pace}
   end
 
   @impl GenServer
   def handle_info(:check, pace) do
-    {:noreply, pace |> roll_over() |> schedule_check()}
+    {:noreply, pace |> roll_over() |> retry_pending() |> schedule_check()}
   end
 
   # The exit of a process the pace table is linked to, which it sees as a
@@ -165,8 +209,10 @@ defmodule Gobusgo.Pace do
   def handle_info({:EXIT, _pid, _reason}, pace), do: {:noreply, pace}
 
   @impl GenServer
-  def terminate(_reason, pace) do
-    {_result, _pace} = write_table(pace)
+  def terminate(_reason, %{table: table, pending: pending} = pace) do
+    _pending_result = store(pending, pace)
+    _table_result = store(table, pace)
+    :persistent_term.erase({__MODULE__, pace.options.name})
     :ok
   end
 
@@ -174,25 +220,46 @@ defmodule Gobusgo.Pace do
     today = today(options)
 
     if Date.after?(today, table_date) do
-      case write_table(pace) do
-        {{:ok, _cell_count}, pace} ->
-          %{
-            pace
-            | table: Table.new(%{date: today, cell_count_max: options.cell_count_max}),
-              table_is_full_logged: false
-          }
+      finished = pace.table
+      pace = %{pace | table: new_table(options), table_is_full_logged: false}
 
-        {{:error, _reason}, pace} ->
-          pace
+      case store(finished, pace) do
+        {:ok, _cell_count} -> pace
+        {:error, _reason} -> set_aside(pace, finished)
       end
     else
       pace
     end
   end
 
-  defp write_table(%{table: table, options: options} = pace) do
+  # The pending table is the one place a finished table waits for a write, so
+  # a second one replaces it, and the replaced table is accounted for in a log.
+  defp set_aside(%{pending: nil} = pace, finished), do: %{pace | pending: finished}
+
+  defp set_aside(%{pending: dropped} = pace, finished) do
+    Logger.error("Pace pending table dropped",
+      date: Date.to_iso8601(dropped.date),
+      cell_count: map_size(dropped.cells),
+      meters_total: Table.meters_total(dropped)
+    )
+
+    %{pace | pending: finished}
+  end
+
+  defp retry_pending(%{pending: nil} = pace), do: pace
+
+  defp retry_pending(%{pending: pending} = pace) do
+    case store(pending, pace) do
+      {:ok, _cell_count} -> %{pace | pending: nil}
+      {:error, _reason} -> pace
+    end
+  end
+
+  defp store(nil, _pace), do: {:ok, 0}
+
+  defp store(table, %{options: options, skip_counter: skip_counter}) do
     if map_size(table.cells) == 0 do
-      {{:ok, 0}, pace}
+      {:ok, 0}
     else
       file =
         Aggregate.build(%{
@@ -206,14 +273,18 @@ defmodule Gobusgo.Pace do
 
       case Writer.write(request, options.write_options) do
         :ok ->
+          skipped_count = :counters.get(skip_counter, 1)
+          :counters.sub(skip_counter, 1, skipped_count)
+
           Logger.info("Pace table written",
             date: Date.to_iso8601(table.date),
             cell_count: file.cell_count,
             meters_total: file.meters_total,
-            dropped_cell_count: table.dropped_count
+            dropped_cell_count: table.dropped_count,
+            skipped_observation_count: skipped_count
           )
 
-          {{:ok, file.cell_count}, pace}
+          {:ok, file.cell_count}
 
         {:error, reason} ->
           Logger.error("Pace table not written",
@@ -222,7 +293,7 @@ defmodule Gobusgo.Pace do
             reason: inspect(reason)
           )
 
-          {{:error, reason}, pace}
+          {:error, reason}
       end
     end
   end
