@@ -4,11 +4,13 @@ defmodule GobusgoWeb.Mcp.Resources.ArrivalsBoard do
   app, an HTML document of the MCP Apps content type that loads one bundle
   and one stylesheet from the public host.
 
-  Its `_meta.ui.csp` names that one origin under
-  `resourceDomains`, the origin `GobusgoWeb.Mcp.AppOrigin` gives, and lists
-  no `connectDomains`, since the app fetches no file. The app requests no
-  permission. The resource is the same whatever stop the tool is
-  called for: the app reads its stop from the tool's result.
+  Its `_meta.ui.csp` names that one origin, the origin
+  `GobusgoWeb.Mcp.AppOrigin` gives, under `resourceDomains` and under
+  `connectDomains`, since the app fetches the routing manifest and the
+  snapshot files from it to list scheduled departures. The app requests no
+  permission. The resource is the same whatever stop, time, or routes the
+  tool is called for: the app reads them from the tool's arguments and its
+  stop's first answer from the tool's result.
   """
 
   @behaviour GobusgoWeb.Mcp.Resource
@@ -56,7 +58,7 @@ defmodule GobusgoWeb.Mcp.Resources.ArrivalsBoard do
   defp meta(origin) do
     %{
       "ui" => %{
-        "csp" => %{"resourceDomains" => [origin]},
+        "csp" => %{"connectDomains" => [origin], "resourceDomains" => [origin]},
         "prefersBorder" => true
       }
     }

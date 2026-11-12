@@ -9,7 +9,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {OutcomeKind} from "../../assets/js/mcp_host.js"
-import {AnswerKind, InputStopKind, answerOf, answerOfOutcome, boardAfter, fetchedText, inputStopOf, shownOf, statusText} from "../../assets/js/mcp_board_answer.js"
+import {AnswerKind, answerOf, answerOfOutcome, boardAfter, fetchedText, shownOf, statusText} from "../../assets/js/mcp_board_answer.js"
 
 const FETCHED_AT = "2026-11-11T23:04:00Z"
 const FETCHED_AT_MS = Date.parse(FETCHED_AT)
@@ -99,14 +99,6 @@ const answerCases = [
 for (const {name, result, expected} of answerCases) {
   deepStrictEqual(answerOf(result), expected, name)
 }
-
-// The stop the tool's arguments name.
-deepStrictEqual(inputStopOf({arguments: {stopId: "1_1"}}), {kind: InputStopKind.found, stopId: "1_1"}, "a stop in the arguments")
-deepStrictEqual(inputStopOf({arguments: {stopId: ""}}), {kind: InputStopKind.missing}, "an empty stop")
-deepStrictEqual(inputStopOf({arguments: {stopId: 7}}), {kind: InputStopKind.missing}, "a stop that is no text")
-deepStrictEqual(inputStopOf({arguments: {}}), {kind: InputStopKind.missing}, "no stop")
-deepStrictEqual(inputStopOf({}), {kind: InputStopKind.missing}, "no arguments")
-deepStrictEqual(inputStopOf(undefined), {kind: InputStopKind.missing}, "no params")
 
 // A call through the host ends in the tool's result, or in the host's refusal or timeout.
 deepStrictEqual(answerOfOutcome({kind: OutcomeKind.answered, result: arrivalsResult}), arrivalsAnswer, "an answered call")

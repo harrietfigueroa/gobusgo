@@ -186,17 +186,21 @@ export function chosenMessage({row, from, to}) {
   return `I chose the journey from ${from} to ${to}: ${row.timesText}, ${row.changesText}.`
 }
 
-const VALID = Object.freeze({kind: ProblemKind.valid})
+/** The result of a check that finds no problem. */
+export const VALID = Object.freeze({kind: ProblemKind.valid})
 
-function isText(value) {
+/** Whether `value` is a non-empty text. */
+export function isText(value) {
   return typeof value === "string" && value !== ""
 }
 
-function isRecord(value) {
+/** Whether `value` is an object. */
+export function isRecord(value) {
   return typeof value === "object" && value !== null
 }
 
-function isInstant(value) {
+/** Whether `value` is an ISO 8601 time in UTC. */
+export function isInstant(value) {
   if (!isText(value)) {
     return false
   }
@@ -209,12 +213,13 @@ function isCount(value) {
   return Number.isInteger(value) && value >= 0
 }
 
-function invalid(path) {
+/** The result of a check that finds a problem at `path`. */
+export function invalid(path) {
   return {kind: ProblemKind.invalid, path}
 }
 
-// The first of `checks`, each `{path, isValid}`, that fails, or valid.
-function firstFailure(checks) {
+/** The first of `checks`, each `{path, isValid}`, that fails, or valid. */
+export function firstFailure(checks) {
   for (const check of checks) {
     if (!check.isValid) {
       return invalid(check.path)

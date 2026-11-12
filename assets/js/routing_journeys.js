@@ -164,9 +164,12 @@ async function fetchSettled({fetchFile, path, signal}) {
   }
 }
 
-// The content of one file the manifest names, fetched within
-// FETCH_TIMEOUT_MS and of the size the manifest gives it.
-async function fetchChecked({fetchFile, file}) {
+/**
+ * The content of `file`, an entry of the manifest, fetched through
+ * `fetchFile` within FETCH_TIMEOUT_MS and of the size the manifest gives
+ * it: `{kind: FetchKind.fetched, buffer}`, or the failure naming the file.
+ */
+export async function fetchChecked({fetchFile, file}) {
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
   const pending = fetchSettled({fetchFile, path: file.path, signal})
   const expiry = timeoutOf(signal)
@@ -183,7 +186,8 @@ async function fetchChecked({fetchFile, file}) {
   return outcome
 }
 
-function decodedOrFailed({fetched, decode, path}) {
+/** `fetched`, the content of the file at `path`, decoded by `decode`, or the failure naming the file where it is refused. */
+export function decodedOrFailed({fetched, decode, path}) {
   const result = decode(fetched.buffer)
 
   if (result.kind === DecodeKind.refused) {

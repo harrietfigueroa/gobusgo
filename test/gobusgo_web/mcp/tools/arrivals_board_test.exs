@@ -17,6 +17,7 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoardTest do
   alias GobusgoWeb.Mcp.StopHolds
   alias GobusgoWeb.Mcp.Tools.Arrivals
   alias GobusgoWeb.Mcp.Tools.ArrivalsBoard, as: Board
+  alias GobusgoWeb.Mcp.Tools.PlanTrip
 
   @legacy "2025-11-25"
   @registry Registry.new(%{tools: [Board], resources: [ArrivalsBoard]})
@@ -65,16 +66,51 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoardTest do
       assert tool["_meta"] == %{"ui" => %{"resourceUri" => "ui://gobusgo/arrivals-board"}}
     end
 
-    test "takes the stop identifier alone and requires it" do
+    test "takes a stop identifier, which it requires, and optionally a time and routes" do
       tool = list_tool()
 
-      assert Map.keys(tool["inputSchema"]["properties"]) == ["stopId"]
+      assert Map.keys(tool["inputSchema"]["properties"]) == ["route", "stopId", "when"]
       assert tool["inputSchema"]["required"] == ["stopId"]
     end
 
-    test "has the arguments schema of arrivals" do
-      assert Board.arguments_schema() == Arrivals.arguments_schema()
+    test "describes its time as plan_trip describes its own" do
+      plan_trip_when = PlanTrip.definition()["inputSchema"]["properties"]["when"]
+
+      assert list_tool()["inputSchema"]["properties"]["when"] == plan_trip_when
+    end
+
+    test "bounds the routes it takes" do
+      %{"route" => route} = list_tool()["inputSchema"]["properties"]
+
+      assert %{"type" => "array", "maxItems" => 10, "items" => %{"type" => "string"}} = route
+      assert route["items"]["minLength"] == 1
+      assert route["items"]["maxLength"] == 100
+    end
+
+    test "accepts the stop alone, as arrivals does" do
       assert Schema.mismatch(%{"stopId" => "1_1"}, Board.arguments_schema()) == nil
+    end
+
+    test "accepts the stop with a time and routes" do
+      arguments = %{
+        "stopId" => "1_1",
+        "when" => %{"mode" => "departAt", "time" => "23:00"},
+        "route" => ["1_100"]
+      }
+
+      assert Schema.mismatch(arguments, Board.arguments_schema()) == nil
+    end
+
+    test "rejects a time that is not an object" do
+      arguments = %{"stopId" => "1_1", "when" => "tonight"}
+
+      assert Schema.mismatch(arguments, Board.arguments_schema()) != nil
+    end
+
+    test "rejects routes that are not a list" do
+      arguments = %{"stopId" => "1_1", "route" => "1_100"}
+
+      assert Schema.mismatch(arguments, Board.arguments_schema()) != nil
     end
 
     test "describes a stop name its output schema holds" do
@@ -139,6 +175,93 @@ defmodule GobusgoWeb.Mcp.Tools.ArrivalsBoardTest do
 
     test "refuses an empty stop identifier as arrivals does" do
       assert Board.call(%{"stopId" => ""}) == Arrivals.call(%{"stopId" => ""})
+    end
+
+    test "holds no stop and reads no arrivals when it is given a time" do
+      :ok = TransitSeeds.arrivals("1_1", [{"soon", 5}])
+      arguments = %{"stopId" => "1_1", "when" => %{"mode" => "departAt", "time" => "23:00"}}
+
+      assert {:ok, _result} = Board.call(Map.put(arguments, "route", ["1_100"]))
+
+      assert StopHolds.held_stop_ids() == []
+      assert Demand.items(Demand, DemandKey.arrivals_dataset()) == []
+    end
+
+    test "answers the stop's name with no arrivals when it is given a time" do
+      {:ok, %{"structuredContent" => structured}} =
+        Board.call(%{"stopId" => "1_1", "when" => %{"mode" => "now"}})
+
+      assert %{"data" => %{"status" => "scheduled", "stopId" => "1_1", "stopName" => name}} =
+               structured
+
+      assert name == "Pine Street"
+      refute Map.has_key?(structured["data"], "arrivals")
+      assert structured["meta"]["count"] == 0
+    end
+
+    test "answers unknown_stop with no name and no hold when it is given a time" do
+      {:ok, %{"structuredContent" => structured}} =
+        Board.call(%{"stopId" => "9_9", "when" => %{"mode" => "now"}})
+
+      assert structured["data"] == %{"status" => "unknown_stop", "stopId" => "9_9"}
+      assert StopHolds.held_stop_ids() == []
+    end
+
+    test "refuses a time to arrive by, saying the board lists departures from a time" do
+      {:error, text} =
+        Board.call(%{"stopId" => "1_1", "when" => %{"mode" => "arriveBy", "time" => "08:00"}})
+
+      assert text =~ "when.mode"
+      assert text =~ "departures from a time"
+      assert text =~ "departAt"
+    end
+
+    test "lists scheduled in its output schema's statuses" do
+      %{"outputSchema" => %{"properties" => %{"data" => %{"properties" => properties}}}} =
+        list_tool()
+
+      assert "scheduled" in properties["status"]["enum"]
+    end
+
+    test "refuses a time plan_trip refuses, with plan_trip's message" do
+      for when_argument <- [
+            %{"mode" => "teleport"},
+            %{"mode" => "departAt", "day" => "friday", "time" => "08:30"},
+            %{"mode" => "departAt"}
+          ] do
+        {:error, message} = Board.call(%{"stopId" => "1_1", "when" => when_argument})
+
+        assert {:error, ^message} =
+                 PlanTrip.call(%{"to" => "Pine", "when" => when_argument})
+      end
+    end
+
+    test "accepts a time of mode now with no clock" do
+      :ok = TransitSeeds.arrivals("1_1", [{"soon", 5}])
+
+      assert {:ok, _result} = Board.call(%{"stopId" => "1_1", "when" => %{"mode" => "now"}})
+    end
+
+    test "refuses routes past the bound, a blank route, and a route past its length" do
+      too_many = Enum.map(1..11, &"1_#{&1}")
+
+      for route <- [too_many, [""], [String.duplicate("1", 101)]] do
+        assert {:error, text} =
+                 Board.call(%{
+                   "stopId" => "1_1",
+                   "when" => %{"mode" => "departAt", "time" => "23:00"},
+                   "route" => route
+                 })
+
+        assert text =~ "route"
+      end
+    end
+
+    test "leaves routes with no time to the live board, which ignores them" do
+      :ok = TransitSeeds.arrivals("1_1", [{"soon", 5}])
+
+      assert Board.call(%{"stopId" => "1_1", "route" => ["1_100"]}) ==
+               Board.call(%{"stopId" => "1_1"})
     end
   end
 end
