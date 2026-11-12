@@ -4,8 +4,9 @@ defmodule GobusgoWeb.TransitQuery do
   @moduledoc """
   What the views answer to a question about the transit data: the agencies
   and the filter bar's suggestions, the vehicles a filter keeps, a stop's
-  arrivals, the service alerts of routes and stops, and the routing manifest. A vehicle page and the MCP tools ask
-  the same functions, so both show the same answer to the same question.
+  arrivals, the service alerts of routes and stops, a route's directions and
+  stops, and the routing manifest. A vehicle page and the MCP tools ask the
+  same functions, so both show the same answer to the same question.
 
   Every function reads the views and changes nothing, and each answer
   draws on one read of the fetch it names. The `*_version/1` functions give
@@ -32,6 +33,7 @@ defmodule GobusgoWeb.TransitQuery do
 
   @arrival_view Gobusgo.OneBusAway.ArrivalView
   @route_view Gobusgo.OneBusAway.RouteView
+  @route_path_view Gobusgo.OneBusAway.RoutePathView
   @vehicle_situation_view Gobusgo.OneBusAway.VehicleSituationView
   @arrival_situation_view Gobusgo.OneBusAway.ArrivalSituationView
 
@@ -63,6 +65,16 @@ defmodule GobusgoWeb.TransitQuery do
 
   @typedoc "A stop's arrivals as a page shows them, with the fetch they come from, if any."
   @type stop_answer :: %{shown: StopArrivals.t(), fetch: fetch_header() | nil}
+
+  @typedoc "One direction of a route: its destination name and its stops, in the order the route serves them."
+  @type direction :: %{id: String.t(), name: String.t() | nil, stops: [stop_entry()]}
+
+  @typedoc "A route as the route view lists it, its directions, and the route path fetch they come from."
+  @type route_answer :: %{
+          route: %{String.t() => term()},
+          directions: [direction()],
+          fetch: fetch_header()
+        }
 
   @doc "The most stops one `find/1` answer holds."
   @spec stop_count_max() :: pos_integer()
@@ -300,6 +312,42 @@ defmodule GobusgoWeb.TransitQuery do
     {request_ids(@vehicle_situation_view), request_ids(@arrival_situation_view)}
   end
 
+  @doc """
+  The route `route_id` as the route view lists it, with the directions of
+  its route path in the order the path holds them, each stop in the order
+  the route serves it. A stop the stop view does not hold is left out of its
+  direction. `:unknown` for a route no fetch of the route view lists, and
+  `:unavailable` while the route view holds no fetch or the path view holds
+  none of this route.
+  """
+  @spec route(String.t()) :: {:ok, route_answer()} | :unknown | :unavailable
+  def route(route_id) when is_binary(route_id) do
+    fetches = route_fetches()
+    listed = for %{routes: routes} <- fetches, route = routes[route_id], do: route
+
+    case {fetches, listed} do
+      {[], _listed} ->
+        :unavailable
+
+      {_fetches, []} ->
+        :unknown
+
+      {_fetches, [route | _rest]} ->
+        path_fetch = FetchView.current_fetch(@route_path_view, route_id)
+        route_answer(%{route: route, path_fetch: path_fetch})
+    end
+  end
+
+  @doc "The identity of the fetches `route/1` draws on."
+  @spec route_version(String.t()) :: term()
+  def route_version(route_id) when is_binary(route_id) do
+    route_request_ids =
+      for %{id: id, request_id: request_id} <- route_fetches(), do: {id, request_id}
+
+    {route_request_ids, FetchView.request_id(@route_path_view, route_id),
+     StopView.request_ids(StopView)}
+  end
+
   @doc "The body of `GET /api/routing/manifest`: the canonical JSON of the manifest."
   @spec routing_manifest() :: binary()
   def routing_manifest, do: Gobusgo.CanonicalJson.encode(Snapshots.manifest(Snapshots))
@@ -320,6 +368,30 @@ defmodule GobusgoWeb.TransitQuery do
         into: %{} do
       {route_id, RouteLines.css_color(route["color"])}
     end
+  end
+
+  defp route_answer(%{path_fetch: nil}), do: :unavailable
+
+  defp route_answer(%{route: route, path_fetch: path_fetch}) do
+    %{request_id: request_id, fetched_at: fetched_at, stop_groupings: stop_groupings} = path_fetch
+
+    directions =
+      for %{"type" => "direction", "stopGroups" => stop_groups} <- stop_groupings,
+          %{"id" => id, "name" => name, "stopIds" => stop_ids} <- stop_groups do
+        stops =
+          for stop_id <- stop_ids, %{stop: stop} <- [StopView.stop(StopView, stop_id)] do
+            stop_entry(stop)
+          end
+
+        %{id: id, name: name, stops: stops}
+      end
+
+    {:ok,
+     %{
+       route: route,
+       directions: directions,
+       fetch: %{request_id: request_id, fetched_at: fetched_at}
+     }}
   end
 
   defp request_ids(view) do

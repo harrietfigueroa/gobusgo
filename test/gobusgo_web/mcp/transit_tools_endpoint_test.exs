@@ -15,7 +15,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
 
   @endpoint GobusgoWeb.Endpoint
   @legacy "2025-11-25"
-  @transit_tool_names ["alerts", "arrivals", "find", "vehicles"]
+  @transit_tool_names ["alerts", "arrivals", "find", "route", "vehicles"]
   @transit_resource_uris ["gobusgo://api/agencies", "gobusgo://api/routing/manifest"]
 
   setup do
@@ -50,7 +50,7 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
     rpc("tools/call", %{"name" => name, "arguments" => arguments})
   end
 
-  test "lists the four transit tools, each with an output schema" do
+  test "lists the five transit tools, each with an output schema" do
     assert %{"result" => %{"tools" => tools}} = rpc("tools/list", %{})
 
     transit_tools = for tool <- tools, tool["name"] in @transit_tool_names, do: tool
@@ -77,6 +77,18 @@ defmodule GobusgoWeb.Mcp.TransitToolsEndpointTest do
   test "calls find" do
     assert %{"result" => %{"structuredContent" => %{"data" => %{"stops" => [%{"id" => "1_1"}]}}}} =
              call("find", %{"query" => "capitol"})
+  end
+
+  test "calls route" do
+    :ok = TransitSeeds.route_path("1_100", [{"Capitol Hill", ["1_1"]}])
+
+    assert %{
+             "result" => %{
+               "structuredContent" => %{
+                 "data" => %{"directions" => [%{"stops" => [%{"id" => "1_1"}]}]}
+               }
+             }
+           } = call("route", %{"routeId" => "1_100"})
   end
 
   test "calls vehicles" do
