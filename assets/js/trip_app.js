@@ -18,10 +18,11 @@ import {firstRideLive, journeyCard} from "./journey_cards"
 import {appendMessage} from "./message"
 import {applyTheme, reportSize} from "./mcp_frame"
 import {HostMethod, OutcomeKind, createHost, isContextAccepted, isLocationGranted, sendMessage, updateModelContext} from "./mcp_host"
-import {ResolutionKind, resolution} from "./mcp_trip_ends"
-import {InputKind, StartKind, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
+import {FallbackKind, ResolutionKind, fallbackWords, resolution} from "./mcp_trip_ends"
+import {InputKind, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
 import {chosenMessage, journeyContext, journeysContext} from "./mcp_trip_journey"
 import {PlanKind, planTrip} from "./mcp_trip_plan"
+import {unmatchedContext} from "./mcp_trip_unmatched"
 import {SEARCH_CENTER_DEFAULT} from "./where_to"
 import {createSearchFiles} from "./where_to_files"
 import {EndKind, LOCATION_END, QueryKind, StateKind, TimeMode, TripEnd, journeyRows, journeysAnnouncement, queryOf, stateMessage} from "./trip_plan"
@@ -46,6 +47,9 @@ const ASKING = Object.freeze({kind: EndStateKind.asking, isEditing: false, text:
 
 // The kinds of the journeys the app offers the model on its own: none to offer, found and waiting to be sent, and spent.
 const OfferKind = Object.freeze({none: "none", ready: "ready", spent: "spent"})
+
+// The kinds of an end's state that a search or a location fix is still settling.
+const UNSETTLED_KINDS = Object.freeze([EndStateKind.waiting, EndStateKind.loading, EndStateKind.locating])
 
 function journeyOf(row) {
   return row.journey
@@ -262,6 +266,7 @@ export function startTripApp({root, origin, host}) {
     isLocationOffered: false,
     isContextAccepted: false,
     isOfferPending: false,
+    isUnmatchedPending: false,
     offer: {kind: OfferKind.none},
   }
 
@@ -284,7 +289,18 @@ export function startTripApp({root, origin, host}) {
     files.warm({routingManifestUrl: ROUTING_MANIFEST_PATH})
     await Promise.allSettled(files.pendingLoads())
     const found = await files.search({text, near: searchNear()})
-    const decided = resolution({text, end, found})
+    const first = resolution({text, end, found})
+    let decided = first
+
+    // The words the call carried are searched as given, which keeps an address's locality, and stripped of a trailing region only when they find nothing; a search the rider typed is searched as typed alone.
+    if (isAutomatic) {
+      const next = fallbackWords({first, text, words: searchWords(text)})
+
+      if (next.kind === FallbackKind.search) {
+        const foundStripped = await files.search({text: next.words, near: searchNear()})
+        decided = resolution({text: next.words, end, found: foundStripped})
+      }
+    }
 
     switch (decided.kind) {
       case ResolutionKind.resolved:
@@ -294,13 +310,51 @@ export function startTripApp({root, origin, host}) {
         setEnd({end, state: {kind: EndStateKind.choices, isEditing: false, text, groups: decided.groups}})
         break
       case ResolutionKind.none:
-        setEnd({end, state: {kind: EndStateKind.none, isEditing: false, text}})
+        setEnd({end, state: {kind: EndStateKind.none, isEditing: false, isAutomatic, text}})
         break
       default:
         unreachable(decided.kind, "trip app: a resolution of unknown kind")
     }
 
     await planWhenReady()
+    await offerUnmatched()
+  }
+
+  // The ends the start's own words matched to no place, as `{end, words}` in the order of the trip.
+  function unmatchedEnds() {
+    const unmatched = []
+
+    for (const end of END_ORDER) {
+      const state = app.ends[end]
+      const isNone = state.kind === EndStateKind.none
+      const isUnmatched = isNone && state.isAutomatic
+
+      if (isUnmatched) {
+        unmatched.push({end, words: state.text})
+      }
+    }
+
+    return unmatched
+  }
+
+  // Tells the model which ends matched nothing, once per start and once no end is still being settled, where the host takes context.
+  async function offerUnmatched() {
+    const isSettled = !UNSETTLED_KINDS.includes(app.ends[TripEnd.from].kind) && !UNSETTLED_KINDS.includes(app.ends[TripEnd.to].kind)
+    const isSendable = app.isUnmatchedPending && app.isContextAccepted
+    const unmatched = unmatchedEnds()
+    const isNeeded = isSettled && unmatched.length > 0
+    const isOffered = isSendable && isNeeded
+
+    if (!isOffered) {
+      return
+    }
+
+    app.isUnmatchedPending = false
+    const outcome = await updateModelContext({host, structuredContent: unmatchedContext({unmatched})})
+
+    if (outcome.kind !== OutcomeKind.answered) {
+      console.debug("Unmatched ends not sent", {outcome: outcome.kind})
+    }
   }
 
   function resolvedEnd(end) {
@@ -438,6 +492,7 @@ export function startTripApp({root, origin, host}) {
     }
 
     await planWhenReady()
+    await offerUnmatched()
   }
 
   function startFrom(from) {
@@ -550,6 +605,7 @@ export function startTripApp({root, origin, host}) {
       app.planCount += 1
       app.ends = {[TripEnd.from]: WAITING, [TripEnd.to]: WAITING}
       app.isOfferPending = true
+      app.isUnmatchedPending = true
       app.offer = {kind: OfferKind.none}
       render()
       startFrom(input.from)
@@ -565,10 +621,11 @@ export function startTripApp({root, origin, host}) {
       }
     },
 
-    // Offers the journeys the plan finds as the model's context, once the host has said it takes context.
+    // Offers the journeys the plan finds, or the ends that matched nothing, as the model's context, once the host has said it takes context.
     offerContext() {
       app.isContextAccepted = true
       offerJourneys()
+      offerUnmatched()
     },
 
     refuse(field) {

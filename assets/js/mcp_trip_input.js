@@ -1,7 +1,8 @@
 // What the trip planner app reads of a `plan_trip` call, as pure functions:
 // the arguments the host sends, or the tool result's `structuredContent`,
 // which holds the same object, read into the start, the destination's text,
-// and the time the Trip tab plans for. Nothing here reads the document, the
+// and the time the Trip tab plans for, and the words the search takes for an
+// end's text. Nothing here reads the document, the
 // network, or a clock.
 //
 // The arguments come from a model, so each field is checked, and a refusal
@@ -33,9 +34,76 @@ const MODE_NAMES = Object.freeze(Object.values(TimeMode))
 const DAY_NAMES = Object.freeze(Object.values(DayChoice))
 const NO_ARGUMENTS = Object.freeze({})
 
+/** The most comma-separated parts of a trailing region dropped: a city, a state, and a ZIP. */
+export const REGION_PARTS_MAX = 3
+
+// A name and one region part: the fewest comma-separated parts that hold a region.
+const NAME_AND_REGION_COUNT_MIN = 2
+
+// A ZIP code after other words, five digits and optionally four more.
+const TRAILING_ZIP = /\s+\d{5}(?:-\d{4})?$/
+const LEADING_THE = /^the\s+(?=\S)/i
+const WORD_CHARACTER = /[\p{L}\p{N}]/u
+
 function isRecord(value) {
   const isObject = typeof value === "object" && value !== null
   return isObject && !Array.isArray(value)
+}
+
+// The text without the region its commas set apart: the first part is the
+// name, and at most REGION_PARTS_MAX of the parts after it are dropped. Text
+// with no comma is returned as it is, since a name such as "West Seattle" or
+// "University of Washington" holds region words of its own.
+function withoutCommaRegion(text) {
+  const parts = []
+
+  for (const piece of text.split(",")) {
+    const part = piece.trim()
+
+    if (part !== "") {
+      parts.push(part)
+    }
+  }
+
+  if (parts.length < NAME_AND_REGION_COUNT_MIN) {
+    return text
+  }
+
+  const regionCount = Math.min(parts.length - 1, REGION_PARTS_MAX)
+  const kept = parts.slice(0, parts.length - regionCount)
+  return kept.join(", ")
+}
+
+function withoutTrailingZip(text) {
+  return text.replace(TRAILING_ZIP, "")
+}
+
+function withoutLeadingThe(text) {
+  return text.replace(LEADING_THE, "")
+}
+
+/**
+ * The words the "Where to?" search falls back to for an end `text` the rider
+ * said, when the text as given finds nothing:
+ * the text without a trailing region (the parts after its first comma, at
+ * most REGION_PARTS_MAX of them, and a ZIP code after its words) and without
+ * a leading "the", since the search keeps a place only when every word of
+ * the query matches one of the place's words. Text with no comma is left
+ * whole, and text that would strip to nothing is returned unchanged.
+ */
+export function searchWords(text) {
+  const trimmed = text.trim()
+  const regionless = withoutCommaRegion(trimmed)
+  const zipless = withoutTrailingZip(regionless)
+  const words = withoutLeadingThe(zipless).trim()
+
+  const isSearchable = WORD_CHARACTER.test(words)
+
+  if (!isSearchable) {
+    return trimmed
+  }
+
+  return words
 }
 
 function isModeName(mode) {

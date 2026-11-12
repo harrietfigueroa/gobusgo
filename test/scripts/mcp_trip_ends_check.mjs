@@ -8,7 +8,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/assert.js"
-import {ResolutionKind, resolution} from "../../assets/js/mcp_trip_ends.js"
+import {FallbackKind, ResolutionKind, fallbackWords, resolution} from "../../assets/js/mcp_trip_ends.js"
 import {TripEnd, pointEnd, stopEnd} from "../../assets/js/trip_plan.js"
 import {GROUP_COUNT_MAX, GroupKind} from "../../assets/js/where_to.js"
 
@@ -84,5 +84,22 @@ deepStrictEqual(fromStop.kind, ResolutionKind.resolved, "one stop resolves a Fro
 
 // Blank words are a programmer error: the caller checks them before searching.
 throws(() => resolution({text: "   ", end: TripEnd.to, found: none}), AssertionError)
+
+// The words as given decide the end when they find any result; the stripped
+// words are searched only when the words as given find none and differ.
+const foundOne = resolveTo({...none, stops: [westlake]})
+const foundMany = twoStops
+const foundNone = resolveTo(none)
+
+const fallbackCases = [
+  {name: "one result settles on the words as given", first: foundOne, text: "A, B", words: "A", expected: {kind: FallbackKind.settled, resolution: foundOne}},
+  {name: "several results settle on the words as given", first: foundMany, text: "A, B", words: "A", expected: {kind: FallbackKind.settled, resolution: foundMany}},
+  {name: "no result and different words search the stripped words", first: foundNone, text: "A, B", words: "A", expected: {kind: FallbackKind.search, words: "A"}},
+  {name: "no result and the same words settle on none with one search", first: foundNone, text: "A", words: "A", expected: {kind: FallbackKind.settled, resolution: foundNone}},
+]
+
+for (const {name, first, text, words, expected} of fallbackCases) {
+  deepStrictEqual(fallbackWords({first, text, words}), expected, name)
+}
 
 console.log("mcp_trip_ends_check: all cases passed")

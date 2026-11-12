@@ -21,6 +21,15 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
   @days ["today", "tomorrow"]
   @clock ~r/\A(?:[01]\d|2[0-3]):[0-5]\d\z/
 
+  # The rider's device searches each end for a place that holds every word it
+  # is given, so a word the rider did not say finds nothing.
+  @end_rules ~s(Resolve a reference such as "there", "home", or "my office" to the place ) <>
+               "the rider named earlier in the conversation. Pass only the words that name " <>
+               "the place, and drop filler such as \"the bus stop by\". Never add a city, a " <>
+               "state, a ZIP code, or any other word the rider did not use. When an end is " <>
+               "missing, or names a kind of place rather than a place, such as \"somewhere " <>
+               "to eat\" or \"the hospital\", ask the rider in the chat before calling."
+
   @when_properties %{
     "mode" => %{
       "type" => "string",
@@ -56,8 +65,9 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
           "such as \"Pine and 3rd\". The rider's device finds the places and the journeys " <>
           "and shows them to the rider, who chooses one; the chosen journey comes back as " <>
           "context. When the app finds both ends itself, the journeys it found reach the " <>
-          "model as context, and a journey the rider chooses replaces them. Pass the " <>
-          "rider's words for each end unchanged. When the rider names no " <>
+          "model as context, and a journey the rider chooses replaces them. " <>
+          @end_rules <>
+          " When the rider names no " <>
           ~s(start or says only "here", leave from out or pass "here": the app uses the ) <>
           "device's location where the host allows it and otherwise asks the rider where they are.",
       "inputSchema" => %{
@@ -68,12 +78,13 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
             "maxLength" => @text_length_max,
             "description" =>
               "Where the trip starts, in the rider's words for where they are: a street, a " <>
-                "stop, or a place. Leave it out or pass \"here\" when the rider names no start."
+                "stop, or a place. Leave it out or pass \"here\" when the rider names no start. " <>
+                @end_rules
           },
           "to" => %{
             "type" => "string",
             "maxLength" => @text_length_max,
-            "description" => "Where the trip ends, in the rider's words."
+            "description" => "Where the trip ends, in the rider's words. " <> @end_rules
           },
           "when" => when_schema()
         },
