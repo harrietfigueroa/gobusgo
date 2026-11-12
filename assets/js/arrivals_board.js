@@ -7,18 +7,24 @@
 // shows the arrivals it was opened with and when they were fetched, and
 // sends nothing.
 //
-// The bundle loads no LiveView, no map, and fetches no file: every request
-// goes through the host. Every text is a text node: names come from outside
-// the application and are never parsed as HTML.
+// A call with a `when` makes the board a list of scheduled departures from
+// that time instead (`board_departures.js`): it asks for no arrivals, lists
+// the departures on the device from the routing files, and hands them to the
+// model's context. The live board's requests all go through the host; the
+// list's go to the origin the document names in `data-file-origin`, and name
+// only a file. Every text is a text node: names come from outside the
+// application and are never parsed as HTML.
 
 import {startArrivalTicker} from "./arrival_ticker.js"
 import {assertCondition, unreachable} from "./assert.js"
 import {element} from "./dom_element.js"
 import {NO_YOUR_BUS} from "./journey_stop_marks.js"
-import {InputStopKind, answerOfOutcome, answerOf, boardAfter, fetchedText, inputStopOf, shownOf, statusText} from "./mcp_board_answer.js"
+import {showDepartures} from "./board_departures.js"
+import {answerOfOutcome, answerOf, boardAfter, fetchedText, shownOf, statusText} from "./mcp_board_answer.js"
+import {BoardInputKind, boardInput} from "./mcp_board_input.js"
 import {StepKind, expiredText, stepOf} from "./mcp_board_refresh.js"
 import {applyTheme, reportSize} from "./mcp_frame.js"
-import {HostMethod, OutcomeKind, callTool, createHost, isServerToolsDeclared} from "./mcp_host.js"
+import {HostMethod, OutcomeKind, callTool, createHost, isContextAccepted, isServerToolsDeclared} from "./mcp_host.js"
 import {writeArrivals} from "./stop_arrivals.js"
 
 const APP_INFO = Object.freeze({name: "gobusgo-arrivals-board", version: "1"})
@@ -26,6 +32,7 @@ const ARRIVALS_TOOL_NAME = "arrivals"
 const ARRIVALS_SHOWN_MAX = 100
 const HEADING_DEFAULT = "Arrivals board"
 const STANDALONE_TEXT = "This board opens inside an AI assistant that supports MCP Apps."
+const PROTOCOL_PREFIX = /^https?:\/\//
 const EMPTY_BOARD = Object.freeze({stopName: null, arrivals: null, latest: null})
 
 // The skeleton the board fills in place, so its status line is one live region that changes only when its text does.
@@ -90,7 +97,7 @@ function showStandalone(root) {
 }
 
 // Holds the board's state and the one loop that refreshes it; the decisions are `stepOf`'s.
-function startBoard({root, host}) {
+function startBoard({root, host, origin}) {
   const view = boardView(root)
   const state = {
     board: EMPTY_BOARD,
@@ -101,6 +108,9 @@ function startBoard({root, host}) {
     isOpen: true,
     isExpired: false,
     isBusy: false,
+    scheduled: null,
+    connection: null,
+    isScheduledStarted: false,
     timer: null,
     stopTicker: null
   }
@@ -189,13 +199,48 @@ function startBoard({root, host}) {
   document.addEventListener("visibilitychange", next)
   host.onTeardown(stopBoard)
 
-  return Object.freeze({
-    // Takes the stop the tool was called for.
-    takeInput(params) {
-      const input = inputStopOf(params)
+  async function listDepartures({input, isContextAccepted}) {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
-      if (input.kind === InputStopKind.found) {
-        state.stopId = input.stopId
+    try {
+      await showDepartures({root, host, origin, input, isContextAccepted, timeZone})
+    } catch (error) {
+      console.warn("Departures not shown", error)
+    }
+  }
+
+  // Turns the board into the list of departures once the call and the host's capabilities are both known, and then only once.
+  function startScheduledWhenReady() {
+    const isReady = state.scheduled !== null && state.connection !== null
+    const isDue = isReady && state.isScheduledStarted === false
+
+    if (isDue === false) {
+      return
+    }
+
+    state.isScheduledStarted = true
+    stopBoard()
+    listDepartures({input: state.scheduled, isContextAccepted: state.connection.isContextAccepted})
+  }
+
+  return Object.freeze({
+    // Takes what the tool was called for: the stop of a live board, or the time and routes of a list of departures.
+    takeInput(params) {
+      const input = boardInput(params)
+
+      switch (input.kind) {
+        case BoardInputKind.live:
+          state.stopId = input.stopId
+          return
+        case BoardInputKind.missing:
+          return
+        case BoardInputKind.scheduled:
+        case BoardInputKind.refused:
+          state.scheduled = input
+          startScheduledWhenReady()
+          return
+        default:
+          unreachable(input.kind, "arrivals board: an input of unknown kind")
       }
     },
 
@@ -209,11 +254,13 @@ function startBoard({root, host}) {
       next()
     },
 
-    // Says whether the host proxies tool calls, which ends the wait for the capabilities.
-    connect({isRefreshing}) {
+    // Says whether the host proxies tool calls and whether it takes the model's context, which ends the wait for the capabilities.
+    connect({isRefreshing, isContextAccepted}) {
       state.isRefreshing = isRefreshing
+      state.connection = {isContextAccepted}
       state.stopTicker = startArrivalTicker(write)
       next()
+      startScheduledWhenReady()
     }
   })
 }
@@ -221,9 +268,11 @@ function startBoard({root, host}) {
 async function main() {
   const root = document.getElementById("mcp-arrivals-board")
   assertCondition(root !== null, "arrivals board: the document has no element for the app")
+  const origin = document.body.dataset.fileOrigin
+  assertCondition(PROTOCOL_PREFIX.test(origin), "arrivals board: the file origin is not an http address: " + origin)
   const timers = {setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window)}
   const host = createHost({target: window.parent, events: window, appInfo: APP_INFO, timers})
-  const board = startBoard({root, host})
+  const board = startBoard({root, host, origin})
 
   host.onNotification(HostMethod.toolInput, (params) => { board.takeInput(params) })
   host.onNotification(HostMethod.toolResult, (params) => { board.takeResult(params) })
@@ -238,7 +287,7 @@ async function main() {
 
   applyTheme(connected.result.hostContext)
   console.debug("Host capabilities read", {hostCapabilities: connected.result.hostCapabilities})
-  board.connect({isRefreshing: isServerToolsDeclared(connected.result.hostCapabilities)})
+  board.connect({isRefreshing: isServerToolsDeclared(connected.result.hostCapabilities), isContextAccepted: isContextAccepted(connected.result.hostCapabilities)})
   reportSize({host, body: document.body})
 }
 

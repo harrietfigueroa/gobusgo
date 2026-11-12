@@ -75,17 +75,33 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
             "maxLength" => @text_length_max,
             "description" => "Where the trip ends, in the rider's words."
           },
-          "when" => %{
-            "type" => "object",
-            "properties" => @when_properties,
-            "required" => ["mode"],
-            "description" => "When the trip is for. Leaving now when absent."
-          }
+          "when" => when_schema()
         },
         "required" => ["to"]
       },
       "_meta" => %{"ui" => %{"resourceUri" => TripApp.uri()}}
     }
+  end
+
+  @doc """
+  The JSON Schema of the optional `when` argument, the time a trip or a list
+  of departures is for, as `tools/list` shows it.
+  """
+  @spec when_schema() :: map()
+  def when_schema do
+    %{
+      "type" => "object",
+      "properties" => @when_properties,
+      "required" => ["mode"],
+      "description" => "When the trip is for. Leaving now when absent."
+    }
+  end
+
+  @doc "The `Gobusgo.Schema` of the optional `when` argument."
+  @spec when_arguments_schema() :: Gobusgo.Schema.t()
+  def when_arguments_schema do
+    {:optional,
+     {:map, %{"mode" => :string, "day" => {:optional, :string}, "time" => {:optional, :string}}}}
   end
 
   @impl GobusgoWeb.Mcp.Tool
@@ -94,10 +110,7 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
      %{
        "from" => {:optional, :string},
        "to" => :string,
-       "when" =>
-         {:optional,
-          {:map,
-           %{"mode" => :string, "day" => {:optional, :string}, "time" => {:optional, :string}}}}
+       "when" => when_arguments_schema()
      }}
   end
 
@@ -148,15 +161,21 @@ defmodule GobusgoWeb.Mcp.Tools.PlanTrip do
     end
   end
 
-  defp check_when(nil), do: :ok
+  @doc """
+  Checks the `when` argument, which a schema check has found to be an object
+  with a mode or absent: `:ok`, or `{:error, text}` that names the field that
+  is not one of its values.
+  """
+  @spec check_when(map() | nil) :: :ok | {:error, String.t()}
+  def check_when(nil), do: :ok
 
-  defp check_when(%{"mode" => mode} = time) when mode in @modes do
+  def check_when(%{"mode" => mode} = time) when mode in @modes do
     with :ok <- check_day(Map.get(time, "day")) do
       check_clock(mode, Map.get(time, "time"))
     end
   end
 
-  defp check_when(%{"mode" => _mode}) do
+  def check_when(%{"mode" => _mode}) do
     {:error, "when.mode is one of " <> Enum.join(@modes, ", ") <> "."}
   end
 

@@ -98,9 +98,13 @@ function endText(value) {
   return {kind: InputKind.found, text}
 }
 
-// The time of the trip: leaving now where none is given, or the page's
-// `{mode, day, clockText}` for a time on the rider's clock.
-function whenOf(value) {
+/**
+ * The time `value`, the `when` of a call's arguments, names: an InputKind
+ * member, found with the page's `{mode, day, clockText}` for a time on the
+ * rider's clock, leaving now where none is given, or refused for the field
+ * `when`.
+ */
+export function whenOf(value) {
   if (value === undefined) {
     return {kind: InputKind.found, when: LEAVING_NOW}
   }

@@ -16,9 +16,13 @@ import {
   ARRIVAL_COUNT_MAX,
   ARRIVAL_HORIZON_SECONDS,
   CHUNK_READ_COUNT_MAX,
+  DEPARTURE_COUNT_MAX,
+  DeparturesKind,
   KeptKind,
   chunksAt,
+  chunksFrom,
   scheduledArrivals,
+  scheduledDepartures,
   scheduledMarkers
 } from "../../assets/js/scheduled_service.js"
 import {seconds} from "./routing_timetable.js"
@@ -447,5 +451,92 @@ deepStrictEqual(
   [TableKind.found, [pointOfStop(S1), pointOfStop(S3), pointOfStop(S1)]],
   "a stop with no known position is left out of the fallback"
 )
+
+// The departures from a stop at a time: a trip's boardings there, the
+// soonest first, from any hour of the date onward.
+function departuresAt({snapshots, stopId, fromMs, kept = EVERY_ROUTE, countMax = DEPARTURE_COUNT_MAX}) {
+  return scheduledDepartures({snapshots, stopId, fromMs, kept, countMax})
+}
+
+function departureOf({clockText, dayStartMs = DAY_START_MS, tripId, routeId, route, color, headsign}) {
+  return {timeMs: clockMs({dayStartMs, clockText}), tripId, routeId, route, color, headsign}
+}
+
+const A1_DEPARTURE_S1 = departureOf({clockText: "08:00", tripId: "A1", routeId: "R1", route: "1", color: "#112233", headsign: "Downtown"})
+const UNK_DEPARTURE_S1 = departureOf({clockText: "08:00", tripId: "UNK", routeId: "R2", route: "Second Line", color: "#6b7280", headsign: null})
+const LATE_DEPARTURE_S1 = departureOf({clockText: "23:50", tripId: "LATE", routeId: "R1", route: "1", color: "#112233", headsign: "Late Downtown"})
+const LATE_DEPARTURE_S2 = departureOf({clockText: "24:10", tripId: "LATE", routeId: "R1", route: "1", color: "#112233", headsign: "Late Downtown"})
+const B1_DEPARTURE_S3 = departureOf({clockText: "08:00", tripId: "B1", routeId: "R2", route: "Second Line", color: "#6b7280", headsign: "Airport"})
+const MORNING_DEPARTURE_S1 = departureOf({clockText: "06:00", dayStartMs: NEXT_DAY_START_MS, tripId: "MORNING", routeId: "R1", route: "1", color: "#112233", headsign: "Downtown"})
+
+function listed(departures, droppedCount = 0) {
+  return {kind: DeparturesKind.found, departures, droppedCount}
+}
+
+deepStrictEqual(DEPARTURE_COUNT_MAX, 40, "a stop's list holds at most 40 departures")
+
+const departureCases = [
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("07:00")}, listed([A1_DEPARTURE_S1, UNK_DEPARTURE_S1, LATE_DEPARTURE_S1]), "the departures from a time are each boarding there, the soonest first, with the route, color, and headsign without the route's number"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("08:00")}, listed([A1_DEPARTURE_S1, UNK_DEPARTURE_S1, LATE_DEPARTURE_S1]), "a departure at the time itself is listed"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("08:00") + SECOND_MS}, listed([LATE_DEPARTURE_S1]), "a departure a second before the time is left out"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), kept: {kind: KeptKind.routes, routeIds: ["R2"]}}, listed([UNK_DEPARTURE_S1]), "only the routes the filter keeps are listed"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), kept: {kind: KeptKind.routes, routeIds: []}}, listed([]), "a filter that keeps no route lists nothing"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), countMax: 2}, listed([A1_DEPARTURE_S1, UNK_DEPARTURE_S1], 1), "past the bound the departures left are counted"],
+  [{snapshots: [today], stopId: "S2", fromMs: todayAt("24:00")}, listed([LATE_DEPARTURE_S2]), "a trip past midnight departs at its time past 24:00 of the date it started"],
+  [{snapshots: [today], stopId: "S1", fromMs: todayAt("23:55")}, listed([]), "a time past the date's last departure lists nothing"],
+  [{snapshots: [today], stopId: "S3", fromMs: todayAt("07:00")}, listed([B1_DEPARTURE_S3]), "a trip's last stop is no departure"],
+  [{snapshots: [tomorrow, today], stopId: "S2", fromMs: todayAt("24:00")}, listed([LATE_DEPARTURE_S2]), "a trip both dates hold is listed once"],
+  [{snapshots: [today, tomorrow], stopId: "S1", fromMs: todayAt("23:00")}, listed([LATE_DEPARTURE_S1, MORNING_DEPARTURE_S1]), "the next service date's departures follow the date's own"],
+  [{snapshots: [today], stopId: "ELSEWHERE", fromMs: todayAt("07:00")}, {kind: DeparturesKind.unknownStop}, "a stop no snapshot holds is unknown"],
+  [{snapshots: [], stopId: "S1", fromMs: todayAt("07:00")}, {kind: DeparturesKind.unknownStop}, "no saved snapshot holds no stop"]
+]
+
+for (const [options, expected, message] of departureCases) {
+  deepStrictEqual(departuresAt(options), expected, message)
+}
+
+function routeAndHeadsignOf(departure) {
+  return [departure.route, departure.color, departure.headsign]
+}
+
+const unnamedDepartures = departuresAt({snapshots: [todayUnnamed], stopId: "S1", fromMs: todayAt("07:00")})
+deepStrictEqual(
+  Array.from(unnamedDepartures.departures, routeAndHeadsignOf),
+  [["R1", null, null], ["R2", null, null], ["R1", null, null]],
+  "with no names file a departure shows its route's identifier, no color, and no headsign"
+)
+
+// D1 lets riders off at S2 and boards nobody there.
+const dropOffFixture = {
+  serviceDate: "2026-11-08",
+  serviceDayStartMs: DAY_START_MS,
+  positions: {S1, S2, S3},
+  trips: [{id: "D1", route: "R1", noBoarding: ["S2"], stopTimes: [["S1", "09:00"], ["S2", "09:10"], ["S3", "09:20"]]}]
+}
+const dropOff = savedOf({fixture: dropOffFixture, names: {kind: TableKind.missing}})
+deepStrictEqual(departuresAt({snapshots: [dropOff], stopId: "S2", fromMs: todayAt("07:00")}), listed([]), "a stop a trip only lets riders off at is no departure")
+
+function departuresWithFractionalBound() {
+  return departuresAt({snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), countMax: 0.5})
+}
+
+function departuresAtNoTime() {
+  return departuresAt({snapshots: [today], stopId: "S1", fromMs: Number.NaN})
+}
+
+deepStrictEqual(departuresAt({snapshots: [today], stopId: "S1", fromMs: todayAt("07:00"), countMax: 0}), listed([], 3), "a bound of none lists none and counts them all")
+throws(departuresWithFractionalBound, AssertionError, "the bound is a whole number")
+throws(departuresAtNoTime, AssertionError, "the time is a number")
+
+// Departures need the chunks that depart at or after the time, and none before it.
+const departureChunkCases = [
+  [{entry: hourlyEntry, fromMs: todayAt("08:30")}, ["/fixture/connections-08:00.bin", "/fixture/connections-09:00.bin", "/fixture/connections-10:00.bin"], "the chunks that hold a departure at or after the time"],
+  [{entry: hourlyEntry, fromMs: todayAt("05:00")}, ["/fixture/connections-06:00.bin", "/fixture/connections-07:00.bin", "/fixture/connections-08:00.bin", "/fixture/connections-09:00.bin", "/fixture/connections-10:00.bin"], "before the date's first departure every chunk"],
+  [{entry: hourlyEntry, fromMs: todayAt("11:30")}, [], "past the date's last departure no chunk"]
+]
+
+for (const [{entry, fromMs}, expected, message] of departureChunkCases) {
+  deepStrictEqual(Array.from(chunksFrom({entry, fromMs}), chunkPathOf), expected, message)
+}
 
 console.log("scheduled service: every case passed")

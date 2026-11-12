@@ -22,9 +22,12 @@ const StopsReadKind = Object.freeze({read: "read"})
 /** The kinds of what a router's answer says: journeys to show, or a state to tell the rider. */
 export const AnswerKind = Object.freeze({journeys: "journeys", state: "state"})
 
-// One file the manifest names, fetched as the browser caches it: each
-// file's address holds one content, so a cached copy is that file.
-function fetchFileFrom(origin) {
+/**
+ * The function that fetches one file the manifest names from `origin`, as
+ * the browser caches it: each file's address holds one content, so a cached
+ * copy is that file.
+ */
+export function fetchFileFrom(origin) {
   return async function fetchFile({path, signal}) {
     const response = await fetch(origin + path, {signal, cache: "default", credentials: "same-origin"})
 

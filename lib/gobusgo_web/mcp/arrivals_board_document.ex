@@ -5,7 +5,8 @@ defmodule GobusgoWeb.Mcp.ArrivalsBoardDocument do
   Everything here is pure.
 
   The document holds no script of its own: it loads the one bundle and the
-  one stylesheet from the origin. The credit is text the server writes, from
+  one stylesheet from the origin, and names the origin in `data-file-origin`
+  for the routing files the bundle fetches. The credit is text the server writes, from
   `GobusgoWeb.AppInfo`, the source the Settings tab reads it from.
   """
 
@@ -35,7 +36,7 @@ defmodule GobusgoWeb.Mcp.ArrivalsBoardDocument do
     <link rel="stylesheet" href="#{escape(origin <> stylesheet_path)}">
     <script defer src="#{escape(origin <> script_path)}"></script>
     </head>
-    <body class="bg-white text-slate-900">
+    <body class="bg-white text-slate-900" data-file-origin="#{escape(origin)}">
     <main id="mcp-arrivals-board" class="mcp-trip-app">
     <noscript><p>The arrivals board needs scripts.</p></noscript>
     </main>

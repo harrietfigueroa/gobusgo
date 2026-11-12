@@ -19,9 +19,6 @@ export const AnswerKind = Object.freeze({
   invalid: "invalid"
 })
 
-/** The kinds of what the tool's arguments say of the stop. */
-export const InputStopKind = Object.freeze({found: "found", missing: "missing"})
-
 // The kinds of what reading one arrival of an answer ends in.
 const ArrivalReadKind = Object.freeze({read: "read", unreadable: "unreadable"})
 
@@ -166,25 +163,6 @@ export function answerOf(result) {
     default:
       return INVALID
   }
-}
-
-function hasInputStop(params) {
-  const hasArguments = isRecord(params) && isRecord(params.arguments)
-  const hasText = hasArguments && typeof params.arguments.stopId === "string"
-  return hasText && params.arguments.stopId !== ""
-}
-
-/**
- * The stop `params`, the params of the host's `tool-input` notification,
- * name in their arguments: `{kind: "found", stopId}` for a non-empty text,
- * and `{kind: "missing"}` otherwise.
- */
-export function inputStopOf(params) {
-  if (hasInputStop(params)) {
-    return {kind: InputStopKind.found, stopId: params.arguments.stopId}
-  }
-
-  return {kind: InputStopKind.missing}
 }
 
 /**

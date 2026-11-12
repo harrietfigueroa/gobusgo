@@ -16,7 +16,7 @@
 
 import {assertCondition} from "./assert.js"
 import {lerp} from "./math/interpolation.js"
-import {TableKind, savedRouteName} from "./offline_answers.js"
+import {TableKind, savedRouteChip, savedRouteName} from "./offline_answers.js"
 import {POSITION_UNKNOWN_MICRODEGREES} from "./routing_snapshot.js"
 import {connectionsByTrip, fallbackPath} from "./scheduled_path.js"
 
@@ -35,11 +35,17 @@ export const ARRIVAL_HORIZON_SECONDS = 35 * 60
 /** The most arrivals shown for one stop, as the server shows them. */
 export const ARRIVAL_COUNT_MAX = 8
 
+/** The most departures a stop's list holds. */
+export const DEPARTURE_COUNT_MAX = 40
+
 /** The most connection chunks of one date a page reads for the time. */
 export const CHUNK_READ_COUNT_MAX = 4
 
 /** The kinds of the routes a filter keeps: every route, or a list. */
 export const KeptKind = Object.freeze({every: "every", routes: "routes"})
+
+/** The kinds of a stop's departures: the list, or no snapshot holding the stop. */
+export const DeparturesKind = Object.freeze({found: "found", unknownStop: "unknownStop"})
 
 /** The status every scheduled marker carries. */
 export const SCHEDULED_STATUS = "scheduled"
@@ -655,4 +661,135 @@ export function scheduledArrivals({snapshots, stopId, nowMs}) {
   }
 
   return {stop_id: stopId, status: "arrivals", age_minutes: 0, scheduled: true, arrivals}
+}
+
+/**
+ * The connection chunks of `entry` that hold a departure at or after
+ * `fromMs`, in the manifest's order, which are the chunks a list of
+ * departures from that time reads.
+ */
+export function chunksFrom({entry, fromMs}) {
+  assertTime(fromMs)
+  const fromS = secondsOfDay({snapshot: entry, nowMs: fromMs})
+  const chunks = []
+
+  for (const chunk of entry.connectionChunks) {
+    if (chunk.departureSMax >= fromS) {
+      chunks.push(chunk)
+    }
+  }
+
+  return chunks
+}
+
+// Each boarding at `stop` in the read chunks: the trip's connection that
+// leaves it, where riders can get on. A trip's last stop has none.
+function boardingsOf({snapshot, stop}) {
+  const boardings = []
+
+  for (const chunk of snapshot.connections) {
+    const count = chunk.departureS.length
+
+    for (let index = 0; index < count; index++) {
+      const isDepartureHere = chunk.departureStop[index] === stop
+
+      const isBoarding = isDepartureHere && chunk.boarding[index] === 1
+
+      if (isBoarding) {
+        boardings.push({trip: chunk.trip[index], sequence: chunk.sequence[index], timeS: chunk.departureS[index]})
+      }
+    }
+  }
+
+  return boardings
+}
+
+// Adds to `listed`, keyed by run and the hop's sequence, each boarding at
+// the stop at or after `fromMs` that `snapshot` holds on a kept route,
+// leaving one a snapshot read before listed: the previous date's trips
+// are in both snapshots that hold their run.
+function addDepartures({snapshot, stop, fromMs, kept, listed}) {
+  for (const boarding of boardingsOf({snapshot, stop})) {
+    const timeMs = snapshot.serviceDayStartMs + boarding.timeS * SECOND_MS
+    const record = snapshot.trips.table[boarding.trip]
+    const isListed = timeMs >= fromMs && isRouteKept({kept, routeId: record.routeId})
+
+    if (isListed) {
+      const key = `${runKeyOf({snapshot, trip: record})}:${boarding.sequence}`
+
+      if (!listed.has(key)) {
+        listed.set(key, {timeMs, snapshot, trip: boarding.trip, routeId: record.routeId})
+      }
+    }
+  }
+}
+
+// The route's color as a CSS color, or null where no names file is saved or it holds no such route.
+function routeColorOf({names, routeId}) {
+  const saved = routeOf({names, routeId})
+
+  if (saved.kind === TableKind.missing) {
+    return null
+  }
+
+  return savedRouteChip({route: saved.route, routeId}).color
+}
+
+function departureLineOf(departure) {
+  const {snapshot, trip, routeId, timeMs} = departure
+  const {names} = snapshot
+  const savedHeadsign = headsignOf({names, trip})
+  let headsign = null
+
+  if (savedHeadsign.kind === TableKind.found) {
+    headsign = arrivalHeadsignText({names, headsign: savedHeadsign.headsign, routeId})
+  }
+
+  return {timeMs, tripId: snapshot.trips.table[trip].id, routeId, route: routeNameOf({names, routeId}), color: routeColorOf({names, routeId}), headsign}
+}
+
+/**
+ * The scheduled departures from `stopId` at or after `fromMs` in
+ * `snapshots`, read in the order given, on the routes `kept` keeps, the
+ * soonest first: a DeparturesKind member, found with at most `countMax`
+ * departures and the `droppedCount` past the bound, or `unknownStop` where
+ * no snapshot holds the stop. A departure is a boarding, so a trip's last
+ * stop is none, and a trip both dates hold is listed once, from the first
+ * snapshot that holds it. Each departure names its `tripId`, route, the
+ * route's `color` and `headsign`, null where no names file gives one.
+ */
+export function scheduledDepartures({snapshots, stopId, fromMs, kept, countMax}) {
+  assertTime(fromMs)
+  assertCondition(Number.isSafeInteger(countMax), `the most departures is a whole number: ${countMax}`)
+  assertCondition(countMax >= 0, `the most departures is not negative: ${countMax}`)
+  const listed = new Map()
+  let isHeld = false
+
+  for (const snapshot of snapshots) {
+    const stop = snapshot.stopIndexes.get(stopId)
+
+    if (stop !== undefined) {
+      isHeld = true
+    }
+
+    const isReadableHere = stop !== undefined && snapshot.trips.kind === TableKind.found
+
+    if (isReadableHere) {
+      addDepartures({snapshot, stop, fromMs, kept, listed})
+    }
+  }
+
+  if (!isHeld) {
+    return {kind: DeparturesKind.unknownStop}
+  }
+
+  const ordered = Array.from(listed.values()).sort(bySoonest)
+  const shown = ordered.slice(0, countMax)
+  const departures = []
+
+  for (const departure of shown) {
+    departures.push(departureLineOf(departure))
+  }
+
+  return {kind: DeparturesKind.found, departures, droppedCount: ordered.length - shown.length}
 }

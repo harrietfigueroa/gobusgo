@@ -374,6 +374,17 @@
   color: var(--muted-text-color);
 }
 
+/* A scheduled departure within the live window carries a line of its own
+   under its chip, headsign, and time. */
+.arrival-row-with-note {
+  flex-wrap: wrap;
+}
+
+.arrival-row-note {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+}
+
 .arrival-key {
   margin-top: 6px;
   font-size: 0.8125rem;
