@@ -13,48 +13,48 @@ import {ARRIVAL_SOURCE_INTERVAL_MS, BOARD_LIFETIME_MS, REFRESH_INTERVAL_MS_MIN, 
 
 const OPENED_AT_MS = 1_794_250_000_000
 const SECOND_MS = 1000
+const WAIT_UNDER_FLOOR_SECONDS = 5
+const WAIT_OVER_FLOOR_SECONDS = 30
+const CAPACITY_WAIT_SECONDS = 60
+const PARTWAY_MS = 4 * 1000
+const LONG_AFTER_MS = 50 * 1000
+const LIFETIME_REMAINING_MS = 20 * 1000
 const arrivals = {kind: AnswerKind.arrivals, stopId: "1_1", stopName: null, fetchedAtMs: OPENED_AT_MS, arrivals: []}
-
-function fetching(retryAfterSeconds) {
-  return {kind: AnswerKind.fetching, stopId: "1_1", retryAfterSeconds}
-}
-
-function capacity(retryAfterSeconds) {
-  return {kind: AnswerKind.capacityReached, stopId: "1_1", retryAfterSeconds}
-}
+const refused = {kind: AnswerKind.refused, text: ""}
+const invalid = {kind: AnswerKind.invalid}
+const unknownStop = {kind: AnswerKind.unknownStop, stopId: "9_9"}
+const fetchingUnderFloor = {kind: AnswerKind.fetching, stopId: "1_1", retryAfterSeconds: WAIT_UNDER_FLOOR_SECONDS}
+const fetchingOverFloor = {kind: AnswerKind.fetching, stopId: "1_1", retryAfterSeconds: WAIT_OVER_FLOOR_SECONDS}
+const capacityReached = {kind: AnswerKind.capacityReached, stopId: "1_1", retryAfterSeconds: CAPACITY_WAIT_SECONDS}
+const fetchingNearEnd = {kind: AnswerKind.fetching, stopId: "1_1", retryAfterSeconds: CAPACITY_WAIT_SECONDS}
 
 // The interval never goes under the floor, and the answer's wait sets it above.
 deepStrictEqual(REFRESH_INTERVAL_MS_MIN > ARRIVAL_SOURCE_INTERVAL_MS, true, "the floor is above the source's interval, so an arrivals answer waits the floor")
 deepStrictEqual(refreshIntervalMs(arrivals), REFRESH_INTERVAL_MS_MIN, "an arrivals answer")
-deepStrictEqual(refreshIntervalMs(fetching(5)), REFRESH_INTERVAL_MS_MIN, "a wait under the floor")
-deepStrictEqual(refreshIntervalMs(fetching(30)), 30 * SECOND_MS, "a wait over the floor")
-deepStrictEqual(refreshIntervalMs(capacity(60)), 60 * SECOND_MS, "a capacity_reached wait")
-deepStrictEqual(refreshIntervalMs({kind: AnswerKind.refused, text: ""}), REFRESH_INTERVAL_MS_MIN, "a refusal")
-deepStrictEqual(refreshIntervalMs({kind: AnswerKind.invalid}), REFRESH_INTERVAL_MS_MIN, "an answer that is none")
+deepStrictEqual(refreshIntervalMs(fetchingUnderFloor), REFRESH_INTERVAL_MS_MIN, "a wait under the floor")
+deepStrictEqual(refreshIntervalMs(fetchingOverFloor), WAIT_OVER_FLOOR_SECONDS * SECOND_MS, "a wait over the floor")
+deepStrictEqual(refreshIntervalMs(capacityReached), CAPACITY_WAIT_SECONDS * SECOND_MS, "a capacity_reached wait")
+deepStrictEqual(refreshIntervalMs(refused), REFRESH_INTERVAL_MS_MIN, "a refusal")
+deepStrictEqual(refreshIntervalMs(invalid), REFRESH_INTERVAL_MS_MIN, "an answer that is none")
 
 function step({answer, answeredAfterMs, nowAfterMs, isVisible}) {
   return stepOf({answer, answeredAtMs: OPENED_AT_MS + answeredAfterMs, openedAtMs: OPENED_AT_MS, nowMs: OPENED_AT_MS + nowAfterMs, isVisible})
 }
 
+const NEAR_END_AFTER_MS = BOARD_LIFETIME_MS - LIFETIME_REMAINING_MS
+
 const stepCases = [
   {name: "just answered", answer: arrivals, answeredAfterMs: 0, nowAfterMs: 0, isVisible: true, expected: {kind: StepKind.wait, delayMs: REFRESH_INTERVAL_MS_MIN}},
-  {name: "partway through the interval", answer: arrivals, answeredAfterMs: 0, nowAfterMs: 4 * SECOND_MS, isVisible: true, expected: {kind: StepKind.wait, delayMs: REFRESH_INTERVAL_MS_MIN - 4 * SECOND_MS}},
+  {name: "partway through the interval", answer: arrivals, answeredAfterMs: 0, nowAfterMs: PARTWAY_MS, isVisible: true, expected: {kind: StepKind.wait, delayMs: REFRESH_INTERVAL_MS_MIN - PARTWAY_MS}},
   {name: "the interval gone", answer: arrivals, answeredAfterMs: 0, nowAfterMs: REFRESH_INTERVAL_MS_MIN, isVisible: true, expected: {kind: StepKind.refresh}},
-  {name: "the interval long gone", answer: arrivals, answeredAfterMs: 0, nowAfterMs: 5 * REFRESH_INTERVAL_MS_MIN, isVisible: true, expected: {kind: StepKind.refresh}},
-  {name: "a wait the answer gives", answer: fetching(30), answeredAfterMs: 0, nowAfterMs: 0, isVisible: true, expected: {kind: StepKind.wait, delayMs: 30 * SECOND_MS}},
-  {name: "hidden while waiting", answer: arrivals, answeredAfterMs: 0, nowAfterMs: 4 * SECOND_MS, isVisible: false, expected: {kind: StepKind.pause}},
+  {name: "the interval long gone", answer: arrivals, answeredAfterMs: 0, nowAfterMs: LONG_AFTER_MS, isVisible: true, expected: {kind: StepKind.refresh}},
+  {name: "a wait the answer gives", answer: fetchingOverFloor, answeredAfterMs: 0, nowAfterMs: 0, isVisible: true, expected: {kind: StepKind.wait, delayMs: WAIT_OVER_FLOOR_SECONDS * SECOND_MS}},
+  {name: "hidden while waiting", answer: arrivals, answeredAfterMs: 0, nowAfterMs: PARTWAY_MS, isVisible: false, expected: {kind: StepKind.pause}},
   {name: "hidden with a request due", answer: arrivals, answeredAfterMs: 0, nowAfterMs: REFRESH_INTERVAL_MS_MIN, isVisible: false, expected: {kind: StepKind.pause}},
-  {
-    name: "the wait ends at the lifetime",
-    answer: fetching(60),
-    answeredAfterMs: BOARD_LIFETIME_MS - 20 * SECOND_MS,
-    nowAfterMs: BOARD_LIFETIME_MS - 20 * SECOND_MS,
-    isVisible: true,
-    expected: {kind: StepKind.wait, delayMs: 20 * SECOND_MS}
-  },
+  {name: "the wait ends at the lifetime", answer: fetchingNearEnd, answeredAfterMs: NEAR_END_AFTER_MS, nowAfterMs: NEAR_END_AFTER_MS, isVisible: true, expected: {kind: StepKind.wait, delayMs: LIFETIME_REMAINING_MS}},
   {name: "the lifetime gone", answer: arrivals, answeredAfterMs: 0, nowAfterMs: BOARD_LIFETIME_MS, isVisible: true, expected: {kind: StepKind.expired}},
   {name: "the lifetime gone while hidden", answer: arrivals, answeredAfterMs: 0, nowAfterMs: BOARD_LIFETIME_MS + SECOND_MS, isVisible: false, expected: {kind: StepKind.expired}},
-  {name: "a stop the server does not know", answer: {kind: AnswerKind.unknownStop, stopId: "9_9"}, answeredAfterMs: 0, nowAfterMs: REFRESH_INTERVAL_MS_MIN, isVisible: true, expected: {kind: StepKind.settled}}
+  {name: "a stop the server does not know", answer: unknownStop, answeredAfterMs: 0, nowAfterMs: REFRESH_INTERVAL_MS_MIN, isVisible: true, expected: {kind: StepKind.settled}}
 ]
 
 for (const {name, answer, answeredAfterMs, nowAfterMs, isVisible, expected} of stepCases) {

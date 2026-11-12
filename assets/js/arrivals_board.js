@@ -39,7 +39,7 @@ function boardView(root) {
 
   function setText(target, text) {
     if (target.textContent !== text) {
-      target.textContent = text
+      target.replaceChildren(text)
     }
   }
 

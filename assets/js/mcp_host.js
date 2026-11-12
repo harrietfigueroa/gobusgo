@@ -153,7 +153,10 @@ export function createHost({target, events, appInfo, timers}) {
   function answerRequest({id, method}) {
     const isAnswerable = method === HostMethod.ping || method === HostMethod.resourceTeardown
 
-    if (method === HostMethod.resourceTeardown && teardown.handler !== null) {
+    const isTeardown = method === HostMethod.resourceTeardown
+    const isHandled = isTeardown && teardown.handler !== null
+
+    if (isHandled) {
       teardown.handler()
     }
 

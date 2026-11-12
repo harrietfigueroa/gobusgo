@@ -13,11 +13,21 @@ import {AnswerKind, InputStopKind, answerOf, answerOfOutcome, boardAfter, fetche
 
 const FETCHED_AT = "2026-11-11T23:04:00Z"
 const FETCHED_AT_MS = Date.parse(FETCHED_AT)
-const SOON_MS = FETCHED_AT_MS + 4 * 60 * 1000
-const LATER_MS = FETCHED_AT_MS + 14 * 60 * 1000
 const MINUTE_MS = 60 * 1000
+const SOON_MINUTES = 4
+const LATER_MINUTES = 14
+const SOON_MS = FETCHED_AT_MS + SOON_MINUTES * MINUTE_MS
+const LATER_MS = FETCHED_AT_MS + LATER_MINUTES * MINUTE_MS
 const COUNT_MAX = 100
 const RETRY_AFTER_SECONDS = 5
+
+function minutesOf(arrival) {
+  return arrival.minutes
+}
+
+function timeMsOf(arrival) {
+  return arrival.time_ms
+}
 
 function arrivalJson({route, minutes, time, predicted}) {
   return {route, color: "#336699", headsign: "Capitol Hill", minutes, time, predicted, tripId: "1_trip", scheduledTime: time}
@@ -107,10 +117,12 @@ deepStrictEqual(answerOfOutcome({kind: OutcomeKind.timedOut}), {kind: AnswerKind
 const shownBefore = shownOf({answer: arrivalsAnswer, nowMs: FETCHED_AT_MS + MINUTE_MS, countMax: COUNT_MAX})
 deepStrictEqual(shownBefore.status, "arrivals", "the shown status")
 deepStrictEqual(shownBefore.age_minutes, 1, "the age of the fetch")
-deepStrictEqual(Array.from(shownBefore.arrivals, (arrival) => arrival.minutes), [3, 13], "the minutes counted from the clock")
+const minutesShown = Array.from(shownBefore.arrivals, minutesOf)
+deepStrictEqual(minutesShown, [SOON_MINUTES - 1, LATER_MINUTES - 1], "the minutes counted from the clock")
 
 const shownAfter = shownOf({answer: arrivalsAnswer, nowMs: SOON_MS + MINUTE_MS, countMax: COUNT_MAX})
-deepStrictEqual(Array.from(shownAfter.arrivals, (arrival) => arrival.time_ms), [LATER_MS], "an arrival that has passed leaves the rows")
+const timesShown = Array.from(shownAfter.arrivals, timeMsOf)
+deepStrictEqual(timesShown, [LATER_MS], "an arrival that has passed leaves the rows")
 
 // The board keeps the stop's name and the last arrivals across answers that carry neither.
 const fetching = answerOf(resultOf({status: "fetching", stopId: "1_1", retryAfterSeconds: RETRY_AFTER_SECONDS}, null))

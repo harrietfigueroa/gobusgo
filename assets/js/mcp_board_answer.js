@@ -22,43 +22,57 @@ export const AnswerKind = Object.freeze({
 /** The kinds of what the tool's arguments say of the stop. */
 export const InputStopKind = Object.freeze({found: "found", missing: "missing"})
 
-const INVALID =Object.freeze({kind: AnswerKind.invalid})
+// The kinds of what reading one arrival of an answer ends in.
+const ArrivalReadKind = Object.freeze({read: "read", unreadable: "unreadable"})
+
+const INVALID = Object.freeze({kind: AnswerKind.invalid})
+const UNREADABLE = Object.freeze({kind: ArrivalReadKind.unreadable})
 const SECONDS_PLURAL_LIMIT = 1
 const MINUTE_MS = 60 * 1000
-const NARROW_NO_BREAK_SPACE = / /g
+// A narrow no-break space, which recent ICU data writes before "PM".
+const NARROW_NO_BREAK_SPACE = new RegExp("\\u202f", "g")
 
 function isRecord(value) {
   const isObject = typeof value === "object" && value !== null
   return isObject && !Array.isArray(value)
 }
 
+// The rows of the page take a text the arrival lacks as null.
 function nullableText(value) {
+  let text = null
+
   if (typeof value === "string") {
-    return value
+    text = value
   }
 
-  return null
+  return text
 }
 
-// An arrival the tool sent, in the shape the rows of the page take, or null where the tool's schema does not hold.
+function isArrivalShaped({json, timeMs}) {
+  const hasTime = Number.isFinite(timeMs) && typeof json.predicted === "boolean"
+  return hasTime && Number.isSafeInteger(json.minutes)
+}
+
+// One arrival the tool sent, in the shape the rows of the page take.
 function arrivalOf(json) {
   if (!isRecord(json)) {
-    return null
+    return UNREADABLE
   }
 
   const timeMs = Date.parse(json.time)
-  const isShaped = Number.isSafeInteger(json.minutes) && Number.isFinite(timeMs) && typeof json.predicted === "boolean"
 
-  if (isShaped === false) {
-    return null
+  if (isArrivalShaped({json, timeMs}) === false) {
+    return UNREADABLE
   }
 
-  return {route: nullableText(json.route), color: nullableText(json.color), headsign: nullableText(json.headsign), minutes: json.minutes, time_ms: timeMs, predicted: json.predicted}
+  const arrival = {route: nullableText(json.route), color: nullableText(json.color), headsign: nullableText(json.headsign), minutes: json.minutes, time_ms: timeMs, predicted: json.predicted}
+  return {kind: ArrivalReadKind.read, arrival}
 }
 
 function arrivalsAnswerOf({data, meta}) {
   const fetchedAtMs = Date.parse(meta.fetchedAt)
-  const isShaped = typeof data.stopId === "string" && Array.isArray(data.arrivals) && Number.isFinite(fetchedAtMs)
+  const hasStop = typeof data.stopId === "string" && Array.isArray(data.arrivals)
+  const isShaped = hasStop && Number.isFinite(fetchedAtMs)
 
   if (isShaped === false) {
     return INVALID
@@ -67,20 +81,21 @@ function arrivalsAnswerOf({data, meta}) {
   const arrivals = []
 
   for (const json of data.arrivals) {
-    const arrival = arrivalOf(json)
+    const read = arrivalOf(json)
 
-    if (arrival === null) {
+    if (read.kind === ArrivalReadKind.unreadable) {
       return INVALID
     }
 
-    arrivals.push(arrival)
+    arrivals.push(read.arrival)
   }
 
   return {kind: AnswerKind.arrivals, stopId: data.stopId, stopName: nullableText(data.stopName), fetchedAtMs, arrivals}
 }
 
 function waitingAnswerOf({kind, data}) {
-  const isShaped = typeof data.stopId === "string" && Number.isSafeInteger(data.retryAfterSeconds) && data.retryAfterSeconds >= 1
+  const hasWait = Number.isSafeInteger(data.retryAfterSeconds) && data.retryAfterSeconds >= 1
+  const isShaped = typeof data.stopId === "string" && hasWait
 
   if (isShaped === false) {
     return INVALID
@@ -89,18 +104,27 @@ function waitingAnswerOf({kind, data}) {
   return {kind, stopId: data.stopId, retryAfterSeconds: data.retryAfterSeconds}
 }
 
+function isTextBlock(candidate) {
+  return isRecord(candidate) && typeof candidate.text === "string"
+}
+
 function errorText(result) {
   if (!Array.isArray(result.content)) {
     return ""
   }
 
-  const block = result.content.find((candidate) => isRecord(candidate) && typeof candidate.text === "string")
+  const block = result.content.find(isTextBlock)
 
   if (block === undefined) {
     return ""
   }
 
   return block.text
+}
+
+function isAnswerShaped(content) {
+  const hasData = isRecord(content) && isRecord(content.data)
+  return hasData && isRecord(content.meta)
 }
 
 /**
@@ -119,9 +143,8 @@ export function answerOf(result) {
   }
 
   const content = result.structuredContent
-  const isShaped = isRecord(content) && isRecord(content.data) && isRecord(content.meta)
 
-  if (isShaped === false) {
+  if (isAnswerShaped(content) === false) {
     return INVALID
   }
 
@@ -145,15 +168,19 @@ export function answerOf(result) {
   }
 }
 
+function hasInputStop(params) {
+  const hasArguments = isRecord(params) && isRecord(params.arguments)
+  const hasText = hasArguments && typeof params.arguments.stopId === "string"
+  return hasText && params.arguments.stopId !== ""
+}
+
 /**
  * The stop `params`, the params of the host's `tool-input` notification,
  * name in their arguments: `{kind: "found", stopId}` for a non-empty text,
  * and `{kind: "missing"}` otherwise.
  */
 export function inputStopOf(params) {
-  const hasStop = isRecord(params) && isRecord(params.arguments) && typeof params.arguments.stopId === "string" && params.arguments.stopId !== ""
-
-  if (hasStop) {
+  if (hasInputStop(params)) {
     return {kind: InputStopKind.found, stopId: params.arguments.stopId}
   }
 
@@ -161,9 +188,9 @@ export function inputStopOf(params) {
 }
 
 /**
- * What a call of the tool through the host ended in, `outcome`, an
- * OutcomeKind member of `mcp_host.js`, as one answer: the tool's result read
- * by `answerOf`, and a refusal or a timeout of the host as `refused`.
+ * What a call of the tool through the host ended in, `outcome`, as one
+ * answer: the tool's result, which `answerOf` reads, for an answered call,
+ * and `refused` for a refusal or a timeout of the host.
  */
 export function answerOfOutcome(outcome) {
   if (outcome.kind === OutcomeKind.answered) {
@@ -260,7 +287,6 @@ export function statusText({answer, isRefreshing}) {
 /** When the arrivals were fetched, on the clock of `timeZone`, an IANA name, such as "Fetched at 3:04 PM". */
 export function fetchedText({fetchedAtMs, timeZone}) {
   const format = new Intl.DateTimeFormat("en-US", {hour: "numeric", minute: "2-digit", timeZone})
-  // Recent ICU data writes a narrow no-break space before "PM"; a plain space reads the same and compares the same everywhere.
   const clock = format.format(fetchedAtMs).replace(NARROW_NO_BREAK_SPACE, " ")
   return `Fetched at ${clock}`
 }

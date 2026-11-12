@@ -169,11 +169,13 @@ function setup() {
   deepStrictEqual(call.params, {name: "arrivals", arguments: {stopId: "1_1"}}, "the call's params")
   const result = {content: [{type: "text", text: "{}"}], structuredContent: {data: {}}, isError: true}
   answer(call.id, result)
-  deepStrictEqual(await calling, {kind: OutcomeKind.answered, result}, "a result flagged as an error is still an answer")
+  const answered = await calling
+  deepStrictEqual(answered, {kind: OutcomeKind.answered, result}, "a result flagged as an error is still an answer")
 
   const refusing = callTool({host, name: "arrivals", toolArguments: {stopId: "1_1"}})
   send({jsonrpc: "2.0", id: parent.posted[1].message.id, error: {code: -32602, message: "Tool not callable"}})
-  deepStrictEqual(await refusing, {kind: OutcomeKind.refused, message: "Tool not callable"}, "a refused call")
+  const refused = await refusing
+  deepStrictEqual(refused, {kind: OutcomeKind.refused, message: "Tool not callable"}, "a refused call")
 }
 
 // A message from another window, or of another protocol, is left alone.
