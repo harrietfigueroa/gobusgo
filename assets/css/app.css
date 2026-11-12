@@ -40,6 +40,11 @@
   --panel-sheet-expanded-height: 60dvh;
   --panel-sheet-handle-height: 28px;
   --panel-sheet-tab-height: 52px;
+  /* Below md the tab row stands this far above the safe area, so its icons
+     clear the device's bottom edge; the side panel from md up sets it to 0. */
+  --panel-sheet-tabs-lift: 10px;
+  /* The keyboard's height an expanded sheet below md pads and grows by. */
+  --panel-sheet-keyboard-room: 0px;
   --panel-sheet-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
   --panel-sheet-text-color: #0f172a;
   --connection-signal-age-color: #334155;
@@ -715,7 +720,10 @@ a.inline-target {
   display: flex;
   flex-direction: column;
   max-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: max(
+    calc(env(safe-area-inset-bottom) + var(--panel-sheet-tabs-lift)),
+    var(--panel-sheet-keyboard-room)
+  );
   accent-color: var(--surface-border-color);
   background-color: var(--surface-fill);
   border-top: var(--surface-border-width) solid var(--surface-border-color);
@@ -726,7 +734,7 @@ a.inline-target {
 }
 
 .panel-sheet[data-expanded="true"] {
-  height: var(--panel-sheet-expanded-height);
+  height: min(calc(var(--panel-sheet-expanded-height) + var(--panel-sheet-keyboard-room)), 100dvh);
 }
 
 .panel-sheet-handle {
@@ -1933,14 +1941,11 @@ a.inline-target {
   }
 
   /* An expanded sheet stays on the bottom edge, so no strip of the map shows
-     between it and the keyboard, and pads its bottom by the keyboard's
-     height, so its panel and the focused field stand above the keyboard.
-     The height grows by the same amount, so the part above the keyboard is
-     the height the details view has, and the sheet takes no more than the
-     viewport. */
+     between it and the keyboard. Its padding and height grow by the
+     keyboard's height, so its panel and the focused field stand above the
+     keyboard at the height the details view has. */
   .panel-sheet[data-expanded="true"] {
-    height: min(calc(var(--panel-sheet-expanded-height) + var(--keyboard-inset-bottom, 0px)), 100dvh);
-    padding-bottom: max(env(safe-area-inset-bottom), var(--keyboard-inset-bottom, 0px));
+    --panel-sheet-keyboard-room: var(--keyboard-inset-bottom, 0px);
   }
 
   .panel-sheet[data-expanded="false"]:not([data-dragging]) .panel-sheet-body {
@@ -1962,6 +1967,7 @@ a.inline-target {
 @media (width >= 48rem) {
   .panel-sheet,
   .panel-sheet[data-expanded="true"] {
+    --panel-sheet-tabs-lift: 0px;
     top: var(--panel-sheet-margin);
     right: auto;
     bottom: var(--panel-sheet-margin);
