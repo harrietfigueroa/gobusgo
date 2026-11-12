@@ -48,7 +48,7 @@ import {
   tripRouteIds,
   windowText
 } from "./trip_plan"
-import {ChoiceKind, OSM_CREDIT, OptionMove, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, searchPoints, suggestionList, suggestionsAnnouncement} from "./where_to"
+import {ChoiceKind, OSM_CREDIT, OptionMove, PositionKind, RECENT_TRIP_COUNT_MAX, SEARCH_CENTER_DEFAULT, movedOptionIndex, searchPoints, suggestionList, suggestionsAnnouncement} from "./where_to"
 import {SORT_LABELS, SortKind, firstRideLive, journeyCard, liveStopIds, sortedCards} from "./journey_cards"
 import {button, element} from "./dom_element"
 import {cardElement} from "./journey_card_view"
@@ -838,7 +838,13 @@ export const TripPlanner = {
     this.searchCount += 1
     const searchNumber = this.searchCount
     const text = this.searchText
-    const rider = this.riderPosition()
+    const position = this.riderPosition()
+    let rider = null
+
+    if (position.kind === PositionKind.known) {
+      rider = {lat: position.lat, lon: position.lon}
+    }
+
     const anchor = this.searchFiles.endPosition({end: this.ends[OTHER_END[this.searching]], rider})
     const {near} = searchPoints({anchor, rider, fallback: this.mapSearchCenter()})
     const found = await this.searchFiles.search({text, near, rider})
@@ -854,19 +860,19 @@ export const TripPlanner = {
 
   // The rider's position, the one point a distance is measured from: the
   // fix while the list holds the position watch, or the latest while it is
-  // fresh, or else null, where it is unknown.
+  // fresh, or else unknown.
   riderPosition() {
     if (this.searchFix !== null) {
-      return {lat: this.searchFix.latitude, lon: this.searchFix.longitude}
+      return {kind: PositionKind.known, lat: this.searchFix.latitude, lon: this.searchFix.longitude}
     }
 
     const latest = latestFix()
 
     if (latest.kind === LatestKind.fresh) {
-      return {lat: latest.fix.latitude, lon: latest.fix.longitude}
+      return {kind: PositionKind.known, lat: latest.fix.latitude, lon: latest.fix.longitude}
     }
 
-    return null
+    return {kind: PositionKind.unknown}
   },
 
   // The point a search ranks its results by when it has neither the other
