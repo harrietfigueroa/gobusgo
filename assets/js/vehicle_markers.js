@@ -169,13 +169,14 @@ async function fetchManifestOutcome({url, etag}) {
   }
 }
 
-// One index or shard the manifest or the index names, fetched as the browser
-// caches it, of the size named, and expanded within its bound.
-async function fetchTripPathFile(file) {
+// One index or shard the manifest or the index names, fetched from `origin`
+// as the browser caches it, of the size named, and expanded within its bound.
+async function fetchTripPathFile({origin, file}) {
   const signal = AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS)
 
   try {
-    const response = await fetch(file.path, {signal, cache: "default", credentials: "same-origin"})
+    const url = origin + file.path
+    const response = await fetch(url, {signal, cache: "default", credentials: "same-origin"})
 
     if (!response.ok) {
       return {kind: FileOutcomeKind.failed, reason: FileFailure.fetch}
@@ -590,6 +591,10 @@ export const VehicleMarkers = {
     // from, and the address of the manifest.
     this.tripPathFiles = emptyTripPathFiles()
     this.manifestUrl = this.el.dataset.manifestUrl
+    // The origin in front of the manifest's and each file's path: empty for
+    // the page's own, or another host's, whose files answer a cross-origin
+    // fetch.
+    this.fileOrigin = this.el.dataset.fileOrigin
     this.isDestroyed = false
     // The label beside the chosen journey's first bus.
     this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME, onLabel: (label) => { this.markYourBus(label) }})
@@ -1529,7 +1534,8 @@ export const VehicleMarkers = {
   // Fetches the manifest and hands the outcome to the files' rules, then
   // decides again which paths the page can read.
   async fetchManifest(etag) {
-    const outcome = await fetchManifestOutcome({url: this.manifestUrl, etag})
+    const url = this.fileOrigin + this.manifestUrl
+    const outcome = await fetchManifestOutcome({url, etag})
 
     if (this.isDestroyed) {
       return
@@ -1541,7 +1547,7 @@ export const VehicleMarkers = {
 
   // Fetches an index or a shard the same way.
   async fetchFile(file) {
-    const outcome = await fetchTripPathFile(file)
+    const outcome = await fetchTripPathFile({origin: this.fileOrigin, file})
 
     if (this.isDestroyed) {
       return

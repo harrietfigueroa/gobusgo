@@ -535,6 +535,7 @@ defmodule GobusgoWeb.VehicleLive do
             phx-update="ignore"
             aria-label="Plan a trip"
             data-manifest-url={routing_manifest_url()}
+            data-file-origin={file_origin()}
             data-name-count-max={Trip.name_count_max()}
             data-route-count-max={Trip.route_count_max()}
             data-open-count-max={OpenStops.open_count_max()}
@@ -672,6 +673,15 @@ defmodule GobusgoWeb.VehicleLive do
 
   defp routing_manifest_url, do: @routing_manifest_url
 
+  # An empty origin puts nothing in front of a path, so a file is fetched
+  # from the page's own origin.
+  defp file_origin do
+    case Gobusgo.Config.file_origin() do
+      {:ok, nil} -> ""
+      {:ok, origin} -> origin
+    end
+  end
+
   defp filter_count(filter),
     do: length(Filter.agency_ids(filter)) + length(Filter.route_ids(filter))
 
@@ -765,6 +775,7 @@ defmodule GobusgoWeb.VehicleLive do
       data-motion={JSON.encode!(vehicle_motion())}
       data-glyph-zoom-min={VehicleMarkers.glyph_zoom_min()}
       data-manifest-url={routing_manifest_url()}
+      data-file-origin={file_origin()}
       hidden
     >
     </div>

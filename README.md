@@ -48,6 +48,8 @@ The HTTP server listens on `GOBUSGO_HTTP_HOST`, an IPv4 or IPv6 address, and `GO
 
 `GOBUSGO_DONATION_URL` is the `https` address the donation button links, such as `https://ko-fi.com/harrietwaters`. With it set, every page shows a small button with a cup and a heart, named "Support gobusgo on Ko-fi", that opens the address in a new tab, and the Settings tab's About group says what donations fund. The button is a plain link, so a page requests nothing from the donation site until it is followed. Leave it unset in development and test, where no page shows the button or the section. A value that is not an `https` address stops the application at startup.
 
+`GOBUSGO_FILE_ORIGIN` is the origin the vehicle page fetches its routing, trip path, places, address, and intersection files from, an `http` or `https` address of a host and an optional port with no path, such as `https://ddxsy8xnmcfe8.cloudfront.net`. Unset, the page fetches them from its own origin, which is what production does. "Against production's files" below uses it. A value that is not such an origin stops the application at startup.
+
 ## Data flow
 
 The application needs no broker and no database. A recorder stores each response and publishes a "response stored" event; the event goes straight to the consumer in the same process, which processes the stored response and hands the processed records to the dataset's in-memory view. `config/config.exs` names the subscriber of every topic.
@@ -79,11 +81,23 @@ A start with fresh views takes about ten minutes to answer `/ready` with success
 curl -i http://127.0.0.1:4000/nope
 ```
 
-To listen elsewhere, set the variables for the command:
+To listen elsewhere, set the variables for the command; `0.0.0.0` lets a phone on the same network open the page at the computer's address:
 
 ```sh
 GOBUSGO_HTTP_HOST=0.0.0.0 GOBUSGO_HTTP_PORT=8080 mix phx.server
 ```
+
+### Against production's files
+
+A local server builds its routing snapshots only after it has fetched every route's schedule, and has no places, address, or intersection files until they are built by hand, so its Trip tab finds nothing at first. `GOBUSGO_FILE_ORIGIN` points the vehicle page's fetches of those files and of the trip paths at another origin, such as production's, while the server's own ingestion supplies the vehicles, arrivals, and alerts with the OneBusAway key in `.env` (GOB-448). Use a key of your own, not production's, so a local run takes nothing from production's rate limit, and leave `GOBUSGO_S3_BUCKET` unset, so the server stores its responses and usage records under `GOBUSGO_DATA_DIR` and writes nothing to production. The page still needs a basemap directory ("Basemap archives" below) and the built assets:
+
+```sh
+mix assets.build
+set -a; source .env; set +a
+GOBUSGO_FILE_ORIGIN=https://ddxsy8xnmcfe8.cloudfront.net GOBUSGO_HTTP_HOST=0.0.0.0 mix phx.server
+```
+
+Open `/vehicles` on the computer or on a phone on the same network. The offline bundle still saves the local server's files.
 
 ### Agency endpoints
 

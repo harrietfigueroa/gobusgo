@@ -86,7 +86,8 @@ defmodule Gobusgo.Application do
          {:ok, _routing} <- Config.routing(),
          {:ok, _shared_vehicle_tiles} <- Config.shared_vehicle_tiles(),
          {:ok, _revision} <- Config.revision(),
-         {:ok, _donation_url} <- Config.donation_url() do
+         {:ok, _donation_url} <- Config.donation_url(),
+         {:ok, _file_origin} <- Config.file_origin() do
       # A scheduler starts its runs under the task supervisor, so the task
       # supervisor starts before the schedulers and stops after them. Every
       # run's requests take their permits from the gate, which starts first.

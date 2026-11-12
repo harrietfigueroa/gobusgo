@@ -448,6 +448,46 @@ defmodule Gobusgo.ConfigTest do
     end
   end
 
+  describe "fetch_file_origin/1" do
+    # The origin the vehicle page fetches its published files from: an
+    # address of a scheme and a host, and a port where one is named, with
+    # nothing after them, so a path the page appends lands on that origin.
+    @file_origin "https://ddxsy8xnmcfe8.cloudfront.net"
+
+    for value <- [@file_origin, "http://localhost:4001"] do
+      test "returns the configured origin #{value}" do
+        assert Config.fetch_file_origin(origin: unquote(value)) == {:ok, unquote(value)}
+      end
+    end
+
+    for {description, env} <- [
+          {"an empty environment", []},
+          {"a nil origin", [origin: nil]},
+          {"a blank origin", [origin: "  "]}
+        ] do
+      test "returns nil for #{description}" do
+        assert Config.fetch_file_origin(unquote(env)) == {:ok, nil}
+      end
+    end
+
+    for {description, value} <- [
+          {"an origin with no scheme", "ddxsy8xnmcfe8.cloudfront.net"},
+          {"an ftp origin", "ftp://ddxsy8xnmcfe8.cloudfront.net"},
+          {"an origin with no host", "https://"},
+          {"an origin with a trailing slash", "https://ddxsy8xnmcfe8.cloudfront.net/"},
+          {"an origin with a path", "https://ddxsy8xnmcfe8.cloudfront.net/files"},
+          {"an origin with a query", "https://ddxsy8xnmcfe8.cloudfront.net?x=1"},
+          {"an origin with a fragment", "https://ddxsy8xnmcfe8.cloudfront.net#x"},
+          {"an origin with a user", "https://user@ddxsy8xnmcfe8.cloudfront.net"},
+          {"an origin with a space in it", "https://ddxsy8xnmcfe8 .cloudfront.net"}
+        ] do
+      test "reports the origin as invalid for #{description}" do
+        assert Config.fetch_file_origin(origin: unquote(value)) ==
+                 {:error, {:invalid, :file_origin}}
+      end
+    end
+  end
+
   describe "fetch_secret_key_base/1" do
     @secret String.duplicate("s", 64)
 

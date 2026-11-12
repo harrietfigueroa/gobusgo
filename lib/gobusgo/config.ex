@@ -28,6 +28,13 @@ defmodule Gobusgo.Config do
   @type donation_url :: String.t() | nil
   @type donation_url_error :: {:invalid, :donation_url}
 
+  @typedoc """
+  The origin the vehicle page fetches its published files from, or `nil` for
+  a page that fetches them from its own origin.
+  """
+  @type file_origin :: String.t() | nil
+  @type file_origin_error :: {:invalid, :file_origin}
+
   @type one_bus_away :: Gobusgo.Config.OneBusAway.t()
   @type one_bus_away_error :: {:missing, :base_url | :api_key}
 
@@ -500,6 +507,29 @@ defmodule Gobusgo.Config do
     :gobusgo |> Application.get_env(:donation, []) |> fetch_donation_url()
   end
 
+  @doc """
+  Returns the origin the vehicle page fetches its published files from, from
+  `env`: `:origin`, an `http` or `https` address of a host, and of a port
+  where one is named, with no path, query, fragment, or user. A nil or blank
+  value is `{:ok, nil}`, a page that fetches them from its own origin.
+  """
+  @spec fetch_file_origin(Keyword.t()) :: {:ok, file_origin()} | {:error, file_origin_error()}
+  def fetch_file_origin(env) when is_list(env) do
+    case text(env, :origin) do
+      nil ->
+        {:ok, nil}
+
+      origin ->
+        if file_origin?(origin), do: {:ok, origin}, else: {:error, {:invalid, :file_origin}}
+    end
+  end
+
+  @doc "Reads the origin the vehicle page of the running application fetches its published files from."
+  @spec file_origin() :: {:ok, file_origin()} | {:error, file_origin_error()}
+  def file_origin do
+    :gobusgo |> Application.get_env(:files, []) |> fetch_file_origin()
+  end
+
   @doc "Reads the commit the running application was built from."
   @spec revision() :: {:ok, revision()} | {:error, revision_error()}
   def revision do
@@ -733,6 +763,22 @@ defmodule Gobusgo.Config do
       {:ok, %URI{scheme: "https", host: host}} when is_binary(host) and host != "" -> true
       {:ok, %URI{}} -> false
       {:error, _part} -> false
+    end
+  end
+
+  # `URI.new/1` refuses an address with a space or another character an
+  # address cannot hold, and parses a trailing slash as the path "/".
+  defp file_origin?(origin) do
+    case URI.new(origin) do
+      {:ok, %URI{scheme: scheme, host: host, path: nil, query: nil, fragment: nil, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        true
+
+      {:ok, %URI{}} ->
+        false
+
+      {:error, _part} ->
+        false
     end
   end
 
