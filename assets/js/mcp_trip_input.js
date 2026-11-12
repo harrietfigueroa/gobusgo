@@ -83,7 +83,8 @@ function withoutLeadingThe(text) {
 }
 
 /**
- * The words the "Where to?" search takes for an end `text` the rider said:
+ * The words the "Where to?" search falls back to for an end `text` the rider
+ * said, when the text as given finds nothing:
  * the text without a trailing region (the parts after its first comma, at
  * most REGION_PARTS_MAX of them, and a ZIP code after its words) and without
  * a leading "the", since the search keeps a place only when every word of

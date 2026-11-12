@@ -18,7 +18,7 @@ import {firstRideLive, journeyCard} from "./journey_cards"
 import {appendMessage} from "./message"
 import {applyTheme, reportSize} from "./mcp_frame"
 import {HostMethod, OutcomeKind, createHost, isContextAccepted, isLocationGranted, sendMessage, updateModelContext} from "./mcp_host"
-import {ResolutionKind, resolution} from "./mcp_trip_ends"
+import {FallbackKind, ResolutionKind, fallbackWords, resolution} from "./mcp_trip_ends"
 import {InputKind, StartKind, searchWords, toolInputArguments, toolResultArguments, tripInput} from "./mcp_trip_input"
 import {chosenMessage, journeyContext, journeysContext} from "./mcp_trip_journey"
 import {PlanKind, planTrip} from "./mcp_trip_plan"
@@ -288,15 +288,19 @@ export function startTripApp({root, origin, host}) {
     setEnd({end, state: {kind: EndStateKind.loading, isEditing: false, text}})
     files.warm({routingManifestUrl: ROUTING_MANIFEST_PATH})
     await Promise.allSettled(files.pendingLoads())
-    // The rider's own search is searched as typed; the words the call carried lose a trailing region.
-    let searched = text
+    const found = await files.search({text, near: searchNear()})
+    const first = resolution({text, end, found})
+    let decided = first
 
+    // The words the call carried are searched as given, which keeps an address's locality, and stripped of a trailing region only when they find nothing; a search the rider typed is searched as typed alone.
     if (isAutomatic) {
-      searched = searchWords(text)
-    }
+      const next = fallbackWords({first, text, words: searchWords(text)})
 
-    const found = await files.search({text: searched, near: searchNear()})
-    const decided = resolution({text: searched, end, found})
+      if (next.kind === FallbackKind.search) {
+        const foundStripped = await files.search({text: next.words, near: searchNear()})
+        decided = resolution({text: next.words, end, found: foundStripped})
+      }
+    }
 
     switch (decided.kind) {
       case ResolutionKind.resolved:

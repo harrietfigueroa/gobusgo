@@ -14,6 +14,29 @@ import {ChoiceKind, suggestionList} from "./where_to.js"
 /** The kinds of what the search decides of an end's words. */
 export const ResolutionKind = Object.freeze({resolved: "resolved", choices: "choices", none: "none"})
 
+/** The kinds of what to do after the search of an end's words as given. */
+export const FallbackKind = Object.freeze({settled: "settled", search: "search"})
+
+/**
+ * What follows `first`, the resolution of `text`, the rider's words as the
+ * call carried them, given `words`, the same text with its trailing region
+ * stripped. A FallbackKind member: `settled` with the `resolution` that
+ * decides the end, which is `first` unless it is none and the stripped words
+ * differ; or `search` with the stripped `words` to resolve in its place, so
+ * an end takes at most two searches.
+ */
+export function fallbackWords({first, text, words}) {
+  const isFound = first.kind !== ResolutionKind.none
+  const isSame = words === text
+  const isSettled = isFound || isSame
+
+  if (isSettled) {
+    return {kind: FallbackKind.settled, resolution: first}
+  }
+
+  return {kind: FallbackKind.search, words}
+}
+
 function endOptionsOf(groups) {
   const options = []
 
