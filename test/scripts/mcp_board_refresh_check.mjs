@@ -1,7 +1,6 @@
 // Checks when the arrivals board asks for its arrivals again, as pure
 // functions of the answer it holds and a clock written out by hand: the
-// interval floor, the wait the tool gives, the interval of the arrival
-// source, no request while the document is hidden, the request that is due
+// interval floor, the wait the tool gives, the lifetime of the board, no request while the document is hidden, the request that is due
 // on showing it again, the lifetime after which the board stops, and a stop
 // the server does not know. Run it with
 // `node test/scripts/mcp_board_refresh_check.mjs`; it exits non-zero on the
@@ -9,7 +8,7 @@
 
 import {deepStrictEqual} from "node:assert/strict"
 import {AnswerKind} from "../../assets/js/mcp_board_answer.js"
-import {ARRIVAL_SOURCE_INTERVAL_MS, BOARD_LIFETIME_MS, REFRESH_INTERVAL_MS_MIN, StepKind, expiredText, refreshIntervalMs, stepOf} from "../../assets/js/mcp_board_refresh.js"
+import {BOARD_LIFETIME_MS, REFRESH_INTERVAL_MS_MIN, StepKind, expiredText, refreshIntervalMs, stepOf} from "../../assets/js/mcp_board_refresh.js"
 
 const OPENED_AT_MS = 1_794_250_000_000
 const SECOND_MS = 1000
@@ -28,8 +27,11 @@ const fetchingOverFloor = {kind: AnswerKind.fetching, stopId: "1_1", retryAfterS
 const capacityReached = {kind: AnswerKind.capacityReached, stopId: "1_1", retryAfterSeconds: CAPACITY_WAIT_SECONDS}
 const fetchingNearEnd = {kind: AnswerKind.fetching, stopId: "1_1", retryAfterSeconds: CAPACITY_WAIT_SECONDS}
 
+// An open board holds a stop for ten minutes.
+const TEN_MINUTES_MS = 10 * 60 * 1000
+deepStrictEqual(BOARD_LIFETIME_MS, TEN_MINUTES_MS, "the board's lifetime")
+
 // The interval never goes under the floor, and the answer's wait sets it above.
-deepStrictEqual(REFRESH_INTERVAL_MS_MIN > ARRIVAL_SOURCE_INTERVAL_MS, true, "the floor is above the source's interval, so an arrivals answer waits the floor")
 deepStrictEqual(refreshIntervalMs(arrivals), REFRESH_INTERVAL_MS_MIN, "an arrivals answer")
 deepStrictEqual(refreshIntervalMs(fetchingUnderFloor), REFRESH_INTERVAL_MS_MIN, "a wait under the floor")
 deepStrictEqual(refreshIntervalMs(fetchingOverFloor), WAIT_OVER_FLOOR_SECONDS * SECOND_MS, "a wait over the floor")

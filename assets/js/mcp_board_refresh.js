@@ -12,11 +12,8 @@ const SECOND_MS = 1000
 /** The shortest time between two requests of the board, whatever an answer says. */
 export const REFRESH_INTERVAL_MS_MIN = 10 * 1000
 
-/** The wait after an answer that names none: the arrival source's interval. */
-export const ARRIVAL_SOURCE_INTERVAL_MS = 5 * 1000
-
-/** How long the board refreshes after it opens, which bounds the holds it renews. */
-export const BOARD_LIFETIME_MS = 30 * 60 * 1000
+/** How long the board refreshes after it opens, which bounds the time it holds a stop. */
+export const BOARD_LIFETIME_MS = 10 * 60 * 1000
 
 const EXPIRED_TEXT = "This board stopped updating. Ask your assistant for the stop again."
 
@@ -30,7 +27,7 @@ export function expiredText() {
 
 /**
  * How long after `answer` the board asks again: the wait the answer gives,
- * or the arrival source's interval where it gives none, and never less than
+ * or REFRESH_INTERVAL_MS_MIN where it gives none, and never less than
  * REFRESH_INTERVAL_MS_MIN.
  */
 export function refreshIntervalMs(answer) {
@@ -42,7 +39,7 @@ export function refreshIntervalMs(answer) {
     case AnswerKind.unknownStop:
     case AnswerKind.refused:
     case AnswerKind.invalid:
-      return Math.max(REFRESH_INTERVAL_MS_MIN, ARRIVAL_SOURCE_INTERVAL_MS)
+      return REFRESH_INTERVAL_MS_MIN
     default:
       return unreachable(answer.kind, "board refresh: an answer of unknown kind")
   }

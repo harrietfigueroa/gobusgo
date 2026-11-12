@@ -54,10 +54,10 @@ defmodule GobusgoWeb.Mcp.Resources.ArrivalsBoardTest do
     assert content["text"] =~ "<!doctype html>"
   end
 
-  test "names the public host alone in the CSP lists" do
+  test "names the public host alone in the resource list and lists no connect domain" do
     %{"_meta" => %{"ui" => ui}} = read_content()
 
-    assert ui["csp"] == %{"connectDomains" => [@origin], "resourceDomains" => [@origin]}
+    assert ui["csp"] == %{"resourceDomains" => [@origin]}
   end
 
   test "asks for a border and for no permission" do
@@ -105,7 +105,7 @@ defmodule GobusgoWeb.Mcp.Resources.ArrivalsBoardTest do
   test "serves from the endpoint's own address where no public host is configured" do
     Application.put_env(:gobusgo, :public, host: nil, required: false)
 
-    %{"_meta" => %{"ui" => %{"csp" => %{"connectDomains" => [origin]}}}} = read_content()
+    %{"_meta" => %{"ui" => %{"csp" => %{"resourceDomains" => [origin]}}}} = read_content()
 
     assert origin == GobusgoWeb.Endpoint.url()
   end
