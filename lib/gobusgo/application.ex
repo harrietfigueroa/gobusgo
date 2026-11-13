@@ -150,6 +150,7 @@ defmodule Gobusgo.Application do
              holder_item_count_max: GobusgoWeb.VehicleLive.OpenStops.open_count_max()}
           ] ++
           usage_children(recorded) ++
+          pace_children(scheduled) ++
           [
             {RequestGate, name: RequestGate},
             {Task.Supervisor,
@@ -209,6 +210,12 @@ defmodule Gobusgo.Application do
   # connections the endpoint's shutdown ends are in the recorder's last file.
   defp usage_children(true), do: [{Usage, name: Usage}]
   defp usage_children(false), do: []
+
+  # The pace table learns from the vehicle fetches, which run wherever the
+  # sources are scheduled, and writes its day through the storage the
+  # credentials above open.
+  defp pace_children(true), do: [{Gobusgo.Pace, name: Gobusgo.Pace}]
+  defp pace_children(false), do: []
 
   defp generate_secret do
     @generated_secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()

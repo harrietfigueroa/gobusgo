@@ -64,4 +64,24 @@ defmodule Gobusgo.Math.Geodesy do
     # arcsine raises past 1.
     2 * @earth_radius_meters * :math.asin(min(1.0, :math.sqrt(a)))
   end
+
+  @doc """
+  The initial great-circle bearing from `from` to `to`, in degrees clockwise
+  from true north, from 0 up to 360, and 0 where the two are one position.
+  """
+  @spec initial_bearing_degrees(position(), position()) :: float()
+  def initial_bearing_degrees(%{lat: from_lat, lon: from_lon}, %{lat: to_lat, lon: to_lon})
+      when is_number(from_lat) and is_number(from_lon) and is_number(to_lat) and is_number(to_lon) do
+    lat_from = radians(from_lat)
+    lat_to = radians(to_lat)
+    lon_delta = radians(to_lon - from_lon)
+    east = :math.sin(lon_delta) * :math.cos(lat_to)
+
+    north =
+      :math.cos(lat_from) * :math.sin(lat_to) -
+        :math.sin(lat_from) * :math.cos(lat_to) * :math.cos(lon_delta)
+
+    bearing = degrees(:math.atan2(east, north))
+    bearing - 360 * Float.floor(bearing / 360)
+  end
 end

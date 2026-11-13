@@ -55,6 +55,21 @@ defmodule Gobusgo.Math.GeodesyTest do
     assert_in_delta Geodesy.meters_per_degree(), 111_195.08, 0.01
   end
 
+  describe "initial_bearing_degrees/2" do
+    for {name, to, bearing} <- [
+          {"due north", %{lat: 1, lon: 0}, 0.0},
+          {"due east", %{lat: 0, lon: 1}, 90.0},
+          {"due south", %{lat: -1, lon: 0}, 180.0},
+          {"due west", %{lat: 0, lon: -1}, 270.0},
+          {"one position", %{lat: 0, lon: 0}, 0.0}
+        ] do
+      test "is #{bearing} degrees for #{name}" do
+        actual = Geodesy.initial_bearing_degrees(%{lat: 0, lon: 0}, unquote(Macro.escape(to)))
+        assert_in_delta actual, unquote(bearing), 1.0e-9
+      end
+    end
+  end
+
   describe "radians/1 and degrees/1" do
     test "convert a half turn" do
       assert Geodesy.radians(180) == :math.pi()
