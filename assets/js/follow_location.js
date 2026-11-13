@@ -44,6 +44,7 @@ import {
   EffectKind,
   FixPlace,
   FollowEventKind,
+  FollowKind,
   MoveKind,
   OFF,
   accuracyDiameterPixels,

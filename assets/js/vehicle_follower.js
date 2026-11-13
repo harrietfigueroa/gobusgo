@@ -1,32 +1,29 @@
-// The map's follow of one bus: a button under the map's controls that stops
-// it while it runs, and a loop that keeps the map on the bus's marker. The
-// imported rules decide which marker is followed, when following ends,
-// whether a camera move ends it, and when the marker has strayed far enough
-// to move the map.
-// A position the follower reads is the position the page draws the marker at,
-// and none of it leaves the browser.
+// The map's follow of one bus: a loop that keeps the map on the bus's marker,
+// and the stop control that ends it. The imported rules decide which marker is
+// followed, when following ends, whether a camera move ends it, and what each
+// frame does. A position the follower reads is the position the page draws
+// the marker at, and none of it leaves the browser.
 
 import {showNotice} from "./map_live_region"
 import {isReducedMotion, isResizeMove} from "./map_move"
 import {sheetInsets} from "./panel_sheet"
-import {MoveKind, endsFollowing, followMove, keepOffset, moveDurationMs} from "./follow_state"
-import {assertCondition, unreachable} from "./core/assert"
+import {endsFollowing, keepOffset, moveDurationMs} from "./follow_state"
+import {unreachable} from "./core/assert"
+import {createStopControl} from "./vehicle_follow_control"
 import {
-  EffectKind,
-  NoticeMessage,
-  OFF,
-  VEHICLE_FOLLOW_START_EVENT_NAME,
-  VehicleFollowEventKind,
   LOCATION_FOLLOW_START_EVENT_NAME,
+  OFF,
+  StepKind,
+  VEHICLE_FOLLOW_START_EVENT_NAME,
+  VehicleEffectKind,
+  VehicleFollowEventKind,
+  VehicleNotice,
+  followStep,
   isFollowing,
   startZoom,
   stopButtonOf,
   transition
 } from "./vehicle_follow"
-
-const GROUP_CLASSES = ["maplibregl-ctrl", "maplibregl-ctrl-group", "vehicle-follow-control"]
-const BUTTON_CLASS = "vehicle-follow-stop"
-const BUTTON_TEXT = "Stop following"
 
 /** Whether a marker's drawn position is known. */
 export const PositionKind = Object.freeze({found: "found", missing: "missing"})
@@ -34,12 +31,6 @@ export const PositionKind = Object.freeze({found: "found", missing: "missing"})
 // MapLibre marks the camera events of a move with the event data of the call
 // that made it, so the follow's own moves carry this.
 const OWN_MOVE = Object.freeze({vehicleFollowSource: true})
-
-function createElement({tag, className}) {
-  const element = document.createElement(tag)
-  element.className = className
-  return element
-}
 
 /**
  * The follower of one map page. `positionOf(markerId)` answers where the page
@@ -50,19 +41,8 @@ function createElement({tag, className}) {
 export function createVehicleFollower({positionOf, isHeld}) {
   let state = OFF
   let map = null
-  let group = null
-  let button = null
   let frame = null
-
-  function render() {
-    if (button === null) {
-      return
-    }
-
-    const {label, isHidden} = stopButtonOf(state)
-    button.setAttribute("aria-label", label)
-    group.hidden = isHidden
-  }
+  const control = createStopControl({onStop: () => { dispatch({kind: VehicleFollowEventKind.stop}) }})
 
   function view() {
     const container = map.getContainer()
@@ -75,10 +55,6 @@ export function createVehicleFollower({positionOf, isHeld}) {
   }
 
   function center() {
-    if (map === null) {
-      return
-    }
-
     const found = positionOf(state.markerId)
 
     if (found.kind === PositionKind.missing) {
@@ -88,29 +64,28 @@ export function createVehicleFollower({positionOf, isHeld}) {
     moveTo({position: found.position, zoom: startZoom(map.getZoom()), offset: keepOffset(view())})
   }
 
-  // Moves the map only when the marker has strayed past the threshold from
-  // where the map keeps it, and not while an earlier move still eases, which
-  // a new move would restart from its slow start.
+  function dotPointOf(found) {
+    if (found.kind === PositionKind.found) {
+      return map.project(found.position)
+    }
+
+    return null
+  }
+
   function track() {
     frame = null
+    const isIdle = !isFollowing(state)
+    const isMapMissing = map === null
 
-    const isIdle = !isFollowing(state) || map === null
-
-    if (isIdle) {
+    if (isIdle || isMapMissing) {
       return
     }
 
     const found = positionOf(state.markerId)
-    const isTrackable = found.kind === PositionKind.found && !map.isEasing()
+    const step = followStep({isMoving: map.isMoving(), dotPoint: dotPointOf(found), ...view()})
 
-    if (isTrackable) {
-      const move = followMove({...view(), dotPoint: map.project(found.position)})
-
-      if (move.kind === MoveKind.move) {
-        moveTo({position: found.position, zoom: map.getZoom(), offset: move.offset})
-      } else {
-        assertCondition(move.kind === MoveKind.stay, `vehicle follower: a move of kind ${move.kind}`)
-      }
+    if (step.kind === StepKind.move) {
+      moveTo({position: found.position, zoom: map.getZoom(), offset: step.offset})
     }
 
     requestTrack()
@@ -129,19 +104,22 @@ export function createVehicleFollower({positionOf, isHeld}) {
     }
   }
 
+  function focusMap() {
+    if (map !== null) {
+      map.getCanvas().focus()
+    }
+  }
+
   function apply(effect) {
     switch (effect.kind) {
-      case EffectKind.center:
+      case VehicleEffectKind.center:
         center()
         break
-      case EffectKind.notice:
+      case VehicleEffectKind.notice:
         showNotice(effect.message)
         break
-      case EffectKind.focusMap:
-        if (map !== null) {
-          map.getCanvas().focus()
-        }
-
+      case VehicleEffectKind.focusMap:
+        focusMap()
         break
       default:
         unreachable(effect.kind, "vehicle follower: an effect of unknown kind")
@@ -149,16 +127,16 @@ export function createVehicleFollower({positionOf, isHeld}) {
   }
 
   // Moves the state on by `event` and carries out what changed. The start is
-  // announced before the map moves, so the location follow has let go of it.
+  // announced before the map moves.
   function dispatch(event) {
     const wasFollowing = isFollowing(state)
+    const hadFocus = control.hasFocus()
     const result = transition({state, event})
     state = result.state
     const isNowFollowing = isFollowing(state)
-    render()
-
     const isStarted = isNowFollowing && !wasFollowing
     const isEnded = wasFollowing && !isNowFollowing
+    control.render(stopButtonOf(state))
 
     if (isStarted) {
       window.dispatchEvent(new CustomEvent(VEHICLE_FOLLOW_START_EVENT_NAME))
@@ -167,6 +145,13 @@ export function createVehicleFollower({positionOf, isHeld}) {
 
     if (isEnded) {
       cancelTrack()
+    }
+
+    // The button hides as the follow ends, so focus on it moves to the map.
+    const isFocusLost = isEnded && hadFocus
+
+    if (isFocusLost) {
+      focusMap()
     }
 
     for (const effect of result.effects) {
@@ -187,22 +172,6 @@ export function createVehicleFollower({positionOf, isHeld}) {
     }
   }
 
-  function createControl() {
-    group = createElement({tag: "div", className: GROUP_CLASSES.join(" ")})
-    button = createElement({tag: "button", className: BUTTON_CLASS})
-    button.type = "button"
-    button.textContent = BUTTON_TEXT
-    button.addEventListener("click", () => { dispatch({kind: VehicleFollowEventKind.stop}) })
-    group.append(button)
-    render()
-    return group
-  }
-
-  function releaseControl() {
-    button = null
-    group = null
-  }
-
   function onLocationFollowStart() {
     dispatch({kind: VehicleFollowEventKind.locationFollow})
   }
@@ -210,30 +179,37 @@ export function createVehicleFollower({positionOf, isHeld}) {
   window.addEventListener(LOCATION_FOLLOW_START_EVENT_NAME, onLocationFollowStart)
 
   return {
-    // A new map takes the button over from the one it replaces, which the
+    // A new map takes the control over from the one it replaces, which the
     // basemap removes with its controls. A follow of the old map ends.
     attach(nextMap) {
       cancelTrack()
       state = OFF
       map = nextMap
-      map.addControl({onAdd: createControl, onRemove: releaseControl})
+      map.addControl({onAdd: control.onAdd, onRemove: control.onRemove})
+      control.render(stopButtonOf(state))
       map.on("movestart", cameraMoved)
     },
 
-    // Follows the marker of `markerId`, named `label` in the notices.
+    // Follows the marker of `markerId`, named `label` in the notices, and
+    // refuses where no map is attached.
     start({markerId, label}) {
+      if (map === null) {
+        showNotice(VehicleNotice.unavailable())
+        return
+      }
+
       dispatch({kind: VehicleFollowEventKind.start, markerId, label})
     },
 
     // Tells the rider the bus asked for is not on the map.
     refuse() {
-      showNotice(NoticeMessage.unavailable())
+      showNotice(VehicleNotice.unavailable())
     },
 
     // Looks again at the markers the page holds, after any of them changed.
     markersChanged() {
       if (isFollowing(state)) {
-        dispatch({kind: VehicleFollowEventKind.markersHeld, isHeld: isHeld(state.markerId)})
+        dispatch({kind: VehicleFollowEventKind.markersHeld, isHeld: isHeld(state.markerId), nowMs: performance.now()})
       }
     },
 

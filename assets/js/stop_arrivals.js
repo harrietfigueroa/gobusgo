@@ -285,7 +285,7 @@ function restoreFocus({element, focused}) {
 
   for (const button of buttons) {
     if (button.dataset.vehicleId === focused.vehicleId) {
-      button.focus()
+      button.focus({preventScroll: true})
       return
     }
   }
@@ -325,16 +325,25 @@ function keyElement(shown) {
 // vehicle a button that asks the map to follow it; focus on one stays on it
 // through the rewrite.
 export function writeArrivals({element, shown, withKey, yourBus, canFollow}) {
+  const isScheduled = isScheduledShown(shown)
+  const rows = arrivalRows(shown)
+  const signature = JSON.stringify({rows, isScheduled, withKey, yourBus, canFollow, ageMinutes: shown.age_minutes})
+  const isWritten = element.dataset.arrivalsSignature === signature && element.childElementCount > 0
+
+  // Rows that read as they did stay as they are, so a rider's focus and
+  // scroll position are not disturbed by a rewrite that changes nothing.
+  if (isWritten) {
+    return
+  }
+
+  element.dataset.arrivalsSignature = signature
   const focused = focusedVehicleOf(element)
   element.replaceChildren()
-  const isScheduled = isScheduledShown(shown)
   let className = NEEDS_CONNECTION_CLASS_NAME
 
   if (isScheduled) {
     className = ""
   }
-
-  const rows = arrivalRows(shown)
 
   if (rows.kind === ArrivalRowsKind.note) {
     element.append(textElement({tagName: "p", className: `${NOTE_CLASS_NAME} ${className}`, text: rows.text}))

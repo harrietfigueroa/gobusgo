@@ -87,7 +87,7 @@ import {createYourBusLabel} from "./your_bus_label"
 import {PositionKind, createVehicleFollower} from "./vehicle_follower"
 import {
   FOLLOW_REQUEST_EVENT_NAME,
-  MarkerLookupKind as VehicleLookupKind,
+  VehicleLookupKind,
   isMarkerHeld,
   labelOf,
   markerForVehicle
