@@ -15,6 +15,7 @@ import {
   noRoutesText,
   openedText
 } from "./route_keys"
+import {openingEmphasis} from "./route_emphasis"
 import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -322,7 +323,7 @@ class RouteHover {
     const box = this.map.getContainer().getBoundingClientRect()
     this.pointerInList = false
     this.point = new this.maplibre.Point(event.clientX - box.left, event.clientY - box.top)
-    this.emphasize(null)
+    this.onEntry(null)
     this.schedule()
   }
 
@@ -330,9 +331,10 @@ class RouteHover {
   open(list) {
     const {map, popup} = this
     const routeIds = Array.from(list.entries, entryRouteId)
-    this.shown = {key: JSON.stringify(list), routeIds}
+    const openingRouteId = openingEmphasis(routeIds)
+    this.shown = {key: JSON.stringify(list), routeIds, openingRouteId}
 
-    const content = listContent({list, onEntry: this.emphasize, onEntryTap: null})
+    const content = listContent({list, onEntry: (routeId) => { this.onEntry(routeId) }, onEntryTap: null})
     const position = map.unproject(this.point)
     popup.setDOMContent(content)
     popup.setLngLat(position)
@@ -340,6 +342,17 @@ class RouteHover {
     // The popup makes its element anew each time it is added.
     popup.getElement().addEventListener("mouseenter", () => { this.onListEnter() })
     popup.getElement().addEventListener("mouseleave", (event) => { this.onListLeave(event) })
+    this.emphasize(openingRouteId)
+  }
+
+  // An entry the pointer is on emphasizes its route; leaving it returns to
+  // the route the list opened with, null for a list of several.
+  onEntry(routeId) {
+    if (routeId === null && this.shown !== null) {
+      this.emphasize(this.shown.openingRouteId)
+    } else {
+      this.emphasize(routeId)
+    }
   }
 
   update() {
@@ -423,6 +436,7 @@ class RouteTap {
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
+    this.emphasize(openingEmphasis(this.routeIds))
   }
 
   close() {

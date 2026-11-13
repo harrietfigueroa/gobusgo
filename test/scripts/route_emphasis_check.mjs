@@ -10,7 +10,8 @@ import {
   VEHICLE_DIM_FACTOR,
   dimmedOpacity,
   emphasizedRouteOf,
-  markerAlpha
+  markerAlpha,
+  openingEmphasis
 } from "../../assets/js/route_emphasis.js"
 
 const alphaCases = [
@@ -56,6 +57,16 @@ const eventCases = [
 
 for (const {name, detail, routeId} of eventCases) {
   deepStrictEqual(emphasizedRouteOf(detail), routeId, name)
+}
+
+const openingCases = [
+  {name: "no route under the pointer", routeIds: [], expected: null},
+  {name: "one route under the pointer", routeIds: ["1_40"], expected: "1_40"},
+  {name: "two routes under the pointer", routeIds: ["1_40", "1_41"], expected: null}
+]
+
+for (const {name, routeIds, expected} of openingCases) {
+  deepStrictEqual(openingEmphasis(routeIds), expected, name)
 }
 
 const refusedDetails = [

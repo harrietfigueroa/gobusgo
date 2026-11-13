@@ -35,6 +35,19 @@ export function emphasizedRouteOf(detail) {
 }
 
 /**
+ * The route a list of the routes under the pointer or a tap emphasizes as it
+ * opens: the one route a single-route list names, and null for a list of
+ * several or none, whose entries choose among them.
+ */
+export function openingEmphasis(routeIds) {
+  if (routeIds.length === 1) {
+    return routeIds[0]
+  }
+
+  return null
+}
+
+/**
  * The share of its opacity a marker of `routeId` is drawn at while
  * `emphasizedRouteId` is emphasized: whole for the emphasized route's
  * marker and with no route emphasized, `VEHICLE_DIM_FACTOR` for any other.
