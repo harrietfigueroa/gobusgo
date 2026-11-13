@@ -1001,6 +1001,13 @@ export const VehicleMarkers = {
   // Keeps the map on the marker of `markerId`, after the selection has
   // moved the map beside the sheet, so the selection's own move ends no follow.
   followMarker({markerId, route}) {
+    // The saved schedule's markers are not live positions, so they are
+    // selected and never followed.
+    if (this.isScheduled) {
+      this.follower.refuse()
+      return
+    }
+
     this.follower.start({markerId, label: labelOf({route})})
   },
 
@@ -1008,9 +1015,7 @@ export const VehicleMarkers = {
   // holds its marker, and says so where it does not.
   followVehicleOf(vehicleId) {
     const lookup = markerForVehicle({markerLists: this.markersByAgency.values(), vehicleId})
-    const isFollowable = lookup.kind === VehicleLookupKind.found && !this.isScheduled
-
-    if (isFollowable) {
+    if (lookup.kind === VehicleLookupKind.found) {
       this.followMarker({markerId: lookup.marker.id, route: lookup.marker.route})
     } else {
       this.follower.refuse()
