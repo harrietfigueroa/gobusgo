@@ -43,7 +43,9 @@ defmodule GobusgoWeb.StopArrivals do
   `trip_id` is the arrival's trip and `scheduled_ms` its scheduled time in
   Unix milliseconds, the arrival's, or the departure's where the stop is
   only departed from, so a page can tell which trip an arrival is and how
-  late it runs.
+  late it runs. `vehicle_id` is the identifier of the vehicle that serves a
+  predicted arrival, which a page follows on the map, and `nil` for an arrival
+  that holds only its schedule or names no vehicle.
   """
   @type line :: %{
           route: String.t() | nil,
@@ -53,6 +55,7 @@ defmodule GobusgoWeb.StopArrivals do
           time_ms: integer(),
           predicted: boolean(),
           trip_id: String.t() | nil,
+          vehicle_id: String.t() | nil,
           scheduled_ms: integer()
         }
 
@@ -145,6 +148,7 @@ defmodule GobusgoWeb.StopArrivals do
     %{
       key: {arrival["tripId"], arrival["serviceDateMs"], arrival["stopSequence"]},
       trip_id: arrival["tripId"],
+      vehicle_id: live_vehicle_id(arrival, predicted_ms),
       scheduled_ms: scheduled_ms,
       time_ms: time_ms,
       predicted: predicted_ms != nil,
@@ -216,7 +220,15 @@ defmodule GobusgoWeb.StopArrivals do
       time_ms: time_ms,
       predicted: timed.predicted,
       trip_id: timed.trip_id,
+      vehicle_id: timed.vehicle_id,
       scheduled_ms: timed.scheduled_ms
     }
   end
+
+  # A scheduled arrival has no live vehicle to follow, whatever vehicle the
+  # feed names beside it.
+  defp live_vehicle_id(%{"vehicleId" => vehicle_id}, predicted_ms)
+       when is_binary(vehicle_id) and vehicle_id != "" and predicted_ms != nil, do: vehicle_id
+
+  defp live_vehicle_id(_arrival, _predicted_ms), do: nil
 end

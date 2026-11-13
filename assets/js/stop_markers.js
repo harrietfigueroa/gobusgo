@@ -354,7 +354,7 @@ export const StopMarkers = {
   writeViewArrivals(nowMs) {
     const shown = shownAt({shown: this.view.shown, nowMs, countMax: this.arrivalCountMax})
     const yourBus = yourBusRow({mark: chosenStopMark(this.view.stop.id), shown})
-    writeArrivals({element: this.view.arrivalsElement, shown, withKey: true, yourBus})
+    writeArrivals({element: this.view.arrivalsElement, shown, withKey: true, yourBus, canFollow: true})
   },
 
   // Writes the view's arrivals again as of `nowMs`, once it has had an answer.

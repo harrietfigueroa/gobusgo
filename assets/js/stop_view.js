@@ -230,7 +230,7 @@ export function stopViewElements(stop) {
 
   const arrivalsElement = document.createElement("div")
   arrivalsElement.className = ARRIVALS_CLASS_NAME
-  writeArrivals({element: arrivalsElement, shown: {status: "waiting"}, withKey: true, yourBus: NO_YOUR_BUS})
+  writeArrivals({element: arrivalsElement, shown: {status: "waiting"}, withKey: true, yourBus: NO_YOUR_BUS, canFollow: false})
 
   const tripLine = tripLineElement()
   writeTripLine({line: tripLine, stopId: stop.id})

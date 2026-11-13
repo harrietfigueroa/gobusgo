@@ -13,6 +13,7 @@
 
 import {READY_EVENT_NAME} from "./basemap"
 import {clearRegion, showNotice} from "./map_live_region"
+import {isReducedMotion, isResizeMove} from "./map_move"
 import {canRequestMotionPermission, isMotionPermissionDenied, requestMotionPermission} from "./motion_permission"
 import {CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME, DetailKind} from "./panel_detail"
 import {sheetInsets} from "./panel_sheet"
@@ -35,6 +36,7 @@ import {
 } from "./rider_heading"
 import {CHANGE_EVENT_NAME as DIRECTION_CHANGE_EVENT_NAME, isDirectionShown} from "./show_direction"
 import {storedSettings} from "./stored_settings"
+import {LOCATION_FOLLOW_START_EVENT_NAME, VEHICLE_FOLLOW_START_EVENT_NAME} from "./vehicle_follow"
 import {assertCondition, unreachable} from "./core/assert"
 import {
   BUTTON_CLASS_NAMES,
@@ -64,7 +66,6 @@ const DOT_STALE_CLASS = "maplibregl-user-location-dot-stale"
 const CIRCLE_CLASS = "maplibregl-user-location-accuracy-circle"
 const CONE_CLASS = "rider-heading-cone"
 const CONE_SHAPE_CLASS = "rider-heading-cone-shape"
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
 // The heading's age bound is checked again just after the reading expires.
 const CONE_EXPIRY_MARGIN_MS = 50
 const ORIENTATION_EVENT_NAMES = Object.freeze({
@@ -74,18 +75,6 @@ const ORIENTATION_EVENT_NAMES = Object.freeze({
 // MapLibre marks the camera events of a move with the event data of the call
 // that made it, so the button's own moves carry this.
 const OWN_MOVE = Object.freeze({followSource: true})
-
-function isReducedMotion() {
-  return window.matchMedia(REDUCED_MOTION_QUERY).matches
-}
-
-// MapLibre fires a resize's camera events with the ResizeObserver's entries
-// as their event data, which leaves the first entry at the key 0.
-function isResizeMove(event) {
-  const hasResizeObserver = typeof ResizeObserverEntry === "function"
-  const isResize = hasResizeObserver && event[0] instanceof ResizeObserverEntry
-  return isResize
-}
 
 // A browser without the Screen Orientation API shows the page in the
 // screen's natural orientation.
@@ -152,6 +141,10 @@ export const FollowLocation = {
     }
 
     window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+
+    // A bus followed takes the map, so the two follows never run at once.
+    this.onVehicleFollowStart = () => { this.dispatch({kind: FollowEventKind.vehicleFollow}) }
+    window.addEventListener(VEHICLE_FOLLOW_START_EVENT_NAME, this.onVehicleFollowStart)
   },
 
   // A new map takes the button and the dot over from the one it replaces,
@@ -244,6 +237,7 @@ export const FollowLocation = {
   // geolocation hands its outcome back from inside the call.
   dispatch(event) {
     const wasActive = isActive(this.state)
+    const wasFollowing = this.state.kind === FollowKind.following
     const {state, effects} = transition({state: this.state, event})
     this.state = state
     const isOn = isActive(state)
@@ -253,6 +247,12 @@ export const FollowLocation = {
     }
 
     this.render()
+
+    const isFollowing = state.kind === FollowKind.following
+
+    if (isFollowing && !wasFollowing) {
+      window.dispatchEvent(new CustomEvent(LOCATION_FOLLOW_START_EVENT_NAME))
+    }
 
     for (const effect of effects) {
       this.apply(effect)
@@ -545,6 +545,7 @@ export const FollowLocation = {
   destroyed() {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
+    window.removeEventListener(VEHICLE_FOLLOW_START_EVENT_NAME, this.onVehicleFollowStart)
     window.removeEventListener(DIRECTION_CHANGE_EVENT_NAME, this.onDirectionChange)
     window.removeEventListener(ORIENTATION_EVENT_NAMES[this.compassSource], this.onOrientation)
     document.removeEventListener("visibilitychange", this.onVisibility)

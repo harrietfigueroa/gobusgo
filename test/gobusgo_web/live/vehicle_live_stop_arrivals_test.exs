@@ -260,6 +260,34 @@ defmodule GobusgoWeb.VehicleLiveStopArrivalsTest do
       assert_push_event(view, @event, %{arrivals: [%{route: "36", color: "#FDB71A"}]})
     end
 
+    test "names the vehicle of a predicted arrival, which the page can follow", %{now: now} do
+      apply_stops([@stop_id], now)
+      apply_arrivals([arrival(now, 12)], %{stop_id: @stop_id, now: now, sequence: 0})
+
+      view = open_page()
+
+      open_stop(view)
+
+      assert_push_event(view, @event, %{arrivals: [%{vehicle_id: @vehicle_id}]})
+    end
+
+    test "names no vehicle for an arrival that holds only its schedule", %{now: now} do
+      scheduled = %{
+        predicted: false,
+        predicted_arrival_time_ms: nil,
+        predicted_departure_time_ms: nil
+      }
+
+      apply_stops([@stop_id], now)
+      apply_arrivals([arrival(now, 12, scheduled)], %{stop_id: @stop_id, now: now, sequence: 0})
+
+      view = open_page()
+
+      open_stop(view)
+
+      assert_push_event(view, @event, %{arrivals: [%{vehicle_id: nil}]})
+    end
+
     test "is answered with waiting for a stop that has no fetch, then with its arrivals",
          %{now: now} do
       apply_stops([@stop_id], now)

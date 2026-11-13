@@ -382,6 +382,13 @@
   font-weight: 700;
 }
 
+/* The button that follows an arrival's bus on the map takes the action
+   buttons' look and stays its own width beside the time. */
+.arrival-follow {
+  flex-shrink: 0;
+  color: var(--panel-sheet-text-color);
+}
+
 .arrival-note,
 .arrival-key {
   color: var(--muted-text-color);
@@ -475,6 +482,19 @@ a.inline-target {
 
 .maplibregl-ctrl-icon {
   filter: var(--map-control-icon-filter);
+}
+
+/* The control that stops following a bus shows a text, so it is as wide as
+   the text, and only while a bus is followed. */
+.vehicle-follow-control[hidden] {
+  display: none;
+}
+
+.maplibregl-ctrl-group .vehicle-follow-stop {
+  width: auto;
+  padding: 0 12px;
+  color: var(--panel-sheet-text-color);
+  font-weight: 600;
 }
 
 .maplibregl-ctrl-attrib {

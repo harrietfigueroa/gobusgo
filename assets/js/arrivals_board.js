@@ -64,7 +64,7 @@ function boardView(root) {
         arrivals.replaceChildren()
       } else {
         const shown = shownOf({answer: board.arrivals, nowMs, countMax: ARRIVALS_SHOWN_MAX})
-        writeArrivals({element: arrivals, shown, withKey: true, yourBus: NO_YOUR_BUS})
+        writeArrivals({element: arrivals, shown, withKey: true, yourBus: NO_YOUR_BUS, canFollow: false})
       }
 
       let statusLine = ""
