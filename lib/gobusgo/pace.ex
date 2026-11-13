@@ -1,7 +1,7 @@
 defmodule Gobusgo.Pace do
   @check_interval_ms_default 60_000
-  @vehicle_count_max_default 20_000
-  @path_count_max_default 2_500
+  @vehicle_count_max_default Gobusgo.Pace.Observation.vehicle_count_max_default()
+  @path_count_max_default Gobusgo.Pace.Observation.path_count_max_default()
   @path_build_count_max_default 200
   @message_queue_length_max_default 30
 
@@ -10,7 +10,8 @@ defmodule Gobusgo.Pace do
   fetch, how long vehicles take at each place, and stores one day's table
   through `Gobusgo.Writer` once the UTC day is over. This module owns the
   process, the clock, and the write; the rules live in
-  `Gobusgo.Pace.Learning`, the cells in `Gobusgo.Pace.Table`, the stored
+  `Gobusgo.Pace.Learning` and the step of one fetch in
+  `Gobusgo.Pace.Observation`, the cells in `Gobusgo.Pace.Table`, the stored
   form in `Gobusgo.Pace.Aggregate`, and the reading of a trip's path in
   `Gobusgo.Pace.PathSource`.
 
@@ -65,6 +66,7 @@ defmodule Gobusgo.Pace do
   alias Gobusgo.Assert
   alias Gobusgo.Pace.Aggregate
   alias Gobusgo.Pace.Learning
+  alias Gobusgo.Pace.Observation
   alias Gobusgo.Pace.PathSource
   alias Gobusgo.Pace.Table
   alias Gobusgo.RequestId
@@ -311,104 +313,13 @@ defmodule Gobusgo.Pace do
   defp learn(pace, []), do: pace
 
   defp learn(%{options: options} = pace, reports) do
-    batch = %{
-      table: pace.table,
-      vehicles: pace.vehicles,
-      paths: pace.paths,
-      builds_left: options.path_build_count_max,
-      path_error: nil
-    }
+    state = %{Observation.new(pace.table) | vehicles: pace.vehicles, paths: pace.paths}
+    learned = Observation.learn(%{state: state, reports: reports, options: options})
 
-    batch = Enum.reduce(reports, batch, &learn_report(&1, &2, options))
-    newest_ms = Enum.max(Enum.map(reports, & &1.at_ms))
-    vehicles = forget_stale(batch.vehicles, newest_ms, options.vehicle_count_max)
+    log_path_error(learned.path_error)
 
-    log_path_error(batch.path_error)
-
-    %{pace | table: batch.table, vehicles: vehicles, paths: batch.paths}
+    %{pace | table: learned.table, vehicles: learned.vehicles, paths: learned.paths}
     |> log_table_full()
-  end
-
-  defp learn_report(report, batch, options) do
-    previous = Map.get(batch.vehicles, report.vehicle_key)
-
-    is_repeat =
-      previous != nil and previous.at_ms == report.at_ms and previous.trip_key == report.trip_key
-
-    if is_repeat do
-      batch
-    else
-      {path, batch} = path_of(report, batch, options)
-
-      %{placed: placed, cells: cells} =
-        Learning.advance(%{previous: previous, report: report, path: path})
-
-      %{
-        batch
-        | table: Table.add(batch.table, cells),
-          vehicles: put_placed(batch.vehicles, report.vehicle_key, placed)
-      }
-    end
-  end
-
-  defp put_placed(vehicles, vehicle_key, nil), do: Map.delete(vehicles, vehicle_key)
-  defp put_placed(vehicles, vehicle_key, placed), do: Map.put(vehicles, vehicle_key, placed)
-
-  defp path_of(%{trip_key: trip_key} = report, batch, options) do
-    case batch.paths do
-      %{^trip_key => path} ->
-        {path, batch}
-
-      %{} when batch.builds_left > 0 ->
-        batch = %{batch | builds_left: batch.builds_left - 1}
-        read_path(report, batch, options)
-
-      %{} ->
-        {nil, batch}
-    end
-  end
-
-  defp read_path(
-         %{trip_key: {trip_id, service_date_ms} = trip_key, route_id: route_id},
-         batch,
-         options
-       ) do
-    trip = %{route_id: route_id, trip_id: trip_id, service_date_ms: service_date_ms}
-
-    case options.path_source.(trip, options.views) do
-      {:ok, path} ->
-        paths = hold_path(batch.paths, trip_key, path, options.path_count_max)
-        {path, %{batch | paths: paths}}
-
-      :unavailable ->
-        {nil, batch}
-    end
-  rescue
-    exception ->
-      error = %{
-        message: Exception.message(exception),
-        stack: Exception.format_stacktrace(__STACKTRACE__)
-      }
-
-      {nil, %{batch | path_error: batch.path_error || error}}
-  end
-
-  defp hold_path(paths, trip_key, path, path_count_max) do
-    if map_size(paths) < path_count_max do
-      Map.put(paths, trip_key, path)
-    else
-      %{trip_key => path}
-    end
-  end
-
-  defp forget_stale(vehicles, newest_ms, vehicle_count_max) do
-    fresh = Map.filter(vehicles, fn {_key, placed} -> not Learning.stale?(placed, newest_ms) end)
-
-    if map_size(fresh) <= vehicle_count_max do
-      fresh
-    else
-      %{}
-    end
   end
 
   defp log_path_error(nil), do: :ok
