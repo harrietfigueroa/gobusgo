@@ -22,6 +22,9 @@ export const VEHICLE_DIM_FACTOR = 0.4
 
 const FULL_ALPHA = 1
 
+/** The outcomes of `openingEmphasis`. */
+export const OpeningKind = Object.freeze({none: "none", route: "route"})
+
 /**
  * The emphasized route of an emphasis event's `detail`: a route identifier,
  * or null for none.
@@ -36,15 +39,16 @@ export function emphasizedRouteOf(detail) {
 
 /**
  * The route a list of the routes under the pointer or a tap emphasizes as it
- * opens: the one route a single-route list names, and null for a list of
+ * opens: `{kind: OpeningKind.route, routeId}` for the one route a
+ * single-route list names, and `{kind: OpeningKind.none}` for a list of
  * several or none, whose entries choose among them.
  */
 export function openingEmphasis(routeIds) {
   if (routeIds.length === 1) {
-    return routeIds[0]
+    return {kind: OpeningKind.route, routeId: routeIds[0]}
   }
 
-  return null
+  return {kind: OpeningKind.none}
 }
 
 /**

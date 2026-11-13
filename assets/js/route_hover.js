@@ -15,7 +15,7 @@ import {
   noRoutesText,
   openedText
 } from "./route_keys"
-import {openingEmphasis} from "./route_emphasis"
+import {OpeningKind, openingEmphasis} from "./route_emphasis"
 import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -248,6 +248,20 @@ function entryRouteId({routeId}) {
   return routeId
 }
 
+// Emphasizes the route `opening` names, or clears the emphasis for none.
+function emphasizeOpening({emphasize, opening}) {
+  switch (opening.kind) {
+    case OpeningKind.route:
+      emphasize(opening.routeId)
+      break
+    case OpeningKind.none:
+      emphasize(null)
+      break
+    default:
+      unreachable(opening.kind, "an opening emphasis is a route or none")
+  }
+}
+
 // The state of one map's list: its popup, the pointer's last point on the
 // map, whether the pointer is inside the list, and the list that is shown
 // with the routes it names.
@@ -331,8 +345,8 @@ class RouteHover {
   open(list) {
     const {map, popup} = this
     const routeIds = Array.from(list.entries, entryRouteId)
-    const openingRouteId = openingEmphasis(routeIds)
-    this.shown = {key: JSON.stringify(list), routeIds, openingRouteId}
+    const opening = openingEmphasis(routeIds)
+    this.shown = {key: JSON.stringify(list), routeIds, opening}
 
     const content = listContent({list, onEntry: (routeId) => { this.onEntry(routeId) }, onEntryTap: null})
     const position = map.unproject(this.point)
@@ -342,14 +356,16 @@ class RouteHover {
     // The popup makes its element anew each time it is added.
     popup.getElement().addEventListener("mouseenter", () => { this.onListEnter() })
     popup.getElement().addEventListener("mouseleave", (event) => { this.onListLeave(event) })
-    this.emphasize(openingRouteId)
+    emphasizeOpening({emphasize: this.emphasize, opening})
   }
 
   // An entry the pointer is on emphasizes its route; leaving it returns to
-  // the route the list opened with, null for a list of several.
+  // what the list opened with.
   onEntry(routeId) {
-    if (routeId === null && this.shown !== null) {
-      this.emphasize(this.shown.openingRouteId)
+    const isLeaving = routeId === null
+
+    if (isLeaving) {
+      emphasizeOpening({emphasize: this.emphasize, opening: this.shown.opening})
     } else {
       this.emphasize(routeId)
     }
@@ -436,7 +452,7 @@ class RouteTap {
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
-    this.emphasize(openingEmphasis(this.routeIds))
+    emphasizeOpening({emphasize: this.emphasize, opening: openingEmphasis(this.routeIds)})
   }
 
   close() {

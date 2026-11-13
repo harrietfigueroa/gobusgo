@@ -7,6 +7,7 @@
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {
+  OpeningKind,
   VEHICLE_DIM_FACTOR,
   dimmedOpacity,
   emphasizedRouteOf,
@@ -60,9 +61,9 @@ for (const {name, detail, routeId} of eventCases) {
 }
 
 const openingCases = [
-  {name: "no route under the pointer", routeIds: [], expected: null},
-  {name: "one route under the pointer", routeIds: ["1_40"], expected: "1_40"},
-  {name: "two routes under the pointer", routeIds: ["1_40", "1_41"], expected: null}
+  {name: "no route under the pointer", routeIds: [], expected: {kind: OpeningKind.none}},
+  {name: "one route under the pointer", routeIds: ["1_40"], expected: {kind: OpeningKind.route, routeId: "1_40"}},
+  {name: "two routes under the pointer", routeIds: ["1_40", "1_41"], expected: {kind: OpeningKind.none}}
 ]
 
 for (const {name, routeIds, expected} of openingCases) {
