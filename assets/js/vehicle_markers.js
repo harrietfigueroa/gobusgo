@@ -23,7 +23,7 @@ import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {TableKind} from "./core/offline_answers"
 import {isFallbackDue} from "./core/scheduled_path"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
-import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRouteOf} from "./route_emphasis"
+import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRoutesOf} from "./route_emphasis"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
 import {
   BADGE_FONT,
@@ -545,9 +545,9 @@ export const VehicleMarkers = {
     this.statusLabels = new Map(labelEntries)
     this.markersByAgency = new Map()
     this.map = null
-    // The route whose line is emphasized, or null; the markers of every
-    // other route are drawn dimmed while it is set.
-    this.emphasizedRouteId = null
+    // The routes whose lines are emphasized, none for an empty array; the
+    // markers of every other route are drawn dimmed while any is set.
+    this.emphasizedRouteIds = []
     this.drawn = new Map()
     this.gliding = new Map()
     // The chevrons that turn back to their reported headings in the
@@ -643,7 +643,7 @@ export const VehicleMarkers = {
     window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     this.onEmphasis = (event) => {
-      this.emphasizedRouteId = emphasizedRouteOf(event.detail)
+      this.emphasizedRouteIds = emphasizedRoutesOf(event.detail)
       this.applyEmphasis()
     }
 
@@ -794,7 +794,7 @@ export const VehicleMarkers = {
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
     this.overlay.markSelected(this.viewMarkerId)
     this.overlay.markYourBus(this.yourBus.current())
-    this.overlay.markEmphasis(this.emphasizedRouteId)
+    this.overlay.markEmphasis(this.emphasizedRouteIds)
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -1138,12 +1138,12 @@ export const VehicleMarkers = {
   // its status's for a dot, and shape and glyph are drawn at it too, so a
   // status stays told by form.
   markerOpacities() {
-    const {emphasizedRouteId} = this
+    const {emphasizedRouteIds} = this
     const colors = mapColors(currentTheme())
     const statusOpacities = statusOpacity(this.statuses)
-    const dot = dimmedOpacity({emphasizedRouteId, opacity: statusOpacities})
-    const dotStroke = dimmedOpacity({emphasizedRouteId, opacity: dotStrokeOpacity({opacity: statusOpacities, colors})})
-    const symbol = dimmedOpacity({emphasizedRouteId, opacity: SYMBOL_OPACITY})
+    const dot = dimmedOpacity({emphasizedRouteIds, opacity: statusOpacities})
+    const dotStroke = dimmedOpacity({emphasizedRouteIds, opacity: dotStrokeOpacity({opacity: statusOpacities, colors})})
+    const symbol = dimmedOpacity({emphasizedRouteIds, opacity: SYMBOL_OPACITY})
     return {dot, dotStroke, symbol}
   },
 
@@ -1151,7 +1151,7 @@ export const VehicleMarkers = {
   // to those of the emphasized route. It sets paint only, never source data.
   applyEmphasis() {
     if (this.overlay !== null) {
-      this.overlay.markEmphasis(this.emphasizedRouteId)
+      this.overlay.markEmphasis(this.emphasizedRouteIds)
     }
 
     if (this.map === null) {
