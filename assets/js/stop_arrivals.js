@@ -34,6 +34,9 @@ const FOLLOW_BUTTON_MARK_CLASS_NAME = "arrival-follow"
 const FOLLOW_BUTTON_CLASS_NAME = `panel-detail-action ${FOLLOW_BUTTON_MARK_CLASS_NAME}`
 const FOLLOW_BUTTON_TEXT = "Follow"
 const FocusKind = Object.freeze({button: "button", none: "none"})
+// What each element's rows were last written from, so rows that would read
+// the same are not written again.
+const writtenSignatures = new WeakMap()
 
 /** The class of the dot beside a time that is a live prediction. */
 export const LIVE_DOT_CLASS_NAME = "live-dot"
@@ -328,7 +331,7 @@ export function writeArrivals({element, shown, withKey, yourBus, canFollow}) {
   const isScheduled = isScheduledShown(shown)
   const rows = arrivalRows(shown)
   const signature = JSON.stringify({rows, isScheduled, withKey, yourBus, canFollow, ageMinutes: shown.age_minutes})
-  const isWritten = element.dataset.arrivalsSignature === signature && element.childElementCount > 0
+  const isWritten = writtenSignatures.get(element) === signature && element.childElementCount > 0
 
   // Rows that read as they did stay as they are, so a rider's focus and
   // scroll position are not disturbed by a rewrite that changes nothing.
@@ -336,7 +339,7 @@ export function writeArrivals({element, shown, withKey, yourBus, canFollow}) {
     return
   }
 
-  element.dataset.arrivalsSignature = signature
+  writtenSignatures.set(element, signature)
   const focused = focusedVehicleOf(element)
   element.replaceChildren()
   let className = NEEDS_CONNECTION_CLASS_NAME

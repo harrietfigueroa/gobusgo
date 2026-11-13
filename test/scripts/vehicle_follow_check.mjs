@@ -13,6 +13,7 @@ import {
   ABSENCE_MS_MAX,
   ArrivalFollowKind,
   OFF,
+  PlacementKind,
   StepKind,
   VEHICLE_FOLLOW_ZOOM_MIN,
   VehicleEffectKind,
@@ -145,17 +146,23 @@ const CENTER_POINT = {x: 500, y: 400}
 const NEAR_POINT = {x: 510, y: 410}
 const FAR_POINT = {x: 800, y: 400}
 
+const UNPLACED = {kind: PlacementKind.unplaced}
+
+function placed(dotPoint) {
+  return {kind: PlacementKind.placed, dotPoint}
+}
+
 const stepCases = [
-  {name: "a frame while the camera moves waits, however far the marker stands", isMoving: true, dotPoint: FAR_POINT, expected: {kind: StepKind.wait}},
-  {name: "a frame with the marker unplaced waits", isMoving: false, dotPoint: null, expected: {kind: StepKind.wait}},
-  {name: "a frame with the marker unplaced and the camera moving waits", isMoving: true, dotPoint: null, expected: {kind: StepKind.wait}},
-  {name: "a marker at the keep point stays", isMoving: false, dotPoint: CENTER_POINT, expected: {kind: StepKind.stay}},
-  {name: "a marker within the threshold stays", isMoving: false, dotPoint: NEAR_POINT, expected: {kind: StepKind.stay}},
-  {name: "a marker past the threshold moves the map by the keep offset", isMoving: false, dotPoint: FAR_POINT, expected: {kind: StepKind.move, offset: [0, 0]}}
+  {name: "a frame while the camera moves waits, however far the marker stands", isMoving: true, placement: placed(FAR_POINT), expected: {kind: StepKind.wait}},
+  {name: "a frame with the marker unplaced waits", isMoving: false, placement: UNPLACED, expected: {kind: StepKind.wait}},
+  {name: "a frame with the marker unplaced and the camera moving waits", isMoving: true, placement: UNPLACED, expected: {kind: StepKind.wait}},
+  {name: "a marker at the keep point stays", isMoving: false, placement: placed(CENTER_POINT), expected: {kind: StepKind.stay}},
+  {name: "a marker within the threshold stays", isMoving: false, placement: placed(NEAR_POINT), expected: {kind: StepKind.stay}},
+  {name: "a marker past the threshold moves the map by the keep offset", isMoving: false, placement: placed(FAR_POINT), expected: {kind: StepKind.move, offset: [0, 0]}}
 ]
 
-for (const {name, isMoving, dotPoint, expected} of stepCases) {
-  deepStrictEqual(followStep({isMoving, dotPoint, ...VIEW}), expected, name)
+for (const {name, isMoving, placement, expected} of stepCases) {
+  deepStrictEqual(followStep({isMoving, placement, ...VIEW}), expected, name)
 }
 
 const livePrediction = {route: "36", headsign: "Othello Station", predicted: true, vehicle_id: "1_4342"}

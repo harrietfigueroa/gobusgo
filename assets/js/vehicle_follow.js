@@ -53,6 +53,9 @@ export const VehicleLookupKind = Object.freeze({found: "found", missing: "missin
 /** What a frame of the follow does: wait, leave the map, or move it by an offset. */
 export const StepKind = Object.freeze({wait: "wait", stay: "stay", move: "move"})
 
+/** Whether the followed marker stands at a point on the screen. */
+export const PlacementKind = Object.freeze({placed: "placed", unplaced: "unplaced"})
+
 /** The state before any follow. */
 export const OFF = Object.freeze({kind: VehicleFollowKind.off, markerId: null, label: NAMELESS_LABEL, absentSinceMs: null})
 
@@ -214,18 +217,19 @@ export function startZoom(zoom) {
 /**
  * What one frame of the follow does. It waits while the camera moves, which
  * a rider's pinch or an earlier ease does, and while the marker has no known
- * place (`dotPoint` null); otherwise it leaves the map until the marker has
+ * place (`placement` unplaced, else placed at `dotPoint` on screen); otherwise it leaves the map until the marker has
  * strayed from where the map keeps it, then moves the map by the offset that
  * keeps it beside the sheet.
  */
-export function followStep({isMoving, dotPoint, viewWidth, viewHeight, insets}) {
-  const isUnplaced = dotPoint === null
+export function followStep({isMoving, placement, viewWidth, viewHeight, insets}) {
+  const isUnplaced = placement.kind === PlacementKind.unplaced
+  const isWaiting = isMoving || isUnplaced
 
-  if (isMoving || isUnplaced) {
+  if (isWaiting) {
     return {kind: StepKind.wait}
   }
 
-  const move = followMove({dotPoint, viewWidth, viewHeight, insets})
+  const move = followMove({dotPoint: placement.dotPoint, viewWidth, viewHeight, insets})
 
   if (move.kind === MoveKind.move) {
     return {kind: StepKind.move, offset: move.offset}

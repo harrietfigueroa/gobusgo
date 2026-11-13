@@ -13,6 +13,7 @@ import {createStopControl} from "./vehicle_follow_control"
 import {
   LOCATION_FOLLOW_START_EVENT_NAME,
   OFF,
+  PlacementKind,
   StepKind,
   VEHICLE_FOLLOW_START_EVENT_NAME,
   VehicleEffectKind,
@@ -64,25 +65,24 @@ export function createVehicleFollower({positionOf, isHeld}) {
     moveTo({position: found.position, zoom: startZoom(map.getZoom()), offset: keepOffset(view())})
   }
 
-  function dotPointOf(found) {
+  function placementOf(found) {
     if (found.kind === PositionKind.found) {
-      return map.project(found.position)
+      return {kind: PlacementKind.placed, dotPoint: map.project(found.position)}
     }
 
-    return null
+    return {kind: PlacementKind.unplaced}
   }
 
   function track() {
     frame = null
-    const isIdle = !isFollowing(state)
-    const isMapMissing = map === null
+    const isIdle = !isFollowing(state) || map === null
 
-    if (isIdle || isMapMissing) {
+    if (isIdle) {
       return
     }
 
     const found = positionOf(state.markerId)
-    const step = followStep({isMoving: map.isMoving(), dotPoint: dotPointOf(found), ...view()})
+    const step = followStep({isMoving: map.isMoving(), placement: placementOf(found), ...view()})
 
     if (step.kind === StepKind.move) {
       moveTo({position: found.position, zoom: map.getZoom(), offset: step.offset})
