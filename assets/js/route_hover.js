@@ -248,12 +248,18 @@ function entryRouteId({routeId}) {
   return routeId
 }
 
-// Moves the emphasis of `list`, which holds its `emphasis` state, by
-// `event`, and hands the routes now emphasized to its `emphasize`, an empty
-// array once nothing is.
-function stepEmphasis(list, event) {
-  list.emphasis = listEmphasisStep({state: list.emphasis, event})
-  list.emphasize(list.emphasis.emphasized)
+// The emphasis state of one list: `step` moves it by an event and hands the
+// routes now emphasized to `emphasize`, an empty array once nothing is.
+class ListEmphasis {
+  constructor(emphasize) {
+    this.emphasize = emphasize
+    this.state = LIST_EMPHASIS_CLOSED
+  }
+
+  step(event) {
+    this.state = listEmphasisStep({state: this.state, event})
+    this.emphasize(this.state.emphasized)
+  }
 }
 
 // The `emphasize` of a list that `owner` owns: a claim on the emphasis,
@@ -270,7 +276,7 @@ class RouteHover {
     this.map = map
     this.maplibre = maplibre
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.emphasisState = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -282,7 +288,6 @@ class RouteHover {
     this.point = null
     this.pointerInList = false
     this.shown = null
-    this.emphasis = LIST_EMPHASIS_CLOSED
     this.isMoving = false
     this.holdTimer = null
     this.frame = null
@@ -313,7 +318,7 @@ class RouteHover {
     this.popup.remove()
     this.shown = null
     this.pointerInList = false
-    stepEmphasis(this, {kind})
+    this.emphasisState.step({kind})
   }
 
   // A pan or a zoom moves the lines from under the pointer, so the list
@@ -353,7 +358,7 @@ class RouteHover {
     const box = this.map.getContainer().getBoundingClientRect()
     this.pointerInList = false
     this.point = new this.maplibre.Point(event.clientX - box.left, event.clientY - box.top)
-    stepEmphasis(this, {kind: ListEvent.entryLeave})
+    this.emphasisState.step({kind: ListEvent.entryLeave})
     this.schedule()
   }
 
@@ -371,7 +376,7 @@ class RouteHover {
     // The popup makes its element anew each time it is added.
     popup.getElement().addEventListener("mouseenter", () => { this.onListEnter() })
     popup.getElement().addEventListener("mouseleave", (event) => { this.onListLeave(event) })
-    stepEmphasis(this, {kind: ListEvent.open, routeIds})
+    this.emphasisState.step({kind: ListEvent.open, routeIds})
   }
 
   // `routeId` is the route of the entry the pointer enters, null as it
@@ -380,9 +385,9 @@ class RouteHover {
     const isLeaving = routeId === null
 
     if (isLeaving) {
-      stepEmphasis(this, {kind: ListEvent.entryLeave})
+      this.emphasisState.step({kind: ListEvent.entryLeave})
     } else {
-      stepEmphasis(this, {kind: ListEvent.entryEnter, routeId})
+      this.emphasisState.step({kind: ListEvent.entryEnter, routeId})
     }
   }
 
@@ -428,7 +433,7 @@ class RouteTap {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.emphasisState = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -438,7 +443,6 @@ class RouteTap {
       offset: POPUP_OFFSET_PIXELS
     })
     this.routeIds = null
-    this.emphasis = LIST_EMPHASIS_CLOSED
   }
 
   // The map fires `click` only for a press and release within its click
@@ -467,19 +471,19 @@ class RouteTap {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const onEntryTap = (routeId) => { stepEmphasis(this, {kind: ListEvent.entryEnter, routeId}) }
+    const onEntryTap = (routeId) => { this.emphasisState.step({kind: ListEvent.entryEnter, routeId}) }
     const content = listContent({list, onEntry: null, onEntryTap})
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
-    stepEmphasis(this, {kind: ListEvent.open, routeIds: this.routeIds})
+    this.emphasisState.step({kind: ListEvent.open, routeIds: this.routeIds})
   }
 
   close() {
     if (this.routeIds !== null) {
       this.popup.remove()
       this.routeIds = null
-      stepEmphasis(this, {kind: ListEvent.close})
+      this.emphasisState.step({kind: ListEvent.close})
     }
   }
 
@@ -503,7 +507,7 @@ class RouteKeys {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.emphasisState = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -515,7 +519,6 @@ class RouteKeys {
     })
     this.routeIds = null
     this.buttons = []
-    this.emphasis = LIST_EMPHASIS_CLOSED
   }
 
   // The middle of the part of the map the panel sheet leaves in sight, the
@@ -568,7 +571,7 @@ class RouteKeys {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const onEntryTap = (routeId) => { stepEmphasis(this, {kind: ListEvent.entryEnter, routeId}) }
+    const onEntryTap = (routeId) => { this.emphasisState.step({kind: ListEvent.entryEnter, routeId}) }
     const content = listContent({list, onEntry: null, onEntryTap})
     content.setAttribute("aria-label", KEYBOARD_LIST_LABEL)
     content.addEventListener("keydown", (event) => { this.onListKeydown(event) })
@@ -578,7 +581,7 @@ class RouteKeys {
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
-    stepEmphasis(this, {kind: ListEvent.open, routeIds: this.routeIds})
+    this.emphasisState.step({kind: ListEvent.open, routeIds: this.routeIds})
     this.buttons[0].focus()
     announce(openedText({count: list.entries.length, hiddenCount: list.hiddenCount}))
   }
@@ -610,7 +613,7 @@ class RouteKeys {
     const index = this.buttons.indexOf(event.target)
 
     if (index >= 0) {
-      stepEmphasis(this, {kind: ListEvent.entryEnter, routeId: this.routeIds[index]})
+      this.emphasisState.step({kind: ListEvent.entryEnter, routeId: this.routeIds[index]})
     }
   }
 
@@ -643,7 +646,7 @@ class RouteKeys {
       }
 
       this.popup.remove()
-      stepEmphasis(this, {kind: ListEvent.close})
+      this.emphasisState.step({kind: ListEvent.close})
     }
   }
 

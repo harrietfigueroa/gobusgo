@@ -47,8 +47,8 @@ export function emphasizedRoutesOf(detail) {
   assertCondition(Array.isArray(routeIds), `emphasized routes are an array, got: ${routeIds}`)
 
   for (const routeId of routeIds) {
-    const isRoute = typeof routeId === "string" && routeId !== ""
-    assertCondition(isRoute, `an emphasized route is an identifier, got: ${routeId}`)
+    assertCondition(typeof routeId === "string", `an emphasized route is a string, got: ${routeId}`)
+    assertCondition(routeId !== "", "an emphasized route is not empty")
   }
 
   return routeIds

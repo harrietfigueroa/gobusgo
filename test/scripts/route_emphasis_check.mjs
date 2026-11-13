@@ -107,7 +107,11 @@ for (const {name, state, event, expected} of stepCases) {
   deepStrictEqual(listEmphasisStep({state, event}), expected, name)
 }
 
-throws(() => listEmphasisStep({state: OPENED, event: {kind: "hover"}}), "an unknown event is refused")
+function stepUnknownEvent() {
+  return listEmphasisStep({state: OPENED, event: {kind: "hover"}})
+}
+
+throws(stepUnknownEvent, "an unknown event is refused")
 
 const hoverClaim = {owner: EmphasisOwner.hover, routeIds: ["1_40"]}
 const keysClaim = {owner: EmphasisOwner.keys, routeIds: ["1_41", "1_42"]}
