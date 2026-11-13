@@ -1,8 +1,7 @@
 // The rules of following a bus on the map. Everything here is pure: the
 // state, the event, the markers held, and an arrival are given as values, so
 // which vehicle the map follows, when following ends, what the notice says,
-// and which arrival can be followed are functions of them alone. The camera
-// moves themselves reuse the location button's rules in `follow_state.js`.
+// and which arrival can be followed are functions of them alone.
 
 import {assertCondition, unreachable} from "./core/assert.js"
 
@@ -92,7 +91,8 @@ export function isFollowing(state) {
 }
 
 function onStart({state, markerId, label}) {
-  assertCondition(typeof markerId === "string" && markerId !== "", "vehicle follow: a start names a marker")
+  assertCondition(typeof markerId === "string", "vehicle follow: a start names its marker by a string")
+  assertCondition(markerId !== "", "vehicle follow: a start names a marker")
   const isSame = isFollowing(state) && state.markerId === markerId
 
   if (isSame) {
@@ -197,7 +197,9 @@ export function arrivalFollow(arrival) {
   const hasVehicle = typeof arrival.vehicle_id === "string" && arrival.vehicle_id !== ""
   const isLive = arrival.predicted === true
 
-  if (hasVehicle && isLive) {
+  const isFollowable = hasVehicle && isLive
+
+  if (isFollowable) {
     return {kind: ArrivalFollowKind.followable, vehicleId: arrival.vehicle_id}
   }
 
@@ -209,7 +211,9 @@ export function arrivalFollowLabel({route, headsign}) {
   const hasRoute = typeof route === "string" && route !== ""
   const hasHeadsign = typeof headsign === "string" && headsign !== ""
 
-  if (hasRoute && hasHeadsign) {
+  const hasBoth = hasRoute && hasHeadsign
+
+  if (hasBoth) {
     return `Follow the ${route} bus to ${headsign}`
   }
 

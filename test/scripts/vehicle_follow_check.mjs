@@ -30,6 +30,8 @@ import {
 import {AssertionError} from "../../assets/js/core/assert.js"
 
 const ZOOM_MIN = 14
+const ZOOM_FAR = 10
+const ZOOM_CLOSE = 16.5
 const MARKER_ID = "1/1_4342"
 const LABEL = "the 36 bus"
 
@@ -71,9 +73,21 @@ for (const {name, state, event, expected} of transitions) {
   deepStrictEqual(transition({state, event}), expected, name)
 }
 
-throws(() => transition({state: OFF, event: {kind: "unknown"}}), AssertionError, "an event of unknown kind is refused")
-throws(() => transition({state: {...OFF, kind: "unknown"}, event: start}), AssertionError, "a state of unknown kind is refused")
-throws(() => transition({state: OFF, event: {kind: VehicleFollowEventKind.start, markerId: "", label: LABEL}}), AssertionError, "a start that names no marker is refused")
+function transitionOfUnknownEvent() {
+  return transition({state: OFF, event: {kind: "unknown"}})
+}
+
+function transitionOfUnknownState() {
+  return transition({state: {...OFF, kind: "unknown"}, event: start})
+}
+
+function transitionOfStartWithNoMarker() {
+  return transition({state: OFF, event: {kind: VehicleFollowEventKind.start, markerId: "", label: LABEL}})
+}
+
+throws(transitionOfUnknownEvent, AssertionError, "an event of unknown kind is refused")
+throws(transitionOfUnknownState, AssertionError, "a state of unknown kind is refused")
+throws(transitionOfStartWithNoMarker, AssertionError, "a start that names no marker is refused")
 
 deepStrictEqual(isFollowing(OFF), false, "off follows nothing")
 deepStrictEqual(isFollowing(following), true, "a follow follows")
@@ -94,9 +108,9 @@ deepStrictEqual(labelOf({route: undefined}), "the bus", "a vehicle with no route
 deepStrictEqual(stopButtonOf(following), {label: "Stop following the 36 bus", isHidden: false}, "the stop button while following")
 deepStrictEqual(stopButtonOf(OFF), {label: "Stop following the bus", isHidden: true}, "the stop button while off is hidden")
 
-deepStrictEqual(startZoom(10), ZOOM_MIN, "a map farther out zooms in")
+deepStrictEqual(startZoom(ZOOM_FAR), ZOOM_MIN, "a map farther out zooms in")
 deepStrictEqual(startZoom(ZOOM_MIN), ZOOM_MIN, "a map at the zoom stays")
-deepStrictEqual(startZoom(16.5), 16.5, "a map closer in keeps its zoom")
+deepStrictEqual(startZoom(ZOOM_CLOSE), ZOOM_CLOSE, "a map closer in keeps its zoom")
 
 const livePrediction = {route: "36", headsign: "Othello Station", predicted: true, vehicle_id: "1_4342"}
 const arrivalCases = [

@@ -267,7 +267,9 @@ function focusedVehicleOf(element) {
   const active = document.activeElement
   const isInside = active !== null && element.contains(active)
 
-  if (isInside && typeof active.dataset.vehicleId === "string") {
+  const isButtonFocused = isInside && typeof active.dataset.vehicleId === "string"
+
+  if (isButtonFocused) {
     return {kind: FocusKind.button, vehicleId: active.dataset.vehicleId}
   }
 

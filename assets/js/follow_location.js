@@ -250,7 +250,9 @@ export const FollowLocation = {
 
     const isFollowing = state.kind === FollowKind.following
 
-    if (isFollowing && !wasFollowing) {
+    const isStarted = isFollowing && !wasFollowing
+
+    if (isStarted) {
       window.dispatchEvent(new CustomEvent(LOCATION_FOLLOW_START_EVENT_NAME))
     }
 

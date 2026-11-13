@@ -1,8 +1,8 @@
 // The map's follow of one bus: a button under the map's controls that stops
 // it while it runs, and a loop that keeps the map on the bus's marker. The
-// imported rules decide which marker is followed and when following ends,
-// and the location button's rules, `follow_state.js`, decide whether a camera
-// move ends it and when the marker has strayed far enough to move the map.
+// imported rules decide which marker is followed, when following ends,
+// whether a camera move ends it, and when the marker has strayed far enough
+// to move the map.
 // A position the follower reads is the position the page draws the marker at,
 // and none of it leaves the browser.
 
@@ -94,7 +94,9 @@ export function createVehicleFollower({positionOf, isHeld}) {
   function track() {
     frame = null
 
-    if (!isFollowing(state) || map === null) {
+    const isIdle = !isFollowing(state) || map === null
+
+    if (isIdle) {
       return
     }
 
@@ -155,12 +157,15 @@ export function createVehicleFollower({positionOf, isHeld}) {
     const isNowFollowing = isFollowing(state)
     render()
 
-    if (isNowFollowing && !wasFollowing) {
+    const isStarted = isNowFollowing && !wasFollowing
+    const isEnded = wasFollowing && !isNowFollowing
+
+    if (isStarted) {
       window.dispatchEvent(new CustomEvent(VEHICLE_FOLLOW_START_EVENT_NAME))
       requestTrack()
     }
 
-    if (wasFollowing && !isNowFollowing) {
+    if (isEnded) {
       cancelTrack()
     }
 
