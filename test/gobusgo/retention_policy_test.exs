@@ -24,7 +24,7 @@ defmodule Gobusgo.RetentionPolicyTest do
   describe "rules/0" do
     for {prefix, day_count} <- [
           {"raw/oba/vehicles-for-agency", 7},
-          {"raw/oba/arrivals-and-departures-for-stop", 1},
+          {"raw/oba/arrivals-and-departures-for-stop", 7},
           {"raw/oba/agencies-with-coverage", 30},
           {"raw/oba/routes-for-agency", 30},
           {"raw/oba/stops-for-route", 30},

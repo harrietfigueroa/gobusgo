@@ -1,6 +1,6 @@
 defmodule Gobusgo.RetentionPolicy do
   @vehicle_day_count 7
-  @arrival_day_count 1
+  @arrival_day_count 7
   @agency_day_count 30
   @route_day_count 30
   @route_path_day_count 30
@@ -24,7 +24,9 @@ defmodule Gobusgo.RetentionPolicy do
 
     * the vehicles of an agency, #{@vehicle_day_count} days, a week of
       fetches to replay against the schedules they ran on;
-    * the arrivals at a stop, #{@arrival_day_count} day;
+    * the arrivals at a stop, #{@arrival_day_count} days, OneBusAway's own
+      predictions for the stops a vehicle page or an MCP `arrivals` call
+      holds open, kept a week as a baseline for vehicle-prediction research;
     * the agencies, #{@agency_day_count} days;
     * the routes of an agency, #{@route_day_count} days;
     * the stops and paths of a route, #{@route_path_day_count} days;
