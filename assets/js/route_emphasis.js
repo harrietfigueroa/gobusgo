@@ -31,12 +31,11 @@ export const ListEvent = Object.freeze({
   close: "close",
   entryEnter: "entryEnter",
   entryLeave: "entryLeave",
-  holdExpire: "holdExpire",
   open: "open"
 })
 
 /** The state of a list that is not shown: it names no route and emphasizes none. */
-export const LIST_EMPHASIS_CLOSED = Object.freeze({listed: Object.freeze([]), emphasized: Object.freeze([])})
+export const listEmphasisClosed = Object.freeze({listed: Object.freeze([]), emphasized: Object.freeze([])})
 
 /**
  * The emphasized routes of an emphasis event's `detail`: an array of route
@@ -58,20 +57,22 @@ export function emphasizedRoutesOf(detail) {
  * The state of a list after `event`: `listed` is the routes it names,
  * `emphasized` the routes drawn emphasized. Opening emphasizes every listed
  * route, an entry the pointer or focus is on narrows it to that route,
- * leaving the entry returns to every listed route, and closing, or a hold
- * that expires, empties both.
+ * leaving the entry returns to every listed route, and closing, which a
+ * hold that expires does too, empties both. The routes are copied and
+ * frozen, so the caller's array and the state never alias.
  */
 export function listEmphasisStep({state, event}) {
   switch (event.kind) {
-    case ListEvent.open:
-      return {listed: event.routeIds, emphasized: event.routeIds}
+    case ListEvent.open: {
+      const listed = Object.freeze([...event.routeIds])
+      return {listed, emphasized: listed}
+    }
     case ListEvent.entryEnter:
-      return {listed: state.listed, emphasized: [event.routeId]}
+      return {listed: state.listed, emphasized: Object.freeze([event.routeId])}
     case ListEvent.entryLeave:
       return {listed: state.listed, emphasized: state.listed}
     case ListEvent.close:
-    case ListEvent.holdExpire:
-      return LIST_EMPHASIS_CLOSED
+      return listEmphasisClosed
     default:
       return unreachable(event.kind, "an unknown list event")
   }
@@ -83,7 +84,13 @@ export function listEmphasisStep({state, event}) {
  * withdraws it, so one source closing leaves the claim of another intact.
  */
 export function claimEmphasis({claims, owner, routeIds}) {
-  const others = claims.filter((claim) => claim.owner !== owner)
+  const others = []
+
+  for (const claim of claims) {
+    if (claim.owner !== owner) {
+      others.push(claim)
+    }
+  }
 
   if (routeIds.length === 0) {
     return others

@@ -15,7 +15,7 @@ import {
   noRoutesText,
   openedText
 } from "./route_keys"
-import {EmphasisOwner, LIST_EMPHASIS_CLOSED, ListEvent, listEmphasisStep} from "./route_emphasis"
+import {EmphasisOwner, listEmphasisClosed, ListEvent, listEmphasisStep} from "./route_emphasis"
 import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -253,7 +253,7 @@ function entryRouteId({routeId}) {
 class ListEmphasis {
   constructor(emphasize) {
     this.emphasize = emphasize
-    this.state = LIST_EMPHASIS_CLOSED
+    this.state = listEmphasisClosed
   }
 
   step(event) {
@@ -276,7 +276,7 @@ class RouteHover {
     this.map = map
     this.maplibre = maplibre
     this.layerName = layerName
-    this.emphasisState = new ListEmphasis(emphasize)
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -311,21 +311,22 @@ class RouteHover {
     this.holdTimer = null
   }
 
-  // Closes the list, by `kind`: `ListEvent.close`, or `ListEvent.holdExpire`
-  // for the hold that ran out.
-  close(kind) {
+  close() {
     this.cancelHold()
     this.popup.remove()
     this.shown = null
     this.pointerInList = false
-    this.emphasisState.step({kind})
+    this.listEmphasis.step({kind: ListEvent.close})
   }
 
-  // A pan or a zoom moves the lines from under the pointer, so the list
-  // closes and none opens until the map has stopped.
+  // A pan or a zoom moves the lines from under the pointer, so a list that
+  // is shown closes and none opens until the map has stopped.
   onMoveStart() {
     this.isMoving = true
-    this.close(ListEvent.close)
+
+    if (this.shown !== null) {
+      this.close()
+    }
   }
 
   onMoveEnd() {
@@ -341,7 +342,7 @@ class RouteHover {
 
     if (isHoldable) {
       this.holdTimer = window.setTimeout(() => {
-        this.close(ListEvent.holdExpire)
+        this.close()
         this.schedule()
       }, HOLD_MS)
     }
@@ -358,7 +359,7 @@ class RouteHover {
     const box = this.map.getContainer().getBoundingClientRect()
     this.pointerInList = false
     this.point = new this.maplibre.Point(event.clientX - box.left, event.clientY - box.top)
-    this.emphasisState.step({kind: ListEvent.entryLeave})
+    this.listEmphasis.step({kind: ListEvent.entryLeave})
     this.schedule()
   }
 
@@ -376,7 +377,7 @@ class RouteHover {
     // The popup makes its element anew each time it is added.
     popup.getElement().addEventListener("mouseenter", () => { this.onListEnter() })
     popup.getElement().addEventListener("mouseleave", (event) => { this.onListLeave(event) })
-    this.emphasisState.step({kind: ListEvent.open, routeIds})
+    this.listEmphasis.step({kind: ListEvent.open, routeIds})
   }
 
   // `routeId` is the route of the entry the pointer enters, null as it
@@ -385,9 +386,9 @@ class RouteHover {
     const isLeaving = routeId === null
 
     if (isLeaving) {
-      this.emphasisState.step({kind: ListEvent.entryLeave})
+      this.listEmphasis.step({kind: ListEvent.entryLeave})
     } else {
-      this.emphasisState.step({kind: ListEvent.entryEnter, routeId})
+      this.listEmphasis.step({kind: ListEvent.entryEnter, routeId})
     }
   }
 
@@ -400,7 +401,7 @@ class RouteHover {
       const isEveryRouteDrawn = this.shown.routeIds.every(this.routeDrawn)
 
       if (!isEveryRouteDrawn) {
-        this.close(ListEvent.close)
+        this.close()
       }
     } else if (this.isMoving) {
       // The lines are read again when the map has stopped.
@@ -433,7 +434,7 @@ class RouteTap {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasisState = new ListEmphasis(emphasize)
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -471,19 +472,19 @@ class RouteTap {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const onEntryTap = (routeId) => { this.emphasisState.step({kind: ListEvent.entryEnter, routeId}) }
+    const onEntryTap = (routeId) => { this.listEmphasis.step({kind: ListEvent.entryEnter, routeId}) }
     const content = listContent({list, onEntry: null, onEntryTap})
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
-    this.emphasisState.step({kind: ListEvent.open, routeIds: this.routeIds})
+    this.listEmphasis.step({kind: ListEvent.open, routeIds: this.routeIds})
   }
 
   close() {
     if (this.routeIds !== null) {
       this.popup.remove()
       this.routeIds = null
-      this.emphasisState.step({kind: ListEvent.close})
+      this.listEmphasis.step({kind: ListEvent.close})
     }
   }
 
@@ -507,7 +508,7 @@ class RouteKeys {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasisState = new ListEmphasis(emphasize)
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -571,7 +572,7 @@ class RouteKeys {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const onEntryTap = (routeId) => { this.emphasisState.step({kind: ListEvent.entryEnter, routeId}) }
+    const onEntryTap = (routeId) => { this.listEmphasis.step({kind: ListEvent.entryEnter, routeId}) }
     const content = listContent({list, onEntry: null, onEntryTap})
     content.setAttribute("aria-label", KEYBOARD_LIST_LABEL)
     content.addEventListener("keydown", (event) => { this.onListKeydown(event) })
@@ -581,7 +582,7 @@ class RouteKeys {
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
-    this.emphasisState.step({kind: ListEvent.open, routeIds: this.routeIds})
+    this.listEmphasis.step({kind: ListEvent.open, routeIds: this.routeIds})
     this.buttons[0].focus()
     announce(openedText({count: list.entries.length, hiddenCount: list.hiddenCount}))
   }
@@ -613,7 +614,7 @@ class RouteKeys {
     const index = this.buttons.indexOf(event.target)
 
     if (index >= 0) {
-      this.emphasisState.step({kind: ListEvent.entryEnter, routeId: this.routeIds[index]})
+      this.listEmphasis.step({kind: ListEvent.entryEnter, routeId: this.routeIds[index]})
     }
   }
 
@@ -646,7 +647,7 @@ class RouteKeys {
       }
 
       this.popup.remove()
-      this.emphasisState.step({kind: ListEvent.close})
+      this.listEmphasis.step({kind: ListEvent.close})
     }
   }
 

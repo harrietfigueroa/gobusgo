@@ -12,7 +12,7 @@
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {
   EmphasisOwner,
-  LIST_EMPHASIS_CLOSED,
+  listEmphasisClosed,
   ListEvent,
   VEHICLE_DIM_FACTOR,
   claimEmphasis,
@@ -92,15 +92,15 @@ const OPENED = {listed: LISTED, emphasized: LISTED}
 const NARROWED = {listed: LISTED, emphasized: ["1_41"]}
 
 const stepCases = [
-  {name: "open emphasizes every listed route", state: LIST_EMPHASIS_CLOSED, event: {kind: ListEvent.open, routeIds: LISTED}, expected: OPENED},
-  {name: "open on one route emphasizes it", state: LIST_EMPHASIS_CLOSED, event: {kind: ListEvent.open, routeIds: ["1_40"]}, expected: {listed: ["1_40"], emphasized: ["1_40"]}},
+  {name: "open emphasizes every listed route", state: listEmphasisClosed, event: {kind: ListEvent.open, routeIds: LISTED}, expected: OPENED},
+  {name: "open on one route emphasizes it", state: listEmphasisClosed, event: {kind: ListEvent.open, routeIds: ["1_40"]}, expected: {listed: ["1_40"], emphasized: ["1_40"]}},
   {name: "an entry narrows to its route", state: OPENED, event: {kind: ListEvent.entryEnter, routeId: "1_41"}, expected: NARROWED},
   {name: "leaving the entry returns to every listed route", state: NARROWED, event: {kind: ListEvent.entryLeave}, expected: OPENED},
-  {name: "close empties the emphasis", state: OPENED, event: {kind: ListEvent.close}, expected: LIST_EMPHASIS_CLOSED},
-  {name: "close on a narrowed list empties the emphasis", state: NARROWED, event: {kind: ListEvent.close}, expected: LIST_EMPHASIS_CLOSED},
-  {name: "hold expiry empties the emphasis", state: OPENED, event: {kind: ListEvent.holdExpire}, expected: LIST_EMPHASIS_CLOSED},
-  {name: "leaving an entry of a closed list emphasizes none", state: LIST_EMPHASIS_CLOSED, event: {kind: ListEvent.entryLeave}, expected: LIST_EMPHASIS_CLOSED},
-  {name: "close of a closed list stays closed", state: LIST_EMPHASIS_CLOSED, event: {kind: ListEvent.close}, expected: LIST_EMPHASIS_CLOSED}
+  {name: "close empties the emphasis", state: OPENED, event: {kind: ListEvent.close}, expected: listEmphasisClosed},
+  {name: "close on a narrowed list empties the emphasis", state: NARROWED, event: {kind: ListEvent.close}, expected: listEmphasisClosed},
+  {name: "an expired hold closes the list, which empties the emphasis", state: OPENED, event: {kind: ListEvent.close}, expected: listEmphasisClosed},
+  {name: "leaving an entry of a closed list emphasizes none", state: listEmphasisClosed, event: {kind: ListEvent.entryLeave}, expected: listEmphasisClosed},
+  {name: "close of a closed list stays closed", state: listEmphasisClosed, event: {kind: ListEvent.close}, expected: listEmphasisClosed}
 ]
 
 for (const {name, state, event, expected} of stepCases) {
