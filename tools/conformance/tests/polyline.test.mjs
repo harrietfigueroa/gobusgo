@@ -3,13 +3,10 @@
 // its start, past its end, at a corner, at or past a minimum distance along
 // it, and on a segment of no length, the segment that holds a distance
 // along a line, before its start, at a point, inside a segment, and past
-// its end, and the points of a line between two distances along it. Run it
-// with `node test/scripts/polyline_check.mjs`; it exits non-zero on the
-// first case that differs.
+// its end, and the points of a line between two distances along it.
 
-import {deepStrictEqual, strictEqual, throws} from "node:assert/strict"
-import {AssertionError} from "../../assets/js/core/assert.js"
-import {nearestAlong, pointsBetween, segmentIndexAt} from "../../assets/js/core/math/polyline.js"
+import {describe, expect, test} from "vitest"
+import {IMPLEMENTATIONS} from "../implementations.mjs"
 
 // An L-shaped line: 100 m east, then 100 m north.
 const LINE = {
@@ -29,28 +26,6 @@ const nearestCases = [
   {name: "nearer the first segment, at or past 95 m", x: 90, y: 5, alongMin: 95, nearest: {offset: 10, along: 105}}
 ]
 
-for (const {name, x, y, alongMin, nearest} of nearestCases) {
-  deepStrictEqual(nearestAlong({...LINE, x, y, alongMin}), nearest, name)
-}
-
-deepStrictEqual(
-  nearestAlong({xs: new Float64Array([0, 0]), ys: new Float64Array([0, 0]), cumulative: new Float64Array([0, 0]), x: 3, y: 4, alongMin: 0}),
-  {offset: 5, along: 0},
-  "a segment of no length"
-)
-
-deepStrictEqual(
-  nearestAlong({...LINE, x: 0, y: 0, alongMin: 500}),
-  {offset: Number.POSITIVE_INFINITY, along: 500},
-  "no point at or past the minimum"
-)
-
-throws(nearestOnShortLine, AssertionError, "a line short of y coordinates")
-
-function nearestOnShortLine() {
-  nearestAlong({xs: new Float64Array([0, 1]), ys: new Float64Array([0]), cumulative: new Float64Array([0, 1]), x: 0, y: 0, alongMin: 0})
-}
-
 // A line of four points 0, 100, 250, and 400 m along it.
 const distancesAlong = {first: 0, second: 100, third: 250, fourth: 400}
 const CUMULATIVE = Float64Array.of(distancesAlong.first, distancesAlong.second, distancesAlong.third, distancesAlong.fourth)
@@ -64,16 +39,6 @@ const segmentCases = [
   {name: "at the end", along: 400, index: 2},
   {name: "past the end", along: 900, index: 2}
 ]
-
-for (const {name, along, index} of segmentCases) {
-  strictEqual(segmentIndexAt({cumulative: CUMULATIVE, along}), index, name)
-}
-
-throws(segmentOfOnePoint, AssertionError, "a line of one point")
-
-function segmentOfOnePoint() {
-  segmentIndexAt({cumulative: [0], along: 0})
-}
 
 function pairOf({x, y}) {
   return [x, y]
@@ -91,20 +56,44 @@ const betweenCases = [
   {name: "outside the line, clamped to its ends", from: -40, to: 260, points: [{x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}]}
 ]
 
-for (const {name, from, to, points} of betweenCases) {
-  const expected = Array.from(points, pairOf)
-  deepStrictEqual(pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from, to}), expected, name)
-}
+describe.each(IMPLEMENTATIONS)("polyline ($name)", ({AssertionError, polyline}) => {
+  test.each(nearestCases)("nearest: $name", ({x, y, alongMin, nearest}) => {
+    expect(polyline.nearestAlong({...LINE, x, y, alongMin})).toStrictEqual(nearest)
+  })
 
-throws(reversedDistances, AssertionError, "a start past the end")
-throws(halfPoint, AssertionError, "coordinates that end inside a point")
+  test("nearest: a segment of no length", () => {
+    const zeroLine = {xs: new Float64Array([0, 0]), ys: new Float64Array([0, 0]), cumulative: new Float64Array([0, 0])}
+    expect(polyline.nearestAlong({...zeroLine, x: 3, y: 4, alongMin: 0})).toStrictEqual({offset: 5, along: 0})
+  })
 
-function reversedDistances() {
-  pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from: 150, to: 50})
-}
+  test("nearest: no point at or past the minimum", () => {
+    expect(polyline.nearestAlong({...LINE, x: 0, y: 0, alongMin: 500})).toStrictEqual({offset: Number.POSITIVE_INFINITY, along: 500})
+  })
 
-function halfPoint() {
-  pointsBetween({coordinates: Float64Array.of(0, 0, 100, 0, 100), cumulative: LINE.cumulative, from: 0, to: 50})
-}
+  test("nearest: a line short of y coordinates", () => {
+    const shortLine = {xs: new Float64Array([0, 1]), ys: new Float64Array([0]), cumulative: new Float64Array([0, 1])}
+    expect(() => polyline.nearestAlong({...shortLine, x: 0, y: 0, alongMin: 0})).toThrow(AssertionError)
+  })
 
-console.log("polyline: every case holds")
+  test.each(segmentCases)("segment: $name", ({along, index}) => {
+    expect(polyline.segmentIndexAt({cumulative: CUMULATIVE, along})).toBe(index)
+  })
+
+  test("segment: a line of one point", () => {
+    expect(() => polyline.segmentIndexAt({cumulative: [0], along: 0})).toThrow(AssertionError)
+  })
+
+  test.each(betweenCases)("between: $name", ({from, to, points}) => {
+    const expected = Array.from(points, pairOf)
+    expect(polyline.pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from, to})).toStrictEqual(expected)
+  })
+
+  test("between: a start past the end", () => {
+    expect(() => polyline.pointsBetween({coordinates: L_COORDINATES, cumulative: LINE.cumulative, from: 150, to: 50})).toThrow(AssertionError)
+  })
+
+  test("between: coordinates that end inside a point", () => {
+    const halfPoint = Float64Array.of(0, 0, 100, 0, 100)
+    expect(() => polyline.pointsBetween({coordinates: halfPoint, cumulative: LINE.cumulative, from: 0, to: 50})).toThrow(AssertionError)
+  })
+})
