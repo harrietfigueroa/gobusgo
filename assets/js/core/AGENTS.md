@@ -22,4 +22,4 @@
 
 ## Checks
 
-The node checks under `test/scripts/` that `assets/AGENTS.md` ("Checks") lists cover each module. `npm run --prefix tools/lint check` lints code written out by hand to check that the rule still reports each kind of async work and passes over synchronous code, a generator, and a binding named like a global.
+The node checks under `test/scripts/` that `assets/AGENTS.md` ("Checks") lists cover each module. The core page check compares the pages a build on this core and a build on the Rust core render (GOB-424); a port that switches a module group's callers adds each module's specifier to `@webassembly_aliases` of `test/support/core_pages/builds.ex`. `npm run --prefix tools/lint check` lints code written out by hand to check that the rule still reports each kind of async work and passes over synchronous code, a generator, and a binding named like a global.

@@ -15,7 +15,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The six mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The seven mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -213,6 +213,49 @@ jobs:
       - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
       - run: npm test --prefix tools/conformance
 
+  # Loads the same scenarios on the vehicle page and the MCP apps with a build of the bundles on each core, in Chromium, Firefox, and WebKit, and fails on any difference in what the rider sees.
+  # PlaywrightEx runs the conformance suite's Playwright, so its browsers are installed with that copy, and a failure keeps both sessions' traces.
+  core-pages:
+    name: core-pages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      # Installs the wasm-bindgen command mise.toml pins, which `mix assets.build` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: mix assets.setup
+      - run: mix assets.build
+      - run: npm ci --prefix tools/conformance
+      - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
+      - run: mix test --only core_pages
+      - if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: core-pages-traces
+          path: tmp/core_pages/traces
+          if-no-files-found: ignore
+
   # The Rust half of the gate over the core's workspace: the formatter, clippy with every warning an error, the tests, and the release build of the WebAssembly binding.
   # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
   core:
@@ -286,7 +329,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, conformance, core, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, conformance, core-pages, core, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:
