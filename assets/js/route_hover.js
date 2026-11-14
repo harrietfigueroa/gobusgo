@@ -15,6 +15,7 @@ import {
   noRoutesText,
   openedText
 } from "./route_keys"
+import {EmphasisOwner, listEmphasisClosed, ListEvent, listEmphasisStep} from "./route_emphasis"
 import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
@@ -247,6 +248,26 @@ function entryRouteId({routeId}) {
   return routeId
 }
 
+// The emphasis state of one list: `step` moves it by an event and hands the
+// routes now emphasized to `emphasize`, an empty array once nothing is.
+class ListEmphasis {
+  constructor(emphasize) {
+    this.emphasize = emphasize
+    this.state = listEmphasisClosed
+  }
+
+  step(event) {
+    this.state = listEmphasisStep({state: this.state, event})
+    this.emphasize(this.state.emphasized)
+  }
+}
+
+// The `emphasize` of a list that `owner` owns: a claim on the emphasis,
+// withdrawn by an empty array, which no other owner's claim is.
+function ownedEmphasize({emphasize, owner}) {
+  return (routeIds) => { emphasize({owner, routeIds}) }
+}
+
 // The state of one map's list: its popup, the pointer's last point on the
 // map, whether the pointer is inside the list, and the list that is shown
 // with the routes it names.
@@ -255,7 +276,7 @@ class RouteHover {
     this.map = map
     this.maplibre = maplibre
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -267,6 +288,7 @@ class RouteHover {
     this.point = null
     this.pointerInList = false
     this.shown = null
+    this.isMoving = false
     this.holdTimer = null
     this.frame = null
   }
@@ -294,7 +316,22 @@ class RouteHover {
     this.popup.remove()
     this.shown = null
     this.pointerInList = false
-    this.emphasize(null)
+    this.listEmphasis.step({kind: ListEvent.close})
+  }
+
+  // A pan or a zoom moves the lines from under the pointer, so a list that
+  // is shown closes and none opens until the map has stopped.
+  onMoveStart() {
+    this.isMoving = true
+
+    if (this.shown !== null) {
+      this.close()
+    }
+  }
+
+  onMoveEnd() {
+    this.isMoving = false
+    this.schedule()
   }
 
   // Closes a list that is shown once the pointer has been off the lines it
@@ -322,7 +359,7 @@ class RouteHover {
     const box = this.map.getContainer().getBoundingClientRect()
     this.pointerInList = false
     this.point = new this.maplibre.Point(event.clientX - box.left, event.clientY - box.top)
-    this.emphasize(null)
+    this.listEmphasis.step({kind: ListEvent.entryLeave})
     this.schedule()
   }
 
@@ -332,7 +369,7 @@ class RouteHover {
     const routeIds = Array.from(list.entries, entryRouteId)
     this.shown = {key: JSON.stringify(list), routeIds}
 
-    const content = listContent({list, onEntry: this.emphasize, onEntryTap: null})
+    const content = listContent({list, onEntry: (routeId) => { this.onEntry(routeId) }, onEntryTap: null})
     const position = map.unproject(this.point)
     popup.setDOMContent(content)
     popup.setLngLat(position)
@@ -340,6 +377,19 @@ class RouteHover {
     // The popup makes its element anew each time it is added.
     popup.getElement().addEventListener("mouseenter", () => { this.onListEnter() })
     popup.getElement().addEventListener("mouseleave", (event) => { this.onListLeave(event) })
+    this.listEmphasis.step({kind: ListEvent.open, routeIds})
+  }
+
+  // `routeId` is the route of the entry the pointer enters, null as it
+  // leaves one.
+  onEntry(routeId) {
+    const isLeaving = routeId === null
+
+    if (isLeaving) {
+      this.listEmphasis.step({kind: ListEvent.entryLeave})
+    } else {
+      this.listEmphasis.step({kind: ListEvent.entryEnter, routeId})
+    }
   }
 
   update() {
@@ -353,6 +403,9 @@ class RouteHover {
       if (!isEveryRouteDrawn) {
         this.close()
       }
+    } else if (this.isMoving) {
+      // The lines are read again when the map has stopped.
+      return
     } else {
       const read = listAtPointer({map: this.map, point: this.point, layerName: this.layerName})
 
@@ -381,7 +434,7 @@ class RouteTap {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -419,17 +472,19 @@ class RouteTap {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const content = listContent({list, onEntry: null, onEntryTap: this.emphasize})
+    const onEntryTap = (routeId) => { this.listEmphasis.step({kind: ListEvent.entryEnter, routeId}) }
+    const content = listContent({list, onEntry: null, onEntryTap})
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
+    this.listEmphasis.step({kind: ListEvent.open, routeIds: this.routeIds})
   }
 
   close() {
     if (this.routeIds !== null) {
       this.popup.remove()
       this.routeIds = null
-      this.emphasize(null)
+      this.listEmphasis.step({kind: ListEvent.close})
     }
   }
 
@@ -453,7 +508,7 @@ class RouteKeys {
   constructor({map, maplibre, layerName, emphasize, routeDrawn}) {
     this.map = map
     this.layerName = layerName
-    this.emphasize = emphasize
+    this.listEmphasis = new ListEmphasis(emphasize)
     this.routeDrawn = routeDrawn
     this.popup = new maplibre.Popup({
       closeButton: false,
@@ -517,7 +572,8 @@ class RouteKeys {
     this.close()
     this.routeIds = Array.from(list.entries, entryRouteId)
 
-    const content = listContent({list, onEntry: null, onEntryTap: this.emphasize})
+    const onEntryTap = (routeId) => { this.listEmphasis.step({kind: ListEvent.entryEnter, routeId}) }
+    const content = listContent({list, onEntry: null, onEntryTap})
     content.setAttribute("aria-label", KEYBOARD_LIST_LABEL)
     content.addEventListener("keydown", (event) => { this.onListKeydown(event) })
     content.addEventListener("focusin", (event) => { this.onFocusIn(event) })
@@ -526,6 +582,7 @@ class RouteKeys {
     this.popup.setDOMContent(content)
     this.popup.setLngLat(this.map.unproject(point))
     this.popup.addTo(this.map)
+    this.listEmphasis.step({kind: ListEvent.open, routeIds: this.routeIds})
     this.buttons[0].focus()
     announce(openedText({count: list.entries.length, hiddenCount: list.hiddenCount}))
   }
@@ -557,7 +614,7 @@ class RouteKeys {
     const index = this.buttons.indexOf(event.target)
 
     if (index >= 0) {
-      this.emphasize(this.routeIds[index])
+      this.listEmphasis.step({kind: ListEvent.entryEnter, routeId: this.routeIds[index]})
     }
   }
 
@@ -590,7 +647,7 @@ class RouteKeys {
       }
 
       this.popup.remove()
-      this.emphasize(null)
+      this.listEmphasis.step({kind: ListEvent.close})
     }
   }
 
@@ -606,7 +663,7 @@ class RouteKeys {
 }
 
 function attachKeys({map, maplibre, layerName, emphasize, routeDrawn}) {
-  const keys = new RouteKeys({map, maplibre, layerName, emphasize, routeDrawn})
+  const keys = new RouteKeys({map, maplibre, layerName, emphasize: ownedEmphasize({emphasize, owner: EmphasisOwner.keys}), routeDrawn})
 
   map.getCanvas().addEventListener("keydown", (event) => { keys.onCanvasKeydown(event) })
   map.on("movestart", () => { keys.close() })
@@ -616,10 +673,13 @@ function attachKeys({map, maplibre, layerName, emphasize, routeDrawn}) {
 }
 
 function attachHover({map, maplibre, layerName, emphasize, routeDrawn}) {
-  const hover = new RouteHover({map, maplibre, layerName, emphasize, routeDrawn})
+  const hover = new RouteHover({map, maplibre, layerName, emphasize: ownedEmphasize({emphasize, owner: EmphasisOwner.hover}), routeDrawn})
 
   map.on("mousemove", (event) => { hover.pointAt(event.point) })
   map.on("mouseout", () => { hover.pointAt(null) })
+  map.on("movestart", () => { hover.onMoveStart() })
+  map.on("zoomstart", () => { hover.onMoveStart() })
+  map.on("moveend", () => { hover.onMoveEnd() })
 
   // The lines under a pointer at rest change when the map moves or when
   // the lines or the markers are drawn again.
@@ -628,7 +688,7 @@ function attachHover({map, maplibre, layerName, emphasize, routeDrawn}) {
 }
 
 function attachTap({map, maplibre, layerName, emphasize, routeDrawn}) {
-  const tap = new RouteTap({map, maplibre, layerName, emphasize, routeDrawn})
+  const tap = new RouteTap({map, maplibre, layerName, emphasize: ownedEmphasize({emphasize, owner: EmphasisOwner.tap}), routeDrawn})
 
   map.on("click", (event) => { tap.onTap(event) })
   map.on("movestart", () => { tap.close() })
@@ -638,9 +698,11 @@ function attachTap({map, maplibre, layerName, emphasize, routeDrawn}) {
 }
 
 // Shows the list of the routes under the pointer on `map`, whose lines are
-// the layer `layerName`. `emphasize` is called with the route of the entry
-// the pointer is on or that is tapped, and with null when the list closes
-// or the pointer is on none, and `routeDrawn` answers whether the layer
+// the layer `layerName`. `emphasize` is called with the source of the
+// emphasis, `owner`, and `routeIds`: every route the list names as it opens,
+// the one route of the entry the pointer is on, focus is on, or that is
+// tapped, and an empty array when the list closes, which withdraws that
+// owner's claim and no other's. `routeDrawn` answers whether the layer
 // draws the route it is given. The device kind is read once, here. A device
 // whose primary pointer can hover opens the list where the pointer meets a
 // set of routes and keeps it there while the pointer is on that set, inside

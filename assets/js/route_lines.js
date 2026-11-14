@@ -1,6 +1,6 @@
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
-import {EMPHASIS_EVENT_NAME} from "./route_emphasis"
+import {EMPHASIS_EVENT_NAME, claimEmphasis, emphasizedBy, routeIn} from "./route_emphasis"
 import {attachRouteList} from "./route_hover"
 import {
   addSource,
@@ -52,17 +52,14 @@ function presentLayerNames(map, layerNames) {
   return layerNames.filter((layerName) => map.getLayer(layerName) !== undefined)
 }
 
-// Draws the line of `routeId` emphasized and every other line dimmed, or
-// every line as it is without emphasis for null, and announces the route on
-// the window so the vehicle markers dim the other routes' vehicles. It sets
-// a filter and paint and leaves the source as it is.
-function emphasizeRoute(map, routeId) {
-  window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId}}))
-
+// Draws the lines of `routeIds` emphasized and every other line dimmed, or
+// every line as it is without emphasis for an empty array. It sets a filter
+// and paint and leaves the source as it is.
+function paintEmphasis(map, routeIds) {
   const emphasisLayers = presentLayerNames(map, emphasisLayerNames)
   const lineLayers = presentLayerNames(map, lineLayerNames)
 
-  if (routeId === null) {
+  if (routeIds.length === 0) {
     for (const layerName of emphasisLayers) {
       map.setLayoutProperty(layerName, "visibility", "none")
     }
@@ -72,7 +69,7 @@ function emphasizeRoute(map, routeId) {
     }
   } else {
     for (const layerName of emphasisLayers) {
-      map.setFilter(layerName, ["==", ["get", "routeId"], routeId])
+      map.setFilter(layerName, routeIn(routeIds))
       map.setLayoutProperty(layerName, "visibility", "visible")
     }
 
@@ -157,14 +154,17 @@ export const RouteLines = {
     this.maplibre = null
     this.attached = false
     this.hoverAttached = false
+    // The claims of the lists on the emphasis, the latest last.
+    this.claims = []
 
     this.onBasemapReady = (event) => {
       const {map, maplibre} = event.detail
       this.map = null
       this.attached = false
       this.hoverAttached = false
-      // The list of the map left behind can no longer clear its emphasis.
-      window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId: null}}))
+      // The lists of the map left behind can no longer clear their emphasis.
+      this.claims = []
+      this.announceEmphasis()
       // The map takes sources and layers once its style has loaded.
       map.once("load", () => {
         this.map = map
@@ -200,6 +200,24 @@ export const RouteLines = {
     window.addEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
   },
 
+  // Announces the emphasized routes on the window so the vehicle markers dim
+  // the other routes' vehicles.
+  announceEmphasis() {
+    const routeIds = emphasizedBy(this.claims)
+    window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeIds}}))
+  },
+
+  // Makes `owner`'s claim on the emphasis `routeIds`, none withdrawing it,
+  // and draws the routes the latest claim names.
+  claim({owner, routeIds}) {
+    this.claims = claimEmphasis({claims: this.claims, owner, routeIds})
+    this.announceEmphasis()
+
+    if (this.map !== null) {
+      paintEmphasis(this.map, emphasizedBy(this.claims))
+    }
+  },
+
   // Adds the layers, once the page has an archive to draw them from, and
   // the list of the routes under the pointer, once for each map.
   attach() {
@@ -211,13 +229,15 @@ export const RouteLines = {
 
     const colors = mapColors(currentTheme())
     addLineLayers(map, colors.routeCasing)
+    // Layers added anew hold no emphasis, so the claims standing are drawn.
+    paintEmphasis(map, emphasizedBy(this.claims))
 
     if (!this.hoverAttached) {
       attachRouteList({
         map,
         maplibre: this.maplibre,
         layerName: LAYER_NAME,
-        emphasize: (routeId) => { emphasizeRoute(map, routeId) },
+        emphasize: (claim) => { this.claim(claim) },
         routeDrawn: routeKept
       })
       this.hoverAttached = true
@@ -230,6 +250,7 @@ export const RouteLines = {
     window.removeEventListener(READY_EVENT_NAME, this.onBasemapReady)
     window.removeEventListener(CHANGE_EVENT_NAME, this.onChange)
     window.removeEventListener(RESTYLED_EVENT_NAME, this.onRestyled)
-    window.dispatchEvent(new CustomEvent(EMPHASIS_EVENT_NAME, {detail: {routeId: null}}))
+    this.claims = []
+    this.announceEmphasis()
   }
 }
