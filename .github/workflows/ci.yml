@@ -196,6 +196,23 @@ jobs:
       - run: npm run --prefix tools/lint check
       - run: npm run --prefix tools/lint lint:core
 
+  # Runs the core's conformance cases in Chromium, Firefox, and WebKit, once per implementation of the core.
+  conformance:
+    name: conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      - run: npm ci --prefix tools/conformance
+      # Installs the three browsers at the builds the pinned Playwright names, with the system libraries they link.
+      - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
+      - run: npm test --prefix tools/conformance
+
   # The Rust half of the gate over the core's workspace: the formatter, clippy with every warning an error, the tests, and the release build of the WebAssembly binding.
   # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
   core:
@@ -269,7 +286,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, core, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, conformance, core, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:

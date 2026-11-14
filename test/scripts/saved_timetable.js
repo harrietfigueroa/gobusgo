@@ -1,8 +1,9 @@
 // The saved snapshot of a hand-written fixture timetable as the page reads it
 // from the offline bundle: the fixture's snapshot files, decoded by the
-// page's own readers. Everything here is pure.
+// page's own readers. Everything here is pure, and runs in Node and in a
+// browser alike.
 
-import {deepStrictEqual} from "node:assert/strict"
+import {assertCondition} from "../../assets/js/core/assert.js"
 import {TableKind} from "../../assets/js/core/offline_answers.js"
 import {DecodeKind, decodeConnections, decodePositions, decodeTrips} from "../../assets/js/core/routing_snapshot.js"
 import {snapshotOf} from "./routing_timetable.js"
@@ -13,7 +14,7 @@ export function found(table) {
 }
 
 function decoded(result) {
-  deepStrictEqual(result.kind, DecodeKind.decoded, "a fixture file decodes")
+  assertCondition(result.kind === DecodeKind.decoded, `a fixture file decodes, not ${result.kind}`)
   return result.records
 }
 
