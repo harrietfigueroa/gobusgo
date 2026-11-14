@@ -10,7 +10,7 @@
 
 import {assertCondition, unreachable} from "./core/assert.js"
 import {tileKey, walkGraphShardName} from "./core/walk_graph_file.js"
-import {WALK_LIMITS, WalkPathKind, planWalk} from "./core/walk_path.js"
+import {WALK_LIMITS, WalkPathKind, planWalk, walkTilesNeeded} from "./core/walk_path.js"
 import {walkKey} from "./core/trip_plan.js"
 import {FetchKind, fetchWalkIndex, fetchWalkManifest, fetchWalkShard} from "./walk_graph_fetch.js"
 
@@ -18,7 +18,7 @@ import {FetchKind, fetchWalkIndex, fetchWalkManifest, fetchWalkShard} from "./wa
 export const REQUEST_WALK_COUNT_MAX = 16
 
 /** The most decoded tiles held; the oldest is dropped past it. */
-export const HELD_TILE_COUNT_MAX = 64
+export const HELD_TILE_COUNT_MAX = REQUEST_WALK_COUNT_MAX * WALK_LIMITS.tileCountMax
 
 const SOURCE_RETRY_MS = 60 * 1000
 const MANIFEST_PATH = "/api/walk-graph/manifest"
@@ -61,6 +61,26 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
     }
   }
 
+  // Marks the tiles a walk reads as the most recently used, so the oldest
+  // tiles of earlier requests are the ones dropped.
+  function touchTiles(walk) {
+    const needed = walkTilesNeeded({from: walk.from, to: walk.to, index: source.index.tileKeys, limits: WALK_LIMITS})
+
+    if (needed.kind !== "tiles") {
+      return
+    }
+
+    for (const tile of needed.tiles) {
+      const key = tileKey(tile)
+      const table = held.get(key)
+
+      if (table !== undefined) {
+        held.delete(key)
+        held.set(key, table)
+      }
+    }
+  }
+
   // Plans each wanted walk that has no line yet and starts the fetches the
   // plans ask for; the count of lines found.
   function evaluate() {
@@ -82,6 +102,7 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
       }
 
       const plan = planWalk({from: walk.from, to: walk.to, index: source.index.tileKeys, loaded: held, limits: WALK_LIMITS})
+      touchTiles(walk)
 
       switch (plan.kind) {
         case WalkPathKind.found:
@@ -186,6 +207,8 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
     // line already held is in `lines` on return.
     request(walks) {
       assertCondition(walks.length <= REQUEST_WALK_COUNT_MAX, "walk path reader: a request names at most " + REQUEST_WALK_COUNT_MAX + " walks, not " + walks.length)
+      const tilesNeededMax = walks.length * WALK_LIMITS.tileCountMax
+      assertCondition(tilesNeededMax <= HELD_TILE_COUNT_MAX, "walk path reader: a request reads at most " + tilesNeededMax + " tiles and the page holds " + HELD_TILE_COUNT_MAX)
       const keys = Array.from(walks, walkKey).join("|")
       const isNewRequest = keys !== wantedKeys
 

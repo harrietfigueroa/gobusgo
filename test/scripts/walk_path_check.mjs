@@ -157,7 +157,7 @@ function tableOfLines(lines) {
   return {pieceCount: lines.length, classes: new Uint8Array(lines.length), pieceStarts: Uint32Array.from(pieceStarts), points: Int32Array.from(points)}
 }
 
-function isBeyond(tile) {
+function isTileEqual(tile) {
   return function isTile(other) {
     return other.row === tile.row && other.column === tile.column
   }
@@ -344,8 +344,11 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
 
 // Ends farther apart than the walk limit read no tile.
 {
-  const far = walk({from: degrees(NORTH, NEAR_WEST), to: degrees(FAR_NORTH_LAT, NEAR_WEST), loaded: loadedBoth})
+  const farEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(FAR_NORTH_LAT, NEAR_WEST)}
+  const far = walk({...farEnds, loaded: loadedBoth})
   deepStrictEqual(far, {kind: WalkPathKind.noPath, reason: NoPathReason.tooFar})
+  const farTiles = walkTilesNeeded({...farEnds, index, limits: WALK_LIMITS})
+  strictEqual(farTiles.kind, "tiles", "the tiles asked for do not depend on the distance")
 }
 
 // A box of more tiles than the bound is too far, whatever the distance.
@@ -376,8 +379,8 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
   const window = walkTilesNeeded({from: corner, to: middle, index: wideIndex, limits: WALK_LIMITS})
   strictEqual(window.kind, "tiles")
   strictEqual(window.tiles.length, WINDOW_TILE_COUNT)
-  deepStrictEqual(window.tiles[0], around[0], "tiles come in row then column order")
-  const isBeyondTile = isBeyond(beyond)
+  deepStrictEqual(window.tiles, around, "the window is the nine tiles in row then column order")
+  const isBeyondTile = isTileEqual(beyond)
   const hasBeyond = window.tiles.some(isBeyondTile)
   strictEqual(hasBeyond, false, "no tile past the window")
 

@@ -97,27 +97,22 @@ function straightMeters({plane, from, to}) {
 }
 
 /**
- * The tiles of `index`, a Set of `tileKey`s, that the walk from `from` to
- * `to`, each `{lat, lon}` in degrees, reads: the 3 by 3 tiles around the
- * tile of each end, and so no more than one tile of each end is revealed by
- * the set, wherever in it the end stands, that the index holds. The answer
- * is `{kind: "tiles", tiles}`, each tile `{row, column}` in tile order, or
- * `{kind: "tooFar"}` for ends farther apart than `limits.distanceMetersMax`
- * or two windows that together hold more than `limits.tileCountMax` tiles.
+ * The tiles a walk from `from` to `to`, each `{lat, lon}` in degrees, reads:
+ * the 3 by 3 tiles around the tile of each end that `index`, a Set of
+ * `tileKey`s, holds. The answer is `{kind: "tiles", tiles}`, each tile
+ * `{row, column}` in row then column order, or `{kind: "tooFar"}` where the
+ * two windows together hold more than `limits.tileCountMax` tiles. The
+ * answer is a function of the tiles of the two ends alone.
  */
 export function walkTilesNeeded({from, to, index, limits}) {
   assertEnd(from, "from")
   assertEnd(to, "to")
-  const plane = planeOf({from, to})
-
-  if (straightMeters({plane, from, to}) > limits.distanceMetersMax) {
-    return {kind: TilesKind.tooFar}
-  }
-
   const windowed = new Map()
 
   for (const end of [from, to]) {
-    const center = tileOf({lat: Math.floor(end.lat * UNITS_PER_DEGREE), lon: Math.floor(end.lon * UNITS_PER_DEGREE)})
+    const latUnits = Math.floor(end.lat * UNITS_PER_DEGREE)
+    const lonUnits = Math.floor(end.lon * UNITS_PER_DEGREE)
+    const center = tileOf({lat: latUnits, lon: lonUnits})
 
     for (let row = center.row - WINDOW_RADIUS; row <= center.row + WINDOW_RADIUS; row += 1) {
       for (let column = center.column - WINDOW_RADIUS; column <= center.column + WINDOW_RADIUS; column += 1) {
@@ -725,7 +720,9 @@ export function findWalkPath({from, to, shards, limits}) {
  * `loaded`, a Map from a `tileKey` to its decoded shard table: a
  * `WalkPathKind`. `{kind: "notLoaded", tiles}` names the tiles the walk reads
  * that `loaded` does not hold, in tile order; the other answers are those of
- * `findWalkPath`, with `noPath` and `tooFar` for ends past `limits`.
+ * `findWalkPath`, with `noPath` and `tooFar` for ends past `limits`. Which
+ * tiles are asked for depends on the tiles of the ends alone, so the
+ * distance between the ends is checked once the tiles are held.
  */
 export function planWalk({from, to, index, loaded, limits}) {
   const needed = walkTilesNeeded({from, to, index, limits})
@@ -749,6 +746,12 @@ export function planWalk({from, to, index, loaded, limits}) {
 
   if (missing.length > 0) {
     return {kind: WalkPathKind.notLoaded, tiles: missing}
+  }
+
+  const plane = planeOf({from, to})
+
+  if (straightMeters({plane, from, to}) > limits.distanceMetersMax) {
+    return noPath(NoPathReason.tooFar)
   }
 
   return findWalkPath({from, to, shards, limits})
