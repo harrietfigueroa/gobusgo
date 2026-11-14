@@ -94,8 +94,8 @@ The core's modules are checked by the conformance suite under `tools/conformance
 
 The pure modules have node checks under `test/scripts/`, each run with `node`. CI runs none of them except the accessibility job's (root file) and the `agents-md` job's:
 
-- `routing_snapshot.js`: `routing_snapshot_reader.mjs`, which decodes the shared fixtures; `routing_names.js` and `names_stream.js`: `routing_names_reader.mjs`.
-- `packed_container.js` and `packed_stream.js`: `packed_container_check.mjs`, which decodes the shared fixtures and checks each refusal (`lib/gobusgo/packed/AGENTS.md`).
+- `routing_snapshot.js`: the conformance suite's `routing_snapshot.test.mjs`, which decodes the shared fixtures; `routing_names.js` and `names_stream.js`: its `routing_names.test.mjs`.
+- `packed_container.js` and `packed_stream.js`: the conformance suite's `packed_container.test.mjs`, which decodes the shared fixtures and checks each refusal (`lib/gobusgo/packed/AGENTS.md`).
 - `place_file.js`: `place_file_check.mjs`, which decodes the shared places fixture of version 2, expanded and as a gzip stream, to its expected table with its localities, decodes the version 1 fixture to the same places with an empty locality each, and checks the kind's own refusals, a locality index past the string table and a locality past `LOCALITY_LENGTH_MAX` among them (`lib/gobusgo/places/AGENTS.md`).
 - `address_normalize.js`: `address_normalize_check.mjs`, which reads `test/fixtures/addresses/normalize.json`, the fixture `Gobusgo.Addresses.NormalizeTest` reads too.
 - `intersection_file.js` and `intersection_lookup.js`: `intersection_lookup_check.mjs`, which decodes the shared shard and index fixtures, expanded and as gzip streams, to their expected tables, checks the kinds' own refusals, and runs the lookup over them: the text read as two streets, the shard the index names, the crossing nearest a point, and a miss (`lib/gobusgo/intersections/AGENTS.md`).

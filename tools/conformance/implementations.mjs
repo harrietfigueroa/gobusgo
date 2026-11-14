@@ -9,8 +9,22 @@ import * as colorContrast from "../../assets/js/core/math/color_contrast.js"
 import * as geodesy from "../../assets/js/core/math/geodesy.js"
 import * as interpolation from "../../assets/js/core/math/interpolation.js"
 import * as polyline from "../../assets/js/core/math/polyline.js"
+import * as packedContainer from "../../assets/js/core/packed_container.js"
+import * as routingNames from "../../assets/js/core/routing_names.js"
+import * as routingSnapshot from "../../assets/js/core/routing_snapshot.js"
 
 /** One entry per implementation of the core, each with its modules. */
 export const IMPLEMENTATIONS = Object.freeze([
-  Object.freeze({name: "javascript", AssertionError, angles, colorContrast, geodesy, interpolation, polyline})
+  Object.freeze({
+    name: "javascript",
+    AssertionError,
+    angles,
+    colorContrast,
+    geodesy,
+    interpolation,
+    packedContainer,
+    polyline,
+    routingNames,
+    routingSnapshot
+  })
 ])
