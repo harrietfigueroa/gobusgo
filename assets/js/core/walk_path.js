@@ -368,8 +368,9 @@ function chooseSnaps({startSnaps, goalSnaps}) {
 
     const candidate = {start, goal}
     const isFirst = best.kind === SnapKind.none
+    const isChosen = isFirst || isBetterPair({candidate, best})
 
-    if (isFirst || isBetterPair({candidate, best})) {
+    if (isChosen) {
       best = {kind: SnapKind.chosen, start, goal}
     }
   }
