@@ -236,6 +236,7 @@ Read this file whole, then the area file of the code a change touches before cha
 - `lib/gobusgo_web/live/AGENTS.md`: the vehicle page, what it shows, its filter, panel sheet, tabs, map layers, and the events between the page and the browser.
 - `assets/AGENTS.md`: the front end, the JavaScript modules and hooks, the stylesheet and themes, the build, the service worker, offline use, and the check each JavaScript file runs.
 - `assets/js/core/AGENTS.md`: the core, the front end's logic shared with the native apps, which does no async work, and the lint that enforces it. Read it before changing a module under `assets/js/core/`.
+- `core/AGENTS.md`: the Rust workspace the core is ported into (GOB-419), its three crates, its toolchain, its lints, and its bindings for the web and the native apps. Read it before changing anything under `core/`.
 
 Outside the area files:
 
@@ -246,7 +247,7 @@ Outside the area files:
 
 ## Toolchain and commands
 
-Erlang and Elixir versions are pinned in `.tool-versions` and installed with mise (`mise install`). Run these before declaring work done:
+Erlang and Elixir versions are pinned in `.tool-versions` and installed with mise (`mise install`), Rust in `core/rust-toolchain.toml`, which rustup reads wherever cargo runs under `core/`, and the `wasm-bindgen` command in `mise.toml`. Run these before declaring work done:
 
 ```sh
 mix compile --warnings-as-errors
@@ -265,9 +266,11 @@ A change to a file under `assets/js/` runs that file's node check, or is checked
 
 When a change touches `assets/js/core/` or `tools/lint/rules/no_async_work.mjs`, also run the two commands CI's `core-lint` job runs (GOB-420), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which also lints code written out by hand to check that the rule still reports each kind of async work, and `npm run --prefix tools/lint lint:core`, which lints every module of the core with `tools/lint/eslint.core.config.mjs`.
 
+When a change touches `core/`, also run the four commands CI's `core` job runs, from `core/`: `cargo fmt --all --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, and `cargo build --locked --release --package gobusgo-core-wasm --target wasm32-unknown-unknown`; then `mix gobusgo.assets.core` and `node test/scripts/core_binding_check.mjs`, which CI's `assets` job runs after `mix assets.build` (GOB-422).
+
 `mix test` also excludes the tests tagged `memory`, which print a measurement and assert little. `lib/gobusgo_web/live/AGENTS.md` ("Memory checks") holds the two commands that measure the vehicle page; run both before and after a change meant to move those numbers.
 
-`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets, LazyHTML for LiveView tests, and Quokka to rewrite code during `mix format`; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module.
+`mix.exs` also sets `warnings_as_errors` for compilation. The third-party dependencies are Req, Phoenix, Phoenix LiveView, Phoenix HTML, Bandit, and Plug, with esbuild and Tailwind to build assets, LazyHTML for LiveView tests, and Quokka to rewrite code during `mix format`; adding one needs the justification the style guide requires. Phoenix encodes JSON with Elixir's built-in `JSON` module. The Rust core takes no third-party crate, since each platform's driver decompresses the gzip files with the zlib or `DecompressionStream` it already ships; its bindings take wasm-bindgen, the only way Rust reaches a browser's JavaScript, and uniffi, the only one that generates both the Swift and the Kotlin bindings (GOB-422).
 
 CI's `accessibility` job checks the browser pages (GOB-296). `test/gobusgo_web/accessibility/rendered_pages_test.exs` renders `/`, `/agencies`, `/vehicles` without a basemap and with one, unfiltered, filtered, and under a refused filter, and the 404 and 500 error pages, checks each against the rules of `Gobusgo.Test.Accessibility` (a `lang`, one title, one `<main>`, one `<h1>`, every ARIA reference resolving, every control named, every `<dl>` holding only terms and definitions, every heading, paragraph, table, and control in a landmark), and writes each to `tools/lint/rendered/`; `node test/scripts/write_offline_screen.mjs` writes the offline screen beside them.
 
@@ -290,7 +293,7 @@ When a change touches `assets/` or the classes in a template, also run `mix asse
 
 When a change touches `priv/openapi.json`, `priv/openapi.private.json`, `tools/lint/eslint.openapi.config.mjs`, or `tools/lint/schemas/openapi-3.1.json`, also run the two commands CI's `openapi` job runs (GOB-400), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which lints a malformed document and one that breaks the schema, written out by hand, to check that the lint still reports each, and `npm run --prefix tools/lint lint:openapi`, which lints both documents as JSON and against the vendored OpenAPI 3.1 schema without a network request. The local rule `tools/lint/rules/openapi_schema.mjs` compiles the schema with Ajv's 2020-12 dialect, so it reports a missing or mistyped field, an unknown field, and an invalid Schema Object; `$dynamicRef` is pointed at JSON Schema 2020-12 itself, as the rule's comment explains.
 
-`mise.toml` pins the `pmtiles` command, which only `mix gobusgo.basemap.extract` runs; compiling, testing, CI, and the image do not need it. `docs/development.md` ("Basemap") holds the extraction process and the archive sizes.
+`mise.toml` pins the `pmtiles` command, which only `mix gobusgo.basemap.extract` runs, and the `wasm-bindgen` command, which `mix assets.build` runs. CI's `assets` job installs `wasm-bindgen` with mise, and the image build compiles the same version from crates.io; compiling, testing, CI, and the image do not need `pmtiles`. `docs/development.md` ("Basemap") holds the extraction process and the archive sizes.
 
 tippecanoe builds the route and stop tile archive: the image installs the version its Debian release ships, 2.53.0, pinned in the `Dockerfile`, and a local run takes the one on the path, such as Homebrew's (`brew install tippecanoe`), since no mise backend publishes it. Without it a build logs its failure and the application runs on. The tests run a stand-in, so compiling, testing, and CI do not need it.
 
@@ -300,7 +303,7 @@ tippecanoe builds the route and stop tile archive: the image installs the versio
 - **An explicit `nil` fallback is a `case`.** Quokka removes `else: nil` from an `if` and inverts an `if` whose `do` is `nil`, so a branch that has to name its `nil` outcome is written as a `case` clause.
 - **A comment in `config/*.exs` can move.** Quokka sorts `config` stanzas and does not always carry a stanza's comment with it; check that each comment still sits on its stanza.
 
-When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, also run `docker build --tag gobusgo:local .`; CI runs it as its own job. The image's Elixir, Erlang, and Debian versions are build arguments in the `Dockerfile` and change together with `.tool-versions`. A file the release needs from outside `lib/`, `assets/`, and `config/` has to be admitted in `.dockerignore` and copied in the `Dockerfile`.
+When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, also run `docker build --tag gobusgo:local .`; CI runs it as its own job. The image's Elixir, Erlang, and Debian versions are build arguments in the `Dockerfile` and change together with `.tool-versions`, its Rust version with `core/rust-toolchain.toml`, and its wasm-bindgen version with `mise.toml`. A file the release needs from outside `lib/`, `assets/`, `core/`, and `config/` has to be admitted in `.dockerignore` and copied in the `Dockerfile`.
 
 ## CI and release
 

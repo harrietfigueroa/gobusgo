@@ -1,0 +1,77 @@
+[workspace]
+resolver = "3"
+members = ["gobusgo-core", "gobusgo-core-ffi", "gobusgo-core-wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The least compiler the crates are built with, the stable release
+# `rust-toolchain.toml` pins rather than the floor a dependency declares.
+rust-version = "1.100"
+license = "MIT"
+publish = false
+
+# The core takes no third-party crate. Each binding takes the one crate that
+# reaches its platform. wasm-bindgen is pinned exactly because its command reads
+# only the module the same version of the crate writes, and mise.toml pins that
+# command.
+# https://rustwasm.github.io/docs/wasm-bindgen/reference/cli.html — checked 2026-11-13
+[workspace.dependencies]
+gobusgo-core = { path = "gobusgo-core" }
+uniffi = "0.32.2"
+wasm-bindgen = "=0.2.130"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# A programmer error crashes, and it crashes through `assert!` or `unreachable!`
+# with a message at the site, so a failure names what it found rather than where
+# it fell: `unwrap`, `expect`, and a bare `panic!` are denied, and so are the
+# implicit panics of indexing, slicing, and arithmetic, which carry no message.
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+unimplemented = "deny"
+unchecked_time_subtraction = "deny"
+todo = "deny"
+string_slice = "deny"
+panic = "deny"
+exit = "deny"
+as_conversions = "deny"
+# An invariant a let-else cannot hold is stated as an unreachable arm.
+unreachable = "allow"
+# The lint flags every assertion in a function returning a result, and a
+# programmer error there crashes rather than becoming an error its caller handles.
+panic_in_result_fn = "allow"
+# The lint asks for the panic's message to be matched, which is an assertion on
+# prose; the fixture isolating one assertion is what makes the bare attribute fail
+# for one reason.
+should_panic_without_expect = "allow"
+# The lint rewrites an explicit match into a combinator over closures, which puts
+# both branches and their bindings in one expression a reader has to unwind.
+option_if_let_else = "allow"
+# A compound condition is written as nested `if`s so each half can carry its own
+# `else` and a failure names which half broke; the collapse this lint asks for
+# fuses them back into one condition.
+collapsible_if = "allow"
+
+# The release profile is stated in full rather than left to cargo's defaults, so
+# the libraries' shape reads from here. `lto = "thin"` inlines across crates at a
+# fraction of fat LTO's cost; `codegen-units = 1` hands LTO the whole program as
+# one unit; `panic = "abort"` ends the program at a failed assertion rather than
+# unwinding, because an unwind runs destructors over state the assertion has just
+# found corrupt. `overflow-checks` crashes an overflow the arithmetic lint did not
+# reach, where release would otherwise wrap it silently. `strip` drops debug
+# information and keeps the symbol table, because uniffi's bindgen reads each
+# binding's metadata from the exported symbols of the built library.
+# https://mozilla.github.io/uniffi-rs/0.32/tutorial/foreign_language_bindings.html — checked 2026-11-13
+[profile.release]
+strip = "debuginfo"
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+overflow-checks = true

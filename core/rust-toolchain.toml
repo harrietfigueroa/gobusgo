@@ -1,0 +1,9 @@
+# The one pin of the compiler. rustup reads this file wherever cargo runs under
+# core/, on a developer's machine, in CI, and in the image build, so each builds
+# with the same release.
+# https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file — checked 2026-11-13
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

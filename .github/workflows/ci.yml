@@ -98,6 +98,11 @@ jobs:
         with:
           version-file: .tool-versions
           version-type: strict
+      # Installs the wasm-bindgen command mise.toml pins, which `mix assets.build` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
       - uses: actions/cache@v6.1.0
         with:
           path: |
@@ -109,6 +114,7 @@ jobs:
       - run: mix deps.get
       - run: mix assets.setup
       - run: mix assets.build
+      - run: node test/scripts/core_binding_check.mjs
 
   # The accessibility checks: the ExUnit rules of Gobusgo.Test.Accessibility over the rendered pages, html-eslint over the files that test writes, the node scan of the front end's JavaScript, and the visual checks of the stylesheet and the route chip rule.
   accessibility:
@@ -190,6 +196,24 @@ jobs:
       - run: npm run --prefix tools/lint check
       - run: npm run --prefix tools/lint lint:core
 
+  # The Rust half of the gate over the core's workspace: the formatter, clippy with every warning an error, the tests, and the release build of the WebAssembly binding.
+  # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
+  core:
+    name: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked --release --package gobusgo-core-wasm --target wasm32-unknown-unknown
+
   image:
     name: image
     runs-on: ubuntu-24.04-arm
@@ -245,7 +269,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, image, start-memory]
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, core, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:
