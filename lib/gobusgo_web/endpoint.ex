@@ -50,8 +50,11 @@ defmodule GobusgoWeb.Endpoint do
   from the intersections directory, as the gzip streams they are stored as.
   Each file's name holds the SHA-256 of its stream, so a cache may keep it
   for `Gobusgo.Intersections.Publication.reader_keep_seconds/0`, a year, as
-  immutable. The manifest is not served from there: the router answers it at
-  `/api/intersections/manifest`.
+  immutable. The walk graph files are stored in the same directory and
+  served from there too, those whose name starts with `walk-graph-`: a name
+  holds the SHA-256 of its stream or the build identifier, which hashes every
+  shard's. The manifests are not served from there: the router answers them
+  at `/api/intersections/manifest` and `/api/walk-graph/manifest`.
 
   The locally stored shared vehicle files are served under
   `/shared-vehicles`, from the shared vehicle directory, as the gzip
@@ -94,6 +97,7 @@ defmodule GobusgoWeb.Endpoint do
   @addresses_cache_seconds Gobusgo.Addresses.reader_keep_seconds()
   @intersections_path "/intersections"
   @intersections_file_prefix "intersections-"
+  @walk_graph_file_prefix "walk-graph-"
   @intersections_cache_seconds Gobusgo.Intersections.Publication.reader_keep_seconds()
   @shared_vehicles_path "/shared-vehicles"
   # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
@@ -185,7 +189,7 @@ defmodule GobusgoWeb.Endpoint do
     at: @intersections_path,
     from: {__MODULE__, :intersections_dir, []},
     gzip: false,
-    only_matching: [@intersections_file_prefix],
+    only_matching: [@intersections_file_prefix, @walk_graph_file_prefix],
     cache_control_for_etags: "public, max-age=#{@intersections_cache_seconds}, immutable"
 
   plug Plug.Static,

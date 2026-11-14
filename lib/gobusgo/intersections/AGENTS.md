@@ -70,6 +70,8 @@ The index holds one record per shard, in the order of the prefixes, and 3 sectio
 
 A road's key follows the address normalizer, so the normalizer's numbered-highway rule (GOB-394) keys "State Route 99" and "SR 99" as `HWY 99`; files built before that rule hold such a road under its old key, `SR 99TH` for "SR 99", and agree with the browser only once they are built again.
 
+The directory also holds the walk graph's files, under the prefixes `walk-graph-` and `walking-manifest-`, which this build's discovery and cleanup never see (`lib/gobusgo/walk_graph/AGENTS.md`, GOB-467).
+
 Nothing deletes `intersections/`: `Gobusgo.RetentionPolicy` has no rule for it, the hourly cleanup leaves it alone, and the bucket has no lifecycle rule for it, so the files of an earlier build stay until they are removed by hand.
 
 ## Serving

@@ -1,0 +1,101 @@
+# Walk graph
+
+The walk graph is the pieces of street, sidewalk, path, crossing, and steps a Trip tab journey's walks are drawn along, built by hand from a Geofabrik Washington extract of OpenStreetMap and published as packed containers of kinds 8 and 9, sharded by tile (GOB-467). Nothing in the application builds them or reads them on a start; the Trip tab reads the shards a walk needs in the browser and draws the walk along the shortest path between its ends, so the rider's position never leaves the device (GOB-241). Only the drawing follows the graph: a walk's planned time stays the straight-line time of the router (`lib/gobusgo/routing/AGENTS.md`), and GOB-468 will plan over the same files. This file holds the walkable rule, the format, the tiles, the publication, the browser's reading, and the measurements.
+
+## Files
+
+- `classification.ex` decides which ways are walkable and their class, and holds the `osmium tags-filter` expression. Pure.
+- `edges.ex` cuts a way into edges at its junctions. `simplify.ex` drops the positions of an edge within a tolerance of the line its neighbors make. `tiles.ex` holds the tile grid and cuts an edge into the pieces of its tiles. Pure.
+- `selection.ex` reads the export three times, the nodes, the ways' references, and the ways again, and returns the pieces by tile with the counts of what became of each way. It holds two ETS tables for the length of the call.
+- `extractor.ex` runs `osmium` through `Gobusgo.Command`; `plan/1` is the step arguments, pure. The lines of the export are read with `Gobusgo.Intersections.Extractor.lines/1`, and the OPL reader is `Gobusgo.Intersections.Opl`, the intersections' own.
+- `build.ex` runs the extractor and the selection. `select/1`, the part after osmium, is deterministic.
+- `format.ex` is the encoder and decoder of the two kinds, shard and index, on `Gobusgo.Packed`, and implements `Gobusgo.Packed.Kind`. Pure.
+- `publication.ex` orders and encodes each tile's shard, stores the files and the manifest through the writer.
+- `lib/mix/tasks/gobusgo.walk_graph.build.ex` is the Mix task. `lib/gobusgo_web/controllers/walk_graph_manifest_controller.ex` serves the manifest.
+- `assets/js/core/walk_graph_file.js` decodes the kinds and checks the manifest, `assets/js/core/walk_path.js` finds the path, `assets/js/walk_graph_fetch.js` fetches the files, and `assets/js/walk_path_reader.js` holds the tiles and the lines a page draws; `journeyWalkEnds`, `walkEndsOf`, and `walkKey` of `assets/js/core/trip_plan.js` name each walk's ends and `journeyFeatures` draws the line. `node test/scripts/walk_path_check.mjs` checks the core.
+
+## Source and license
+
+The source is OpenStreetMap through Geofabrik's Washington extract, the one the places file and the intersections read (`lib/gobusgo/intersections/AGENTS.md`, "Source and license"): the date of its replication timestamp is the build's `sourceDate`. The graph is a derivative database under the ODbL, <https://opendatacommons.org/licenses/odbl/1-0/> — checked 2026-11-10: the manifest names the license and the credit "© OpenStreetMap contributors", the info panel's credit for the intersection files covers it (`GobusgoWeb.AppInfo.intersection_source/0`), and the files are served for anyone to fetch from the same directory.
+
+## Walkable ways (decided in GOB-467)
+
+`Gobusgo.WalkGraph.Classification.class/1` takes a way's tags. A way is walkable when its `highway` is `footway`, `path`, `pedestrian`, `track`, `platform`, `steps`, `living_street`, `residential`, `service`, `unclassified`, `tertiary`, `secondary`, `primary`, the three links, or one of `cycleway`, `bridleway`, `trunk`, `trunk_link` under a condition, and no tag forbids foot traffic.
+
+- `motorway` and `motorway_link` are never walkable, whatever `foot` says.
+- `trunk` and `trunk_link` are walkable where `foot` is `yes`, `designated`, or `permissive`, or `sidewalk` is `both`, `left`, `right`, or `yes`: a trunk road in Seattle, Aurora Avenue among them, is one people cross and walk beside, and elsewhere one they must not walk on.
+- `cycleway` and `bridleway` are walkable where `foot` allows it, as above; a shared-use trail is tagged so.
+- `foot=no` and `foot=private` exclude a way. `access=no` and `access=private` exclude a way unless `foot` allows it. This leaves out private driveways and gated service roads, 103,989 of the 895,431 ways of the build below.
+- `area=yes` excludes a way, since a plaza's outline is not a line to walk along. `construction`, `proposed`, `corridor`, `elevator`, and every other `highway` value are excluded.
+- A `service` road is walkable unless private: an alley or a parking aisle is a way through a block on foot, which the intersections do not want and a walk does.
+- A sidewalk is a way of its own where OpenStreetMap maps one (`footway=sidewalk`), and the `sidewalk` tag of a road adds no line. A road that has no mapped sidewalk is walked on, since a pedestrian does walk it.
+
+The class a piece carries is `path` (0), `sidewalk` (1), `crossing` (2: `footway=crossing`, `cycleway=crossing`, or a `crossing` tag), `steps` (3), or `street` (4). The drawing ignores it; it is in the format so a planner can weigh a street against a sidewalk and avoid steps (GOB-468) without a new version.
+
+## Graph and pieces
+
+A junction is a node that two ways list, or one way lists twice, or that ends a way; a way's interior node with one reference is no junction. An edge runs between two junctions along a way, with the positions between them, simplified (below). An edge is cut where it leaves a tile (`Gobusgo.WalkGraph.Tiles`): the piece in the tile ends at the first position of the next tile, which the next piece starts from, so the two share that position and the browser joins pieces by position, whatever shard each is in. No position is invented. A piece belongs to the tile of its first position, and an edge of more than 1,000 positions is cut at a vertex into pieces that share it, so a piece's count fits 16 bits. Positions are `round(degrees * 100,000)`, the graph's unit, 1.1 m of latitude and 0.75 m of longitude at 47.6 degrees north: two nodes that round to one position are one node, and a position is identical in two shards because it is rounded once.
+
+An edge is simplified by the Douglas-Peucker rule to 1 unit, about 1 m, in a plane where longitude is scaled by the cosine of the edge's first latitude. The ends stay, so the topology does not change. The graph has no direction: a piece is walked either way.
+
+## The kinds
+
+Both files are packed containers (`lib/gobusgo/packed/AGENTS.md`), version 1, written and read by `Gobusgo.WalkGraph.Format`. Kind 8, prefix `walk-graph`, is a shard; kind 9, prefix `walk-graph-index`, is the index.
+
+A shard holds the pieces of one tile, one record per piece, with an empty string table and 3 sections: classes, a `u8` column; counts, a `u16` column of the positions of each piece, at least two; and positions, one path of the container through every position of every piece in record order, in the graph's units, so a difference from the position before is small. Pieces are ordered by the Morton code of their first position's offset inside the tile, which keeps the jump from one piece's last position to the next piece's first short.
+
+The index holds the build identifier as the one entry of its string table, and one record per run of tiles that neighbor in a row, in the order of rows and then columns, with 3 sections: rows, an `i32` column; starts, an `i32` column of the run's first column; lengths, a `u16` column, at least one. A shard's file is `walk-graph-<build identifier>-<row>_<column>.bin.gz` in the index's directory (`Gobusgo.WalkGraph.Format.shard_file_name/1`, `walkGraphShardName` in `assets/js/core/walk_graph_file.js`). The build identifier is the first 16 hexadecimal digits of the SHA-256 over every shard's tile and stream digest, so a name fixes its file's content, a file is cacheable for a year as immutable, and the index needs no digest per shard: with 14,818 shards, a digest of 32 bytes a shard would have made the index 480 KB where it is 3,318 bytes. A shard and an index each expand to at most 1 MiB.
+
+`assets/js/core/walk_graph_file.js` decodes a shard into `{pieceCount, classes, pieceStarts, points}` as typed arrays and an index into `{buildId, tileKeys}`, a Set of `<row>_<column>`. A reader refuses another version, the other kind, another section count, a class past 4, a count under 2, counts the path does not hold, bytes after the path, a build identifier that is not 16 lower case hexadecimal digits, a run of no tiles, and an index of more than 200,000 tiles, each as `{kind: "refused", reason}`, never a throw. `acceptWalkManifest` refuses a manifest whose tile size or units differ from the reader's constants.
+
+`mix gobusgo.packed.decode <file> --kind-module Gobusgo.WalkGraph.Format` prints a shard or an index as JSON.
+
+### Fixtures
+
+`test/fixtures/walk_graph/v1/` holds `shard-west.bin`, `shard-east.bin`, `index.bin`, each also as `.bin.gz`, and `expected.json`, written by `Gobusgo.Test.WalkGraphFixture` with `MIX_ENV=test mix run --no-start test/scripts/walk_graph_fixtures.exs`. The west shard is a grid of streets near downtown Seattle with a link missing, a sidewalk, a crossing, steps, and an island; a street runs east out of its tile and the east shard takes it up. ExUnit compares each expanded file to the encoder's output byte for byte, and `node test/scripts/walk_path_check.mjs` decodes the files to `expected.json`, checks each refusal, and runs the path over the two shards. A change to a kind's columns raises its version and writes `v2/` beside `v1/`.
+
+## Tiles and shard size (measured in GOB-467)
+
+A tile is 1,000 units of latitude by 1,500 of longitude, 0.01 by 0.015 degrees, 1.11 by 1.13 km at 47.6 degrees north, numbered by the floor of a position over the size, so a tile in Washington has a positive row and a negative column. On 2026-11-14 from Geofabrik's extract of 2026-11-08T21:21:00Z, cut to the basemap manifest's bounds (46.888124 to 48.642846 north, -123.082727 to -121.533451 east), the graph is 5,174,111 nodes, 1,275,914 junctions, 784,197 walkable ways of 895,431, 1,705,238 pieces, and 5,036,191 positions after simplification (6,579,511 without it), in **14,818 shards**, 11,391,896 bytes gzip in all, 16,994,812 expanded. A shard is at a median of 327 bytes, a 90th percentile of 1,864, a 99th of 7,245, and a maximum of 19,329 gzip (40,165 expanded); the index is 3,318 bytes. The build took 44 s of selection after 6.4 s of osmium steps.
+
+The tile size and the encoding were chosen by building the same graph at three tile sizes and with and without the simplification and the unit of the 100,000th of a degree. Microdegree positions with no simplification took 19,978,643 bytes at this tile size, 20 MB; the units cut it to 11.4 MB with the simplification. A walk of 100 to 400 m at a random bearing in a 3 km square around four centers read the tiles its box widened by 150 m touches:
+
+| Tile (lat by lon units) | Shards | Gzip bytes of a walk downtown Seattle (median, p90, max) | Files |
+| --- | --- | --- | --- |
+| 500 by 750 | 3.0 to 3.3 on average, 6 at most | 9,211, 17,863, 26,527 | 49,316 |
+| **1,000 by 1,500** | **1.8 to 2.1 on average, 4 at most** | **18,421, 34,131, 65,437** | **14,818** |
+| 2,000 by 3,000 | 1.3 to 1.8 on average, 4 at most | 63,418, 94,209, 171,127 | 4,245 |
+
+The tile of 1,000 by 1,500 keeps a walk to two shards on average and four at most, a median of 18 KB downtown and 4 KB to 10 KB elsewhere, against a file count a third of the smaller tile's. A walk of up to 400 m, the router's walk radius, reads at most 16 tiles (`tileCountMax`), which a box of 1.5 km cannot reach.
+
+Over the real shards, random walks of 100 to 400 m found a path for 77% (Tacoma) to 97% (Bellevue) of 200 in each of four places; the rest had an end farther than 100 m from every way, in water or a field, or ends in different components. Path lengths were a median of 1.4 to 1.8 times the straight line, and the search took 0.5 to 3.9 ms on average on a development machine.
+
+## Publication
+
+`Gobusgo.WalkGraph.Publication` orders and encodes each tile's pieces, stores each shard at `intersections/walk-graph-<build identifier>-<row>_<column>.bin.gz` and the index at `intersections/walk-graph-index-<SHA-256 of the stream>.bin.gz` through `Gobusgo.Writer` with a reader keep time of a year, then, only after every file is stored, the manifest at `intersections/walking-manifest-<UTC build time>-<SHA-256 of the index>.json`: canonical JSON of the shape `components.schemas.WalkGraphManifest` describes in `priv/openapi.json`. The writer stores a destination once, so each build's manifest has a name of its own, and the reader takes the newest by name with `Gobusgo.Reader.discover/2` (`Publication.manifest/1`). The manifests of earlier builds are deleted only after the new one is stored, and a file of the same name is left as it is.
+
+The files go in the `intersections/` directory, under the prefixes `walk-graph-` and `walking-manifest-`, and not under a directory of their own (decided in GOB-467): the graph is a derivative database of OpenStreetMap under the same license, CloudFront already serves `/intersections/*` from the bucket and `GobusgoWeb.Endpoint` serves the directory locally, so production serves the graph with no change to the infrastructure repository, and the manifest prefix differs from the intersections' (`intersections/manifest-`) so neither build's discovery or cleanup sees the other's. The cost is a name that does not say walking; the kinds' prefixes do. Nothing deletes the data files: `Gobusgo.RetentionPolicy` has no rule for them, the hourly cleanup leaves them alone, and the bucket has no lifecycle rule for `intersections/walk-graph-`, so the files of an earlier build stay until they are removed by hand (an old build is 11 MB).
+
+## Serving
+
+`GET /api/walk-graph/manifest` answers the manifest through `Gobusgo.Reader`, whatever backend stores it, as the intersection manifest is answered (`lib/gobusgo_web/AGENTS.md`); its response is described by `components.schemas.WalkGraphManifest` in `priv/openapi.json`. `GobusgoWeb.Endpoint` serves the files whose name starts with `walk-graph-` from the intersections directory beside those that start with `intersections-`, as the gzip streams they are stored as, `application/gzip` with no content encoding, `public, max-age=31536000, immutable`. Production serves `/intersections/*` from the bucket through CloudFront and `/api/walk-graph/manifest` from the application, so the files need nothing of the infrastructure repository.
+
+## The task
+
+`mix gobusgo.walk_graph.build --extract <path to .osm.pbf> [--bounds south,west,north,east] [--working-directory <dir>]` runs four `osmium` commands through `Gobusgo.Command`, each with a 10-minute deadline, selects, cuts, stores the files and the manifest, and prints the step times, the counts, and the sizes of the files. It never runs on a start. `fileinfo` reads the source date, `tags-filter` keeps the ways of the highway values, `extract -s complete_ways -b` cuts the bounds, and `cat -f opl,add_metadata=false` writes the ways and nodes as text. The selection read it three times and peaked well past the intersections' 334 MB: ETS tables of 5.2 million node positions and 3.6 million references. osmium is `osmium-tool` 1.19.1, as for the places file and the intersections. The tests run a stand-in.
+
+## In the browser
+
+`assets/js/walk_path_reader.js` is held by the `TripPlanner` hook. For the chosen journey `journeyWalkEnds` names each walk's two ends, the stops or the rider's position or the destination point, in degrees, the position staying in the pure `planWalk` and never in a request: a fetch names a tile, and the walk's ends decide which. The reader fetches the manifest once per page, `/api/walk-graph/manifest`, checks it with `acceptWalkManifest`, fetches the index it names, and then each shard a walk reads, one fetch per tile, `assets/js/walk_graph_fetch.js` the one fetcher, with a 20 s timeout each and the index checked against the size the manifest names. The decoded tiles are kept to 64 on a page. Each arrival plans the walks again, and a line found draws the journey again, as an arriving trip path does (`lib/gobusgo/routing/AGENTS.md`).
+
+`planWalk` returns a kind-keyed value: `found` with the line's coordinates and its length, `noPath` with a reason (`tooFar` for ends more than 1,500 m apart or a box of more than 16 tiles, `noShards` for ends in tiles the index lacks, `offGraph` for an end more than 100 m from any piece, `disconnected` for ends in different components, and `capReached` for a search past 30,000 settled nodes or a graph past 250,000 pieces), or `notLoaded` with the tiles still to fetch. A walk with any answer but `found` keeps the straight line, and so does a walk whose tile fails to load, which the reader does not fetch again until the walks asked for change. A new request retries the manifest 60 s after it failed.
+
+The tiles a walk reads are those its box, the two ends widened by 200 m, touches and the index holds; the pieces of those tiles are the graph, so a detour that leaves the box is not found. The path is A* over the pieces' junctions, the straight distance in a plane tangent at the walk's middle as its heuristic, with each end snapped to the nearest point on any piece as a virtual node that joins its piece's two ends; the line runs from the end to its snap, along the path, and from the other snap to the other end.
+
+The files are not in the offline bundle (decided in GOB-467): the service worker saves only `/tiles/`, `/routing/`, and the places file, a walk drawn offline keeps the straight line, and 11 MB of the whole region is more than a rider saves for the minutes a walk's line is worth. A page that has fetched a tile has it in the browser's cache, which serves it again by its immutable name.
+
+## Open
+
+- The planned time of a walk stays the router's straight-line time; GOB-468 plans over this graph, which carries the class and a position's neighbors for it.
+- A road with a mapped sidewalk and no `sidewalk` tag on it is walked on the centerline where it is the shorter, which the drawing shows as the street's line and not the sidewalk's.
+- Whether the graph is rebuilt on a schedule: it is built by hand, as the intersections are.

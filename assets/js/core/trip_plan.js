@@ -831,6 +831,82 @@ function rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs}) 
   }
 }
 
+const WalkEndsKind = Object.freeze({ends: "ends", none: "none"})
+const WALK_END_COUNT = 2
+
+/**
+ * The two ends of `leg`, each `{lat, lon}` in degrees, when it is a walk
+ * whose ends both have a position: `{kind: "ends", from, to}`, and
+ * `{kind: "none"}` for a ride and for a walk with an end of no known
+ * position. `origin` is the rider's position, or null, as `journeyFeatures`
+ * takes it.
+ */
+export function walkEndsOf({journey, leg, origin}) {
+  if (leg.kind === LegKind.ride) {
+    return {kind: WalkEndsKind.none}
+  }
+
+  const originCoordinates = []
+
+  if (origin !== null) {
+    originCoordinates.push([origin.lon, origin.lat])
+  }
+
+  const coordinates = legCoordinates({journey, leg, origin: originCoordinates})
+
+  if (coordinates.length !== WALK_END_COUNT) {
+    return {kind: WalkEndsKind.none}
+  }
+
+  const [[fromLon, fromLat], [toLon, toLat]] = coordinates
+  return {kind: WalkEndsKind.ends, from: {lat: fromLat, lon: fromLon}, to: {lat: toLat, lon: toLon}}
+}
+
+/** The key a walk's line is held by: its two ends. */
+export function walkKey({from, to}) {
+  return `${from.lat},${from.lon}>${to.lat},${to.lon}`
+}
+
+/**
+ * The ends of every walk of `journey`, each `{from, to}` once, in riding
+ * order, so a caller can ask for the lines they are drawn along.
+ */
+export function journeyWalkEnds({journey, origin}) {
+  const walks = []
+  const keys = new Set()
+
+  for (const leg of journey.legs) {
+    const found = walkEndsOf({journey, leg, origin})
+    const isNew = found.kind === WalkEndsKind.ends && keys.has(walkKey(found)) === false
+
+    if (isNew) {
+      keys.add(walkKey(found))
+      walks.push({from: found.from, to: found.to})
+    }
+  }
+
+  return walks
+}
+
+// The coordinates a walk is drawn along: its line in `walkLines` where the
+// page holds one, and `stopCoordinates`, the straight line between its ends,
+// otherwise.
+function walkLineOf({journey, leg, origin, walkLines, stopCoordinates}) {
+  const ends = walkEndsOf({journey, leg, origin})
+
+  if (ends.kind === WalkEndsKind.none) {
+    return stopCoordinates
+  }
+
+  const line = walkLines.get(walkKey(ends))
+
+  if (line === undefined) {
+    return stopCoordinates
+  }
+
+  return line
+}
+
 /**
  * What the map draws of `journey`: a line per ride in its route's color from
  * `names`, a line per walk, and a point at each end, as a GeoJSON feature
@@ -838,12 +914,15 @@ function rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs}) 
  * A ride follows its trip's path where `paths`, the decoded paths by
  * `tripPathKey`, holds one that serves it, cut between its boarding and
  * alighting stops, and otherwise runs through the stops it passes;
- * `serviceDayStartsMs` names the service day each trip runs on. `origin` is
- * the rider's position in degrees for a journey from it, or null. A stop
- * with no known position is left out of its line, a line with fewer than two
- * points is not drawn, and the ends stand at the first and last stop.
+ * `serviceDayStartsMs` names the service day each trip runs on. A walk
+ * follows its line in `walkLines`, the coordinates by `walkKey` of the ends
+ * `walkEndsOf` names, where the page holds one, and otherwise runs straight
+ * between its ends. `origin` is the rider's position in degrees for a
+ * journey from it, or null. A stop with no known position is left out of its
+ * line, a line with fewer than two points is not drawn, and the ends stand
+ * at the first and last stop.
  */
-export function journeyFeatures({journey, names, origin, paths, serviceDayStartsMs}) {
+export function journeyFeatures({journey, names, origin, paths, walkLines, serviceDayStartsMs}) {
   const originCoordinates = []
 
   if (origin !== null) {
@@ -862,6 +941,8 @@ export function journeyFeatures({journey, names, origin, paths, serviceDayStarts
     if (leg.kind === LegKind.ride) {
       properties = {kind: FeatureKind.ride, color: routeChip({names, routeId: leg.routeId}).color}
       coordinates = rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs})
+    } else {
+      coordinates = walkLineOf({journey, leg, origin, walkLines, stopCoordinates})
     }
 
     if (coordinates.length >= LINE_POINT_COUNT_MIN) {
