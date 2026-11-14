@@ -377,7 +377,9 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
   strictEqual(window.kind, "tiles")
   strictEqual(window.tiles.length, WINDOW_TILE_COUNT)
   deepStrictEqual(window.tiles[0], around[0], "tiles come in row then column order")
-  strictEqual(window.tiles.some(isBeyond(beyond)), false, "no tile past the window")
+  const isBeyondTile = isBeyond(beyond)
+  const hasBeyond = window.tiles.some(isBeyondTile)
+  strictEqual(hasBeyond, false, "no tile past the window")
 
   const sameWindow = walkTilesNeeded({from: middle, to: corner, index: wideIndex, limits: WALK_LIMITS})
   deepStrictEqual(sameWindow, window, "the ends in either order read the same tiles")
