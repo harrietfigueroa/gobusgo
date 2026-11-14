@@ -74,7 +74,7 @@ defmodule Gobusgo.WalkGraph.SelectionTest do
     assert counts.malformed_lines == 1
   end
 
-  test "keeps a closed way as one piece that starts and ends at its one junction" do
+  test "cuts a closed way at its middle into two pieces, none of which starts and ends at one position" do
     lines = [
       "n1 T x-122.3400 y47.6100",
       "n2 T x-122.3390 y47.6100",
@@ -83,10 +83,9 @@ defmodule Gobusgo.WalkGraph.SelectionTest do
     ]
 
     %{counts: counts, tiles: tiles} = run(lines)
-    assert counts.pieces == 1
+    assert counts.pieces == 2
     assert counts.junction_nodes == 1
-    [{0, binary}] = tiles[{4_761, -8_156}]
-    loop = points(binary)
-    assert hd(loop) == List.last(loop)
+    pieces = for {0, binary} <- tiles[{4_761, -8_156}], do: points(binary)
+    assert Enum.all?(pieces, &(hd(&1) != List.last(&1)))
   end
 end

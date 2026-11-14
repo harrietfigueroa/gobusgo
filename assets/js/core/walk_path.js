@@ -59,8 +59,9 @@ const MIDDLE_DIVISOR = 2
 const VIRTUAL_NODE_COUNT = 2
 const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
+const DRAWN_COST_TOLERANCE_METERS = 0.01
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
-const SnapKind = Object.freeze({snapped: "snapped", offGraph: "offGraph"})
+const SnapKind = Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
 const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
 
 function planeOf({from, to}) {
@@ -211,17 +212,46 @@ function buildGraph({shards, plane}) {
   for (const shard of shards) {
     for (let piece = 0; piece < shard.pieceCount; piece += 1) {
       const edge = edgeOfPiece({shard, piece, plane, nodeAt})
+      assertCondition(edge.a !== edge.b, "walk path: a piece starts and ends at one node")
       const edgeIndex = edges.length
       edges.push(edge)
       nodeEdges[edge.a].push(edgeIndex)
-
-      if (edge.b !== edge.a) {
-        nodeEdges[edge.b].push(edgeIndex)
-      }
+      nodeEdges[edge.b].push(edgeIndex)
     }
   }
 
+  labelComponents({nodeCount: nodeX.length, edges})
   return {nodeX, nodeY, nodeEdges, edges}
+}
+
+// Gives each edge the number of the connected component its ends are in,
+// by a union-find over the nodes.
+function labelComponents({nodeCount, edges}) {
+  const parent = new Int32Array(nodeCount)
+
+  for (let node = 0; node < nodeCount; node += 1) {
+    parent[node] = node
+  }
+
+  function root(node) {
+    let current = node
+
+    // Each step moves to a node nearer the root of a finite forest.
+    while (parent[current] !== current) {
+      parent[current] = parent[parent[current]]
+      current = parent[current]
+    }
+
+    return current
+  }
+
+  for (const edge of edges) {
+    parent[root(edge.a)] = root(edge.b)
+  }
+
+  for (const edge of edges) {
+    edge.component = root(edge.a)
+  }
 }
 
 // The nearest point of the segment from (startX, startY) to (endX, endY) to
@@ -242,12 +272,11 @@ function nearestOnSegment({x, y, startX, startY, endX, endY}) {
   return {pointX, pointY, distance: Math.hypot(x - pointX, y - pointY), fraction, segmentLength: Math.sqrt(lengthSquared)}
 }
 
-// The nearest point on any edge to (x, y), as `{kind: "snapped", edge, x, y,
-// distance, along}`, or `{kind: "offGraph"}` where none lies within
-// `snapMetersMax`.
-function snap({graph, x, y, snapMetersMax}) {
-  let best = {kind: SnapKind.offGraph}
-  let bestDistance = Infinity
+// The nearest point to (x, y) within `snapMetersMax` on the edges of each
+// connected component, a Map from a component to `{kind: "snapped", edge,
+// x, y, distance, along}`; a component with no edge that near is left out.
+function snapsByComponent({graph, x, y, snapMetersMax}) {
+  const snaps = new Map()
 
   for (const [edgeIndex, edge] of graph.edges.entries()) {
     for (let segment = 0; segment < edge.count - 1; segment += 1) {
@@ -255,16 +284,48 @@ function snap({graph, x, y, snapMetersMax}) {
       const endOffset = startOffset + COORDINATE_COUNT
       const nearest = nearestOnSegment({x, y, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1], endX: edge.xy[endOffset], endY: edge.xy[endOffset + 1]})
 
-      if (nearest.distance < bestDistance) {
+      const held = snaps.get(edge.component)
+      const isNearer = held === undefined || nearest.distance < held.distance
+      const isNear = nearest.distance <= snapMetersMax
+      const isChosen = isNear && isNearer
+
+      if (isChosen) {
         const along = edge.cumulative[segment] + nearest.fraction * nearest.segmentLength
-        bestDistance = nearest.distance
-        best = {kind: SnapKind.snapped, edge: edgeIndex, x: nearest.pointX, y: nearest.pointY, distance: nearest.distance, along}
+        snaps.set(edge.component, {kind: SnapKind.snapped, edge: edgeIndex, x: nearest.pointX, y: nearest.pointY, distance: nearest.distance, along})
       }
     }
   }
 
-  if (bestDistance > snapMetersMax) {
-    return {kind: SnapKind.offGraph}
+  return snaps
+}
+
+// The pair of snaps, one for each end, in a component both reach, whose
+// distances from the ends sum least: `{kind: "chosen", start, goal}`; or
+// `{kind: "none", reason}` with `offGraph` where an end reaches no
+// component and `disconnected` where the two reach none in common.
+function chooseSnaps({startSnaps, goalSnaps}) {
+  let best = {kind: SnapKind.none, reason: NoPathReason.disconnected}
+  let bestSum = Infinity
+
+  for (const [component, start] of startSnaps) {
+    const goal = goalSnaps.get(component)
+
+    if (goal === undefined) {
+      continue
+    }
+
+    const sum = start.distance + goal.distance
+
+    if (sum < bestSum) {
+      bestSum = sum
+      best = {kind: SnapKind.chosen, start, goal}
+    }
+  }
+
+  const isAnyOff = startSnaps.size === 0 || goalSnaps.size === 0
+
+  if (isAnyOff) {
+    return {kind: SnapKind.none, reason: NoPathReason.offGraph}
   }
 
   return best
@@ -489,7 +550,7 @@ function search({graph, start, goal, visitedNodeCountMax}) {
     isSettled[node] = 1
 
     if (node === goalNode) {
-      return {kind: SearchKind.reached, previous, via, startNode, goalNode}
+      return {kind: SearchKind.reached, previous, via, startNode, goalNode, cost: cost[goalNode]}
     }
 
     visitedCount += 1
@@ -620,15 +681,15 @@ export function findWalkPath({from, to, shards, limits}) {
   const graph = buildGraph({shards, plane})
   const [fromX, fromY] = degreesToPlane({plane, lat: from.lat, lon: from.lon})
   const [toX, toY] = degreesToPlane({plane, lat: to.lat, lon: to.lon})
-  const start = snap({graph, x: fromX, y: fromY, snapMetersMax: limits.snapMetersMax})
-  const goal = snap({graph, x: toX, y: toY, snapMetersMax: limits.snapMetersMax})
-  const isStartOff = start.kind === SnapKind.offGraph
-  const isGoalOff = goal.kind === SnapKind.offGraph
-  const isAnyOff = isStartOff || isGoalOff
+  const startSnaps = snapsByComponent({graph, x: fromX, y: fromY, snapMetersMax: limits.snapMetersMax})
+  const goalSnaps = snapsByComponent({graph, x: toX, y: toY, snapMetersMax: limits.snapMetersMax})
+  const chosen = chooseSnaps({startSnaps, goalSnaps})
 
-  if (isAnyOff) {
-    return noPath(NoPathReason.offGraph)
+  if (chosen.kind === SnapKind.none) {
+    return noPath(chosen.reason)
   }
+
+  const {start, goal} = chosen
 
   const outcome = search({graph, start, goal, visitedNodeCountMax: limits.visitedNodeCountMax})
 
@@ -640,7 +701,10 @@ export function findWalkPath({from, to, shards, limits}) {
     case SearchKind.reached: {
       const along = pathPoints({graph, start, goal, reached: outcome})
       const points = withoutRepeats([[fromX, fromY], ...along, [toX, toY]])
-      return {kind: WalkPathKind.found, coordinates: coordinatesOfPoints({plane, points}), meters: lengthOf(points)}
+      const meters = lengthOf(points)
+      const costedMeters = outcome.cost + start.distance + goal.distance
+      assertCondition(Math.abs(meters - costedMeters) < DRAWN_COST_TOLERANCE_METERS, "walk path: the line drawn is " + meters + " m and the search costed " + costedMeters + " m")
+      return {kind: WalkPathKind.found, coordinates: coordinatesOfPoints({plane, points}), meters}
     }
     default:
       return unreachable(outcome.kind, "walk path: a search of unknown kind")

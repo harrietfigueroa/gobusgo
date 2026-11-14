@@ -48,7 +48,19 @@ const EXPANDED_BYTES_MAX = 1024 * 1024
 const METERS_TOLERANCE = 0.6
 const DEGREE_TOLERANCE = 1e-7
 const INDEX_BYTE_SIZE = 3318
+const KIND_VERSION = 1
 const MIDDLE_LAT_UNITS = 4_761_375
+const ISLAND_LAT_UNITS = 20
+const ISLAND_FIRST_UNITS = 100
+const ISLAND_LAST_UNITS = 300
+const MAIN_SPAN_UNITS = 400
+const FROM_OFFSET_UNITS = 50
+const TO_OFFSET_UNITS = 200
+const TO_LAT_UNITS = 12
+const LOOP_SIDE_UNITS = 100
+const EAST_LAST_DELTA_OFFSET_FROM_END = 2
+const OVERLONG_ZERO_FIRST_BYTE = 0x80
+const ZERO_DELTA_BYTES = [OVERLONG_ZERO_FIRST_BYTE, 0]
 const EXPECTED_TILE_LAT_UNITS = 1_000
 const EXPECTED_TILE_LON_UNITS = 1_500
 
@@ -126,6 +138,21 @@ function withByte({bytes, offset, value}) {
   const copy = new Uint8Array(bytes)
   copy[offset] = value
   return copy
+}
+
+function tableOfLines(lines) {
+  const points = []
+  const pieceStarts = [0]
+
+  for (const line of lines) {
+    for (const [latUnits, lonUnits] of line) {
+      points.push(latUnits, lonUnits)
+    }
+
+    pieceStarts.push(pieceStarts[pieceStarts.length - 1] + line.length)
+  }
+
+  return {pieceCount: lines.length, classes: new Uint8Array(lines.length), pieceStarts: Uint32Array.from(pieceStarts), points: Int32Array.from(points)}
 }
 
 function isWalkGraphKind(kind) {
@@ -217,6 +244,12 @@ strictEqual(indexRefusal(withEmptyRun), WalkGraphRefusal.badRuns)
 strictEqual(indexRefusal(indexAsShardKind), PackedRefusal.kindMismatch)
 
 const tooLarge = await expandStream(read("shard-west.bin.gz"), {expandedByteSizeMax: ONE_POSITION})
+
+// The east shard's one piece ends at its start when the last difference is zero.
+const eastBytes = read("shard-east.bin")
+const closedEast = new Uint8Array(eastBytes)
+closedEast.set(ZERO_DELTA_BYTES, closedEast.length - EAST_LAST_DELTA_OFFSET_FROM_END)
+strictEqual(shardRefusal(closedEast), WalkGraphRefusal.closedPiece, "a piece that starts and ends at one position")
 deepStrictEqual(tooLarge, {kind: PackedOutcome.refused, reason: PackedRefusal.tooLarge}, "an expansion past its bound")
 
 // ---- The walk path over the fixture's shards.
@@ -343,12 +376,40 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
   ok(message.includes("latitude"), "a NaN latitude asserts: " + message)
 }
 
-// ---- The manifest a reader accepts.
+// A graph holds no piece that starts and ends at one node.
+{
+  const loop = [[SOUTH, WEST_COLUMN], [SOUTH, WEST_COLUMN + LOOP_SIDE_UNITS], [SOUTH + LOOP_SIDE_UNITS, WEST_COLUMN + LOOP_SIDE_UNITS], [SOUTH, WEST_COLUMN]]
+  const loopEnds = {from: degrees(SOUTH, WEST_COLUMN + FROM_OFFSET_UNITS), to: degrees(SOUTH, WEST_COLUMN + TO_OFFSET_UNITS)}
+  let message = ""
 
+  try {
+    findWalkPath({...loopEnds, shards: [tableOfLines([loop])], limits: WALK_LIMITS})
+  } catch (error) {
+    message = error.message
+  }
+
+  ok(message.includes("starts and ends at one node"), "a loop piece asserts: " + message)
+}
+
+// An end snaps into the component the other end reaches, not the nearer one.
+{
+  const mainLine = [[SOUTH, WEST_COLUMN], [SOUTH, WEST_COLUMN + MAIN_SPAN_UNITS]]
+  const islandLine = [[SOUTH + ISLAND_LAT_UNITS, WEST_COLUMN + ISLAND_FIRST_UNITS], [SOUTH + ISLAND_LAT_UNITS, WEST_COLUMN + ISLAND_LAST_UNITS]]
+  const from = degrees(SOUTH, WEST_COLUMN + FROM_OFFSET_UNITS)
+  const to = degrees(SOUTH + TO_LAT_UNITS, WEST_COLUMN + TO_OFFSET_UNITS)
+  const found = findWalkPath({from, to, shards: [tableOfLines([mainLine, islandLine])], limits: WALK_LIMITS})
+  strictEqual(found.kind, WalkPathKind.found)
+  const alongMain = metersOfUnits({lonUnits: TO_OFFSET_UNITS - FROM_OFFSET_UNITS, latDegrees: from.lat})
+  const expectedMeters = alongMain + TO_LAT_UNITS * (METERS_PER_DEGREE / UNITS_PER_DEGREE)
+  ok(Math.abs(found.meters - expectedMeters) < METERS_TOLERANCE, "the main street's path is " + expectedMeters + " m, not " + found.meters)
+}
+
+// ---- The manifest a reader accepts.
 const MANIFEST = {
   buildId: BUILD_ID,
   index: {path: "/intersections/walk-graph-index-aa.bin.gz", byteSize: INDEX_BYTE_SIZE, sha256: "aa"},
   tile: {latUnits: TILE_LAT_UNITS, lonUnits: TILE_LON_UNITS},
+  kindVersion: KIND_VERSION,
   unitsPerDegree: UNITS_PER_DEGREE
 }
 
@@ -363,6 +424,8 @@ const REFUSED_MANIFESTS = [
   ["other tiles", {...MANIFEST, tile: {latUnits: TILE_LAT_UNITS / HALF, lonUnits: TILE_LON_UNITS}}, ManifestRefusal.otherTiles],
   ["no tiles", {...MANIFEST, tile: undefined}, ManifestRefusal.otherTiles],
   ["other units", {...MANIFEST, unitsPerDegree: UNITS_PER_DEGREE * PERCENT}, ManifestRefusal.otherUnits],
+  ["a newer kind version", {...MANIFEST, kindVersion: SECOND_VERSION}, ManifestRefusal.otherVersion],
+  ["no kind version", {...MANIFEST, kindVersion: undefined}, ManifestRefusal.otherVersion],
   ["a build identifier in upper case", {...MANIFEST, buildId: upperCase(BUILD_ID)}, ManifestRefusal.badBuildId],
   ["an index path with no slash", {...MANIFEST, index: {...MANIFEST.index, path: "walk-graph-index.bin.gz"}}, ManifestRefusal.badIndex],
   ["an index of no size", {...MANIFEST, index: {...MANIFEST.index, byteSize: 0}}, ManifestRefusal.badIndex]

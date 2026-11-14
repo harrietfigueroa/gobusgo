@@ -58,6 +58,7 @@ export const WalkGraphRefusal = Object.freeze({
   badCounts: "badCounts",
   countMismatch: "countMismatch",
   badBuildId: "badBuildId",
+  closedPiece: "closedPiece",
   badRuns: "badRuns"
 })
 
@@ -161,6 +162,11 @@ export function decodeWalkGraphShard(bytes) {
   }
 
   const table = {pieceCount, classes: starts.classNumbers, pieceStarts: starts.pieceStarts, points}
+
+  if (hasClosedPiece(table)) {
+    return refused(WalkGraphRefusal.closedPiece)
+  }
+
   return {kind: PackedOutcome.decoded, table}
 }
 
@@ -235,6 +241,24 @@ export function decodeWalkGraphIndex(bytes) {
   return {kind: PackedOutcome.decoded, table: {buildId, tileKeys: runs.tileKeys}}
 }
 
+// Whether some piece of `table` starts and ends at one position.
+function hasClosedPiece(table) {
+  for (let piece = 0; piece < table.pieceCount; piece += 1) {
+    const first = table.pieceStarts[piece] * COORDINATE_COUNT
+    const last = (table.pieceStarts[piece + 1] - 1) * COORDINATE_COUNT
+    const isLatSame = table.points[first] === table.points[last]
+    const isLonSame = table.points[first + 1] === table.points[last + 1]
+
+    const isClosed = isLatSame && isLonSame
+
+    if (isClosed) {
+      return true
+    }
+  }
+
+  return false
+}
+
 /** The kinds of the answer to a manifest. */
 export const ManifestKind = Object.freeze({accepted: "accepted", refused: "refused"})
 
@@ -243,6 +267,7 @@ export const ManifestRefusal = Object.freeze({
   notAnObject: "notAnObject",
   otherTiles: "otherTiles",
   otherUnits: "otherUnits",
+  otherVersion: "otherVersion",
   badBuildId: "badBuildId",
   badIndex: "badIndex"
 })
@@ -279,6 +304,10 @@ export function acceptWalkManifest(manifest) {
 
   if (manifest.unitsPerDegree !== UNITS_PER_DEGREE) {
     return refusedManifest(ManifestRefusal.otherUnits)
+  }
+
+  if (manifest.kindVersion !== WALK_GRAPH_FILE_VERSION) {
+    return refusedManifest(ManifestRefusal.otherVersion)
   }
 
   const isBuildIdText = typeof manifest.buildId === "string"

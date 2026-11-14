@@ -52,6 +52,33 @@ defmodule Gobusgo.WalkGraph.GeometryTest do
     end
   end
 
+  describe "Edges.split_closed/1" do
+    test "leaves an open edge whole" do
+      assert Edges.split_closed([{0, 0}, {0, 5}, {5, 5}]) == [[{0, 0}, {0, 5}, {5, 5}]]
+    end
+
+    test "cuts a closed edge at its middle position into two that share it" do
+      loop = [{0, 0}, {0, 5}, {5, 5}, {5, 0}, {0, 0}]
+
+      assert Edges.split_closed(loop) == [[{0, 0}, {0, 5}, {5, 5}], [{5, 5}, {5, 0}, {0, 0}]]
+    end
+
+    test "cuts an out-and-back edge into its two ways" do
+      assert Edges.split_closed([{0, 0}, {0, 5}, {0, 0}]) == [[{0, 0}, {0, 5}], [{0, 5}, {0, 0}]]
+    end
+
+    test "drops a closed edge that has no length" do
+      assert Edges.split_closed([{0, 0}, {0, 0}]) == []
+    end
+
+    test "cuts a figure of eight until no piece is closed" do
+      eight = [{0, 0}, {1, 1}, {0, 2}, {1, 1}, {0, 0}]
+      pieces = Edges.split_closed(eight)
+      assert Enum.all?(pieces, &(hd(&1) != List.last(&1)))
+      assert pieces |> Enum.map(&length/1) |> Enum.sum() >= 4
+    end
+  end
+
   describe "Tiles.cut/2" do
     test "keeps a path inside one tile whole" do
       assert Tiles.cut([{10, 10}, {20, 20}, {30, 40}], @sizes) == [

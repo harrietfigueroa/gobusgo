@@ -75,4 +75,31 @@ defmodule Gobusgo.WalkGraph.Edges do
     [shared | _earlier] = Enum.reverse(head)
     [head | split_long([shared | tail])]
   end
+
+  @doc """
+  The edges `edge` is made of once every closed one, whose first and last
+  position are one, is cut at its middle position into two, which
+  leaves the graph no edge that starts and ends at one node. A closed edge
+  of no more than two positions has no length and is dropped. Each cut
+  halves an edge, so the recursion is as deep as the logarithm of its
+  positions.
+  """
+  @spec split_closed([point()]) :: [[point(), ...]]
+  def split_closed([first | _rest] = edge) when length(edge) >= 2 do
+    if List.last(edge) == first do
+      cut_closed(edge)
+    else
+      [edge]
+    end
+  end
+
+  def split_closed(_edge), do: []
+
+  defp cut_closed(edge) when length(edge) <= 2, do: []
+
+  defp cut_closed(edge) do
+    middle = div(length(edge), 2)
+    {left, right} = {Enum.take(edge, middle + 1), Enum.drop(edge, middle)}
+    Enum.flat_map([left, right], &split_closed/1)
+  end
 end

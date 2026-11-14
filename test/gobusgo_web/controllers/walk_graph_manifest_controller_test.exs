@@ -14,7 +14,8 @@ defmodule GobusgoWeb.WalkGraphManifestControllerTest do
   @manifest %{
     "buildId" => "0123456789abcdef",
     "builtAt" => "2026-11-10T22:00:00Z",
-    "index" => %{"path" => "/intersections/walk-graph-index-aa.bin.gz"}
+    "index" => %{"path" => "/intersections/walk-graph-index-aa.bin.gz"},
+    "kindVersion" => 1
   }
 
   setup %{tmp_dir: tmp_dir} do

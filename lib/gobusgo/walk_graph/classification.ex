@@ -10,16 +10,21 @@ defmodule Gobusgo.WalkGraph.Classification do
 
     * `motorway` and `motorway_link` are never walkable.
     * `trunk` and `trunk_link` are walkable only where `foot` is `yes`,
-      `designated`, or `permissive`, or `sidewalk` names a sidewalk, since a
-      trunk road in a city is one that people cross and walk beside, and
-      elsewhere one they must not walk on.
+      `designated`, or `permissive`, or `sidewalk` names a sidewalk
+      (`both`, `left`, `right`, or `yes`), or `sidewalk:both`,
+      `sidewalk:left`, or `sidewalk:right` is `yes`, since a trunk road in
+      a city is one that people cross and walk beside, and elsewhere one
+      they must not walk on. `sidewalk=separate` does not count: the
+      sidewalk is a way of its own then.
     * `cycleway` and `bridleway` are walkable only where `foot` is `yes`,
       `designated`, or `permissive`.
     * `foot=no` and `foot=private` exclude a way; `access=no` and
       `access=private` exclude it unless `foot` allows it.
     * A way with `area=yes` is a plaza's outline, not a line to walk along.
-    * Every other `highway` value, `construction`, `proposed`, `corridor`,
-      `elevator`, and `raceway` among them, is excluded.
+    * `corridor` and `elevator`, the ways of a station's concourse, are
+      walkable paths.
+    * Every other `highway` value, `construction`, `proposed`, and `raceway`
+      among them, is excluded.
 
   A walkable way is one of five classes, whose numbers the shard stores:
   `path`, `sidewalk`, `crossing`, `steps`, and `street`.
@@ -27,7 +32,7 @@ defmodule Gobusgo.WalkGraph.Classification do
 
   @classes %{path: 0, sidewalk: 1, crossing: 2, steps: 3, street: 4}
 
-  @path_highways ["footway", "path", "pedestrian", "track", "platform"]
+  @path_highways ["footway", "path", "pedestrian", "track", "platform", "corridor", "elevator"]
   @restricted_highways ["cycleway", "bridleway"]
   @street_highways [
     "living_street",
@@ -46,6 +51,7 @@ defmodule Gobusgo.WalkGraph.Classification do
   @foot_forbidden ["no", "private"]
   @access_closed ["no", "private"]
   @sidewalk_values ["both", "left", "right", "yes"]
+  @sidewalk_keys ["sidewalk:both", "sidewalk:left", "sidewalk:right"]
   @crossing_keys ["footway", "cycleway"]
 
   @type class :: :path | :sidewalk | :crossing | :steps | :street
@@ -92,7 +98,9 @@ defmodule Gobusgo.WalkGraph.Classification do
     is_restricted = highway in @restricted_highways
     is_trunk = highway in @trunk_highways
     has_sidewalk = Map.get(tags, "sidewalk") in @sidewalk_values
-    is_trunk_walkable = is_foot_allowed or has_sidewalk
+    has_sidewalk_key = Enum.any?(@sidewalk_keys, &(Map.get(tags, &1) == "yes"))
+    has_any_sidewalk = has_sidewalk or has_sidewalk_key
+    is_trunk_walkable = is_foot_allowed or has_any_sidewalk
 
     cond do
       is_access_closed and not is_foot_allowed -> {:excluded, :access_closed}

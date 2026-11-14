@@ -22,6 +22,10 @@ defmodule Gobusgo.WalkGraph.ClassificationTest do
     {%{"highway" => "bridleway", "foot" => "permissive"}, :path},
     {%{"highway" => "trunk", "sidewalk" => "both"}, :street},
     {%{"highway" => "trunk_link", "foot" => "yes"}, :street},
+    {%{"highway" => "trunk", "sidewalk:left" => "yes"}, :street},
+    {%{"highway" => "trunk", "sidewalk:both" => "yes"}, :street},
+    {%{"highway" => "corridor"}, :path},
+    {%{"highway" => "elevator"}, :path},
     {%{"highway" => "service", "access" => "private", "foot" => "yes"}, :street}
   ]
 
@@ -31,12 +35,13 @@ defmodule Gobusgo.WalkGraph.ClassificationTest do
     {%{"highway" => "motorway_link", "foot" => "yes"}, :motorway},
     {%{"highway" => "trunk"}, :needs_foot_permission},
     {%{"highway" => "trunk", "sidewalk" => "no"}, :needs_foot_permission},
+    {%{"highway" => "trunk", "sidewalk" => "separate"}, :needs_foot_permission},
+    {%{"highway" => "trunk", "sidewalk:left" => "no"}, :needs_foot_permission},
     {%{"highway" => "cycleway"}, :needs_foot_permission},
     {%{"highway" => "bridleway"}, :needs_foot_permission},
     {%{"highway" => "construction"}, :not_walkable_highway},
     {%{"highway" => "proposed"}, :not_walkable_highway},
-    {%{"highway" => "corridor"}, :not_walkable_highway},
-    {%{"highway" => "elevator"}, :not_walkable_highway},
+    {%{"highway" => "raceway"}, :not_walkable_highway},
     {%{"highway" => "pedestrian", "area" => "yes"}, :area},
     {%{"highway" => "footway", "foot" => "no"}, :foot_forbidden},
     {%{"highway" => "residential", "foot" => "private"}, :foot_forbidden},

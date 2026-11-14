@@ -34,6 +34,18 @@ function failed(reason) {
   return {kind: FetchKind.failed, reason}
 }
 
+// Whether `error` is one a fetch or its body raises: a refused or aborted
+// request (`TypeError`, `DOMException`) or a body that is not JSON
+// (`SyntaxError`). Any other error, an `AssertionError` of a decoder among
+// them, is a programmer error, which a catch clause throws on.
+function isFetchError(error) {
+  const isDomException = error instanceof DOMException
+  const isNetworkError = error instanceof TypeError
+  const isBadBody = error instanceof SyntaxError
+  const isRequestFailure = isDomException || isNetworkError
+  return isRequestFailure || isBadBody
+}
+
 function failureOfError(error) {
   const isDomException = error instanceof DOMException
   const isTimeout = isDomException && error.name === "TimeoutError"
@@ -69,6 +81,10 @@ export async function fetchWalkManifest({origin, path}) {
 
     return {kind: FetchKind.fetched, accepted}
   } catch (error) {
+    if (!isFetchError(error)) {
+      throw error
+    }
+
     return failureOfError(error)
   }
 }
@@ -107,6 +123,10 @@ async function fetchTable({origin, path, byteSize, expandedByteSizeMax, decode})
 
     return {kind: FetchKind.fetched, table: decoded.table}
   } catch (error) {
+    if (!isFetchError(error)) {
+      throw error
+    }
+
     return failureOfError(error)
   }
 }

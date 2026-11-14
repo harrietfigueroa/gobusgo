@@ -1585,6 +1585,7 @@
           "buildId",
           "builtAt",
           "index",
+          "kindVersion",
           "license",
           "pieceCount",
           "shardCount",
@@ -1609,6 +1610,11 @@
           },
           "index": {
             "$ref": "#/components/schemas/ManifestFile"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version of the walk graph shard and index kinds the files are written in, which a reader that does not know it refuses before it fetches a shard."
           },
           "license": {
             "type": "object",

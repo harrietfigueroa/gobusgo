@@ -81,6 +81,27 @@ defmodule Gobusgo.WalkGraph.FormatTest do
       assert Format.decode_shard(shard_with(0, <<0>>)) == {:error, :bad_section_size}
     end
 
+    test "refuses a piece that starts and ends at one position" do
+      loop = Positions.encode_path([{1, 1}, {2, 2}, {1, 1}])
+
+      closed =
+        Packed.encode(%{
+          kind: 8,
+          version: 1,
+          record_count: 1,
+          strings: [],
+          sections: [Columns.encode(:u8, [0]), Columns.encode(:u16, [3]), loop]
+        })
+
+      assert Format.decode_shard(closed) == {:error, :closed_piece}
+    end
+
+    test "asserts a closed piece when encoding" do
+      assert_raise Gobusgo.Assert.AssertionError, ~r/different positions/, fn ->
+        Format.encode_shard([%{class: 0, points: [{1, 1}, {2, 2}, {1, 1}]}])
+      end
+    end
+
     test "asserts a piece of one position when encoding" do
       assert_raise Gobusgo.Assert.AssertionError, ~r/2 to 65535 positions/, fn ->
         Format.encode_shard([%{class: 0, points: [{1, 1}]}])

@@ -180,6 +180,7 @@ defmodule Gobusgo.WalkGraph.Selection do
           units_per_degree: @units_per_degree
         })
       )
+      |> Enum.flat_map(&Edges.split_closed/1)
       |> Enum.flat_map(&Tiles.cut(&1, context.tile_sizes))
       |> Enum.reduce(state, &keep_piece(&1, &2, Classification.number(class)))
     else

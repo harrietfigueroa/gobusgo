@@ -32,6 +32,8 @@ defmodule Gobusgo.WalkGraph.Format do
   A piece is a polyline between two junctions, or a part of one cut at the
   tile's edge or at #{@piece_points_max} positions; a position two pieces
   share is a junction, and a reader joins pieces that end at one position.
+  No piece starts and ends at one position: a closed way is cut at its
+  middle position into two, so the graph has no loop edge.
   Pieces are ordered by the Morton code of their first position inside the
   tile, so the path's differences stay small; the order carries no meaning.
 
@@ -64,6 +66,7 @@ defmodule Gobusgo.WalkGraph.Format do
           | :bad_counts
           | :count_mismatch
           | :bad_build_id
+          | :closed_piece
           | :bad_runs
   @type piece :: %{class: 0..4, points: [{integer(), integer()}, ...]}
   @type index :: %{build_id: String.t(), tiles: [Tiles.tile(), ...]}
@@ -166,6 +169,11 @@ defmodule Gobusgo.WalkGraph.Format do
         count >= 2 and count <= @piece_points_max,
         "a piece holds 2 to #{@piece_points_max} positions, got: #{count}"
       )
+
+      Assert.condition(
+        hd(piece.points) != List.last(piece.points),
+        "a piece starts and ends at different positions"
+      )
     end
 
     points = Enum.flat_map(pieces, & &1.points)
@@ -200,7 +208,7 @@ defmodule Gobusgo.WalkGraph.Format do
          :ok <- check_counts(point_counts),
          {:ok, points, rest} <- Positions.decode_path(positions),
          :ok <- check_rest(rest, points, point_counts) do
-      {:ok, %{pieces: group(class_numbers, point_counts, points)}}
+      check_open(group(class_numbers, point_counts, points))
     end
   end
 
@@ -217,6 +225,14 @@ defmodule Gobusgo.WalkGraph.Format do
       rest != <<>> -> {:error, :bad_section_size}
       length(points) != Enum.sum(point_counts) -> {:error, :count_mismatch}
       true -> :ok
+    end
+  end
+
+  defp check_open(pieces) do
+    if Enum.any?(pieces, &(hd(&1.points) == List.last(&1.points))) do
+      {:error, :closed_piece}
+    else
+      {:ok, %{pieces: pieces}}
     end
   end
 

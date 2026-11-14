@@ -24,7 +24,7 @@ defmodule Gobusgo.WalkGraph.Publication do
   manifest written, at `#{@manifest_prefix}<UTC build time>-<SHA-256 of the
   index>.json`, canonical JSON:
 
-      {"attribution": ..., "buildId": ..., "builtAt": ..., "index": {"byteSize": ..., "path": ..., "sha256": ...},
+      {"attribution": ..., "buildId": ..., "builtAt": ..., "index": {"byteSize": ..., "path": ..., "sha256": ...}, "kindVersion": ...,
        "license": {"name": ..., "url": ...}, "pieceCount": ..., "shardCount": ...,
        "sourceDate": ..., "tile": {"latUnits": ..., "lonUnits": ...}, "unitsPerDegree": ...}
 
@@ -216,6 +216,7 @@ defmodule Gobusgo.WalkGraph.Publication do
       "buildId" => build_id,
       "builtAt" => DateTime.to_iso8601(request.built_at),
       "index" => Packed.file_entry("/" <> index_file.destination, index_file.stored),
+      "kindVersion" => Format.version(),
       "license" => %{"name" => @license_name, "url" => @license_url},
       "pieceCount" => piece_count,
       "shardCount" => shard_count,

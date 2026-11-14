@@ -106,6 +106,7 @@ defmodule Gobusgo.WalkGraph.PublicationTest do
                "url" => "https://opendatacommons.org/licenses/odbl/1-0/"
              },
              "pieceCount" => 3,
+             "kindVersion" => 1,
              "shardCount" => 2,
              "sourceDate" => "2026-11-08T21:21:00Z",
              "tile" => %{"latUnits" => 1_000, "lonUnits" => 1_500},

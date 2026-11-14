@@ -28,7 +28,8 @@ defmodule GobusgoWeb.WalkGraphManifestController do
                     %{
                       "buildId" => :string,
                       "builtAt" => :string,
-                      "index" => {:map, %{"path" => :string}}
+                      "index" => {:map, %{"path" => :string}},
+                      "kindVersion" => :integer
                     }}
 
   @doc "Answers the manifest, that the client holds it already, or that there is none."

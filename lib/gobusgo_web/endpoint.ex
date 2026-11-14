@@ -99,6 +99,7 @@ defmodule GobusgoWeb.Endpoint do
   @intersections_file_prefix "intersections-"
   @walk_graph_file_prefix "walk-graph-"
   @intersections_cache_seconds Gobusgo.Intersections.Publication.reader_keep_seconds()
+  @walk_graph_cache_seconds Gobusgo.WalkGraph.Publication.reader_keep_seconds()
   @shared_vehicles_path "/shared-vehicles"
   # Lime's terms allow what a fetch holds to be kept ten minutes (GOB-253),
   # so a cache keeps a shared vehicle file a minute, well inside them.
@@ -189,8 +190,15 @@ defmodule GobusgoWeb.Endpoint do
     at: @intersections_path,
     from: {__MODULE__, :intersections_dir, []},
     gzip: false,
-    only_matching: [@intersections_file_prefix, @walk_graph_file_prefix],
+    only_matching: [@intersections_file_prefix],
     cache_control_for_etags: "public, max-age=#{@intersections_cache_seconds}, immutable"
+
+  plug Plug.Static,
+    at: @intersections_path,
+    from: {__MODULE__, :intersections_dir, []},
+    gzip: false,
+    only_matching: [@walk_graph_file_prefix],
+    cache_control_for_etags: "public, max-age=#{@walk_graph_cache_seconds}, immutable"
 
   plug Plug.Static,
     at: @shared_vehicles_path,
