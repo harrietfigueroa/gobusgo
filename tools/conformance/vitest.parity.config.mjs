@@ -9,6 +9,7 @@
 import {fileURLToPath} from "node:url"
 import {playwright} from "@vitest/browser-playwright"
 import {defineConfig} from "vitest/config"
+import {assertCondition} from "../../assets/js/core/assert.js"
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../..", import.meta.url))
 const ORIGIN_VARIABLE = "GOBUSGO_FILE_ORIGIN"
@@ -25,18 +26,12 @@ const fileOrigin = originOf(process.env[ORIGIN_VARIABLE])
 const cached = new Map()
 
 function originOf(value) {
-  if (value === undefined) {
-    throw new Error(`the parity harness needs ${ORIGIN_VARIABLE}, the origin of a site that publishes routing snapshots`)
-  }
-
+  const isSet = value !== undefined
+  assertCondition(isSet, `the parity harness needs ${ORIGIN_VARIABLE}, the origin of a site that publishes routing snapshots`)
   const url = new URL(value)
   const isHttps = url.protocol === "https:"
-
-  if (isHttps) {
-    return url.origin
-  }
-
-  throw new Error(`${ORIGIN_VARIABLE} is not an https origin: ${value}`)
+  assertCondition(isHttps, `${ORIGIN_VARIABLE} is not an https origin: ${value}`)
+  return url.origin
 }
 
 function isAllowedPath(path) {
@@ -47,9 +42,8 @@ function isAllowedPath(path) {
 
 // The bytes of `path` on the site, as base64, since a command's answer is text.
 async function fileFromOrigin(_context, path) {
-  if (!isAllowedPath(path)) {
-    throw new Error(`parity harness: ${path} is no routing file`)
-  }
+  const isRoutingFile = isAllowedPath(path)
+  assertCondition(isRoutingFile, `parity harness: ${path} is no routing file`)
 
   if (cached.has(path)) {
     return cached.get(path)
@@ -58,9 +52,8 @@ async function fileFromOrigin(_context, path) {
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
   const response = await fetch(fileOrigin + path, {signal, redirect: "error"})
 
-  if (response.status !== HTTP_OK) {
-    throw new Error(`parity harness: ${path} answered ${response.status}`)
-  }
+  const isOk = response.status === HTTP_OK
+  assertCondition(isOk, `parity harness: ${path} answered ${response.status}`)
 
   const body = await response.arrayBuffer()
   const encoded = Buffer.from(body).toString("base64")
