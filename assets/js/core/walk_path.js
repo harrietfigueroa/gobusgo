@@ -60,6 +60,7 @@ const VIRTUAL_NODE_COUNT = 2
 const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
 const DRAWN_COST_TOLERANCE_METERS = 0.01
+const TIE_UNITS_PER_METER = 1_000_000
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
 const SnapKind = Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
 const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
@@ -272,6 +273,28 @@ function nearestOnSegment({x, y, startX, startY, endX, endY}) {
   return {pointX, pointY, distance: Math.hypot(x - pointX, y - pointY), fraction, segmentLength: Math.sqrt(lengthSquared)}
 }
 
+// Two points whose distances agree to a micrometer tie, and the tie goes to
+// the lesser x and then the lesser y, so the choice rests on geometry and
+// not on the order the pieces arrived in.
+function tieUnits(meters) {
+  return Math.round(meters * TIE_UNITS_PER_METER)
+}
+
+function isCloser({nearest, held}) {
+  const nearestUnits = tieUnits(nearest.distance)
+  const heldUnits = tieUnits(held.distance)
+
+  if (nearestUnits !== heldUnits) {
+    return nearestUnits < heldUnits
+  }
+
+  if (nearest.pointX !== held.x) {
+    return nearest.pointX < held.x
+  }
+
+  return nearest.pointY < held.y
+}
+
 // The nearest point to (x, y) within `snapMetersMax` on the edges of each
 // connected component, a Map from a component to `{kind: "snapped", edge,
 // x, y, distance, along}`; a component with no edge that near is left out.
@@ -285,7 +308,7 @@ function snapsByComponent({graph, x, y, snapMetersMax}) {
       const nearest = nearestOnSegment({x, y, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1], endX: edge.xy[endOffset], endY: edge.xy[endOffset + 1]})
 
       const held = snaps.get(edge.component)
-      const isNearer = held === undefined || nearest.distance < held.distance
+      const isNearer = held === undefined || isCloser({nearest, held})
       const isNear = nearest.distance <= snapMetersMax
       const isChosen = isNear && isNearer
 
@@ -303,9 +326,38 @@ function snapsByComponent({graph, x, y, snapMetersMax}) {
 // distances from the ends sum least: `{kind: "chosen", start, goal}`; or
 // `{kind: "none", reason}` with `offGraph` where an end reaches no
 // component and `disconnected` where the two reach none in common.
+// Sums that agree to a micrometer tie, and the tie goes to the start snap
+// nearer its end, then to the lesser start and goal positions, so the
+// choice rests on geometry and not on the order of the components.
+function isBetterPair({candidate, best}) {
+  const candidateSum = tieUnits(candidate.start.distance + candidate.goal.distance)
+  const bestSum = tieUnits(best.start.distance + best.goal.distance)
+
+  if (candidateSum !== bestSum) {
+    return candidateSum < bestSum
+  }
+
+  const candidateStart = tieUnits(candidate.start.distance)
+  const bestStart = tieUnits(best.start.distance)
+
+  if (candidateStart !== bestStart) {
+    return candidateStart < bestStart
+  }
+
+  const candidatePoints = [candidate.start.x, candidate.start.y, candidate.goal.x, candidate.goal.y]
+  const bestPoints = [best.start.x, best.start.y, best.goal.x, best.goal.y]
+
+  for (let index = 0; index < candidatePoints.length; index += 1) {
+    if (candidatePoints[index] !== bestPoints[index]) {
+      return candidatePoints[index] < bestPoints[index]
+    }
+  }
+
+  return false
+}
+
 function chooseSnaps({startSnaps, goalSnaps}) {
   let best = {kind: SnapKind.none, reason: NoPathReason.disconnected}
-  let bestSum = Infinity
 
   for (const [component, start] of startSnaps) {
     const goal = goalSnaps.get(component)
@@ -314,10 +366,10 @@ function chooseSnaps({startSnaps, goalSnaps}) {
       continue
     }
 
-    const sum = start.distance + goal.distance
+    const candidate = {start, goal}
+    const isFirst = best.kind === SnapKind.none
 
-    if (sum < bestSum) {
-      bestSum = sum
+    if (isFirst || isBetterPair({candidate, best})) {
       best = {kind: SnapKind.chosen, start, goal}
     }
   }
