@@ -10,8 +10,11 @@ import * as geodesy from "../../assets/js/core/math/geodesy.js"
 import * as interpolation from "../../assets/js/core/math/interpolation.js"
 import * as polyline from "../../assets/js/core/math/polyline.js"
 import * as packedContainer from "../../assets/js/core/packed_container.js"
+import * as routingEngine from "../../assets/js/core/routing_engine.js"
+import * as routingJourneys from "../../assets/js/core/routing_journeys.js"
 import * as routingNames from "../../assets/js/core/routing_names.js"
 import * as routingSnapshot from "../../assets/js/core/routing_snapshot.js"
+import * as routingWalk from "../../assets/js/core/routing_walk.js"
 import * as scheduledPath from "../../assets/js/core/scheduled_path.js"
 import * as tripPath from "../../assets/js/core/trip_path.js"
 import * as tripPathFiles from "../../assets/js/core/trip_path_files.js"
@@ -28,8 +31,11 @@ export const IMPLEMENTATIONS = Object.freeze([
     interpolation,
     packedContainer,
     polyline,
+    routingEngine,
+    routingJourneys,
     routingNames,
     routingSnapshot,
+    routingWalk,
     scheduledPath,
     tripPath,
     tripPathFiles,
