@@ -5,6 +5,8 @@
 // arrays a connection scan reads by index, or the reason the file was
 // refused. Every number is little-endian.
 
+import {assertCondition} from "./assert.js"
+
 const FORMAT_MAGIC = "GBRT"
 const HEADER_BYTES = 16
 const MAGIC_BYTES = 4
@@ -40,6 +42,21 @@ export const FORMAT_VERSION = 2
 
 /** The microdegrees a positions file holds on both axes for a stop with no known position. */
 export const POSITION_UNKNOWN_MICRODEGREES = -2147483648
+
+/** The `serviceDayOffset` of a trip that runs on the date before its snapshot's. */
+export const PREVIOUS_DATE_OFFSET = 1
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const ISO_DATE_LENGTH = 10
+
+/** The ISO 8601 date the day before the ISO 8601 date `serviceDate`. */
+export function previousDate(serviceDate) {
+  assertCondition(typeof serviceDate === "string", "routing snapshot: a service date is text")
+  const dayMs = Date.parse(`${serviceDate}T00:00:00.000Z`)
+  assertCondition(Number.isFinite(dayMs), `routing snapshot: a service date is an ISO 8601 date: ${serviceDate}`)
+  const previous = new Date(dayMs - DAY_MS)
+  return previous.toISOString().slice(0, ISO_DATE_LENGTH)
+}
 
 /** The kinds of a decoding result. */
 export const DecodeKind = Object.freeze({decoded: "decoded", refused: "refused"})

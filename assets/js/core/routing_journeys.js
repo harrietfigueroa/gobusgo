@@ -426,6 +426,8 @@ function journeyLeg({leg, connections, tables}) {
         tripId: trip.id,
         routeId: trip.routeId,
         serviceDayOffset: trip.serviceDayOffset,
+        boardSequence: connections.sequence[leg.boardConnection],
+        alightSequence: connections.sequence[leg.alightConnection],
         fromStopId: tables.stops[connections.departureStop[leg.boardConnection]],
         departureS: connections.departureS[leg.boardConnection],
         toStopId: tables.stops[connections.arrivalStop[leg.alightConnection]],
@@ -1020,7 +1022,9 @@ function advance({manifest, state, files}) {
  * earliest arrival plus WINDOW_SECONDS, fewest changes first, each with the
  * service date its times count from, its arrival, its changes, whether it is
  * the earliest, its legs by identifier, a ride's with every stop it passes
- * in `stopIds`, and in `stopPositions` the position in degrees of each stop
+ * in `stopIds` and the position in its trip of the hop it boards and of the
+ * hop it leaves at in `boardSequence` and `alightSequence`, and in
+ * `stopPositions` the position in degrees of each stop
  * it names whose position the snapshot knows; one arriving by a time holds
  * the journeys leaving at or after the latest departure less WINDOW_SECONDS,
  * each with the time it leaves in `departureS` and whether it is the latest.
