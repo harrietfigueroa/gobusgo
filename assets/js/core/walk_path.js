@@ -32,15 +32,13 @@ export const NoPathReason = Object.freeze({
 
 /**
  * The bounds of a walk's search. `distanceMetersMax` is the farthest apart
- * the ends may stand, `marginMeters` how far past the box of the two ends
- * the tiles are taken, `snapMetersMax` the farthest an end may stand from
+ * the ends may stand, `snapMetersMax` the farthest an end may stand from
  * the nearest piece, `tileCountMax` the most tiles a walk reads,
  * `edgeCountMax` the most pieces a graph holds, and `visitedNodeCountMax`
  * the most nodes the search settles.
  */
 export const WALK_LIMITS = Object.freeze({
   distanceMetersMax: 1_500,
-  marginMeters: 200,
   snapMetersMax: 100,
   tileCountMax: 16,
   edgeCountMax: 250_000,
@@ -56,6 +54,7 @@ const POSITION_KEY_LAT_SCALE = 67_108_864
 const NO_NODE = -1
 const NO_EDGE = -1
 const MIDDLE_DIVISOR = 2
+const WINDOW_RADIUS = 1
 const VIRTUAL_NODE_COUNT = 2
 const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
@@ -99,12 +98,12 @@ function straightMeters({plane, from, to}) {
 
 /**
  * The tiles of `index`, a Set of `tileKey`s, that the walk from `from` to
- * `to`, each `{lat, lon}` in degrees, reads: the tiles that the box of the
- * two ends, widened by `limits.marginMeters`, touches and the index holds.
- * The answer is `{kind: "tiles", tiles}`, each tile `{row, column}` in tile
- * order, or `{kind: "tooFar"}` for ends farther apart than
- * `limits.distanceMetersMax` or a box of more than `limits.tileCountMax`
- * tiles.
+ * `to`, each `{lat, lon}` in degrees, reads: the 3 by 3 tiles around the
+ * tile of each end, and so no more than one tile of each end is revealed by
+ * the set, wherever in it the end stands, that the index holds. The answer
+ * is `{kind: "tiles", tiles}`, each tile `{row, column}` in tile order, or
+ * `{kind: "tooFar"}` for ends farther apart than `limits.distanceMetersMax`
+ * or two windows that together hold more than `limits.tileCountMax` tiles.
  */
 export function walkTilesNeeded({from, to, index, limits}) {
   assertEnd(from, "from")
@@ -115,31 +114,40 @@ export function walkTilesNeeded({from, to, index, limits}) {
     return {kind: TilesKind.tooFar}
   }
 
-  const marginLat = limits.marginMeters / plane.metersPerLat
-  const marginLon = limits.marginMeters / plane.metersPerLon
-  const lowLat = Math.floor((Math.min(from.lat, to.lat) - marginLat) * UNITS_PER_DEGREE)
-  const lowLon = Math.floor((Math.min(from.lon, to.lon) - marginLon) * UNITS_PER_DEGREE)
-  const highLat = Math.ceil((Math.max(from.lat, to.lat) + marginLat) * UNITS_PER_DEGREE)
-  const highLon = Math.ceil((Math.max(from.lon, to.lon) + marginLon) * UNITS_PER_DEGREE)
-  const low = tileOf({lat: lowLat, lon: lowLon})
-  const high = tileOf({lat: highLat, lon: highLon})
-  const boxTileCount = (high.row - low.row + 1) * (high.column - low.column + 1)
+  const windowed = new Map()
 
-  if (boxTileCount > limits.tileCountMax) {
+  for (const end of [from, to]) {
+    const center = tileOf({lat: Math.floor(end.lat * UNITS_PER_DEGREE), lon: Math.floor(end.lon * UNITS_PER_DEGREE)})
+
+    for (let row = center.row - WINDOW_RADIUS; row <= center.row + WINDOW_RADIUS; row += 1) {
+      for (let column = center.column - WINDOW_RADIUS; column <= center.column + WINDOW_RADIUS; column += 1) {
+        windowed.set(tileKey({row, column}), {row, column})
+      }
+    }
+  }
+
+  if (windowed.size > limits.tileCountMax) {
     return {kind: TilesKind.tooFar}
   }
 
   const tiles = []
 
-  for (let row = low.row; row <= high.row; row += 1) {
-    for (let column = low.column; column <= high.column; column += 1) {
-      if (index.has(tileKey({row, column}))) {
-        tiles.push({row, column})
-      }
+  for (const [key, tile] of windowed) {
+    if (index.has(key)) {
+      tiles.push(tile)
     }
   }
 
+  tiles.sort(compareTiles)
   return {kind: TilesKind.tiles, tiles}
+}
+
+function compareTiles(first, second) {
+  if (first.row !== second.row) {
+    return first.row - second.row
+  }
+
+  return first.column - second.column
 }
 
 function positionKey({latUnits, lonUnits}) {
