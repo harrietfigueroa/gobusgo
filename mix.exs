@@ -55,12 +55,14 @@ defmodule Gobusgo.MixProject do
       "assets.tools": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.setup": ["assets.tools", "compile", "gobusgo.vendor.fetch"],
       "assets.build": [
+        "gobusgo.assets.core",
         "tailwind default",
         "esbuild default",
         "gobusgo.assets.map_library",
         "gobusgo.assets.service_worker"
       ],
       "assets.deploy": [
+        "gobusgo.assets.core",
         "tailwind default --minify",
         "esbuild default --minify",
         "gobusgo.assets.map_library",

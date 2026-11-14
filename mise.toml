@@ -1,4 +1,11 @@
-# The pmtiles command that `mix gobusgo.basemap.extract` runs. Erlang and
-# Elixir are pinned in .tool-versions.
+# The pmtiles command that `mix gobusgo.basemap.extract` runs, and the
+# wasm-bindgen command that builds the core's WebAssembly. Erlang and Elixir
+# are pinned in .tool-versions, and Rust in core/rust-toolchain.toml.
+#
+# wasm-bindgen's command reads a module that only the same version of the
+# wasm-bindgen crate writes, so this version and core/Cargo.lock's move
+# together. Its release archive also carries wasm-bindgen-test-runner.
+# https://rustwasm.github.io/docs/wasm-bindgen/reference/cli.html — checked 2026-11-13
 [tools]
 "ubi:protomaps/go-pmtiles" = { version = "1.31.2", exe = "pmtiles" }
+"github:wasm-bindgen/wasm-bindgen" = "0.2.130"

@@ -11,6 +11,9 @@
 # The image downloads the vendored packages itself, from the lock file.
 assets/vendor
 !lib
+!core
+# Cargo's build output stays out, so the image compiles the core itself.
+core/target
 !priv/static/manifest.webmanifest
 !priv/static/icons
 !priv/openapi.json
