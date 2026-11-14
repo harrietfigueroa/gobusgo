@@ -21,7 +21,9 @@
   window.addEventListener("message", (event) => {
     const message = event.data
     const isFromApp = event.source === frame.contentWindow
-    const isProtocol = isFromApp && message !== null && typeof message === "object" && message.jsonrpc === "2.0"
+    const isObject = typeof message === "object" && message !== null
+    const isObjectFromApp = isFromApp && isObject
+    const isProtocol = isObjectFromApp && message.jsonrpc === "2.0"
 
     if (!isProtocol) {
       return

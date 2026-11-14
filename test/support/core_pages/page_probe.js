@@ -12,7 +12,12 @@
     const put = Cache.prototype.put
 
     Cache.prototype.put = function (request, response) {
-      const url = typeof request === "string" ? request : request.url
+      let url = request
+
+      if (typeof request !== "string") {
+        url = request.url
+      }
+
       const isIndex = url.endsWith("/offline-schedules/index.json")
 
       return put.call(this, request, response).then((result) => {
