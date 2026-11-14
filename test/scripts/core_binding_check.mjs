@@ -1,8 +1,7 @@
-// Checks that a function crosses the core's WebAssembly binding: it loads the
-// module `mix gobusgo.assets.core` writes, calls `coreVersion` through the
-// JavaScript loader, and compares the answer with the version of
-// `core/Cargo.toml`'s workspace. The loader is the one a page imports; node
-// cannot fetch a `file:` address, so the module's bytes are handed to its
+// Checks that a function crosses the core's WebAssembly binding: it calls
+// `coreVersion` through the JavaScript loader and compares the answer with
+// the workspace version in the manifest at `MANIFEST_URL`. Node cannot fetch
+// a `file:` address, so the module's bytes are handed to the loader's
 // synchronous initialization. Run it with `node test/scripts/core_binding_check.mjs`
 // after `mix gobusgo.assets.core`; it exits non-zero and names what differs.
 
