@@ -68,7 +68,7 @@ The tile size and the encoding were chosen by building the same graph at three t
 
 The tile of 1,000 by 1,500 keeps a walk to two shards on average and four at most, a median of 18 KB downtown and 4 KB to 10 KB elsewhere, against a file count a third of the smaller tile's. A walk of up to 400 m, the router's walk radius, reads at most 16 tiles (`tileCountMax`), which a box of 1.5 km cannot reach.
 
-Over the real shards, 600 walks between two stops of the stored responses, 60 to 400 m apart in a straight line, the stops read from the stored `stops-for-route` responses, found a path for all 600, at a median of 1.13 times the straight line, a 90th percentile of 1.52, and 1.0 ms on average to plan on a development machine. A walk between random points is no measure of this: it ends in water, fields, and blocks that no way enters, so it has no way to snap to, and the figures of the first build over such points, 77% to 97% found and a median of 1.4 to 1.8 times the straight line, counted the connector from a random point to the nearest way. Before the snap chose a component both ends reach, 594 of 600 stop-to-stop walks were found.
+Over the real shards, 600 walks between two stops of the stored responses, 60 to 400 m apart in a straight line, the stops read from the stored `stops-for-route` responses, found a path for all 600, at a median of 1.13 times the straight line, a 90th percentile of 1.52, and 1.0 ms on average to plan on a development machine. Walks between random points are not a measure of this: they end in water, fields, and blocks that no way enters, so their lengths count a connector to the nearest way. Before the snap chose a component both ends reach, 594 of 600 stop-to-stop walks were found.
 
 ## Publication
 

@@ -25,6 +25,12 @@ const MANIFEST_PATH = "/api/walk-graph/manifest"
 const PATH_SEPARATOR = "/"
 const SourceKind = Object.freeze({idle: "idle", loading: "loading", ready: "ready", failed: "failed"})
 
+// Keeps an error that no fetch outcome maps, a programmer error, a visible
+// crash of the page instead of a silent rejection.
+function surfaceError(error) {
+  reportError(error)
+}
+
 function directoryOf(path) {
   return path.slice(0, path.lastIndexOf(PATH_SEPARATOR) + 1)
 }
@@ -87,7 +93,7 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
           break
         case WalkPathKind.notLoaded:
           for (const tile of plan.tiles) {
-            startShard(tile)
+            startShard(tile).catch(surfaceError)
           }
 
           break
@@ -196,7 +202,7 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
       const isLoadDue = isIdle || isSourceRetryDue()
 
       if (isLoadDue) {
-        load()
+        load().catch(surfaceError)
       }
 
       evaluate()

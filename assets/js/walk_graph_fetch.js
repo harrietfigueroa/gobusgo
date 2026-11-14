@@ -57,29 +57,27 @@ function failureOfError(error) {
   return failed(FetchFailure.fetch)
 }
 
-/**
- * The manifest at `path` on `origin`, revalidated with the browser's own
- * conditional request. The answer is `{kind: "fetched", accepted}` with
- * `acceptWalkManifest`'s accepted result, or a failure.
- */
-export async function fetchWalkManifest({origin, path}) {
-  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
+function readJson(response) {
+  return response.json()
+}
 
+function readBuffer(response) {
+  return response.arrayBuffer()
+}
+
+// The body of `url` read by `read`, or the failure. The `try` covers the
+// request and the body read alone, so an error of the code after them, a
+// decoder's assertion among them, is never taken for a fetch failure.
+async function fetchBody({url, init, read}) {
   try {
-    const response = await fetch(origin + path, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
+    const response = await fetch(url, init)
 
     if (!response.ok) {
       return failed(FetchFailure.fetch)
     }
 
-    const manifest = await response.json()
-    const accepted = acceptWalkManifest(manifest)
-
-    if (accepted.kind === ManifestKind.refused) {
-      return failed(FetchFailure.manifest)
-    }
-
-    return {kind: FetchKind.fetched, accepted}
+    const body = await read(response)
+    return {kind: FetchKind.fetched, body}
   } catch (error) {
     if (!isFetchError(error)) {
       throw error
@@ -89,46 +87,61 @@ export async function fetchWalkManifest({origin, path}) {
   }
 }
 
+/**
+ * The manifest at `path` on `origin`, revalidated with the browser's own
+ * conditional request. The answer is `{kind: "fetched", accepted}` with
+ * `acceptWalkManifest`'s accepted result, or a failure.
+ */
+export async function fetchWalkManifest({origin, path}) {
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  const init = {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}}
+  const fetched = await fetchBody({url: origin + path, init, read: readJson})
+
+  if (fetched.kind === FetchKind.failed) {
+    return fetched
+  }
+
+  const accepted = acceptWalkManifest(fetched.body)
+
+  if (accepted.kind === ManifestKind.refused) {
+    return failed(FetchFailure.manifest)
+  }
+
+  return {kind: FetchKind.fetched, accepted}
+}
+
 // The decoded table of the gzip stream at `path`, or the failure.
 async function fetchTable({origin, path, byteSize, expandedByteSizeMax, decode}) {
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  const init = {signal, cache: "default", credentials: "same-origin"}
+  const fetched = await fetchBody({url: origin + path, init, read: readBuffer})
 
-  try {
-    const response = await fetch(origin + path, {signal, cache: "default", credentials: "same-origin"})
-
-    if (!response.ok) {
-      return failed(FetchFailure.fetch)
-    }
-
-    const buffer = await response.arrayBuffer()
-    const isSizeKnown = byteSize !== null
-    const isSizeSame = buffer.byteLength === byteSize
-    const isSizeWrong = isSizeKnown && !isSizeSame
-
-    if (isSizeWrong) {
-      return failed(FetchFailure.sizeMismatch)
-    }
-
-    const expanded = await expandStream(new Uint8Array(buffer), {expandedByteSizeMax})
-
-    if (expanded.kind === PackedOutcome.refused) {
-      return failed(FetchFailure.expand)
-    }
-
-    const decoded = decode(expanded.bytes)
-
-    if (decoded.kind === PackedOutcome.refused) {
-      return failed(FetchFailure.decode)
-    }
-
-    return {kind: FetchKind.fetched, table: decoded.table}
-  } catch (error) {
-    if (!isFetchError(error)) {
-      throw error
-    }
-
-    return failureOfError(error)
+  if (fetched.kind === FetchKind.failed) {
+    return fetched
   }
+
+  const buffer = fetched.body
+  const isSizeKnown = byteSize !== null
+  const isSizeSame = buffer.byteLength === byteSize
+  const isSizeWrong = isSizeKnown && !isSizeSame
+
+  if (isSizeWrong) {
+    return failed(FetchFailure.sizeMismatch)
+  }
+
+  const expanded = await expandStream(new Uint8Array(buffer), {expandedByteSizeMax})
+
+  if (expanded.kind === PackedOutcome.refused) {
+    return failed(FetchFailure.expand)
+  }
+
+  const decoded = decode(expanded.bytes)
+
+  if (decoded.kind === PackedOutcome.refused) {
+    return failed(FetchFailure.decode)
+  }
+
+  return {kind: FetchKind.fetched, table: decoded.table}
 }
 
 /** The index at `path`, of the `byteSize` its manifest names, as `{kind: "fetched", table}` or a failure. */
