@@ -84,6 +84,14 @@ import {expandStream} from "./packed_stream.js"
 import {preparePath} from "./vehicle_prediction"
 import {registerImageResolver} from "./style_images"
 import {createYourBusLabel} from "./your_bus_label"
+import {PositionKind, createVehicleFollower} from "./vehicle_follower"
+import {
+  FOLLOW_REQUEST_EVENT_NAME,
+  VehicleLookupKind,
+  isMarkerHeld,
+  labelOf,
+  markerForVehicle
+} from "./vehicle_follow"
 
 const SOURCE_NAME = "vehicle-markers"
 const IMAGE_RESOLVER_KEY = "vehicle-markers"
@@ -599,6 +607,14 @@ export const VehicleMarkers = {
     // The label beside the chosen journey's first bus.
     this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME, onLabel: (label) => { this.markYourBus(label) }})
     this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
+    // Follows one vehicle's marker with the map, from a tap on the marker or
+    // a request from an arrival's button.
+    this.follower = createVehicleFollower({
+      positionOf: (markerId) => this.followPositionOf(markerId),
+      isHeld: (markerId) => isMarkerHeld({markerLists: this.markersByAgency.values(), markerId})
+    })
+    this.onFollowRequest = (event) => { this.followVehicleOf(event.detail.vehicleId) }
+    window.addEventListener(FOLLOW_REQUEST_EVENT_NAME, this.onFollowRequest)
 
     this.onVisibilityChange = () => { this.visibilityChanged() }
     this.onReducedMotionChange = () => { this.decideMotion() }
@@ -690,6 +706,7 @@ export const VehicleMarkers = {
       this.decideMotion()
       this.draw({isSnapped: false})
       this.updateView(markers)
+      this.follower.markersChanged()
     })
 
     // The saved schedule's markers move along their trips' paths on a clock
@@ -712,6 +729,7 @@ export const VehicleMarkers = {
       if (isFirst) {
         this.drawInSource()
         this.tier = STILL_TIER
+        this.follower.scheduleShown()
       }
 
       this.decideMotion()
@@ -761,6 +779,7 @@ export const VehicleMarkers = {
 
     this.addLayers(map)
     const canvas = map.getCanvas()
+    this.follower.attach(map)
 
     // A map keeps the listeners of a layer while the layer is added again.
     for (const layerName of markerLayerNames) {
@@ -976,6 +995,50 @@ export const VehicleMarkers = {
   // shows it in the details view.
   openVehicle(feature) {
     this.selectVehicle({properties: feature.properties, lngLat: feature.geometry.coordinates})
+    this.followMarker({markerId: feature.properties.markerId, route: feature.properties.route})
+  },
+
+  // Keeps the map on the marker of `markerId`, after the selection has
+  // moved the map beside the sheet, so the selection's own move ends no follow.
+  followMarker({markerId, route}) {
+    // The saved schedule's markers are not live positions, so they are
+    // selected and never followed.
+    if (this.isScheduled) {
+      this.follower.refuse()
+      return
+    }
+
+    this.follower.start({markerId, label: labelOf({route})})
+  },
+
+  // Follows the vehicle of an arrival, named by `vehicleId`, where the page
+  // holds its marker, and says so where it does not.
+  followVehicleOf(vehicleId) {
+    const lookup = markerForVehicle({markerLists: this.markersByAgency.values(), vehicleId})
+    if (lookup.kind === VehicleLookupKind.found) {
+      this.followMarker({markerId: lookup.marker.id, route: lookup.marker.route})
+    } else {
+      this.follower.refuse()
+    }
+  },
+
+  // Where the page draws the marker of `markerId` now, on the canvas or in
+  // the source.
+  followPositionOf(markerId) {
+    const tracked = this.tracked.get(markerId)
+    const isOnCanvas = this.onCanvas.has(markerId) && tracked !== undefined
+
+    if (isOnCanvas) {
+      return {kind: PositionKind.found, position: tracked.drawn.position}
+    }
+
+    const position = this.drawn.get(markerId)
+
+    if (position === undefined) {
+      return {kind: PositionKind.missing}
+    }
+
+    return {kind: PositionKind.found, position}
   },
 
   // Marks the vehicle the view shows, in the layers and on the canvas,
@@ -1823,6 +1886,8 @@ export const VehicleMarkers = {
     window.removeEventListener(EMPHASIS_EVENT_NAME, this.onEmphasis)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
+    window.removeEventListener(FOLLOW_REQUEST_EVENT_NAME, this.onFollowRequest)
+    this.follower.destroy()
     this.yourBus.destroy()
     this.events.release()
   }
