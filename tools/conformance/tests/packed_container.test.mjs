@@ -10,6 +10,7 @@
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {expandStream} from "../../../assets/js/packed_stream.js"
+import {hexBytes} from "../bytes.mjs"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
 import {IMPLEMENTATIONS} from "../implementations.mjs"
 
@@ -30,8 +31,6 @@ const RESERVED_OFFSET = 12
 const MAGIC_LAST_OFFSET = 3
 const SHORT_FILE_BYTES = 10
 const U32_BYTES = 4
-const HEX_RADIX = 16
-const HEX_DIGITS_PER_BYTE = 2
 const SHA256_BYTES = 32
 const TEXT_ENCODER = new TextEncoder()
 
@@ -68,18 +67,6 @@ function fileBytes() {
 
 function streamBytes() {
   return new Uint8Array(streamBuffer.slice(0))
-}
-
-function hexBytes(hex) {
-  const byteCount = Math.trunc(hex.length / HEX_DIGITS_PER_BYTE)
-  const bytes = new Uint8Array(byteCount)
-
-  for (let index = 0; index < byteCount; index++) {
-    const start = index * HEX_DIGITS_PER_BYTE
-    bytes[index] = Number.parseInt(hex.slice(start, start + HEX_DIGITS_PER_BYTE), HEX_RADIX)
-  }
-
-  return bytes
 }
 
 // The fixture's bytes with the bytes of `hex` written at `offset`.
