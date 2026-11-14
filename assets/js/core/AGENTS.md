@@ -15,7 +15,7 @@
 - `assert.js`: the assertions every module of the front end uses.
 - `math/`: geodesy, angles, interpolation, polylines, color contrast, and the hot paths' checks.
 - `routing_snapshot.js`, `routing_names.js`, `packed_container.js`, `trip_path.js`, and `trip_path_shard.js`: the readers of the published binary files and the names file.
-- `routing_engine.js`, `routing_walk.js`, `routing_journeys.js`, `point_journeys.js`, and `trip_plan.js`: the router, its walks, its journey queries, journeys to a point, and the Trip tab's rules.
+- `routing_engine.js`, `routing_walk.js`, `routing_journeys.js`, `point_journeys.js`, `ride_path.js`, and `trip_plan.js`: the router, its walks, its journey queries, journeys to a point, the line a ride is drawn along its trip's path, and the Trip tab's rules.
 - `trip_path_files.js`, `scheduled_path.js`, `scheduled_service.js`, and `offline_answers.js`: which trip path files a vehicle's path takes, the scheduled vehicles and arrivals, and the page's answers while offline.
 - `offline_bundle.js`: what the offline bundle saves and its status.
 

@@ -296,6 +296,15 @@ const passed = await routeJourneys({manifest: manifestOf(passedSnapshot), servic
 deepStrictEqual(passed.journeys[0].legs[0].stopIds, ["A", "B", "C"])
 deepStrictEqual(passed.journeys[0].stopPositions, {})
 
+// A ride names the hops it boards and leaves at, the position of each in
+// its trip, so a ride from the middle of a trip names the hops after the
+// trip's first.
+const wholeRide = passed.journeys[0].legs[0]
+deepStrictEqual([wholeRide.boardSequence, wholeRide.alightSequence], [0, 1], "a ride of a whole trip names its first and last hops")
+const middleJourney = await routeJourneys({manifest: manifestOf(passedSnapshot), serviceDate: passedFixture.serviceDate, fetchFile: memoryFetch(passedSnapshot).fetchFile, from: {kind: FromKind.stop, stopId: "B"}, toStopId: "C", departureS: seconds("08:05")})
+const middleRide = middleJourney.journeys[0].legs[0]
+deepStrictEqual([middleRide.stopIds, middleRide.boardSequence, middleRide.alightSequence], [["B", "C"], 1, 1], "a ride from the middle of a trip names the hops it takes")
+
 for (const path of positionFetch.requested) {
   deepStrictEqual(positionSnapshot.filesByPath.has(path), true)
 }

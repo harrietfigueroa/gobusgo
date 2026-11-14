@@ -21,6 +21,7 @@ import {FromKind, JourneysKind} from "./core/routing_journeys"
 import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf, walkSpeedsOf} from "./trip_route"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
+import {createTripPathReader} from "./trip_path_reader"
 import {
   DayChoice,
   EndKind,
@@ -42,6 +43,7 @@ import {
   plannedTime,
   pointEnd,
   queryOf,
+  rideTripsOf,
   stateMessage,
   stopEnd,
   swappedEnds,
@@ -371,6 +373,9 @@ export const TripPlanner = {
     this.shownByStop = {}
     this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
+    // The paths the chosen journey's rides are drawn along; a path that
+    // arrives draws the ride again.
+    this.tripPaths = createTripPathReader({fileOrigin: this.fileOrigin, manifestUrl: this.manifestUrl, onPaths: () => { this.onTripPaths() }})
     this.searchFiles = createSearchFiles({origin: this.fileOrigin})
     this.events = pageEvents(this)
     this.build()
@@ -1435,9 +1440,22 @@ export const TripPlanner = {
   },
 
   draw(row) {
-    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin: this.shown.origin})
+    const {serviceDayStartsMs, origin} = this.shown
+    this.tripPaths.request(rideTripsOf({journey: row.journey, serviceDayStartsMs}))
+    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin, paths: this.tripPaths.paths(), serviceDayStartsMs})
     this.tripMap.show(drawn.collection)
     return drawn
+  },
+
+  // Draws the selected journey again with the paths that arrived, where the
+  // map is already fitted to it.
+  onTripPaths() {
+    if (this.shown === null) {
+      return
+    }
+
+    const rows = this.rows()
+    this.draw(rows[this.selectedIndex])
   },
 
   // The selected journey's routes as the map's filter, sent again on every
@@ -1464,6 +1482,7 @@ export const TripPlanner = {
     window.removeEventListener(END_EVENT_NAME, this.onEnd)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
+    this.tripPaths.destroy()
     this.stopTicker()
     this.releaseLiveStops()
 
