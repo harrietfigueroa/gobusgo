@@ -3,8 +3,7 @@
 // every decoded path held by its key, and `onPaths` runs when files that
 // arrive after a request bring paths the page did not hold. The files a
 // trip needs are decided by the pure plan over the files held, and each
-// fetch the plan asks for runs here, so the browser's own cache answers a
-// file another reader fetched first.
+// fetch the plan asks for runs here.
 
 import {assertCondition} from "./core/assert.js"
 import {withTripPaths} from "./core/trip_path"

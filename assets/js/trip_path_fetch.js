@@ -2,7 +2,7 @@
 // its etag, and the index and route shards it names, each fetched from an
 // origin, checked against the size the manifest or the index names, and
 // expanded within a bound. Each answers with an outcome value and none
-// throws, so every consumer of the files shares one fetcher.
+// throws.
 
 import {PackedOutcome} from "./core/packed_container"
 import {

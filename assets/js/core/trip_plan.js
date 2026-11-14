@@ -756,6 +756,8 @@ export function legCoordinates({journey, leg, origin}) {
   }
 }
 
+const LegTripKind = Object.freeze({trip: "trip", none: "none"})
+
 /**
  * The trips `journey` rides, each `{tripId, routeId, serviceDateMs}` once,
  * in riding order, the service day of each the start of its date in
@@ -778,8 +780,6 @@ export function rideTripsOf({journey, serviceDayStartsMs}) {
 
   return trips
 }
-
-const LegTripKind = Object.freeze({trip: "trip", none: "none"})
 
 // The trip a ride of `journey` runs, on the service day it starts on, or
 // none for a leg that is no ride and a ride whose date has no start.
@@ -834,7 +834,7 @@ function rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs}) 
 /**
  * What the map draws of `journey`: a line per ride in its route's color from
  * `names`, a line per walk, and a point at each end, as a GeoJSON feature
- * collection, with the bounds of every coordinate in it, a BoundsKind member.
+ * collection, with the bounds of every coordinate this call draws, a BoundsKind member.
  * A ride follows its trip's path where `paths`, the decoded paths by
  * `tripPathKey`, holds one that serves it, cut between its boarding and
  * alighting stops, and otherwise runs through the stops it passes;
