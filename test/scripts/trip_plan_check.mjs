@@ -97,7 +97,8 @@ function featureCount(collection) {
 
 function ride({routeId, from, departs, to, arrives, passing = [], boardSequence = 0, serviceDayOffset = 0}) {
   const stopIds = [from, ...passing, to]
-  return {kind: LegKind.ride, tripId: `trip-${routeId}`, routeId, serviceDayOffset, boardSequence, alightSequence: boardSequence + stopIds.length - 2, fromStopId: from, departureS: seconds(departs), toStopId: to, arrivalS: seconds(arrives), stopIds}
+  const hopCount = stopIds.length - 1
+  return {kind: LegKind.ride, tripId: `trip-${routeId}`, routeId, serviceDayOffset, boardSequence, alightSequence: boardSequence + hopCount - 1, fromStopId: from, departureS: seconds(departs), toStopId: to, arrivalS: seconds(arrives), stopIds}
 }
 
 function walk({from, to, durationS}) {
@@ -425,6 +426,7 @@ const PREVIOUS_START_MS = TODAY_START_MS - DAY_MS
 const PREVIOUS_DATE_OFFSET = 1
 const STOP_COUNT_THREE = 3
 const STOP_COUNT_TWO = 2
+const FEATURE_ENDS_COUNT = 2
 
 // The path of a trip along `points`, with `stopCount` stops spread evenly
 // from the first point to the last, at the distances along the points.
@@ -439,8 +441,17 @@ function tripPathAlong({trip, points, stopCount}) {
   return tripPathOf({...trip, points, stops})
 }
 
+function entryOfPath(path) {
+  return [path.key, path]
+}
+
 function pathsOf(...held) {
-  return new Map(Array.from(held, (path) => [path.key, path]))
+  const entries = Array.from(held, entryOfPath)
+  return new Map(entries)
+}
+
+function coordinatesOfFeature(feature) {
+  return feature.geometry.coordinates
 }
 
 const roadPoints = [lonLat(PIKE), lonLat(BEND), lonLat(CHERRY)]
@@ -450,8 +461,9 @@ const [followedFirst, followedWalk, followedSecond] = followed.collection.featur
 deepStrictEqual(followedFirst.geometry.coordinates, roadPoints, "a ride along its trip's path")
 deepStrictEqual(followedWalk.geometry.coordinates, [lonLat(CHERRY), lonLat(JACKSON)], "a walk stays straight")
 deepStrictEqual(followedSecond.geometry.coordinates, [lonLat(JACKSON), lonLat(OTHELLO)], "a ride whose path is not held keeps its stops")
-const followedEnds = followed.collection.features.slice(-2)
-deepStrictEqual(followedEnds.map((feature) => feature.geometry.coordinates), [lonLat(PIKE), lonLat(OTHELLO)], "the ends stay at the stops")
+const followedEnds = followed.collection.features.slice(-FEATURE_ENDS_COUNT)
+const followedEndCoordinates = Array.from(followedEnds, coordinatesOfFeature)
+deepStrictEqual(followedEndCoordinates, [lonLat(PIKE), lonLat(OTHELLO)], "the ends stay at the stops")
 deepStrictEqual(followed.bounds, {kind: BoundsKind.bounds, bounds: [[BEND.lon, OTHELLO.lat], [OTHELLO.lon, PIKE.lat]]}, "the bounds hold the path's bend")
 
 // A pattern with fewer stops than the ride keeps the line through its stops.

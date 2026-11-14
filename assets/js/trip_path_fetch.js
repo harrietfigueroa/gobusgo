@@ -1,9 +1,8 @@
 // The fetches of the trip path files: the routing manifest, revalidated by
 // its etag, and the index and route shards it names, each fetched from an
 // origin, checked against the size the manifest or the index names, and
-// expanded within a bound. Each answers with an outcome the pure rules of
-// `core/trip_path_files.js` take, and none throws, so every consumer of the
-// files shares one fetcher.
+// expanded within a bound. Each answers with an outcome value and none
+// throws, so every consumer of the files shares one fetcher.
 
 import {PackedOutcome} from "./core/packed_container"
 import {

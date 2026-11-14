@@ -16,10 +16,22 @@ import {DISTANCE_SLACK_METERS, FallbackReason, RideLineKind, ridePathLine} from 
 
 const HALF = 2
 const COORDINATE_DECIMALS = 1000000
+const CORNER_INDEX = 2
+const LAST_INDEX = 3
+const STOP_COUNT_TWO = 2
+const NORTH_LAT = 47.6
+const FAR_NORTH_LAT = 47.61
+const WEST_LON = -122.34
+const MIDDLE_LON = -122.335
+const CENTER_LON = -122.33
+const EAST_LON = -122.32
+const FAR_LAT = 47.7
+const FAR_LON = -122.2
+const BAD_SEQUENCE = 0.5
 
 // A road east along 47.60 and then north along -122.32: four points.
-const POINTS = Object.freeze([[-122.34, 47.6], [-122.33, 47.6], [-122.32, 47.6], [-122.32, 47.61]])
-const FIRST_SEGMENT_MIDDLE = [-122.335, 47.6]
+const POINTS = Object.freeze([[WEST_LON, NORTH_LAT], [CENTER_LON, NORTH_LAT], [EAST_LON, NORTH_LAT], [EAST_LON, FAR_NORTH_LAT]])
+const FIRST_SEGMENT_MIDDLE = [MIDDLE_LON, NORTH_LAT]
 
 function cumulativeOf(points) {
   const cumulative = [0]
@@ -32,7 +44,7 @@ function cumulativeOf(points) {
 }
 
 const CUMULATIVE = cumulativeOf(POINTS)
-const PATH_LENGTH_METERS = CUMULATIVE[CUMULATIVE.length - 1]
+const PATH_LENGTH_METERS = CUMULATIVE[LAST_INDEX]
 const MIDDLE_METERS = CUMULATIVE[1] / HALF
 
 function stopAt(meters) {
@@ -43,7 +55,7 @@ function stopAt(meters) {
 // and the last point.
 const PATH = Object.freeze({
   points: POINTS,
-  stops: Object.freeze([stopAt(0), stopAt(MIDDLE_METERS), stopAt(CUMULATIVE[2]), stopAt(PATH_LENGTH_METERS)])
+  stops: Object.freeze([stopAt(0), stopAt(MIDDLE_METERS), stopAt(CUMULATIVE[CORNER_INDEX]), stopAt(PATH_LENGTH_METERS)])
 })
 
 function position([lon, lat]) {
@@ -53,8 +65,8 @@ function position([lon, lat]) {
 const STOP_POSITIONS = Object.freeze({
   first: position(POINTS[0]),
   middle: position(FIRST_SEGMENT_MIDDLE),
-  corner: position(POINTS[2]),
-  last: position(POINTS[3])
+  corner: position(POINTS[CORNER_INDEX]),
+  last: position(POINTS[LAST_INDEX])
 })
 const STOP_IDS_BY_INDEX = ["first", "middle", "corner", "last"]
 
@@ -83,59 +95,78 @@ function reasonOf(line) {
   return line.reason
 }
 
-deepStrictEqual(sliceOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 3})})), [...POINTS], "a ride of the whole path follows every point")
+const wholeLeg = legOf({boardIndex: 0, alightIndex: LAST_INDEX})
+const wholeLine = lineOf({leg: wholeLeg})
+deepStrictEqual(sliceOf(wholeLine), [...POINTS], "a ride of the whole path follows every point")
+
+const middleLeg = legOf({boardIndex: 1, alightIndex: LAST_INDEX})
+const middleLine = lineOf({leg: middleLeg})
 deepStrictEqual(
-  sliceOf(lineOf({leg: legOf({boardIndex: 1, alightIndex: 3})})),
-  [FIRST_SEGMENT_MIDDLE, POINTS[1], POINTS[2], POINTS[3]],
+  sliceOf(middleLine),
+  [FIRST_SEGMENT_MIDDLE, POINTS[1], POINTS[CORNER_INDEX], POINTS[LAST_INDEX]],
   "a ride from the middle of a segment starts at the interpolated cut and leaves out the points before it"
 )
-deepStrictEqual(sliceOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 2})})), [POINTS[0], POINTS[1], POINTS[2]], "a ride that ends at a corner stops at it")
-deepStrictEqual(sliceOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 1})})), [POINTS[0], FIRST_SEGMENT_MIDDLE], "a ride of one hop has its two cut points")
 
-const mismatched = {...legOf({boardIndex: 0, alightIndex: 3}), stopIds: ["first", "last"]}
-deepStrictEqual(reasonOf(lineOf({leg: mismatched})), FallbackReason.stopCountMismatch, "a stop count that is not the leg's hops")
-
-const shortPath = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(0), stopAt(MIDDLE_METERS)])})
-deepStrictEqual(reasonOf(lineOf({path: shortPath, leg: legOf({boardIndex: 0, alightIndex: 3})})), FallbackReason.indexOutOfRange, "a pattern shorter than the leg")
+const cornerLeg = legOf({boardIndex: 0, alightIndex: CORNER_INDEX})
+const cornerLine = lineOf({leg: cornerLeg})
+deepStrictEqual(sliceOf(cornerLine), [POINTS[0], POINTS[1], POINTS[CORNER_INDEX]], "a ride that ends at a corner stops at it")
 
 const oneHop = legOf({boardIndex: 0, alightIndex: 1})
-const sameDistance = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(MIDDLE_METERS), stopAt(MIDDLE_METERS)])})
-deepStrictEqual(reasonOf(lineOf({path: sameDistance, leg: oneHop})), FallbackReason.noDistance, "two stops at one distance")
+const oneHopLine = lineOf({leg: oneHop})
+deepStrictEqual(sliceOf(oneHopLine), [POINTS[0], FIRST_SEGMENT_MIDDLE], "a ride of one hop has its two cut points")
 
-const pastEnd = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(0), stopAt(PATH_LENGTH_METERS + DISTANCE_SLACK_METERS * HALF)])})
+const mismatched = {...wholeLeg, stopIds: ["first", "last"]}
+const mismatchedLine = lineOf({leg: mismatched})
+deepStrictEqual(reasonOf(mismatchedLine), FallbackReason.stopCountMismatch, "a stop count that is not the leg's hops")
+
+const shortPath = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(0), stopAt(MIDDLE_METERS)])})
+const shortLine = lineOf({path: shortPath, leg: wholeLeg})
+deepStrictEqual(reasonOf(shortLine), FallbackReason.indexOutOfRange, "a pattern shorter than the leg")
+
+const sameDistance = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(MIDDLE_METERS), stopAt(MIDDLE_METERS)])})
+const sameDistanceLine = lineOf({path: sameDistance, leg: oneHop})
+deepStrictEqual(reasonOf(sameDistanceLine), FallbackReason.noDistance, "two stops at one distance")
+
 const lastHop = {...oneHop, toStopId: "last"}
-deepStrictEqual(reasonOf(lineOf({path: pastEnd, leg: lastHop})), FallbackReason.distanceOutOfRange, "a distance past the path's end")
+const pastEnd = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(0), stopAt(PATH_LENGTH_METERS + DISTANCE_SLACK_METERS * HALF)])})
+const pastEndLine = lineOf({path: pastEnd, leg: lastHop})
+deepStrictEqual(reasonOf(pastEndLine), FallbackReason.distanceOutOfRange, "a distance past the path's end")
 
 const withinSlack = Object.freeze({points: POINTS, stops: Object.freeze([stopAt(0), stopAt(PATH_LENGTH_METERS + DISTANCE_SLACK_METERS / HALF)])})
-const clamped = sliceOf(lineOf({path: withinSlack, leg: lastHop}))
-deepStrictEqual(clamped[clamped.length - 1], POINTS[3], "a distance within the slack ends at the path's end")
+const clampedLine = lineOf({path: withinSlack, leg: lastHop})
+const clamped = sliceOf(clampedLine)
+deepStrictEqual(clamped[clamped.length - 1], POINTS[LAST_INDEX], "a distance within the slack ends at the path's end")
 
 const onePoint = Object.freeze({points: Object.freeze([POINTS[0]]), stops: PATH.stops})
-deepStrictEqual(reasonOf(lineOf({path: onePoint, leg: legOf({boardIndex: 0, alightIndex: 3})})), FallbackReason.pathTooShort, "a path of one point")
+const onePointLine = lineOf({path: onePoint, leg: wholeLeg})
+deepStrictEqual(reasonOf(onePointLine), FallbackReason.pathTooShort, "a path of one point")
 
 // A stop far from where its distance cuts the path means the pattern is not
 // the trip's: the ride keeps its stops.
-const farAlighting = {...STOP_POSITIONS, last: position([-122.2, 47.7])}
-deepStrictEqual(reasonOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 3}), stopPositions: farAlighting})), FallbackReason.detached, "an alighting stop far from the cut")
-const farBoarding = {...STOP_POSITIONS, first: position([-122.2, 47.7])}
-deepStrictEqual(reasonOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 3}), stopPositions: farBoarding})), FallbackReason.detached, "a boarding stop far from the cut")
+const farAlighting = {...STOP_POSITIONS, last: position([FAR_LON, FAR_LAT])}
+const farAlightingLine = lineOf({leg: wholeLeg, stopPositions: farAlighting})
+deepStrictEqual(reasonOf(farAlightingLine), FallbackReason.detached, "an alighting stop far from the cut")
 
-function withoutLast({first, middle, corner}) {
-  return {first, middle, corner}
-}
+const farBoarding = {...STOP_POSITIONS, first: position([FAR_LON, FAR_LAT])}
+const farBoardingLine = lineOf({leg: wholeLeg, stopPositions: farBoarding})
+deepStrictEqual(reasonOf(farBoardingLine), FallbackReason.detached, "a boarding stop far from the cut")
 
-deepStrictEqual(reasonOf(lineOf({leg: legOf({boardIndex: 0, alightIndex: 3}), stopPositions: withoutLast(STOP_POSITIONS)})), FallbackReason.unplaced, "an alighting stop with no position")
+const {last: omitted, ...withoutLast} = STOP_POSITIONS
+deepStrictEqual(omitted, STOP_POSITIONS.last, "the position left out is the last stop's")
+const unplacedLine = lineOf({leg: wholeLeg, stopPositions: withoutLast})
+deepStrictEqual(reasonOf(unplacedLine), FallbackReason.unplaced, "an alighting stop with no position")
+deepStrictEqual(STOP_COUNT_TWO, oneHop.stopIds.length, "a one-hop leg names two stops")
 
 function unsequenced() {
-  const {alightSequence, ...rest} = legOf({boardIndex: 0, alightIndex: 3})
-  deepStrictEqual(alightSequence, 2, "the sequence left out is the last hop's")
+  const {alightSequence, ...rest} = wholeLeg
+  deepStrictEqual(alightSequence, CORNER_INDEX, "the sequence left out is the last hop's")
   return lineOf({leg: rest})
 }
 
 throws(unsequenced, AssertionError, "a leg with no alighting sequence")
 
 function fractionalSequence() {
-  return lineOf({leg: {...legOf({boardIndex: 0, alightIndex: 3}), boardSequence: 0.5}})
+  return lineOf({leg: {...wholeLeg, boardSequence: BAD_SEQUENCE}})
 }
 
 throws(fractionalSequence, AssertionError, "a fractional sequence")

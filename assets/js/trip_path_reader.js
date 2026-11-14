@@ -1,11 +1,10 @@
 // The decoded trip paths a page draws along, read on demand from the
 // snapshot's route shards. `request` names the trips wanted, `paths` gives
 // every decoded path held by its key, and `onPaths` runs when files that
-// arrive after a request bring paths the page did not hold. The rules of
-// `core/trip_path_files.js` decide which files a trip needs and the fetches
-// of `trip_path_fetch.js` bring them, so a reader holds the same files by
-// the same rules as the vehicle page's markers, and the browser's own cache
-// answers a file the other reader fetched first.
+// arrive after a request bring paths the page did not hold. The files a
+// trip needs are decided by the pure plan over the files held, and each
+// fetch the plan asks for runs here, so the browser's own cache answers a
+// file another reader fetched first.
 
 import {assertCondition} from "./core/assert.js"
 import {withTripPaths} from "./core/trip_path"
