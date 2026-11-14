@@ -35,8 +35,11 @@ defmodule Gobusgo.Test.CorePages.Network do
   @agency_name "Metro Transit"
   @sha String.duplicate("ab", 32)
   @service_day_start_time ~T[08:00:00]
-  @service_day_offset_s 8 * 60 * 60
-  @basemap_archive "basemap-20261118-01.pmtiles"
+  @service_day_offset_s @service_day_start_time |> Time.to_seconds_after_midnight() |> elem(0)
+  # The basemap's snapshot names no date the check reads: any extraction's
+  # name serves, and this one is of no particular day.
+  @basemap_snapshot "20261118"
+  @basemap_archive "basemap-#{@basemap_snapshot}-01.pmtiles"
   @bounds %{"south" => 47.58, "west" => -122.37, "north" => 47.64, "east" => -122.30}
 
   @first_departure_s 0
@@ -96,9 +99,9 @@ defmodule Gobusgo.Test.CorePages.Network do
   def seed(base_dir, %DateTime{} = now) when is_binary(base_dir) do
     today = now |> DateTime.add(-@service_day_offset_s, :second) |> DateTime.to_date()
     service_dates = Enum.map(0..2, &Date.add(today, &1))
-    :ok = seed_agency()
-    :ok = seed_routes()
-    :ok = seed_stops()
+    :ok = seed_agency(today)
+    :ok = seed_routes(today)
+    :ok = seed_stops(today)
     :ok = seed_schedules(service_dates)
 
     {:ok, %{built_count: 3}} =
@@ -154,10 +157,10 @@ defmodule Gobusgo.Test.CorePages.Network do
   defp directory(:intersections), do: "intersections"
   defp directory(:shared_vehicle_tiles), do: "shared-vehicles"
 
-  defp seed_agency do
+  defp seed_agency(service_date) do
     %{agencies: records, manifest: manifest} =
       AgencyBatch.Records.build(%{
-        destination: "raw/oba/agencies-with-coverage/dt=2026-11-18/file.json",
+        destination: "raw/oba/agencies-with-coverage/dt=#{service_date}/file.json",
         fetched_at: DateTime.utc_now(),
         data_sha256: @sha,
         request_id: Gobusgo.RequestId.generate(),
@@ -175,11 +178,12 @@ defmodule Gobusgo.Test.CorePages.Network do
     AgencyView.apply_records(AgencyView, Enum.map(records ++ [manifest], & &1.value))
   end
 
-  defp seed_routes do
+  defp seed_routes(service_date) do
     record =
       RouteBatch.Records.build(%{
         agency_id: @agency_id,
-        destination: "raw/oba/routes-for-agency/dt=2026-11-18/agency=1/file.json.gz",
+        destination:
+          "raw/oba/routes-for-agency/dt=#{service_date}/agency=#{@agency_id}/file.json.gz",
         fetched_at: DateTime.utc_now(),
         data_sha256: @sha,
         request_id: Gobusgo.RequestId.generate(),
@@ -202,12 +206,13 @@ defmodule Gobusgo.Test.CorePages.Network do
     FetchView.apply_records(Gobusgo.OneBusAway.RouteView, [record.value])
   end
 
-  defp seed_stops do
+  defp seed_stops(service_date) do
     records =
       for route <- @routes do
         StopRecords.build(%{
           route_id: route.id,
-          destination: "raw/oba/stops-for-route/dt=2026-11-18/route=#{route.id}/file.json.gz",
+          destination:
+            "raw/oba/stops-for-route/dt=#{service_date}/route=#{route.id}/file.json.gz",
           fetched_at: DateTime.utc_now(),
           data_sha256: @sha,
           request_id: Gobusgo.RequestId.generate(),
@@ -354,7 +359,7 @@ defmodule Gobusgo.Test.CorePages.Network do
     File.write!(Path.join(dir, @basemap_archive), empty_archive())
 
     manifest = %{
-      "snapshot" => "20261118",
+      "snapshot" => @basemap_snapshot,
       "archives" => [%{"name" => @basemap_archive, "bounds" => @bounds}],
       "agencies" => [
         %{"agencyId" => @agency_id, "archive" => @basemap_archive, "bounds" => @bounds}

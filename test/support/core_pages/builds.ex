@@ -14,7 +14,10 @@ defmodule Gobusgo.Test.CorePages.Builds do
 
   `install/2` copies one build over the bundles and the worker under
   `priv/static`, so the test server serves that build at the paths a page
-  loads; the check installs the JavaScript build again when it ends.
+  loads. `preserve/1` keeps a copy of the bundles and the worker found
+  there, and `restore/1` puts them back; a copy whose marker remains is
+  that of a run that never restored, and is put back before a new copy is
+  taken.
   """
 
   alias Gobusgo.Assert
@@ -23,8 +26,16 @@ defmodule Gobusgo.Test.CorePages.Builds do
   @type core :: :javascript | :webassembly
 
   @cores [:javascript, :webassembly]
-  @bundles ["app.js", "trip_app.js", "arrivals_board.js"]
   @core_alias_prefix "--alias:#core/"
+  # The entry points of the profile `mix assets.build` runs, the bundles a
+  # build writes and installs.
+  @bundles for arg <- Application.compile_env!(:esbuild, [:default, :args]),
+               not String.starts_with?(arg, "-"),
+               do: Path.basename(arg)
+  # Plug.Static answers a request with a compressed copy beside the file,
+  # so a copy left by `mix assets.deploy` would be served for every build.
+  @compressed_extensions [".gz", ".br"]
+  @preserved_marker "preserved"
   @static_dir Path.expand("../../../priv/static", __DIR__)
   @service_worker_name "sw.js"
 
@@ -55,22 +66,74 @@ defmodule Gobusgo.Test.CorePages.Builds do
     dir
   end
 
-  @doc "Copies the build of `core` under `dir` over the bundles and the worker the server serves."
+  @doc """
+  Copies the build of `core` under `dir` over the bundles and the worker the
+  server serves. Raises where a compressed copy stands beside one of them.
+  """
   @spec install(String.t(), core()) :: :ok
   def install(dir, core) when is_binary(dir) and core in @cores do
-    source_dir = Path.join(dir, Atom.to_string(core))
+    copy_into_static(Path.join(dir, Atom.to_string(core)))
+  end
 
-    for bundle <- @bundles do
-      File.cp!(
-        Path.join([source_dir, "js", bundle]),
-        Path.join([@static_dir, "assets/js", bundle])
+  @doc """
+  Copies the bundles and the worker the server serves into `dir` and marks
+  the copy, after restoring a marked copy an earlier run left there.
+  """
+  @spec preserve(String.t()) :: :ok
+  def preserve(dir) when is_binary(dir) do
+    marker = Path.join(dir, @preserved_marker)
+
+    if File.exists?(marker) do
+      :ok = restore(dir)
+    end
+
+    File.mkdir_p!(Path.join(dir, "js"))
+
+    for {build_path, static_path} <- served_paths() do
+      File.cp!(Path.join(@static_dir, static_path), Path.join(dir, build_path))
+    end
+
+    File.write!(marker, "")
+  end
+
+  @doc "Copies the bundles and the worker `preserve/1` kept in `dir` back, and drops its marker."
+  @spec restore(String.t()) :: :ok
+  def restore(dir) when is_binary(dir) do
+    marker = Path.join(dir, @preserved_marker)
+    Assert.condition(File.exists?(marker), "#{dir} must hold a preserved copy to restore")
+    :ok = copy_into_static(dir)
+    File.rm!(marker)
+  end
+
+  # Each file a build holds, by its path in the build's directory and in
+  # `priv/static`.
+  defp served_paths do
+    [{@service_worker_name, @service_worker_name}] ++
+      for bundle <- @bundles, do: {Path.join("js", bundle), Path.join("assets/js", bundle)}
+  end
+
+  defp copy_into_static(dir) do
+    for {build_path, static_path} <- served_paths() do
+      target = Path.join(@static_dir, static_path)
+      :ok = refute_compressed(target)
+      File.cp!(Path.join(dir, build_path), target)
+    end
+
+    :ok
+  end
+
+  defp refute_compressed(path) do
+    for extension <- @compressed_extensions do
+      compressed = path <> extension
+
+      Assert.condition(
+        not File.exists?(compressed),
+        "#{compressed} would be served in place of every build's #{Path.basename(path)}; " <>
+          "delete it, since `mix assets.deploy` writes it and `mix assets.build` does not"
       )
     end
 
-    File.cp!(
-      Path.join(source_dir, @service_worker_name),
-      Path.join(@static_dir, @service_worker_name)
-    )
+    :ok
   end
 
   defp aliases(:javascript), do: %{}
@@ -95,6 +158,13 @@ defmodule Gobusgo.Test.CorePages.Builds do
     profile = Keyword.put(profile, :args, profile_args)
     status = run_esbuild(:core_pages_bundles, profile, ["--outdir=#{js_dir}" | alias_args])
     Assert.condition(status == 0, "the bundles of #{dir} must build, esbuild exited #{status}")
+    built = js_dir |> File.ls!() |> Enum.sort()
+
+    Assert.condition(
+      built == Enum.sort(@bundles),
+      "the build of #{dir} must hold the bundles #{inspect(@bundles)}, got: #{inspect(built)}"
+    )
+
     build_service_worker(dir)
   end
 

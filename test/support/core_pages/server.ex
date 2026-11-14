@@ -21,6 +21,9 @@ defmodule Gobusgo.Test.CorePages.Server do
     :ok = Supervisor.terminate_child(@supervisor, @endpoint)
     :ok = Supervisor.delete_child(@supervisor, @endpoint)
 
+    # The new child takes no setting the application's child read, so it
+    # signs its sessions with a secret of its own, as the application does
+    # with SECRET_KEY_BASE unset; a session lasts the run.
     secret = @secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()
 
     {:ok, _pid} =
