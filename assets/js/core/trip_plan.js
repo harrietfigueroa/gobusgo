@@ -935,7 +935,7 @@ export function journeyFeatures({journey, names, origin, paths, walkLines, servi
 
   for (const leg of journey.legs) {
     const stopCoordinates = legCoordinates({journey, leg, origin: originCoordinates})
-    let coordinates = stopCoordinates
+    let coordinates
     let properties = {kind: FeatureKind.walk}
 
     if (leg.kind === LegKind.ride) {

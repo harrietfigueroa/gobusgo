@@ -86,8 +86,10 @@ async function fetchTable({origin, path, byteSize, expandedByteSizeMax, decode})
 
     const buffer = await response.arrayBuffer()
     const isSizeKnown = byteSize !== null
+    const isSizeSame = buffer.byteLength === byteSize
+    const isSizeWrong = isSizeKnown && !isSizeSame
 
-    if (isSizeKnown && buffer.byteLength !== byteSize) {
+    if (isSizeWrong) {
       return failed(FetchFailure.sizeMismatch)
     }
 

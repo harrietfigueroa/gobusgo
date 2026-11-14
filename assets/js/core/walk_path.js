@@ -1,9 +1,9 @@
 // The shortest path along streets between the two ends of a walk, over the
-// pieces of way of the walk graph's shards (`walk_graph_file.js`). Everything
-// here is pure: the shards a walk needs are given as decoded tables, and the
-// answer is a value keyed by `kind`, a path, the reason there is none, or the
-// tiles that are still to be loaded, so the caller keeps the straight line
-// for any but a path.
+// pieces of way of the walk graph's shards. Everything here is pure: the
+// shards a walk needs are given as decoded tables, and the answer is a value
+// keyed by `kind`, a path, the reason there is none, or the tiles that are
+// still to be loaded, so the caller keeps the straight line for any but a
+// path.
 //
 // A graph is built over the shards for one walk. A node is a position that
 // ends a piece, and pieces that end at one position, whether in one shard or
@@ -16,7 +16,7 @@
 
 import {assertCondition, unreachable} from "./assert.js"
 import {METERS_PER_DEGREE, metersPerDegreeLongitude} from "./math/geodesy.js"
-import {TILE_LAT_UNITS, TILE_LON_UNITS, UNITS_PER_DEGREE, tileKey, tileOf} from "./walk_graph_file.js"
+import {UNITS_PER_DEGREE, tileKey, tileOf} from "./walk_graph_file.js"
 
 /** The kinds of the answer to a walk. */
 export const WalkPathKind = Object.freeze({found: "found", noPath: "noPath", notLoaded: "notLoaded"})
@@ -48,18 +48,24 @@ export const WALK_LIMITS = Object.freeze({
 })
 
 const COORDINATE_COUNT = 2
+const LATITUDE_DEGREES_MAX = 90
+const LONGITUDE_DEGREES_MAX = 180
 const POSITION_KEY_LAT_OFFSET = 9_000_000
 const POSITION_KEY_LON_OFFSET = 18_000_000
 const POSITION_KEY_LAT_SCALE = 67_108_864
 const NO_NODE = -1
 const NO_EDGE = -1
-const MIDDLE = 2
+const MIDDLE_DIVISOR = 2
+const VIRTUAL_NODE_COUNT = 2
+const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
+const SnapKind = Object.freeze({snapped: "snapped", offGraph: "offGraph"})
+const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
 
 function planeOf({from, to}) {
-  const referenceLat = (from.lat + to.lat) / MIDDLE
-  const referenceLon = (from.lon + to.lon) / MIDDLE
+  const referenceLat = (from.lat + to.lat) / MIDDLE_DIVISOR
+  const referenceLon = (from.lon + to.lon) / MIDDLE_DIVISOR
   return {referenceLat, referenceLon, metersPerLat: METERS_PER_DEGREE, metersPerLon: metersPerDegreeLongitude(referenceLat)}
 }
 
@@ -80,8 +86,8 @@ function planeToCoordinate({plane, x, y}) {
 function assertEnd(end, name) {
   assertCondition(Number.isFinite(end.lat), "walk path: the " + name + " latitude is a number")
   assertCondition(Number.isFinite(end.lon), "walk path: the " + name + " longitude is a number")
-  assertCondition(Math.abs(end.lat) <= 90, "walk path: the " + name + " latitude is on the globe")
-  assertCondition(Math.abs(end.lon) <= 180, "walk path: the " + name + " longitude is on the globe")
+  assertCondition(Math.abs(end.lat) <= LATITUDE_DEGREES_MAX, "walk path: the " + name + " latitude is on the globe")
+  assertCondition(Math.abs(end.lon) <= LONGITUDE_DEGREES_MAX, "walk path: the " + name + " longitude is on the globe")
 }
 
 function straightMeters({plane, from, to}) {
@@ -110,8 +116,12 @@ export function walkTilesNeeded({from, to, index, limits}) {
 
   const marginLat = limits.marginMeters / plane.metersPerLat
   const marginLon = limits.marginMeters / plane.metersPerLon
-  const low = tileOf({lat: Math.floor((Math.min(from.lat, to.lat) - marginLat) * UNITS_PER_DEGREE), lon: Math.floor((Math.min(from.lon, to.lon) - marginLon) * UNITS_PER_DEGREE)})
-  const high = tileOf({lat: Math.ceil((Math.max(from.lat, to.lat) + marginLat) * UNITS_PER_DEGREE), lon: Math.ceil((Math.max(from.lon, to.lon) + marginLon) * UNITS_PER_DEGREE)})
+  const lowLat = Math.floor((Math.min(from.lat, to.lat) - marginLat) * UNITS_PER_DEGREE)
+  const lowLon = Math.floor((Math.min(from.lon, to.lon) - marginLon) * UNITS_PER_DEGREE)
+  const highLat = Math.ceil((Math.max(from.lat, to.lat) + marginLat) * UNITS_PER_DEGREE)
+  const highLon = Math.ceil((Math.max(from.lon, to.lon) + marginLon) * UNITS_PER_DEGREE)
+  const low = tileOf({lat: lowLat, lon: lowLon})
+  const high = tileOf({lat: highLat, lon: highLon})
   const boxTileCount = (high.row - low.row + 1) * (high.column - low.column + 1)
 
   if (boxTileCount > limits.tileCountMax) {
@@ -145,9 +155,35 @@ function pieceTotal(shards) {
   return total
 }
 
+// The edge of one piece: its polyline on the plane, the distance along it at
+// each position, and the nodes at its ends.
+function edgeOfPiece({shard, piece, plane, nodeAt}) {
+  const first = shard.pieceStarts[piece]
+  const count = shard.pieceStarts[piece + 1] - first
+  const xy = new Float64Array(count * COORDINATE_COUNT)
+  const cumulative = new Float64Array(count)
+
+  for (let position = 0; position < count; position += 1) {
+    const offset = (first + position) * COORDINATE_COUNT
+    const [x, y] = unitsToPlane({plane, latUnits: shard.points[offset], lonUnits: shard.points[offset + 1]})
+    xy[position * COORDINATE_COUNT] = x
+    xy[position * COORDINATE_COUNT + 1] = y
+
+    if (position > 0) {
+      const before = (position - 1) * COORDINATE_COUNT
+      cumulative[position] = cumulative[position - 1] + Math.hypot(x - xy[before], y - xy[before + 1])
+    }
+  }
+
+  const firstOffset = first * COORDINATE_COUNT
+  const lastOffset = (first + count - 1) * COORDINATE_COUNT
+  const a = nodeAt({latUnits: shard.points[firstOffset], lonUnits: shard.points[firstOffset + 1]})
+  const b = nodeAt({latUnits: shard.points[lastOffset], lonUnits: shard.points[lastOffset + 1]})
+  return {a, b, xy, cumulative, length: cumulative[count - 1], count}
+}
+
 // The graph over `shards`: for each piece an edge between the nodes at its
-// ends, with its polyline on the plane and the distance along it at each
-// position.
+// ends, and for each node the edges that end there.
 function buildGraph({shards, plane}) {
   const nodeByKey = new Map()
   const nodeX = []
@@ -174,34 +210,13 @@ function buildGraph({shards, plane}) {
 
   for (const shard of shards) {
     for (let piece = 0; piece < shard.pieceCount; piece += 1) {
-      const first = shard.pieceStarts[piece]
-      const count = shard.pieceStarts[piece + 1] - first
-      const xy = new Float64Array(count * COORDINATE_COUNT)
-      const cumulative = new Float64Array(count)
-
-      for (let position = 0; position < count; position += 1) {
-        const offset = (first + position) * COORDINATE_COUNT
-        const [x, y] = unitsToPlane({plane, latUnits: shard.points[offset], lonUnits: shard.points[offset + 1]})
-        xy[position * COORDINATE_COUNT] = x
-        xy[position * COORDINATE_COUNT + 1] = y
-
-        if (position > 0) {
-          const before = (position - 1) * COORDINATE_COUNT
-          cumulative[position] = cumulative[position - 1] + Math.hypot(x - xy[before], y - xy[before + 1])
-        }
-      }
-
-      const firstOffset = first * COORDINATE_COUNT
-      const lastOffset = (first + count - 1) * COORDINATE_COUNT
-      const a = nodeAt({latUnits: shard.points[firstOffset], lonUnits: shard.points[firstOffset + 1]})
-      const b = nodeAt({latUnits: shard.points[lastOffset], lonUnits: shard.points[lastOffset + 1]})
-      const edge = {a, b, xy, cumulative, length: cumulative[count - 1], count}
+      const edge = edgeOfPiece({shard, piece, plane, nodeAt})
       const edgeIndex = edges.length
       edges.push(edge)
-      nodeEdges[a].push(edgeIndex)
+      nodeEdges[edge.a].push(edgeIndex)
 
-      if (b !== a) {
-        nodeEdges[b].push(edgeIndex)
+      if (edge.b !== edge.a) {
+        nodeEdges[edge.b].push(edgeIndex)
       }
     }
   }
@@ -209,37 +224,47 @@ function buildGraph({shards, plane}) {
   return {nodeX, nodeY, nodeEdges, edges}
 }
 
-// The nearest point on any edge to (x, y), or none.
+// The nearest point of the segment from (startX, startY) to (endX, endY) to
+// (x, y): its position, its distance from (x, y), and how far along the
+// segment it lies, as a share.
+function nearestOnSegment({x, y, startX, startY, endX, endY}) {
+  const deltaX = endX - startX
+  const deltaY = endY - startY
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY
+  let fraction = 0
+
+  if (lengthSquared > 0) {
+    fraction = Math.min(1, Math.max(0, ((x - startX) * deltaX + (y - startY) * deltaY) / lengthSquared))
+  }
+
+  const pointX = startX + fraction * deltaX
+  const pointY = startY + fraction * deltaY
+  return {pointX, pointY, distance: Math.hypot(x - pointX, y - pointY), fraction, segmentLength: Math.sqrt(lengthSquared)}
+}
+
+// The nearest point on any edge to (x, y), as `{kind: "snapped", edge, x, y,
+// distance, along}`, or `{kind: "offGraph"}` where none lies within
+// `snapMetersMax`.
 function snap({graph, x, y, snapMetersMax}) {
-  let best = null
+  let best = {kind: SnapKind.offGraph}
+  let bestDistance = Infinity
 
   for (const [edgeIndex, edge] of graph.edges.entries()) {
     for (let segment = 0; segment < edge.count - 1; segment += 1) {
-      const startX = edge.xy[segment * COORDINATE_COUNT]
-      const startY = edge.xy[segment * COORDINATE_COUNT + 1]
-      const deltaX = edge.xy[(segment + 1) * COORDINATE_COUNT] - startX
-      const deltaY = edge.xy[(segment + 1) * COORDINATE_COUNT + 1] - startY
-      const lengthSquared = deltaX * deltaX + deltaY * deltaY
-      let fraction = 0
+      const startOffset = segment * COORDINATE_COUNT
+      const endOffset = startOffset + COORDINATE_COUNT
+      const nearest = nearestOnSegment({x, y, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1], endX: edge.xy[endOffset], endY: edge.xy[endOffset + 1]})
 
-      if (lengthSquared > 0) {
-        fraction = Math.min(1, Math.max(0, ((x - startX) * deltaX + (y - startY) * deltaY) / lengthSquared))
-      }
-
-      const pointX = startX + fraction * deltaX
-      const pointY = startY + fraction * deltaY
-      const distance = Math.hypot(x - pointX, y - pointY)
-      const isNearer = best === null || distance < best.distance
-
-      if (isNearer) {
-        const along = edge.cumulative[segment] + fraction * Math.sqrt(lengthSquared)
-        best = {edge: edgeIndex, x: pointX, y: pointY, distance, along}
+      if (nearest.distance < bestDistance) {
+        const along = edge.cumulative[segment] + nearest.fraction * nearest.segmentLength
+        bestDistance = nearest.distance
+        best = {kind: SnapKind.snapped, edge: edgeIndex, x: nearest.pointX, y: nearest.pointY, distance: nearest.distance, along}
       }
     }
   }
 
-  if (best === null || best.distance > snapMetersMax) {
-    return null
+  if (bestDistance > snapMetersMax) {
+    return {kind: SnapKind.offGraph}
   }
 
   return best
@@ -263,7 +288,7 @@ class NodeHeap {
     this.priorities.push(priority)
 
     while (index > 0) {
-      const parent = Math.floor((index - 1) / 2)
+      const parent = Math.floor((index - 1) / HEAP_ARITY)
 
       if (this.priorities[parent] <= this.priorities[index]) {
         break
@@ -291,16 +316,22 @@ class NodeHeap {
   siftDown() {
     let index = 0
 
+    // Each pass moves the entry one level down a tree of finite depth.
     for (;;) {
-      const left = index * 2 + 1
+      const left = index * HEAP_ARITY + 1
       const right = left + 1
       let smallest = index
+      const hasLeft = left < this.nodes.length
+      const hasRight = right < this.nodes.length
+      const isLeftSmaller = hasLeft && this.priorities[left] < this.priorities[smallest]
 
-      if (left < this.nodes.length && this.priorities[left] < this.priorities[smallest]) {
+      if (isLeftSmaller) {
         smallest = left
       }
 
-      if (right < this.nodes.length && this.priorities[right] < this.priorities[smallest]) {
+      const isRightSmaller = hasRight && this.priorities[right] < this.priorities[smallest]
+
+      if (isRightSmaller) {
         smallest = right
       }
 
@@ -321,30 +352,6 @@ class NodeHeap {
     this.nodes[second] = node
     this.priorities[second] = priority
   }
-}
-
-// The points of `edge` from the distance `from` along it to `to`, in the
-// order walked, the ends interpolated where they fall inside a segment.
-function sliceEdge({edge, from, to}) {
-  const low = Math.min(from, to)
-  const high = Math.max(from, to)
-  const points = [pointAlong({edge, along: low})]
-
-  for (let position = 0; position < edge.count; position += 1) {
-    const isBetween = edge.cumulative[position] > low && edge.cumulative[position] < high
-
-    if (isBetween) {
-      points.push([edge.xy[position * COORDINATE_COUNT], edge.xy[position * COORDINATE_COUNT + 1]])
-    }
-  }
-
-  points.push(pointAlong({edge, along: high}))
-
-  if (from > to) {
-    points.reverse()
-  }
-
-  return points
 }
 
 function pointAlong({edge, along}) {
@@ -371,7 +378,31 @@ function pointAlong({edge, along}) {
   return [edge.xy[last * COORDINATE_COUNT], edge.xy[last * COORDINATE_COUNT + 1]]
 }
 
-const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
+// The points of `edge` from the distance `from` along it to `to`, in the
+// order walked, the ends interpolated where they fall inside a segment.
+function sliceEdge({edge, from, to}) {
+  const low = Math.min(from, to)
+  const high = Math.max(from, to)
+  const points = [pointAlong({edge, along: low})]
+
+  for (let position = 0; position < edge.count; position += 1) {
+    const isAfterLow = edge.cumulative[position] > low
+    const isBeforeHigh = edge.cumulative[position] < high
+    const isBetween = isAfterLow && isBeforeHigh
+
+    if (isBetween) {
+      points.push([edge.xy[position * COORDINATE_COUNT], edge.xy[position * COORDINATE_COUNT + 1]])
+    }
+  }
+
+  points.push(pointAlong({edge, along: high}))
+
+  if (from > to) {
+    points.reverse()
+  }
+
+  return points
+}
 
 // A* from the start snap to the goal snap, which are virtual nodes numbered
 // after the graph's own. Each settled node keeps the node and edge it was
@@ -380,10 +411,11 @@ function search({graph, start, goal, visitedNodeCountMax}) {
   const nodeCount = graph.nodeX.length
   const startNode = nodeCount
   const goalNode = nodeCount + 1
-  const cost = new Float64Array(nodeCount + 2).fill(Infinity)
-  const previous = new Int32Array(nodeCount + 2).fill(NO_NODE)
-  const via = new Int32Array(nodeCount + 2).fill(NO_EDGE)
-  const isSettled = new Uint8Array(nodeCount + 2)
+  const totalCount = nodeCount + VIRTUAL_NODE_COUNT
+  const cost = new Float64Array(totalCount).fill(Infinity)
+  const previous = new Int32Array(totalCount).fill(NO_NODE)
+  const via = new Int32Array(totalCount).fill(NO_EDGE)
+  const isSettled = new Uint8Array(totalCount)
   const heap = new NodeHeap()
   const startEdge = graph.edges[start.edge]
   const goalEdge = graph.edges[goal.edge]
@@ -411,43 +443,24 @@ function search({graph, start, goal, visitedNodeCountMax}) {
     }
   }
 
-  cost[startNode] = 0
-  heap.push({node: startNode, priority: heuristic(startNode)})
-  let visitedCount = 0
+  function expandStart() {
+    relax({from: startNode, to: startEdge.a, meters: start.along, edge: start.edge})
+    relax({from: startNode, to: startEdge.b, meters: startEdge.length - start.along, edge: start.edge})
 
-  while (heap.size > 0) {
-    const node = heap.pop()
-
-    if (isSettled[node] === 1) {
-      continue
+    if (start.edge === goal.edge) {
+      relax({from: startNode, to: goalNode, meters: Math.abs(goal.along - start.along), edge: start.edge})
     }
+  }
 
-    isSettled[node] = 1
-
-    if (node === goalNode) {
-      return {kind: SearchKind.reached, previous, via, cost, startNode, goalNode}
-    }
-
-    visitedCount += 1
-
-    if (visitedCount > visitedNodeCountMax) {
-      return {kind: SearchKind.capped}
-    }
-
-    if (node === startNode) {
-      relax({from: node, to: startEdge.a, meters: start.along, edge: start.edge})
-      relax({from: node, to: startEdge.b, meters: startEdge.length - start.along, edge: start.edge})
-
-      if (start.edge === goal.edge) {
-        relax({from: node, to: goalNode, meters: Math.abs(goal.along - start.along), edge: start.edge})
-      }
-
-      continue
-    }
-
+  function expandNode(node) {
     for (const edgeIndex of graph.nodeEdges[node]) {
       const edge = graph.edges[edgeIndex]
-      const other = edge.a === node ? edge.b : edge.a
+      let other = edge.a
+
+      if (edge.a === node) {
+        other = edge.b
+      }
+
       relax({from: node, to: other, meters: edge.length, edge: edgeIndex})
     }
 
@@ -460,7 +473,49 @@ function search({graph, start, goal, visitedNodeCountMax}) {
     }
   }
 
+  cost[startNode] = 0
+  heap.push({node: startNode, priority: heuristic(startNode)})
+  let visitedCount = 0
+
+  // Each pass settles one node or drops a stale entry, and the visited cap
+  // ends the loop after `visitedNodeCountMax` settled nodes.
+  while (heap.size > 0) {
+    const node = heap.pop()
+
+    if (isSettled[node] === 1) {
+      continue
+    }
+
+    isSettled[node] = 1
+
+    if (node === goalNode) {
+      return {kind: SearchKind.reached, previous, via, startNode, goalNode}
+    }
+
+    visitedCount += 1
+
+    if (visitedCount > visitedNodeCountMax) {
+      return {kind: SearchKind.capped}
+    }
+
+    if (node === startNode) {
+      expandStart()
+    } else {
+      expandNode(node)
+    }
+  }
+
   return {kind: SearchKind.exhausted}
+}
+
+// How far along `edge` the node `node` lies: 0 at its first end, its length
+// at its second.
+function alongOfNode({edge, node}) {
+  if (node === edge.a) {
+    return 0
+  }
+
+  return edge.length
 }
 
 // The plane points of the path the search found, from the start snap to the
@@ -477,24 +532,15 @@ function pathPoints({graph, start, goal, reached}) {
 
   for (const step of steps) {
     const edge = graph.edges[step.edge]
-    let fromAlong = 0
-    let toAlong = edge.length
+    let fromAlong = start.along
+    let toAlong = goal.along
 
-    if (step.from === reached.startNode) {
-      fromAlong = start.along
-    } else if (step.from === edge.b) {
-      fromAlong = edge.length
-      toAlong = 0
+    if (step.from !== reached.startNode) {
+      fromAlong = alongOfNode({edge, node: step.from})
     }
 
-    if (step.node === reached.goalNode) {
-      toAlong = goal.along
-    } else if (step.from !== reached.startNode && step.node === edge.a) {
-      toAlong = 0
-    }
-
-    if (step.from === reached.startNode && step.node !== reached.goalNode) {
-      toAlong = step.node === edge.a ? 0 : edge.length
+    if (step.node !== reached.goalNode) {
+      toAlong = alongOfNode({edge, node: step.node})
     }
 
     for (const point of sliceEdge({edge, from: fromAlong, to: toAlong})) {
@@ -535,26 +581,38 @@ function noPath(reason) {
   return {kind: WalkPathKind.noPath, reason}
 }
 
+function coordinatesOfPoints({plane, points}) {
+  const coordinates = []
+
+  for (const [x, y] of points) {
+    coordinates.push(planeToCoordinate({plane, x, y}))
+  }
+
+  return coordinates
+}
+
 /**
- * The shortest path along the pieces of `shards`, decoded tables of
- * `decodeWalkGraphShard`, from `from` to `to`, each `{lat, lon}` in degrees:
- * `{kind: "found", coordinates, meters}`, the coordinates `[lon, lat]` from
- * `from` to `to` through the point each end snaps to, and the length of the
- * whole line in meters; or `{kind: "noPath", reason}` with a `NoPathReason`:
- * `offGraph` where an end is farther than `limits.snapMetersMax` from every
- * piece, `disconnected` where the graph holds no path between the snapped
- * ends, `capReached` where the search settled `limits.visitedNodeCountMax`
- * nodes, or `noShards` where `shards` holds no piece.
+ * The shortest path along the pieces of `shards`, decoded shard tables,
+ * from `from` to `to`, each `{lat, lon}` in degrees: `{kind: "found",
+ * coordinates, meters}`, the coordinates `[lon, lat]` from `from` to `to`
+ * through the point each end snaps to, and the length of the whole line in
+ * meters; or `{kind: "noPath", reason}` with a `NoPathReason`: `offGraph`
+ * where an end is farther than `limits.snapMetersMax` from every piece,
+ * `disconnected` where the graph holds no path between the snapped ends,
+ * `capReached` where the search settled `limits.visitedNodeCountMax` nodes
+ * or the graph holds more than `limits.edgeCountMax` pieces, or `noShards`
+ * where `shards` holds no piece.
  */
 export function findWalkPath({from, to, shards, limits}) {
   assertEnd(from, "from")
   assertEnd(to, "to")
+  const pieceCount = pieceTotal(shards)
 
-  if (pieceTotal(shards) === 0) {
+  if (pieceCount === 0) {
     return noPath(NoPathReason.noShards)
   }
 
-  if (pieceTotal(shards) > limits.edgeCountMax) {
+  if (pieceCount > limits.edgeCountMax) {
     return noPath(NoPathReason.capReached)
   }
 
@@ -564,8 +622,11 @@ export function findWalkPath({from, to, shards, limits}) {
   const [toX, toY] = degreesToPlane({plane, lat: to.lat, lon: to.lon})
   const start = snap({graph, x: fromX, y: fromY, snapMetersMax: limits.snapMetersMax})
   const goal = snap({graph, x: toX, y: toY, snapMetersMax: limits.snapMetersMax})
+  const isStartOff = start.kind === SnapKind.offGraph
+  const isGoalOff = goal.kind === SnapKind.offGraph
+  const isAnyOff = isStartOff || isGoalOff
 
-  if (start === null || goal === null) {
+  if (isAnyOff) {
     return noPath(NoPathReason.offGraph)
   }
 
@@ -577,9 +638,9 @@ export function findWalkPath({from, to, shards, limits}) {
     case SearchKind.exhausted:
       return noPath(NoPathReason.disconnected)
     case SearchKind.reached: {
-      const points = withoutRepeats([[fromX, fromY], ...pathPoints({graph, start, goal, reached: outcome}), [toX, toY]])
-      const coordinates = Array.from(points, ([x, y]) => planeToCoordinate({plane, x, y}))
-      return {kind: WalkPathKind.found, coordinates, meters: lengthOf(points)}
+      const along = pathPoints({graph, start, goal, reached: outcome})
+      const points = withoutRepeats([[fromX, fromY], ...along, [toX, toY]])
+      return {kind: WalkPathKind.found, coordinates: coordinatesOfPoints({plane, points}), meters: lengthOf(points)}
     }
     default:
       return unreachable(outcome.kind, "walk path: a search of unknown kind")
@@ -601,14 +662,22 @@ export function planWalk({from, to, index, loaded, limits}) {
     return noPath(NoPathReason.tooFar)
   }
 
-  const missing = needed.tiles.filter((tile) => !loaded.has(tileKey(tile)))
+  const missing = []
+  const shards = []
+
+  for (const tile of needed.tiles) {
+    const key = tileKey(tile)
+
+    if (loaded.has(key)) {
+      shards.push(loaded.get(key))
+    } else {
+      missing.push(tile)
+    }
+  }
 
   if (missing.length > 0) {
     return {kind: WalkPathKind.notLoaded, tiles: missing}
   }
 
-  const shards = Array.from(needed.tiles, (tile) => loaded.get(tileKey(tile)))
   return findWalkPath({from, to, shards, limits})
 }
-
-export const TILE_UNITS = Object.freeze({lat: TILE_LAT_UNITS, lon: TILE_LON_UNITS})

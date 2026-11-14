@@ -52,7 +52,7 @@ The index holds the build identifier as the one entry of its string table, and o
 
 ### Fixtures
 
-`test/fixtures/walk_graph/v1/` holds `shard-west.bin`, `shard-east.bin`, `index.bin`, each also as `.bin.gz`, and `expected.json`, written by `Gobusgo.Test.WalkGraphFixture` with `MIX_ENV=test mix run --no-start test/scripts/walk_graph_fixtures.exs`. The west shard is a grid of streets near downtown Seattle with a link missing, a sidewalk, a crossing, steps, and an island; a street runs east out of its tile and the east shard takes it up. ExUnit compares each expanded file to the encoder's output byte for byte, and `node test/scripts/walk_path_check.mjs` decodes the files to `expected.json`, checks each refusal, and runs the path over the two shards. A change to a kind's columns raises its version and writes `v2/` beside `v1/`.
+`test/fixtures/walk_graph/v1/` holds `shard-west.bin`, `shard-east.bin`, `index.bin`, each also as a gzip stream with the suffix `.gz`, and `expected.json`, written by `Gobusgo.Test.WalkGraphFixture` with `MIX_ENV=test mix run --no-start test/scripts/walk_graph_fixtures.exs`. The west shard is a grid of streets near downtown Seattle with a link missing, a sidewalk, a crossing, steps, and an island; a street runs east out of its tile and the east shard takes it up. ExUnit compares each expanded file to the encoder's output byte for byte, and `node test/scripts/walk_path_check.mjs` decodes the files to `expected.json`, checks each refusal, and runs the path over the two shards. A change to a kind's columns raises its version and writes `v2/` beside `v1/`.
 
 ## Tiles and shard size (measured in GOB-467)
 
@@ -82,7 +82,7 @@ The files go in the `intersections/` directory, under the prefixes `walk-graph-`
 
 ## The task
 
-`mix gobusgo.walk_graph.build --extract <path to .osm.pbf> [--bounds south,west,north,east] [--working-directory <dir>]` runs four `osmium` commands through `Gobusgo.Command`, each with a 10-minute deadline, selects, cuts, stores the files and the manifest, and prints the step times, the counts, and the sizes of the files. It never runs on a start. `fileinfo` reads the source date, `tags-filter` keeps the ways of the highway values, `extract -s complete_ways -b` cuts the bounds, and `cat -f opl,add_metadata=false` writes the ways and nodes as text. The selection read it three times and peaked well past the intersections' 334 MB: ETS tables of 5.2 million node positions and 3.6 million references. osmium is `osmium-tool` 1.19.1, as for the places file and the intersections. The tests run a stand-in.
+`mix gobusgo.walk_graph.build --extract <path to .osm.pbf> [--bounds south,west,north,east] [--working-directory <dir>]` runs four `osmium` commands through `Gobusgo.Command`, each with a 10-minute deadline, selects, cuts, stores the files and the manifest, and prints the step times, the counts, and the sizes of the files. It never runs on a start. `fileinfo` reads the source date, `tags-filter` keeps the ways of the highway values, `extract -s complete_ways -b` cuts the bounds, and `cat -f opl,add_metadata=false` writes the ways and nodes as text. The selection reads the export three times and holds ETS tables of the nodes' positions and of the ways' references: on 2026-11-14 the whole task took 136 s and peaked at a maximum resident size of 1,544 MB (`/usr/bin/time -l`), against the intersections' 334 MB, which a hand-run build on a development machine has room for and the application's start never meets. osmium is `osmium-tool` 1.19.1, as for the places file and the intersections. The tests run a stand-in.
 
 ## In the browser
 
@@ -93,6 +93,10 @@ The files go in the `intersections/` directory, under the prefixes `walk-graph-`
 The tiles a walk reads are those its box, the two ends widened by 200 m, touches and the index holds; the pieces of those tiles are the graph, so a detour that leaves the box is not found. The path is A* over the pieces' junctions, the straight distance in a plane tangent at the walk's middle as its heuristic, with each end snapped to the nearest point on any piece as a virtual node that joins its piece's two ends; the line runs from the end to its snap, along the path, and from the other snap to the other end.
 
 The files are not in the offline bundle (decided in GOB-467): the service worker saves only `/tiles/`, `/routing/`, and the places file, a walk drawn offline keeps the straight line, and 11 MB of the whole region is more than a rider saves for the minutes a walk's line is worth. A page that has fetched a tile has it in the browser's cache, which serves it again by its immutable name.
+
+## Checked in a browser (GOB-467)
+
+On 2026-11-14 in headless Chrome against a local server over the files of the build above, `liveSocket.main.getHook` reached the `TripPlanner` hook, which was given a journey of one walk from a rider position, and its `draw` ran the reader, the pure plan, and the map's layer as a page does. The routing manifest of the local data directory held no snapshot, so no journey was planned through the Trip tab itself; the walk's two ends were set by hand. A walk from Pike Place Market to a point 400 m north-east fetched the manifest, the index, and the four shards its box touches, found a path of 46 positions, and drew it along the streets, through Victor Steinbrueck Park's paths and up First Avenue, where the straight line crossed blocks. A walk of 352 m across Interstate 5 found a path of 499 m with 43 positions. With the network offline after the page loaded, the manifest failed to load, no line was held, and the walk stayed the straight line.
 
 ## Open
 

@@ -428,7 +428,11 @@ function isWalkFeature(feature) {
 const [straightWalk] = drawn.collection.features.filter(isWalkFeature)
 const [walkFrom, walkTo] = straightWalk.geometry.coordinates
 const walkEnds = {from: {lat: walkFrom[1], lon: walkFrom[0]}, to: {lat: walkTo[1], lon: walkTo[0]}}
-const walkingLeg = earliest.legs.find((leg) => leg.kind === LegKind.walk)
+function isWalkLeg(leg) {
+  return leg.kind === LegKind.walk
+}
+
+const walkingLeg = earliest.legs.find(isWalkLeg)
 deepStrictEqual(walkEndsOf({journey: earliest, leg: walkingLeg, origin: null}), {kind: "ends", ...walkEnds}, "the ends of a walk")
 deepStrictEqual(walkEndsOf({journey: earliest, leg: earliest.legs[0], origin: null}), {kind: "none"}, "a ride has no walk ends")
 deepStrictEqual(walkEndsOf({journey: {...earliest, stopPositions: {}}, leg: walkingLeg, origin: null}), {kind: "none"}, "a walk with no position has no ends")

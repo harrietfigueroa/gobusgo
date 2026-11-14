@@ -67,7 +67,11 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
     for (const walk of wanted) {
       const key = walkKey(walk)
 
-      if (lines.has(key) || declined.has(key)) {
+      const isFound = lines.has(key)
+      const isDeclined = declined.has(key)
+      const isSettled = isFound || isDeclined
+
+      if (isSettled) {
         continue
       }
 
@@ -109,7 +113,9 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
 
   async function startShard(tile) {
     const key = tileKey(tile)
-    const isBusy = held.has(key) || inflight.has(key) || failed.has(key)
+    const isHeld = held.has(key)
+    const isFetching = isHeld || inflight.has(key)
+    const isBusy = isFetching || failed.has(key)
 
     if (isBusy) {
       return
@@ -164,7 +170,8 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
 
   function isSourceRetryDue() {
     const isFailed = source.kind === SourceKind.failed
-    return isFailed && performance.now() - source.failedAtMs >= SOURCE_RETRY_MS
+    const failedForMs = performance.now() - source.failedAtMs
+    return isFailed && failedForMs >= SOURCE_RETRY_MS
   }
 
   return {
@@ -173,7 +180,7 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
     // line already held is in `lines` on return.
     request(walks) {
       assertCondition(walks.length <= REQUEST_WALK_COUNT_MAX, "walk path reader: a request names at most " + REQUEST_WALK_COUNT_MAX + " walks, not " + walks.length)
-      const keys = walks.map(walkKey).join("|")
+      const keys = Array.from(walks, walkKey).join("|")
       const isNewRequest = keys !== wantedKeys
 
       if (isNewRequest) {
@@ -186,7 +193,9 @@ export function createWalkPathReader({fileOrigin, onWalks}) {
       wantedKeys = keys
       const isIdle = source.kind === SourceKind.idle
 
-      if (isIdle || isSourceRetryDue()) {
+      const isLoadDue = isIdle || isSourceRetryDue()
+
+      if (isLoadDue) {
         load()
       }
 

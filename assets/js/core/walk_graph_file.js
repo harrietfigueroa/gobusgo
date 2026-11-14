@@ -259,15 +259,19 @@ function refusedManifest(reason) {
  * identifier or index entry is malformed.
  */
 export function acceptWalkManifest(manifest) {
-  const isObject = typeof manifest === "object" && manifest !== null && !Array.isArray(manifest)
-
-  if (!isObject) {
+  if (!isRecord(manifest)) {
     return refusedManifest(ManifestRefusal.notAnObject)
   }
 
-  const tile = manifest.tile
-  const isTileHeld = typeof tile === "object" && tile !== null
-  const isTileSame = isTileHeld && tile.latUnits === TILE_LAT_UNITS && tile.lonUnits === TILE_LON_UNITS
+  const {tile} = manifest
+
+  if (!isRecord(tile)) {
+    return refusedManifest(ManifestRefusal.otherTiles)
+  }
+
+  const isLatSame = tile.latUnits === TILE_LAT_UNITS
+  const isLonSame = tile.lonUnits === TILE_LON_UNITS
+  const isTileSame = isLatSame && isLonSame
 
   if (!isTileSame) {
     return refusedManifest(ManifestRefusal.otherTiles)
@@ -277,20 +281,39 @@ export function acceptWalkManifest(manifest) {
     return refusedManifest(ManifestRefusal.otherUnits)
   }
 
-  const isBuildIdHeld = typeof manifest.buildId === "string" && BUILD_ID_PATTERN.test(manifest.buildId)
+  const isBuildIdText = typeof manifest.buildId === "string"
 
-  if (!isBuildIdHeld) {
+  if (!isBuildIdText) {
     return refusedManifest(ManifestRefusal.badBuildId)
   }
 
-  const index = manifest.index
-  const isIndexHeld = typeof index === "object" && index !== null
-  const isPathHeld = isIndexHeld && typeof index.path === "string" && index.path.startsWith("/")
-  const isSizeHeld = isIndexHeld && Number.isSafeInteger(index.byteSize) && index.byteSize > 0
+  if (!BUILD_ID_PATTERN.test(manifest.buildId)) {
+    return refusedManifest(ManifestRefusal.badBuildId)
+  }
 
-  if (!isPathHeld || !isSizeHeld) {
+  const {index} = manifest
+
+  if (!isRecord(index)) {
+    return refusedManifest(ManifestRefusal.badIndex)
+  }
+
+  const isPathText = typeof index.path === "string"
+  const isPathRooted = isPathText && index.path.startsWith("/")
+  const isSizeWhole = Number.isSafeInteger(index.byteSize)
+  const isSizeHeld = isSizeWhole && index.byteSize > 0
+  const isIndexUsable = isPathRooted && isSizeHeld
+
+  if (!isIndexUsable) {
     return refusedManifest(ManifestRefusal.badIndex)
   }
 
   return {kind: ManifestKind.accepted, buildId: manifest.buildId, indexPath: index.path, indexByteSize: index.byteSize}
+}
+
+// Whether `value` is a JSON object: not null, not an array.
+function isRecord(value) {
+  const isObject = typeof value === "object"
+  const isHeld = value !== null
+  const isHeldObject = isObject && isHeld
+  return isHeldObject && !Array.isArray(value)
 }
