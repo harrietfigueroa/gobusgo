@@ -156,7 +156,7 @@ defmodule Gobusgo.Routing.WalkLinks do
 
     initial = %{
       measured: %{},
-      cache: %{shards: %{}, order: [], piece_count: 0},
+      cache: %{shards: %{}, counts: %{}, order: []},
       stats: %{straight_link_count: 0, dropped_link_count: 0, read_count: 0}
     }
 
@@ -437,31 +437,32 @@ defmodule Gobusgo.Routing.WalkLinks do
     shards =
       Enum.reduce(loaded, cache.shards, fn {tile, shard}, held -> Map.put(held, tile, shard) end)
 
-    order = Enum.uniq(Enum.map(loaded, &elem(&1, 0)) ++ cache.order)
-    trim(%{shards: shards, order: order}, window)
-  end
-
-  defp trim(%{shards: shards, order: order}, window) do
-    {kept, shards} =
-      Enum.reduce(order, {[], shards}, fn tile, {kept, held} ->
-        keep_tile(tile, window, kept, held)
+    counts =
+      Enum.reduce(loaded, cache.counts, fn {tile, shard}, held ->
+        Map.put(held, tile, length(shard.pieces))
       end)
 
-    %{shards: shards, order: Enum.reverse(kept), piece_count: piece_count(shards)}
+    order = Enum.uniq(Enum.map(loaded, &elem(&1, 0)) ++ cache.order)
+    trim(%{shards: shards, counts: counts, order: order}, window)
   end
 
-  defp keep_tile(tile, window, kept, held) do
-    within_bound = piece_count(Map.take(held, [tile | kept])) <= @shard_piece_count_max
+  # The newest shards first, each kept while the pieces kept stay within the
+  # bound, and the window's always, so a window larger than the bound still
+  # holds its own shards.
+  defp trim(%{shards: shards, counts: counts, order: order}, window) do
+    {kept, _total} =
+      Enum.reduce(order, {[], 0}, fn tile, {kept, total} ->
+        count = Map.fetch!(counts, tile)
+        within_bound = total + count <= @shard_piece_count_max
 
-    if tile in window or within_bound do
-      {[tile | kept], held}
-    else
-      {kept, Map.delete(held, tile)}
-    end
-  end
+        if tile in window or within_bound do
+          {[tile | kept], total + count}
+        else
+          {kept, total}
+        end
+      end)
 
-  defp piece_count(shards) do
-    shards |> Map.values() |> Enum.map(&length(&1.pieces)) |> Enum.sum()
+    %{shards: Map.take(shards, kept), counts: Map.take(counts, kept), order: Enum.reverse(kept)}
   end
 
   # ---- The table: what was measured and what the previous table still holds.
