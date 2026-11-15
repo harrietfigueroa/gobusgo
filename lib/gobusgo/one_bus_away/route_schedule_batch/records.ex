@@ -71,6 +71,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   @trip_schema {:map,
                 %{
                   "id" => :string,
+                  "routeId" => {:nullable, :string},
                   "directionId" => :string,
                   "headsign" => {:nullable, :string},
                   "blockId" => {:nullable, :string},
@@ -143,6 +144,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   defp trip_data(trip) do
     %{
       "id" => trip.id,
+      "routeId" => trip.route_id,
       "directionId" => trip.direction_id,
       "headsign" => trip.headsign,
       "blockId" => trip.block_id,
@@ -206,6 +208,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   defp listed_trip(trip) do
     %{
       id: trip["id"],
+      route_id: trip["routeId"],
       direction_id: trip["directionId"],
       headsign: trip["headsign"],
       block_id: trip["blockId"],

@@ -22,6 +22,13 @@ defmodule Gobusgo.Routing.Timetable do
   previous date has the service day offset `1`, so it stays a trip of its
   own beside the same trip identifier of this date.
 
+  OneBusAway lists a trip in the schedule of every route whose stop groups
+  hold it, so one trip identifier can come with identical stop times from
+  two schedules. A trip is one row, under the route its own reference
+  names or, where that route does not list it, under the smallest route
+  identifier among the schedules that do; only that schedule's hops become
+  connections. Sequences rise within a trip index, which is asserted.
+
   Stops are those the connections use, in identifier order. Trips are those
   with a connection, by service day offset and then identifier.
   Connections are ordered by departure, then arrival, trip, sequence,
@@ -50,7 +57,8 @@ defmodule Gobusgo.Routing.Timetable do
   @typedoc """
   `connections` holds the connection records in the layout of the
   connections file, without its header, in connection order;
-  `connection_count` is how many.
+  `connection_count` is how many; `duplicate_trip_count` is how many
+  listings of a trip another schedule also lists were dropped.
   """
   @type t :: %{
           service_date: Date.t(),
@@ -60,7 +68,8 @@ defmodule Gobusgo.Routing.Timetable do
           stop_ids: [String.t()],
           trips: [SnapshotFormat.trip()],
           connections: binary(),
-          connection_count: non_neg_integer()
+          connection_count: non_neg_integer(),
+          duplicate_trip_count: non_neg_integer()
         }
 
   @doc """
@@ -85,19 +94,23 @@ defmodule Gobusgo.Routing.Timetable do
     previous = previous_day(previous_schedules, start_ms)
     days = [today | previous]
 
-    named = Enum.reduce(days, %{stops: MapSet.new(), trips: MapSet.new()}, &name_day/2)
+    named =
+      Enum.reduce(days, %{stops: MapSet.new(), trips: %{}, listing_count: 0}, &name_day/2)
+
     stop_ids = Enum.sort(named.stops)
     stop_index = stop_ids |> Enum.with_index() |> Map.new()
-    trips = Enum.sort(named.trips)
+
+    trips =
+      Enum.sort(for {{offset, id}, {_rank, route_id}} <- named.trips, do: {offset, id, route_id})
 
     trip_index =
       trips
       |> Enum.with_index()
-      |> Map.new(fn {{offset, id, _route}, index} -> {{offset, id}, index} end)
+      |> Map.new(fn {{offset, id, route_id}, index} -> {{offset, id}, {index, route_id}} end)
 
     indexes = %{trip_index: trip_index, stop_index: stop_index}
-    buckets = Enum.reduce(days, %{}, &bucket_day(&1, &2, indexes))
-    connections = in_connection_order(buckets)
+    filled = Enum.reduce(days, %{buckets: %{}, last_sequences: %{}}, &bucket_day(&1, &2, indexes))
+    connections = in_connection_order(filled.buckets)
 
     %{
       service_date: service_date,
@@ -110,7 +123,8 @@ defmodule Gobusgo.Routing.Timetable do
           %{id: id, route_id: route_id, service_day_offset: offset}
         end,
       connections: connections,
-      connection_count: div(byte_size(connections), SnapshotFormat.connection_bytes())
+      connection_count: div(byte_size(connections), SnapshotFormat.connection_bytes()),
+      duplicate_trip_count: named.listing_count - map_size(named.trips)
     }
   end
 
@@ -176,36 +190,72 @@ defmodule Gobusgo.Routing.Timetable do
       end)
 
     if kept do
-      trip_key = {offset, trip.id, schedule.route_id}
-      %{named | stops: stops, trips: MapSet.put(named.trips, trip_key)}
+      rank = {trip_listing_rank(trip, schedule), schedule.route_id}
+      trips = Map.update(named.trips, {offset, trip.id}, rank, &min(&1, rank))
+      %{named | stops: stops, trips: trips, listing_count: named.listing_count + 1}
     else
       named
     end
   end
 
+  # Orders the schedules that list one trip: the route the trip's own
+  # reference names first, then by route identifier, so the owner does not
+  # depend on the order the schedules arrive in.
+  defp trip_listing_rank(trip, schedule) do
+    if trip.route_id == schedule.route_id, do: 0, else: 1
+  end
+
   # The second pass: each kept hop's sort key, appended to the binary of
   # the bucket of its departure.
-  defp bucket_day(%{offset: offset, shift_s: shift_s} = day, buckets, indexes) do
-    for schedule <- day.schedules, trip <- schedule.trips, reduce: buckets do
-      buckets ->
-        trip_index = Map.get(indexes.trip_index, {offset, trip.id})
-
-        reduce_kept_hops(trip, shift_s, buckets, fn hop, buckets ->
-          Assert.condition(trip_index != nil, "a trip with a kept hop is named")
-
-          key =
-            sort_key(%{
-              hop: hop,
-              trip: trip_index,
-              departure_stop:
-                Map.fetch!(indexes.stop_index, elem(schedule.stop_ids, hop.from_index)),
-              arrival_stop: Map.fetch!(indexes.stop_index, elem(schedule.stop_ids, hop.to_index))
+  # `filled` holds the buckets and, per trip index, the last sequence
+  # written. A trip listed by several schedules is written from the one
+  # `named` chose, and a second write of a trip index breaks the rise of
+  # its sequences.
+  defp bucket_day(%{offset: offset} = day, filled, indexes) do
+    for schedule <- day.schedules, trip <- schedule.trips, reduce: filled do
+      filled ->
+        case Map.get(indexes.trip_index, {offset, trip.id}) do
+          {trip_index, route_id} when route_id == schedule.route_id ->
+            bucket_trip(filled, %{
+              day: day,
+              schedule: schedule,
+              trip: trip,
+              trip_index: trip_index,
+              stop_index: indexes.stop_index
             })
 
-          bucket = Integer.floor_div(hop.departure_s, @bucket_s)
-          Map.update(buckets, bucket, key, &append_key(&1, key))
-        end)
+          _unowned_or_unnamed ->
+            filled
+        end
     end
+  end
+
+  defp bucket_trip(filled, %{trip: trip, day: day, trip_index: trip_index} = input) do
+    reduce_kept_hops(trip, day.shift_s, filled, fn hop, filled ->
+      last_sequence = Map.get(filled.last_sequences, trip_index, -1)
+
+      Assert.condition(
+        hop.sequence > last_sequence,
+        "sequences must rise within trip index #{trip_index}, got #{hop.sequence} after #{last_sequence}"
+      )
+
+      schedule = input.schedule
+
+      key =
+        sort_key(%{
+          hop: hop,
+          trip: trip_index,
+          departure_stop: Map.fetch!(input.stop_index, elem(schedule.stop_ids, hop.from_index)),
+          arrival_stop: Map.fetch!(input.stop_index, elem(schedule.stop_ids, hop.to_index))
+        })
+
+      bucket = Integer.floor_div(hop.departure_s, @bucket_s)
+
+      %{
+        buckets: Map.update(filled.buckets, bucket, key, &append_key(&1, key)),
+        last_sequences: Map.put(filled.last_sequences, trip_index, hop.sequence)
+      }
+    end)
   end
 
   defp append_key(bucket, key), do: bucket <> key

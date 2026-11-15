@@ -175,6 +175,19 @@ defmodule Gobusgo.OneBusAway.RouteSchedulesTest do
       assert {:ok, %{route_id: "19_41"}} = parse(data())
     end
 
+    test "gives a trip the route its own reference names, which another route's schedule can list" do
+      changed = put_in(data(), ["references", "trips", Access.at(0), "routeId"], "19_42")
+
+      assert {:ok, %{trips: [%{route_id: "19_42"} | _rest]}} = parse(changed)
+    end
+
+    test "gives a trip no route where its reference names none" do
+      changed =
+        update_in(data(), ["references", "trips", Access.at(0)], &Map.delete(&1, "routeId"))
+
+      assert {:ok, %{trips: [%{route_id: nil} | _rest]}} = parse(changed)
+    end
+
     test "returns a mismatch for a response of another route" do
       assert parse(put_in(data(), ["entry", "routeId"], "19_42")) ==
                {:error, {:route_mismatch, "19_42"}}
