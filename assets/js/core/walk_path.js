@@ -63,10 +63,10 @@ const TIE_UNITS_PER_METER = 1_000_000
 const KEY_ENDS_FROM = 3
 const KEY_ENDS_TO = 7
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
-const SnapKind = Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
+export const SnapKind =Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
 const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
 
-function planeOf({from, to}) {
+export function planeOf({from, to}) {
   const referenceLat = (from.lat + to.lat) / MIDDLE_DIVISOR
   const referenceLon = (from.lon + to.lon) / MIDDLE_DIVISOR
   return {referenceLat, referenceLon, metersPerLat: METERS_PER_DEGREE, metersPerLon: metersPerDegreeLongitude(referenceLat)}
@@ -74,7 +74,7 @@ function planeOf({from, to}) {
 
 // The length of the vector (deltaX, deltaY) as the square root of the sum of
 // its squares, so a sum is computed in one order wherever it is made.
-function distanceOf(deltaX, deltaY) {
+export function distanceOf(deltaX, deltaY) {
   return Math.sqrt(deltaX * deltaX + deltaY * deltaY)
 }
 
@@ -101,7 +101,7 @@ function compareLists(left, right) {
 }
 
 // A position in degrees as meters east and north on the plane.
-function degreesToPlane({plane, lat, lon}) {
+export function degreesToPlane({plane, lat, lon}) {
   return [(lon - plane.referenceLon) * plane.metersPerLon, (lat - plane.referenceLat) * plane.metersPerLat]
 }
 
@@ -114,7 +114,7 @@ function planeToCoordinate({plane, x, y}) {
   return [plane.referenceLon + x / plane.metersPerLon, plane.referenceLat + y / plane.metersPerLat]
 }
 
-function assertEnd(end, name) {
+export function assertEnd(end, name) {
   assertCondition(Number.isFinite(end.lat), "walk path: the " + name + " latitude is a number")
   assertCondition(Number.isFinite(end.lon), "walk path: the " + name + " longitude is a number")
   assertCondition(Math.abs(end.lat) <= LATITUDE_DEGREES_MAX, "walk path: the " + name + " latitude is on the globe")
@@ -125,6 +125,44 @@ function straightMeters({plane, from, to}) {
   const [fromX, fromY] = degreesToPlane({plane, lat: from.lat, lon: from.lon})
   const [toX, toY] = degreesToPlane({plane, lat: to.lat, lon: to.lon})
   return distanceOf(toX - fromX, toY - fromY)
+}
+
+// The 3 by 3 tiles around the tile of `end`, `{lat, lon}` in degrees, each
+// `{row, column}`, whether or not the index holds them.
+function windowAround(end) {
+  const latUnits = Math.floor(end.lat * UNITS_PER_DEGREE)
+  const lonUnits = Math.floor(end.lon * UNITS_PER_DEGREE)
+  const center = tileOf({lat: latUnits, lon: lonUnits})
+  const tiles = []
+
+  for (let row = center.row - WINDOW_RADIUS; row <= center.row + WINDOW_RADIUS; row += 1) {
+    for (let column = center.column - WINDOW_RADIUS; column <= center.column + WINDOW_RADIUS; column += 1) {
+      tiles.push({row, column})
+    }
+  }
+
+  return tiles
+}
+
+/**
+ * The tiles of the 3 by 3 window around the tile of `position`, `{lat, lon}`
+ * in degrees, that `index`, a Set of `tileKey`s, holds, each `{row, column}`,
+ * in row then column order: the tiles `walkTilesNeeded` reads for the walk
+ * that has `position` for an end, which is the whole of what a search from
+ * `position` needs.
+ */
+export function walkWindowTiles({position, index}) {
+  assertEnd(position, "position")
+  const tiles = []
+
+  for (const tile of windowAround(position)) {
+    if (index.has(tileKey(tile))) {
+      tiles.push(tile)
+    }
+  }
+
+  tiles.sort(compareTiles)
+  return tiles
 }
 
 /**
@@ -141,14 +179,8 @@ export function walkTilesNeeded({from, to, index, limits}) {
   const windowed = new Map()
 
   for (const end of [from, to]) {
-    const latUnits = Math.floor(end.lat * UNITS_PER_DEGREE)
-    const lonUnits = Math.floor(end.lon * UNITS_PER_DEGREE)
-    const center = tileOf({lat: latUnits, lon: lonUnits})
-
-    for (let row = center.row - WINDOW_RADIUS; row <= center.row + WINDOW_RADIUS; row += 1) {
-      for (let column = center.column - WINDOW_RADIUS; column <= center.column + WINDOW_RADIUS; column += 1) {
-        windowed.set(tileKey({row, column}), {row, column})
-      }
+    for (const tile of windowAround(end)) {
+      windowed.set(tileKey(tile), tile)
     }
   }
 
@@ -180,7 +212,7 @@ function positionKey({latUnits, lonUnits}) {
   return (latUnits + POSITION_KEY_LAT_OFFSET) * POSITION_KEY_LAT_SCALE + (lonUnits + POSITION_KEY_LON_OFFSET)
 }
 
-function pieceTotal(shards) {
+export function pieceTotal(shards) {
   let total = 0
 
   for (const shard of shards) {
@@ -222,7 +254,7 @@ function edgeOfPiece({shard, piece, plane, nodeAt}) {
 
 // The graph over `shards`: for each piece an edge between the nodes at its
 // ends, and for each node the edges that end there.
-function buildGraph({shards, plane}) {
+export function buildGraph({shards, plane}) {
   const nodeByKey = new Map()
   const nodeX = []
   const nodeY = []
@@ -324,7 +356,7 @@ function snapKey({nearest, edge, startX, startY}) {
 // The nearest point to (x, y) within `snapMetersMax` on the edges of each
 // connected component, a Map from a component to `{kind: "snapped", edge,
 // x, y, distance, along}`; a component with no edge that near is left out.
-function snapsByComponent({graph, x, y, snapMetersMax}) {
+export function snapsByComponent({graph, x, y, snapMetersMax}) {
   const snaps = new Map()
 
   for (const [edgeIndex, edge] of graph.edges.entries()) {
@@ -365,7 +397,7 @@ function isBetterPair({candidate, best}) {
   return compareLists(pairKey(candidate), pairKey(best)) < 0
 }
 
-function chooseSnaps({startSnaps, goalSnaps}) {
+export function chooseSnaps({startSnaps, goalSnaps}) {
   let best = {kind: SnapKind.none, reason: NoPathReason.disconnected}
 
   for (const [component, start] of startSnaps) {
@@ -395,7 +427,7 @@ function chooseSnaps({startSnaps, goalSnaps}) {
 
 // A binary min-heap of node numbers by priority; a node may be pushed more
 // than once, and the search skips the stale entries.
-class NodeHeap {
+export class NodeHeap {
   constructor() {
     this.nodes = []
     this.priorities = []
@@ -700,7 +732,7 @@ function lengthOf(points) {
   return meters
 }
 
-function noPath(reason) {
+export function noPath(reason) {
   return {kind: WalkPathKind.noPath, reason}
 }
 

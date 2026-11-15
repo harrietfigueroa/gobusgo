@@ -11,7 +11,16 @@ import {AssertionError} from "../../assets/js/core/assert.js"
 import {LegKind} from "../../assets/js/core/routing_engine.js"
 import {FailureReason, JourneysKind, WINDOW_SECONDS} from "../../assets/js/core/routing_journeys.js"
 import {POSITION_UNKNOWN_MICRODEGREES} from "../../assets/js/core/routing_snapshot.js"
-import {FrontierKind, LEG_KIND_TO_POINT, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "../../assets/js/core/point_journeys.js"
+import {
+  FrontierKind,
+  LEG_KIND_TO_POINT,
+  PointJourneysKind,
+  TARGET_STOP_COUNT_MAX,
+  journeysToPoint,
+  markStraightLineWalks,
+  targetStops,
+  targetStopsOnStreets
+} from "../../assets/js/core/point_journeys.js"
 
 const MICRODEGREES = 1_000_000
 const MINUTE_S = 60
@@ -40,6 +49,8 @@ const LATE_TODAY_S = 86000
 const EARLY_TOMORROW_S = 100
 // The haversine distances from the destination at 1.2 m/s, rounded up:
 // 30.0 m and 75.8 m.
+const STREET_NEAR_WALK_S = 75
+const STREET_FAR_WALK_S = 250
 const NEARER_WALK_S = 25
 const NEAR_WALK_S = 64
 
@@ -118,6 +129,43 @@ function lastLeg(kept) {
   deepStrictEqual(bounded.length, ONE_STOP)
   const twoPlaced = positionsOf([near, far])
   throws(() => targetStops({position: destination, stopIds: ["1_near"], positions: twoPlaced, transferRules, countMax: ONE_STOP}), AssertionError)
+}
+
+// Over the streets, the stops are those the reach found, nearest by street
+// first at the walk the street takes, whatever their straight-line order:
+// "1_far" is 300 m by street and "1_near" 90 m, "1_nearer" is left out
+// (none reached), and the bound keeps the first.
+{
+  const stops = [{stop: 1, streetM: 300}, {stop: 0, streetM: 90}]
+  const stopIds = ["1_near", "1_far", "1_nearer"]
+  const targets = targetStopsOnStreets({stopIds, stops, transferRules, countMax: TARGET_STOP_COUNT_MAX})
+  deepStrictEqual(Array.from(targets, stopIdOf), ["1_near", "1_far"])
+  deepStrictEqual(Array.from(targets, walkOf), [STREET_NEAR_WALK_S, STREET_FAR_WALK_S])
+  deepStrictEqual(targetStopsOnStreets({stopIds, stops, transferRules, countMax: ONE_STOP}).length, ONE_STOP)
+  throws(() => targetStopsOnStreets({stopIds: ["1_near"], stops, transferRules, countMax: ONE_STOP}), AssertionError)
+}
+
+// A journey says its walk is a straight line where a walk of a position end
+// fell back to one: its start's walk from the rider's position, or its walk
+// to the point, and only a journey that has that walk.
+{
+  const fromPosition = {kind: LegKind.walkFromPosition, toStopId: "1_1", durationS: WALK_A_S}
+  const toPoint = {kind: LEG_KIND_TO_POINT, fromStopId: "1_b", durationS: WALK_B_S}
+  const rideOnly = journey({stopId: "1_b", arrivalS: TIME_S, changes: NO_CHANGE})
+  const walkedStart = {...rideOnly, legs: [fromPosition, ...rideOnly.legs]}
+  const walkedEnd = {...rideOnly, legs: [...rideOnly.legs, toPoint]}
+  const cases = [
+    {name: "start fell back, journey walks from the position", flags: {isStartStraight: true, isEndStraight: false}, journey: walkedStart, expected: true},
+    {name: "start fell back, journey starts at a stop", flags: {isStartStraight: true, isEndStraight: false}, journey: rideOnly, expected: false},
+    {name: "end fell back, journey walks to the point", flags: {isStartStraight: false, isEndStraight: true}, journey: walkedEnd, expected: true},
+    {name: "end fell back, the walk is the start's", flags: {isStartStraight: false, isEndStraight: true}, journey: walkedStart, expected: false},
+    {name: "neither fell back", flags: {isStartStraight: false, isEndStraight: false}, journey: {...walkedStart, legs: [...walkedStart.legs, toPoint]}, expected: false}
+  ]
+
+  for (const hedged of cases) {
+    const [marked] = markStraightLineWalks({journeys: [hedged.journey], ...hedged.flags})
+    deepStrictEqual(marked.hasStraightLineWalk, hedged.expected, hedged.name)
+  }
 }
 
 // Each journey gains the walk from its stop, and the answers make one

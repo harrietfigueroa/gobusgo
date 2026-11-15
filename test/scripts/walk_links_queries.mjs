@@ -192,14 +192,30 @@ function pairsOf({points, shardsByKey, index}) {
   return queries
 }
 
-/** The index's tile keys and the answer to each pair of points, as the golden file holds them. */
-export function goldenQueries() {
+function namedPoint([name, latUnits, lonUnits]) {
+  return {name, ...degrees(latUnits, lonUnits)}
+}
+
+/**
+ * The graph the golden queries run over: `indexTable`, the decoded index,
+ * `shardsByKey`, each held tile's decoded shard, and `points`, every named
+ * point in degrees.
+ */
+export function goldenGraph() {
   const indexTable = decodeWalkGraphIndex(read("index.bin")).table
   const shardsByKey = new Map([[WEST_TILE_KEY, decodedShard("shard-west.bin")], [EAST_TILE_KEY, decodedShard("shard-east.bin")]])
+
   for (const shard of EXTRA_SHARDS) {
     shardsByKey.set(tileKey({row: shard.tile[0], column: shard.tile[1]}), tableOfPieces(shard.pieces))
   }
 
+  const points = Array.from([...POINTS, ...EXTRA_POINTS], namedPoint)
+  return {indexTable, shardsByKey, points}
+}
+
+/** The index's tile keys and the answer to each pair of points, as the golden file holds them. */
+export function goldenQueries() {
+  const {indexTable, shardsByKey} = goldenGraph()
   const index = indexTable.tileKeys
   const queries = [...pairsOf({points: POINTS, shardsByKey, index}), ...pairsOf({points: EXTRA_POINTS, shardsByKey, index})]
 
