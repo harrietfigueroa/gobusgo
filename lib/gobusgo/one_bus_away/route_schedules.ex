@@ -80,6 +80,7 @@ defmodule Gobusgo.OneBusAway.RouteSchedules do
   """
   @type trip :: %{
           id: String.t(),
+          route_id: String.t() | nil,
           direction_id: String.t(),
           headsign: String.t() | nil,
           block_id: String.t() | nil,
@@ -140,6 +141,7 @@ defmodule Gobusgo.OneBusAway.RouteSchedules do
   @trip_schema {:map,
                 %{
                   "id" => :string,
+                  "routeId" => {:optional, :string},
                   "directionId" => :string,
                   "tripHeadsign" => :string,
                   "blockId" => :string,
@@ -339,6 +341,7 @@ defmodule Gobusgo.OneBusAway.RouteSchedules do
 
     %{
       id: trip_id,
+      route_id: supplied(reference["routeId"]),
       direction_id: reference["directionId"],
       headsign: supplied(reference["tripHeadsign"]),
       block_id: supplied(reference["blockId"]),
@@ -358,6 +361,7 @@ defmodule Gobusgo.OneBusAway.RouteSchedules do
     }
   end
 
+  defp supplied(nil), do: nil
   defp supplied(""), do: nil
   defp supplied(value) when is_binary(value), do: value
 

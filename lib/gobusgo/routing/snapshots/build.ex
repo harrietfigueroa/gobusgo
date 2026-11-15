@@ -24,7 +24,9 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   One line per run that builds or fails: `Routing snapshots built` at
   `info`, or `Routing snapshots not built` at `error` when a date's files
   were not written, with the counts built, passed over, and failed, the
-  connection count of the dates built, the counts of trip paths and of trip
+  connection count of the dates built, `duplicate_trip_count`, the trip
+  listings dropped because a second route's schedule lists the same trip,
+  the counts of trip paths and of trip
   path shards written, the time the trip path builds took in milliseconds,
   and the count of trip path builds that were killed or failed, and the
   time taken. A run that builds nothing and fails nothing logs `debug`.
@@ -92,6 +94,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           unchanged_count: non_neg_integer(),
           failed_count: non_neg_integer(),
           connection_count: non_neg_integer(),
+          duplicate_trip_count: non_neg_integer(),
           trip_path_count: non_neg_integer(),
           trip_path_shard_count: non_neg_integer(),
           trip_path_elapsed_ms: non_neg_integer(),
@@ -164,6 +167,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       unchanged_count: Enum.count(outcomes, &(&1 == :unchanged)),
       failed_count: Enum.count(outcomes, &(&1 == :failed)),
       connection_count: Enum.sum(for {:built, built} <- outcomes, do: built.connection_count),
+      duplicate_trip_count:
+        Enum.sum(for {:built, built} <- outcomes, do: built.duplicate_trip_count),
       trip_path_count:
         Enum.sum(for {_kind, built} <- trip_path_outcomes, do: built.trip_path_count),
       trip_path_shard_count:
@@ -486,7 +491,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
          entry: entry,
          inputs_sha256: input.inputs_sha256,
          other_sha256: input.other_sha256,
-         connection_count: timetable.connection_count
+         connection_count: timetable.connection_count,
+         duplicate_trip_count: timetable.duplicate_trip_count
        }}
     else
       :failed
@@ -529,7 +535,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     log_recovery(%{outcome: outcome, previous: written.previous, date: date, attempt: attempt})
 
-    {written.kind, Map.put(counts, :connection_count, Map.get(written, :connection_count, 0))}
+    {written.kind,
+     Map.merge(counts, %{
+       connection_count: Map.get(written, :connection_count, 0),
+       duplicate_trip_count: Map.get(written, :duplicate_trip_count, 0)
+     })}
   end
 
   defp attempt_number(:none), do: 1
