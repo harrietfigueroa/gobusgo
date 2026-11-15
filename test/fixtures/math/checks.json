@@ -19,6 +19,8 @@
     {"name": "a large number and a small one", "low": 1e21, "high": 1e-7, "label": "a pair", "failure": "a pair: 1e+21 is above 1e-7"},
     {"name": "a number below a million and negative zero", "low": 123456.5, "high": -0, "label": "a pair", "failure": "a pair: 123456.5 is above 0"},
     {"name": "a small number and an endless one below zero", "low": 0.000001, "high": "-Infinity", "label": "a pair", "failure": "a pair: 0.000001 is above -Infinity"},
-    {"name": "no number", "low": 1, "high": "NaN", "label": "a pair", "failure": "a pair: 1 is above NaN"}
+    {"name": "no number", "low": 1, "high": "NaN", "label": "a pair", "failure": "a pair: 1 is above NaN"},
+    {"name": "an exact tie between two shortest writings, which goes to the even digit", "low": 2516583712.3789062, "high": 0, "label": "a pair", "failure": "a pair: 2516583712.3789062 is above 0"},
+    {"name": "two to the 60th, written in full with its shortest digits", "low": 1152921504606846976, "high": 0, "label": "a pair", "failure": "a pair: 1152921504606847000 is above 0"}
   ]
 }

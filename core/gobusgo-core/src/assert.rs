@@ -60,6 +60,10 @@ fn fail(message: String) -> ! {
 const FULL_EXPONENT_MAX: i32 = 20;
 const FRACTION_EXPONENT_MIN: i32 = -6;
 
+// The most digits after the first a double needs to read back as itself: 17
+// significant digits identify every double.
+const PRECISION_MAX: usize = 16;
+
 /// `value` as JavaScript's `String(value)` writes it.
 ///
 /// The shortest digits that read back as `value`, in full from a millionth up
@@ -84,9 +88,7 @@ pub fn number_text(value: f64) -> String {
     }
 
     let sign = if value.is_sign_negative() { "-" } else { "" };
-    // Rust writes the shortest digits that read back as the value, as
-    // JavaScript does, so only their layout differs.
-    let scientific = format!("{:e}", value.abs());
+    let scientific = shortest_scientific(value.abs());
     let Some((mantissa, exponent_text)) = scientific.split_once('e') else {
         unreachable(
             &scientific,
@@ -102,16 +104,29 @@ pub fn number_text(value: f64) -> String {
     format!("{sign}{layout}")
 }
 
+// `magnitude` in scientific notation with the fewest digits that read back as
+// it, and of those the nearest to it, an exact tie going to the even digit, as
+// Number::toString chooses them. Rust's precision formatting rounds the exact
+// value to the nearest, ties to even, so the first precision that reads back is
+// that choice; Rust's shortest formatting can take the other digit of a tie.
+fn shortest_scientific(magnitude: f64) -> String {
+    for precision in 0..=PRECISION_MAX {
+        let scientific = format!("{magnitude:.precision$e}");
+        let is_exact = scientific.parse::<f64>() == Ok(magnitude);
+        if is_exact {
+            return scientific;
+        }
+    }
+    unreachable(
+        &format!("{magnitude:e}"),
+        "assert: 17 significant digits read back as a double",
+    );
+}
+
 // The digits `digits`, the first of them at the decimal exponent `exponent`,
 // laid out as Number::toString lays them out.
 fn laid_out(digits: &str, exponent: i32) -> String {
     let digit_count = digits.len();
-    let Ok(last_exponent) = i32::try_from(digit_count) else {
-        unreachable(
-            &digit_count,
-            "assert: a double has at most 17 significant digits",
-        );
-    };
     let is_full = (0..=FULL_EXPONENT_MAX).contains(&exponent);
     let is_fraction = (FRACTION_EXPONENT_MIN..0).contains(&exponent);
 
@@ -146,7 +161,10 @@ fn laid_out(digits: &str, exponent: i32) -> String {
     let magnitude = exponent.unsigned_abs();
     let mut characters = digits.chars();
     let Some(first) = characters.next() else {
-        unreachable(&last_exponent, "assert: a nonzero number has a digit");
+        unreachable(
+            &digit_count,
+            "assert: the digit count of a nonzero number is at least one, not",
+        );
     };
     let rest: String = characters.collect();
     if rest.is_empty() {
