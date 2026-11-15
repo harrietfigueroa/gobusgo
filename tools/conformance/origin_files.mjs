@@ -28,10 +28,23 @@ function originOf(value) {
   return url.origin
 }
 
-function isAllowedPath(path) {
-  const isManifest = path === MANIFEST_PATH
-  const isSnapshotFile = path.startsWith(SNAPSHOT_PATH_PREFIX)
-  return isManifest || isSnapshotFile
+/**
+ * Whether `path` names the manifest or a snapshot file on the site at
+ * `origin`, judged on the address it resolves to: it must resolve on that
+ * origin to itself, with no dot segment for the parser to remove, no
+ * percent-escape for a server to decode, no query, and no fragment.
+ */
+export function isAllowedPath({path, origin}) {
+  const url = new URL(path, origin)
+  const isSameOrigin = url.origin === origin
+  const isResolvedPath = url.pathname === path
+  const isUnescaped = !path.includes("%")
+  const isPlainPath = isResolvedPath && isUnescaped
+  const isRoutingAddress = isSameOrigin && isPlainPath
+  const isManifest = url.pathname === MANIFEST_PATH
+  const isSnapshotFile = url.pathname.startsWith(SNAPSHOT_PATH_PREFIX)
+  const isRoutingFile = isManifest || isSnapshotFile
+  return isRoutingAddress && isRoutingFile
 }
 
 /** The origin of the site the runs fetch from, which the environment must name. */
@@ -45,7 +58,8 @@ export function siteOrigin() {
 
 /** The bytes of `path` on the site, as base64, since a command's answer is text. */
 export async function fileFromOrigin(_context, path) {
-  const isRoutingFile = isAllowedPath(path)
+  const origin = siteOrigin()
+  const isRoutingFile = isAllowedPath({path, origin})
   assertCondition(isRoutingFile, `origin files: ${path} is no routing file`)
 
   if (cached.has(path)) {
@@ -53,7 +67,8 @@ export async function fileFromOrigin(_context, path) {
   }
 
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  const response = await fetch(siteOrigin() + path, {signal, redirect: "error"})
+  const address = new URL(path, origin)
+  const response = await fetch(address, {signal, redirect: "error"})
 
   const isOk = response.status === HTTP_OK
   assertCondition(isOk, `origin files: ${path} answered ${response.status}`)
