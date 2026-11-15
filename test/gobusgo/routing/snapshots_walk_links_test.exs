@@ -207,6 +207,21 @@ defmodule Gobusgo.Routing.SnapshotsWalkLinksTest do
     assert log =~ "Routing walk links build killed"
   end
 
+  test "asks again after the kill of a read that outlasted the deadline, at warning", context do
+    options = [backend: SlowReader, base_dir: context.tmp_dir, pause_ms: 2_000]
+    request = request(context, %{read_options: options, deadline_ms: 10, deadline_grace_ms: 50})
+
+    log =
+      capture_log([level: :warning], fn ->
+        assert :pending = Snapshots.walk_links(context.server, request)
+        Process.sleep(400)
+      end)
+
+    assert log =~ "Routing walk links not built"
+    refute log =~ "Routing walk links build killed"
+    assert :pending = Snapshots.walk_links(context.server, request)
+  end
+
   test "answers a computation past its deadline as pending again, at warning", context do
     options = [backend: SlowReader, base_dir: context.tmp_dir, pause_ms: 40]
 

@@ -93,7 +93,7 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
 
       {:error, cause} ->
         log_manifest_failure(cause)
-        %{kind: :unavailable}
+        %{kind: :unavailable, stale: Snapshots.walk_table(Keyword.fetch!(options, :server))}
 
       {:ok, manifest} ->
         request = %{
@@ -104,17 +104,12 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
           deadline_ms: Keyword.fetch!(options, :walk_deadline_ms)
         }
 
-        answer(
-          Snapshots.walk_links(
-            Keyword.fetch!(options, :server),
-            Map.put(request, :start?, false)
-          ),
-          request
-        )
+        server = Keyword.fetch!(options, :server)
+        answer(Snapshots.walk_links(server, Map.put(request, :start?, false)), request, server)
     end
   end
 
-  defp answer({:ready, %{table: table, build_id: build_id}}, _request) do
+  defp answer({:ready, %{table: table, build_id: build_id}}, _request, _server) do
     %{
       kind: :streets,
       build_id: build_id,
@@ -123,8 +118,13 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     }
   end
 
-  defp answer(:not_current, request), do: %{kind: :unavailable, measure: request}
-  defp answer(_pending_or_failed, _request), do: %{kind: :unavailable}
+  defp answer(:not_current, request, server) do
+    %{kind: :unavailable, measure: request, stale: Snapshots.walk_table(server)}
+  end
+
+  defp answer(_pending_or_failed, _request, server) do
+    %{kind: :unavailable, stale: Snapshots.walk_table(server)}
+  end
 
   @doc """
   Starts measuring the table of a plan that is not current, once the run's

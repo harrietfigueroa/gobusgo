@@ -238,4 +238,50 @@ defmodule Gobusgo.Routing.Snapshots.BuildWalkTest do
 
     assert %{"walkBasis" => "straight"} = rules(context)
   end
+
+  describe "while the walking links are not available" do
+    defp unreadable(options \\ []) do
+      Keyword.merge(
+        [
+          walk_basis: :streets,
+          walk_read_options: [backend: UnreadableReader, recipient: self()]
+        ],
+        options
+      )
+    end
+
+    test "builds a date again when its schedule changed since its entry", context do
+      {:ok, %{built_count: 1}} = run(context, walk_basis: :straight)
+      hold(context, ~D[2026-11-07])
+
+      assert {:ok, %{built_count: 1, unchanged_count: 0}} = run(context, unreadable())
+      assert %{"walkBasis" => "straight"} = rules(context)
+    end
+
+    test "builds a date again on the day after its entry, so its files are not left to expire",
+         context do
+      {:ok, %{built_count: 1}} = run(context, walk_basis: :straight)
+      next_day = fn -> ~U[2026-11-08 12:00:00Z] end
+
+      assert {:ok, %{built_count: 1, unchanged_count: 0}} =
+               run(context, unreadable(clock: next_day))
+    end
+
+    test "builds a date again by the last table held, where a table was measured", context do
+      publish_graph(context)
+      {:ok, %{built_count: 1}} = run(context, walk_basis: :streets)
+      %{"walkGraphBuildId" => build_id} = run_until_streets(context)
+      hold(context, ~D[2026-11-07])
+
+      assert {:ok, %{built_count: 1}} = run(context, unreadable())
+      assert %{"walkBasis" => "streets", "walkGraphBuildId" => ^build_id} = rules(context)
+    end
+
+    test "keeps a date built today from the same inputs, whatever the walk", context do
+      {:ok, %{built_count: 1}} = run(context, walk_basis: :straight)
+
+      assert {:ok, %{built_count: 0, unchanged_count: 1}} = run(context, unreadable())
+      assert {:ok, %{built_count: 0, unchanged_count: 1}} = run(context, unreadable())
+    end
+  end
 end

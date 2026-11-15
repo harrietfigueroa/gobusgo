@@ -1,5 +1,7 @@
 defmodule Gobusgo.Routing.Snapshots do
-  @deadline_grace_ms 5_000
+  # The measuring's own deadline is checked between tiles and a read has up to
+  # a minute, so the kill waits for the read.
+  @deadline_grace_ms 70_000
   @check_interval_ms 600_000
   @run_deadline_ms 120_000
   @format_version Gobusgo.Routing.SnapshotFormat.version()
@@ -94,7 +96,8 @@ defmodule Gobusgo.Routing.Snapshots do
     server
     |> GenServer.call(:entries)
     |> Map.new(fn {date, entry} ->
-      {date, Map.take(entry, [:inputs_sha256, :built_on, :entry, :trip_path_failure])}
+      {date,
+       Map.take(entry, [:inputs_sha256, :other_sha256, :built_on, :entry, :trip_path_failure])}
     end)
   end
 
@@ -164,7 +167,8 @@ defmodule Gobusgo.Routing.Snapshots do
           read_options: keyword(),
           heap_words_max: pos_integer(),
           deadline_ms: pos_integer(),
-          start?: boolean()
+          start?: boolean(),
+          deadline_grace_ms: non_neg_integer()
         }
 
   @doc """
@@ -182,6 +186,14 @@ defmodule Gobusgo.Routing.Snapshots do
   def walk_links(server, %{manifest: %{build_id: _}, positions: %{}} = request) do
     GenServer.call(server, {:walk_links, request})
   end
+
+  @doc """
+  The last table of walking links this process measured, `%{table: binary,
+  build_id: build_id}`, or `nil` before the first: what a build stands on while
+  the table for the positions now held is not current.
+  """
+  @spec walk_table(server()) :: %{table: binary(), build_id: String.t()} | nil
+  def walk_table(server), do: GenServer.call(server, :walk_table)
 
   @impl GenServer
   def init(:ok) do
@@ -201,6 +213,11 @@ defmodule Gobusgo.Routing.Snapshots do
 
   @impl GenServer
   def handle_call(:entries, _from, %{entries: entries} = state), do: {:reply, entries, state}
+
+  def handle_call(:walk_table, _from, %{walk: %{table: table, build_id: build_id}} = state) do
+    held = if is_binary(table), do: %{table: table, build_id: build_id}
+    {:reply, held, state}
+  end
 
   def handle_call({:record, %{service_date: date} = snapshot}, _from, %{entries: entries} = state) do
     entries = Map.put(entries, date, Map.delete(snapshot, :service_date))
@@ -225,9 +242,12 @@ defmodule Gobusgo.Routing.Snapshots do
 
   def handle_info({:walk_links, _stale_ref, _result}, state), do: {:noreply, state}
 
-  def handle_info({:walk_links_deadline, ref}, %{walk: %{task: %{ref: ref, pid: pid}}} = state) do
+  def handle_info(
+        {:walk_links_deadline, ref},
+        %{walk: %{task: %{ref: ref, pid: pid} = task} = walk} = state
+      ) do
     Process.exit(pid, :kill)
-    {:noreply, state}
+    {:noreply, %{state | walk: %{walk | task: Map.put(task, :deadline_fired?, true)}}}
   end
 
   def handle_info({:walk_links_deadline, _stale_ref}, state), do: {:noreply, state}
@@ -292,7 +312,7 @@ defmodule Gobusgo.Routing.Snapshots do
     Process.send_after(
       self(),
       {:walk_links_deadline, ref},
-      request.deadline_ms + @deadline_grace_ms
+      request.deadline_ms + Map.get(request, :deadline_grace_ms, @deadline_grace_ms)
     )
 
     task = %{
@@ -376,10 +396,26 @@ defmodule Gobusgo.Routing.Snapshots do
 
   defp lost_walk_links(:normal, walk), do: walk
 
-  defp lost_walk_links(reason, %{task: task} = walk) do
+  # The kill that follows the deadline is the deadline's, and is asked again; a
+  # kill of the heap cap and a crash of the process are not, for the same
+  # positions.
+  defp lost_walk_links(:killed, %{task: %{deadline_fired?: true} = task} = walk) do
+    Logger.warning("Routing walk links not built", cause: :deadline, build_id: task.build_id)
+    %{walk | task: nil}
+  end
+
+  defp lost_walk_links(:killed, %{task: task} = walk) do
     Logger.error("Routing walk links build killed",
       build_id: task.build_id,
-      heap_words_max: task.heap_words_max,
+      heap_words_max: task.heap_words_max
+    )
+
+    %{walk | task: nil, killed: MapSet.put(walk.killed, task.key)}
+  end
+
+  defp lost_walk_links(reason, %{task: task} = walk) do
+    Logger.error("Routing walk links build crashed",
+      build_id: task.build_id,
       reason: inspect(reason)
     )
 

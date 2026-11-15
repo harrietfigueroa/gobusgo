@@ -245,25 +245,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     end
   end
 
-  defp date_outcome_callback(input) do
-    case date_walk(input.walk, input.built) do
-      :keep -> unchanged_outcome(input.built, input.now)
-      walk -> date_outcome_over(Map.put(input, :walk, walk))
-    end
-  end
-
-  # The walk a date is built by. Walking links that are not available keep a
-  # date's current entry, and build a date with none by the straight line, so
-  # a start publishes snapshots at once and a later run measures them on the
-  # streets.
-  defp date_walk(%{kind: :unavailable}, %{entry: _entry}), do: :keep
-
-  defp date_walk(%{kind: :unavailable}, _built),
-    do: %{kind: :straight, key: {:straight, :unavailable}}
-
-  defp date_walk(walk, _built), do: walk
-
-  defp date_outcome_over(%{date: date, options: options} = input) do
+  defp date_outcome_callback(%{date: date, options: options} = input) do
     schedule_view = Keyword.fetch!(options, :schedule_view)
     today = input.today
     schedules = packed_schedules(schedule_view, date)
@@ -273,15 +255,58 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     route_paths =
       for fetch <- schedules, do: {fetch.id, FetchView.request_id(route_path_view, fetch.id)}
 
-    inputs_sha256 =
-      inputs_sha256(%{
+    other_sha256 =
+      other_inputs_sha256(%{
         schedules: schedules,
         previous: previous,
         route_paths: route_paths,
         positions: input.positions,
-        sources: input.sources,
-        walk_key: input.walk.key
+        sources: input.sources
       })
+
+    case date_walk(input.walk, input.built, %{other_sha256: other_sha256, today: today}) do
+      :keep ->
+        unchanged_outcome(input.built, input.now)
+
+      walk ->
+        date_outcome_over(%{
+          input: input,
+          walk: walk,
+          other_sha256: other_sha256,
+          schedules: schedules,
+          previous: previous
+        })
+    end
+  end
+
+  # The walk a date is built by. Where the walking links are not available a
+  # date keeps its entry only while the entry was built today from the same
+  # inputs but the walk. Otherwise it is built again, with the last table held
+  # where there is one, so a snapshot never names files past their retention
+  # and never stands on schedules that have changed.
+  defp date_walk(%{kind: :unavailable} = plan, built, %{other_sha256: other, today: today}) do
+    if kept?(built, other, today), do: :keep, else: fallback_walk(plan)
+  end
+
+  defp date_walk(walk, _built, _inputs), do: walk
+
+  defp kept?(%{other_sha256: other, built_on: today}, other, today), do: true
+  defp kept?(_built, _other, _today), do: false
+
+  defp fallback_walk(%{stale: %{table: table, build_id: build_id}}) do
+    %{
+      kind: :streets,
+      build_id: build_id,
+      table: table,
+      key: {:streets, build_id, :crypto.hash(:sha256, table)}
+    }
+  end
+
+  defp fallback_walk(_plan), do: %{kind: :straight, key: {:straight, :unavailable}}
+
+  defp date_outcome_over(%{input: input, walk: walk, other_sha256: other_sha256} = date) do
+    today = input.today
+    inputs_sha256 = :crypto.hash(:sha256, :erlang.term_to_binary({other_sha256, walk.key}))
 
     case input.built do
       %{inputs_sha256: ^inputs_sha256, built_on: ^today} = built ->
@@ -289,15 +314,16 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
       _other ->
         build_date(%{
-          date: date,
-          schedules: schedules,
-          previous: previous,
+          date: input.date,
+          schedules: date.schedules,
+          previous: date.previous,
           positions: input.positions,
           sources: input.sources,
-          walk: input.walk,
+          walk: walk,
           inputs_sha256: inputs_sha256,
+          other_sha256: other_sha256,
           now: input.now,
-          options: options
+          options: input.options
         })
     end
   end
@@ -312,7 +338,12 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     if due? do
       {:retry_trip_paths,
-       %{entry: built.entry, inputs_sha256: built.inputs_sha256, previous: failure}}
+       %{
+         entry: built.entry,
+         inputs_sha256: built.inputs_sha256,
+         other_sha256: Map.get(built, :other_sha256),
+         previous: failure
+       }}
     else
       :unchanged
     end
@@ -396,7 +427,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     %{stops: Map.new(stops), routes: Map.new(routes), agency_names: Map.new(agency_names)}
   end
 
-  defp inputs_sha256(
+  defp other_inputs_sha256(
          %{schedules: schedules, previous: previous, route_paths: route_paths} = inputs
        ) do
     requests =
@@ -404,7 +435,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     hashed =
       {Enum.sort(requests), Enum.sort(route_paths), Enum.sort(inputs.positions),
-       inputs.sources.sha256, inputs.walk_key}
+       inputs.sources.sha256}
 
     :crypto.hash(:sha256, :erlang.term_to_binary(hashed))
   end
@@ -459,6 +490,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
        %{
          entry: entry,
          inputs_sha256: input.inputs_sha256,
+         other_sha256: input.other_sha256,
          connection_count: timetable.connection_count
        }}
     else
@@ -495,6 +527,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         service_date: date,
         entry: with_trip_paths(written.entry, outcome),
         inputs_sha256: written.inputs_sha256,
+        other_sha256: written.other_sha256,
         built_on: DateTime.to_date(now),
         trip_path_failure: failure
       })
