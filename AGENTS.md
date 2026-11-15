@@ -305,11 +305,11 @@ When a change touches `Dockerfile`, `.dockerignore`, `mix.exs`, or `config/`, al
 
 ## CI and release
 
-CI's `image` job builds the image for `linux/arm64` on every pull request with its commit, starts it, checks that `/health` names that commit, and publishes nothing.
+CI's `image` job builds the image for `linux/arm64` on every pull request with its commit, starts it, checks that `/health` names that commit, and publishes nothing. It builds with buildx against the GitHub Actions cache and writes every stage's layers there; `start-memory` builds from the same cache and writes none, since a cache scope keeps only the last build that wrote to it (GOB-484).
 
 Its `start-memory` job builds the image the same way and runs `mix gobusgo.start_memory` on it against the fixture of the run's UTC date, so a change that grows a start's memory past the threshold fails its pull request; run the check locally after `docker build --tag gobusgo:local .` when a change touches what a start reads, builds, or holds. `lib/gobusgo/AGENTS.md` ("Start-memory check") holds the threshold and the fixture, and `--walk-basis streets` runs the check with the snapshots' walks measured along the streets, which CI does not (GOB-468).
 
-On a push to `main`, once every other job passes, the `publish` job builds the image again and pushes it to GitHub Container Registry as `ghcr.io/harrietfigueroa/gobusgo:<full commit SHA>`, signed in with the workflow's own token. A tag never moves: the job leaves a tag that is already published, and no `latest` exists. The job keeps the 10 newest images of the package and deletes the rest.
+On a push to `main`, the `image` job saves the image it checked as an artifact of the run, and once every other job passes, the `publish` job loads that image, checks that its revision label names the commit, and pushes it to GitHub Container Registry as `ghcr.io/harrietfigueroa/gobusgo:<full commit SHA>`, signed in with the workflow's own token. A tag never moves: the job leaves a tag that is already published, and no `latest` exists. The job keeps the 10 newest images of the package and deletes the rest.
 
 A run on `main` that has started is never canceled by a later one. A run that waits for it is: the workflow's concurrency group holds one waiting run, and a newer one replaces it, so of the commits merged while a run is in progress only the newest gets an image.
 
