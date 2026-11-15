@@ -10,8 +10,8 @@
 //
 // Where the snapshot's links are measured along the streets, a walk from a
 // position is too: the stops within the straight-line radius are the
-// candidates, and the street meters the walk graph gives them, found by
-// `walk_reach.js`, decide which are starts and how long each walk takes.
+// candidates, and the street meters the walk graph gives them decide which
+// are starts and how long each walk takes.
 
 import {assertCondition, unreachable} from "./assert.js"
 import {distanceMeters} from "./math/geodesy.js"
@@ -88,7 +88,10 @@ function stopsWithin({position, positions, transferRules}) {
 export function walkBasisOf(transferRules) {
   const {walkBasis} = transferRules
 
-  if (typeof walkBasis === "string" && Object.hasOwn(WalkBasis, walkBasis)) {
+  const isText = typeof walkBasis === "string"
+  const isKnown = isText && Object.hasOwn(WalkBasis, walkBasis)
+
+  if (isKnown) {
     return walkBasis
   }
 
@@ -121,7 +124,8 @@ export function isStreetWalk(basis) {
  */
 export function streetMetersMaxOf(transferRules) {
   const meters = transferRules.walkStreetMetersMax
-  assertCondition(Number.isFinite(meters) && meters > 0, "routing walk: the street length bound is not positive: " + meters)
+  assertCondition(Number.isFinite(meters), "routing walk: the street length bound is not a number: " + meters)
+  assertCondition(meters > 0, "routing walk: the street length bound is not positive: " + meters)
   return meters
 }
 

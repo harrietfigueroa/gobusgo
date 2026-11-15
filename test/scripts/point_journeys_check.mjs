@@ -139,8 +139,10 @@ function lastLeg(kept) {
   const stops = [{stop: 1, streetM: 300}, {stop: 0, streetM: 90}]
   const stopIds = ["1_near", "1_far", "1_nearer"]
   const targets = targetStopsOnStreets({stopIds, stops, transferRules, countMax: TARGET_STOP_COUNT_MAX})
-  deepStrictEqual(Array.from(targets, stopIdOf), ["1_near", "1_far"])
-  deepStrictEqual(Array.from(targets, walkOf), [STREET_NEAR_WALK_S, STREET_FAR_WALK_S])
+  const streetIds = Array.from(targets, stopIdOf)
+  const streetWalks = Array.from(targets, walkOf)
+  deepStrictEqual(streetIds, ["1_near", "1_far"])
+  deepStrictEqual(streetWalks, [STREET_NEAR_WALK_S, STREET_FAR_WALK_S])
   deepStrictEqual(targetStopsOnStreets({stopIds, stops, transferRules, countMax: ONE_STOP}).length, ONE_STOP)
   throws(() => targetStopsOnStreets({stopIds: ["1_near"], stops, transferRules, countMax: ONE_STOP}), AssertionError)
 }

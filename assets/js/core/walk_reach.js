@@ -3,9 +3,9 @@
 // the answer is a value keyed by `kind`, the stops with their street meters,
 // the tiles still to load, or why no stop is reached.
 //
-// The rules are those of `walk_path.js`, whose functions build the graph and
-// snap each position, so the length a search gives a stop is the length of
-// the line drawn to it: a position snaps to the nearest point of each
+// The rules are those of a walk drawn between two points, whose graph and
+// snaps this search builds with the same functions, so the length it gives a
+// stop is the length of the line drawn to it: a position snaps to the nearest point of each
 // component within the snap bound, the component both the position and the
 // stop reach with the least summed snap distance is the one walked, and the
 // street is the shortest path inside it. The search is a multi-source
@@ -43,7 +43,8 @@ const SearchKind = Object.freeze({done: "done", capped: "capped"})
 
 /** The bounds of a reach whose street may be `streetMetersMax` meters, a manifest's `walkStreetMetersMax`. */
 export function walkReachLimits(streetMetersMax) {
-  assertCondition(Number.isFinite(streetMetersMax) && streetMetersMax > 0, "walk reach: the street bound is not positive: " + streetMetersMax)
+  assertCondition(Number.isFinite(streetMetersMax), "walk reach: the street bound is not a number: " + streetMetersMax)
+  assertCondition(streetMetersMax > 0, "walk reach: the street bound is not positive: " + streetMetersMax)
   return {...WALK_REACH_LIMITS, streetMetersMax}
 }
 

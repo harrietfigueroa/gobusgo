@@ -42,6 +42,39 @@ function reachFrom({start, targets, loaded = shardsByKey, indexHeld = index, lim
   return walkReach({position: {lat: start.lat, lon: start.lon}, targets, index: indexHeld, loaded, limits: limitsHeld})
 }
 
+function stopOf(reached) {
+  return reached.stop
+}
+
+// Every golden point but `start`, as targets numbered in the order of the points.
+function targetsExcluding(start) {
+  const targets = []
+
+  for (const point of points) {
+    if (point.name !== start.name) {
+      targets.push(targetOf(point, targets.length))
+    }
+  }
+
+  return targets
+}
+
+function targetAtStart(unused, stop) {
+  return targetOf(pointNamed("north middle"), stop)
+}
+
+function reachWithTooMany() {
+  return reachFrom({start: pointNamed("north middle"), targets: Array.from({length: TARGET_OVER_COUNT}, targetAtStart)})
+}
+
+function isStreetWalkOfUnknown() {
+  return isStreetWalk("teleport")
+}
+
+function streetMetersMaxOfNone() {
+  return streetMetersMaxOf({})
+}
+
 // Every pair of the golden points: a street length at most the bound that the
 // drawn walk has is the reach's, to a tolerance, and any other pair is not
 // reached.
@@ -94,7 +127,8 @@ const islandMiddle = pointNamed("island middle")
 const northMiddle = pointNamed("north middle")
 const onIsland = reachFrom({start: islandWest, targets: [targetOf(islandMiddle, 0), targetOf(northMiddle, 1)]})
 strictEqual(onIsland.kind, ReachKind.found)
-deepStrictEqual(Array.from(onIsland.stops, (stop) => stop.stop), [0], "only the island's own stop is reached from the island")
+const islandStops = Array.from(onIsland.stops, stopOf)
+deepStrictEqual(islandStops, [0], "only the island's own stop is reached from the island")
 
 // A position no piece is within the snap bound of is off the graph.
 const offGraph = reachFrom({start: pointNamed("off the graph"), targets: [targetOf(northMiddle, 0)]})
@@ -105,14 +139,16 @@ const withoutWest = new Map(shardsByKey)
 withoutWest.delete(WEST_TILE_KEY)
 const notLoaded = reachFrom({start: northMiddle, targets: [targetOf(pointNamed("south middle"), 0)], loaded: withoutWest})
 strictEqual(notLoaded.kind, ReachKind.notLoaded)
-deepStrictEqual(Array.from(notLoaded.tiles, tileKey), [WEST_TILE_KEY])
+const missingKeys = Array.from(notLoaded.tiles, tileKey)
+deepStrictEqual(missingKeys, [WEST_TILE_KEY])
 
 // An index with no tile near the position holds no piece: off the graph.
 const emptyIndex = new Set()
 deepStrictEqual(reachFrom({start: northMiddle, targets: [targetOf(pointNamed("south middle"), 0)], indexHeld: emptyIndex}), {kind: ReachKind.offGraph})
 
 // A search that settles its node bound with a target still beyond it is a cap.
-const capped = reachFrom({start: northMiddle, targets: Array.from(points.filter((point) => point.name !== northMiddle.name), targetOf), limitsHeld: {...limits, visitedNodeCountMax: ONE_NODE}})
+const cappedTargets = targetsExcluding(northMiddle)
+const capped = reachFrom({start: northMiddle, targets: cappedTargets, limitsHeld: {...limits, visitedNodeCountMax: ONE_NODE}})
 strictEqual(capped.kind, ReachKind.capReached)
 
 // Stops farther by street than the bound are not reached, and none in reach is its own answer.
@@ -121,8 +157,7 @@ deepStrictEqual(tight, {kind: ReachKind.noneInReach})
 deepStrictEqual(reachFrom({start: northMiddle, targets: []}), {kind: ReachKind.noneInReach})
 
 // More targets than the bound is a programmer error.
-const tooMany = Array.from({length: TARGET_OVER_COUNT}, (unused, stop) => targetOf(northMiddle, stop))
-throws(() => reachFrom({start: northMiddle, targets: tooMany}), AssertionError)
+throws(reachWithTooMany, AssertionError)
 
 // The bound is the manifest's, and a reader takes the shared limits otherwise.
 deepStrictEqual({...WALK_REACH_LIMITS, streetMetersMax: STREET_METERS_MAX}, limits)
@@ -140,12 +175,13 @@ const basisCases = [
 ]
 
 for (const basisCase of basisCases) {
-  strictEqual(walkBasisOf(basisCase.rules), basisCase.basis, basisCase.name)
-  strictEqual(isStreetWalk(walkBasisOf(basisCase.rules)), basisCase.isStreet, basisCase.name)
+  const basis = walkBasisOf(basisCase.rules)
+  strictEqual(basis, basisCase.basis, basisCase.name)
+  strictEqual(isStreetWalk(basis), basisCase.isStreet, basisCase.name)
 }
 
-throws(() => isStreetWalk("teleport"), AssertionError)
-throws(() => streetMetersMaxOf({}), AssertionError)
+throws(isStreetWalkOfUnknown, AssertionError)
+throws(streetMetersMaxOfNone, AssertionError)
 strictEqual(streetMetersMaxOf(rules), STREET_METERS_MAX)
 ok(WALK_CANDIDATE_COUNT_MAX <= WALK_REACH_LIMITS.targetCountMax, "the candidates fit the search's target bound")
 
@@ -155,14 +191,14 @@ const startsRules = {...rules, walkLinkCountPerStopMax: 2}
 const ordered = startsFromStreets({stops: [{stop: 5, streetM: 121}, {stop: 2, streetM: 60}, {stop: 9, streetM: 60}], transferRules: startsRules})
 deepStrictEqual(ordered, [{stop: 2, walkS: 50}, {stop: 9, walkS: 50}])
 const north = pointNamed("north west")
-const targets = Array.from(points.filter((point) => point.name !== north.name), targetOf)
+const targets = targetsExcluding(north)
 const reachedFromNorth = reachFrom({start: north, targets})
 strictEqual(reachedFromNorth.kind, ReachKind.found)
 const starts = startsFromStreets({stops: reachedFromNorth.stops, transferRules: rules})
 ok(starts.length > 1, "the golden graph reaches more than one stop from a point")
 
 for (const start of starts) {
-  const target = points.filter((point) => point.name !== north.name)[start.stop]
+  const target = targets[start.stop]
   const drawn = planWalk({from: north, to: target, index, loaded: shardsByKey, limits: WALK_LIMITS})
   strictEqual(drawn.kind, WalkPathKind.found)
   strictEqual(start.walkS, Math.ceil(drawn.meters / WALK_SPEED_M_PER_S), "the walk to " + target.name + " takes the time of the line drawn")

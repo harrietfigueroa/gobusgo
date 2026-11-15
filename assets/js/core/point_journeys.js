@@ -54,7 +54,8 @@ export function targetStopsOnStreets({stopIds, stops, transferRules, countMax}) 
   assertCondition(Number.isInteger(countMax), "point journeys: the stop bound is not whole: " + countMax)
 
   for (const reached of stops) {
-    assertCondition(reached.stop >= 0 && reached.stop < stopIds.length, `point journeys: a stop reached by street is ${reached.stop} of ${stopIds.length} stops`)
+    assertCondition(reached.stop >= 0, `point journeys: a stop reached by street is ${reached.stop}`)
+    assertCondition(reached.stop < stopIds.length, `point journeys: a stop reached by street is ${reached.stop} of ${stopIds.length} stops`)
   }
 
   const starts = startsFromStreets({stops, transferRules})
