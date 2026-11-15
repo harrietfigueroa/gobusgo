@@ -6,7 +6,7 @@
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const DISTANCE_TOLERANCE_M = 1
 
@@ -31,7 +31,7 @@ beforeAll(async () => {
   expected = fixture.expected
 })
 
-describe.each(IMPLEMENTATIONS)("trip path ($name)", ({AssertionError, geodesy, tripPath}) => {
+describe.each(implementationsWith("geodesy", "tripPath"))("trip path ($name)", ({AssertionError, geodesy, tripPath}) => {
   const {TRIP_PATH_COUNT_MAX, decodeTripPath, tripPathKey, withTripPaths} = tripPath
 
   test("the point count", () => {

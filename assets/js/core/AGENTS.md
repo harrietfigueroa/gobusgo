@@ -15,6 +15,8 @@
 
 - `assert.js`: the assertions every module of the front end uses.
 - `math/`: geodesy, angles, interpolation, polylines, color contrast, and the hot paths' checks.
+
+`assert.js`, `math/geodesy.js`, `math/angles.js`, `math/checks.js`, and `math/interpolation.js` also exist in the Rust core (GOB-425) and stay here, since 85 modules import the assertions and the shell's per-frame motion modules call the math; the conformance suite runs the cases of `test/fixtures/math/` against both, and `cargo test` against the Rust, so a change to one is made to the other in the same commit (`core/AGENTS.md`).
 - `routing_snapshot.js`, `routing_names.js`, `packed_container.js`, `trip_path.js`, and `trip_path_shard.js`: the readers of the published binary files and the names file.
 - `routing_engine.js`, `routing_walk.js`, `routing_journeys.js`, `point_journeys.js`, and `trip_plan.js`: the router, its walks, its journey queries, journeys to a point, and the Trip tab's rules.
 - `trip_path_files.js`, `scheduled_path.js`, `scheduled_service.js`, and `offline_answers.js`: which trip path files a vehicle's path takes, the scheduled vehicles and arrivals, and the page's answers while offline.

@@ -1,0 +1,24 @@
+{
+  "finite": [
+    {"name": "zero", "value": 0},
+    {"name": "a fraction below zero", "value": -0.25},
+    {"name": "the largest double", "value": 1.7976931348623157e308}
+  ],
+  "refusedFinite": [
+    {"name": "no number", "value": "NaN", "label": "angles: degrees", "failure": "angles: degrees: NaN is not a finite number"},
+    {"name": "an endless number", "value": "Infinity", "label": "angles: degrees", "failure": "angles: degrees: Infinity is not a finite number"},
+    {"name": "an endless number below zero", "value": "-Infinity", "label": "interpolation: a fraction", "failure": "interpolation: a fraction: -Infinity is not a finite number"}
+  ],
+  "ordered": [
+    {"name": "below", "low": 0, "high": 1},
+    {"name": "equal", "low": 3, "high": 3}
+  ],
+  "refusedOrdered": [
+    {"name": "integers", "low": 5, "high": 1, "label": "a pair", "failure": "a pair: 5 is above 1"},
+    {"name": "fractions", "low": 0.30000000000000004, "high": 0.3, "label": "a pair", "failure": "a pair: 0.30000000000000004 is above 0.3"},
+    {"name": "a large number and a small one", "low": 1e21, "high": 1e-7, "label": "a pair", "failure": "a pair: 1e+21 is above 1e-7"},
+    {"name": "a number below a million and negative zero", "low": 123456.5, "high": -0, "label": "a pair", "failure": "a pair: 123456.5 is above 0"},
+    {"name": "a small number and an endless one below zero", "low": 0.000001, "high": "-Infinity", "label": "a pair", "failure": "a pair: 0.000001 is above -Infinity"},
+    {"name": "no number", "low": 1, "high": "NaN", "label": "a pair", "failure": "a pair: 1 is above NaN"}
+  ]
+}

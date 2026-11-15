@@ -5,7 +5,7 @@
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const DIRECTORY = "routing/v2/"
 const POSITION_BYTES = 8
@@ -52,7 +52,7 @@ beforeAll(async () => {
   }
 })
 
-describe.each(IMPLEMENTATIONS)("routing snapshot ($name)", ({routingSnapshot}) => {
+describe.each(implementationsWith("routingSnapshot"))("routing snapshot ($name)", ({routingSnapshot}) => {
   const {DecodeKind, RefusalReason} = routingSnapshot
 
   function records(result) {

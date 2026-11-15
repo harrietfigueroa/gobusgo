@@ -15,7 +15,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The seven mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The eight mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -196,7 +196,8 @@ jobs:
       - run: npm run --prefix tools/lint check
       - run: npm run --prefix tools/lint lint:core
 
-  # Runs the core's conformance cases in Chromium, Firefox, and WebKit, once per implementation of the core.
+  # Runs the core's conformance cases in Chromium, Firefox, and WebKit, once per implementation of the core: the JavaScript modules, and the Rust core through the WebAssembly binding `mix gobusgo.assets.core` builds.
+  # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
   conformance:
     name: conformance
     runs-on: ubuntu-24.04
@@ -205,9 +206,28 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
       - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: tools/lint/.node-version
+      # Installs the wasm-bindgen command mise.toml pins, which `mix gobusgo.assets.core` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: mix gobusgo.assets.core
       - run: npm ci --prefix tools/conformance
       # Installs the three browsers at the builds the pinned Playwright names, with the system libraries they link.
       - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit

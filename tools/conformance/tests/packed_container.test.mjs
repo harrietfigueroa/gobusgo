@@ -12,7 +12,7 @@ import {beforeAll, describe, expect, test} from "vitest"
 import {expandStream} from "../../../assets/js/packed_stream.js"
 import {hexBytes} from "../bytes.mjs"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {IMPLEMENTATIONS, implementationsWith} from "../implementations.mjs"
 
 const DIRECTORY = "packed/core-v1/"
 const FIXTURE_VERSION = 1
@@ -125,7 +125,7 @@ describe("packed stream", () => {
   })
 })
 
-describe.each(IMPLEMENTATIONS)("packed container ($name)", ({packedContainer}) => {
+describe.each(implementationsWith("packedContainer"))("packed container ($name)", ({packedContainer}) => {
   const {
     ColumnType,
     HEADER_BYTES,

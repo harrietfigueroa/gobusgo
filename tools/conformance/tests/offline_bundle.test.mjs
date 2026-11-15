@@ -7,7 +7,7 @@
 // them once and every test reads them.
 
 import {beforeAll, describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -79,7 +79,7 @@ const pathsFirst = withTripPaths(firstDate)
 const pathsSecond = withTripPaths(secondDate)
 const pathsManifest = {formatVersion: 2, snapshots: [pathsFirst, pathsSecond]}
 
-describe.each(IMPLEMENTATIONS)("offline bundle ($name)", ({offlineBundle}) => {
+describe.each(implementationsWith("offlineBundle"))("offline bundle ($name)", ({offlineBundle}) => {
   const {
     BUNDLE_MANIFEST_PATH,
     INDEX_PATH,

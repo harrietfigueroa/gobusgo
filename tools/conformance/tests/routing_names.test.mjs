@@ -8,7 +8,7 @@
 import {beforeAll, describe, expect, test} from "vitest"
 import {expandNames} from "../../../assets/js/names_stream.js"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const DIRECTORY = "routing/names-v1/"
 const STOP_COUNT = 3
@@ -26,7 +26,7 @@ beforeAll(async () => {
   expanded = await expandNames(stream)
 })
 
-describe.each(IMPLEMENTATIONS)("routing names ($name)", ({routingNames, routingSnapshot}) => {
+describe.each(implementationsWith("routingNames", "routingSnapshot"))("routing names ($name)", ({routingNames, routingSnapshot}) => {
   const {DecodeKind} = routingSnapshot
   const {NamesRefusalReason} = routingNames
 

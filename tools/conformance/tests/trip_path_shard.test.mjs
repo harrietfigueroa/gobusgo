@@ -11,7 +11,7 @@ import {beforeAll, describe, expect, test} from "vitest"
 import {expandStream} from "../../../assets/js/packed_stream.js"
 import {hexBytes} from "../bytes.mjs"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {IMPLEMENTATIONS, implementationsWith} from "../implementations.mjs"
 
 const FIXTURE_DIRECTORY = "routing/trip-paths-v1/"
 const E5_PER_DEGREE = 100_000
@@ -145,7 +145,7 @@ describe("trip path streams", () => {
   })
 })
 
-describe.each(IMPLEMENTATIONS)("trip path shard ($name)", ({packedContainer, tripPath, tripPathShard}) => {
+describe.each(implementationsWith("packedContainer", "tripPath", "tripPathShard"))("trip path shard ($name)", ({packedContainer, tripPath, tripPathShard}) => {
   const {HEADER_BYTES, PackedOutcome, PackedRefusal} = packedContainer
   const {TripPathLookup, TripPathRefusal, decodeTripPathIndex, decodeTripPathShard, indexEntries, tripPathFromShard} = tripPathShard
 

@@ -5,12 +5,12 @@
 // https://www.w3.org/TR/WCAG22/#dfn-contrast-ratio — checked 2026-11-09
 
 import {describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const TEXT_CONTRAST_MIN = 4.5
 const CONTRAST_MAX = 21
 
-describe.each(IMPLEMENTATIONS)("color contrast ($name)", ({colorContrast}) => {
+describe.each(implementationsWith("colorContrast"))("color contrast ($name)", ({colorContrast}) => {
   test("black", () => {
     expect(colorContrast.relativeLuminance("#000000")).toBe(0)
   })

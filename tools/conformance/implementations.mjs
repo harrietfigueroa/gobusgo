@@ -2,9 +2,14 @@
 // entry names an implementation and holds its modules under the names the
 // cases read, so a case takes one entry as its parameter and never imports an
 // implementation itself.
+//
+// The JavaScript entry holds every module of the core and comes first; the
+// WebAssembly entry holds the modules the Rust core has ported, and a case
+// runs against each entry holding every module it reads.
 
-import {AssertionError} from "../../assets/js/core/assert.js"
+import * as assert from "../../assets/js/core/assert.js"
 import * as angles from "../../assets/js/core/math/angles.js"
+import * as checks from "../../assets/js/core/math/checks.js"
 import * as colorContrast from "../../assets/js/core/math/color_contrast.js"
 import * as geodesy from "../../assets/js/core/math/geodesy.js"
 import * as interpolation from "../../assets/js/core/math/interpolation.js"
@@ -24,13 +29,16 @@ import * as tripPlan from "../../assets/js/core/trip_plan.js"
 import * as tripPath from "../../assets/js/core/trip_path.js"
 import * as tripPathFiles from "../../assets/js/core/trip_path_files.js"
 import * as tripPathShard from "../../assets/js/core/trip_path_shard.js"
+import {WEBASSEMBLY_CORE} from "./webassembly_core.mjs"
 
 /** One entry per implementation of the core, each with its modules. */
 export const IMPLEMENTATIONS = Object.freeze([
   Object.freeze({
     name: "javascript",
-    AssertionError,
+    AssertionError: assert.AssertionError,
     angles,
+    assert,
+    checks,
     colorContrast,
     geodesy,
     interpolation,
@@ -50,5 +58,17 @@ export const IMPLEMENTATIONS = Object.freeze([
     tripPath,
     tripPathFiles,
     tripPathShard
-  })
+  }),
+  WEBASSEMBLY_CORE
 ])
+
+/** The entries holding every module of `moduleNames`, the JavaScript entry first. */
+export function implementationsWith(...moduleNames) {
+  const entries = []
+  for (const implementation of IMPLEMENTATIONS) {
+    if (moduleNames.every((moduleName) => moduleName in implementation)) {
+      entries.push(implementation)
+    }
+  }
+  return entries
+}

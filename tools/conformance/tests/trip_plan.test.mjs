@@ -6,7 +6,7 @@
 // filter, and what the map draws of a journey.
 
 import {describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const TIME_ZONE = "America/Los_Angeles"
 // 2026-11-08 and 2026-11-09 at midnight in Seattle, eight hours after
@@ -85,7 +85,7 @@ const twoDays = {
 }
 const todayOnly = {formatVersion: 2, snapshots: [dayEntry({serviceDate: "2026-11-08", serviceDayStartMs: TODAY_START_MS})]}
 
-describe.each(IMPLEMENTATIONS)("trip plan ($name)", ({AssertionError, pointJourneys, routingEngine, routingJourneys, tripPlan}) => {
+describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJourneys", "tripPlan"))("trip plan ($name)", ({AssertionError, pointJourneys, routingEngine, routingJourneys, tripPlan}) => {
   const {LegKind} = routingEngine
   const {FailureReason, JourneysKind} = routingJourneys
   const {LEG_KIND_TO_POINT} = pointJourneys

@@ -1,0 +1,78 @@
+{
+  "toleranceMeters": 1e-6,
+  "toleranceDegrees": 1e-9,
+  "places": {
+    "origin": [0, 0],
+    "oneNorth": [0, 1],
+    "oneEast": [1, 0],
+    "oneWest": [-1, 0],
+    "quarterEast": [90, 0],
+    "antipode": [180, 0],
+    "equatorUnderSeattle": [-122, 0],
+    "poleOverSeattle": [-122, 90],
+    "westOfAntimeridian": [179.5, 0],
+    "eastOfAntimeridian": [-179.5, 0],
+    "seattle": [-122.3321, 47.6062],
+    "northOfSeattle": [-122.3321, 47.7],
+    "southOfSeattle": [-122.3321, 47.5],
+    "northWestOfSeattle": [-122.4, 47.7],
+    "tacoma": [-122.4443, 47.2529],
+    "baghdad": [45, 35],
+    "osaka": [135, 35]
+  },
+  "distances": [
+    {"name": "one position", "source": "seattle", "target": "seattle", "kind": "none"},
+    {"name": "a degree of the prime meridian", "source": "origin", "target": "oneNorth", "kind": "degree"},
+    {"name": "a degree of the equator", "source": "origin", "target": "oneEast", "kind": "degree"},
+    {"name": "a quarter of the equator", "source": "origin", "target": "quarterEast", "kind": "quarter"},
+    {"name": "a pole from the equator", "source": "equatorUnderSeattle", "target": "poleOverSeattle", "kind": "quarter"},
+    {"name": "a degree across the antimeridian", "source": "westOfAntimeridian", "target": "eastOfAntimeridian", "kind": "degree"},
+    {"name": "antipodes", "source": "origin", "target": "antipode", "kind": "half"}
+  ],
+  "symmetricDistances": [
+    {"name": "Tacoma and Seattle either way", "source": "tacoma", "target": "seattle"}
+  ],
+  "longitudeDegrees": [
+    {"name": "a degree of longitude at the equator", "latitudeDegrees": 0, "share": 1},
+    {"name": "a degree of longitude at 60 degrees", "latitudeDegrees": 60, "share": 0.5}
+  ],
+  "bearings": [
+    {"name": "due north", "source": "seattle", "target": "northOfSeattle", "degrees": 0},
+    {"name": "due east along the equator", "source": "origin", "target": "oneEast", "degrees": 90},
+    {"name": "due south", "source": "seattle", "target": "southOfSeattle", "degrees": 180},
+    {"name": "due west along the equator", "source": "origin", "target": "oneWest", "degrees": 270},
+    {"name": "east across the antimeridian", "source": "westOfAntimeridian", "target": "eastOfAntimeridian", "degrees": 90},
+    {"name": "one position", "source": "seattle", "target": "seattle", "degrees": 0}
+  ],
+  "roundedBearings": [
+    {"name": "Baghdad to Osaka, whose bearing is 60 degrees to the degree by the published example", "source": "baghdad", "target": "osaka", "degrees": 60}
+  ],
+  "bearingRanges": [
+    {"name": "north-west lies between west and a whole turn", "source": "seattle", "target": "northWestOfSeattle", "above": 270, "below": 360}
+  ],
+  "refusedPositions": [
+    {"name": "a pair of no length", "position": []},
+    {"name": "a longitude past 180", "position": [180.5, 0]},
+    {"name": "a latitude past 90", "position": [0, -90.5]},
+    {"name": "a latitude that is no number", "position": [0, "NaN"]}
+  ],
+  "planes": [
+    {"name": "Seattle's plane", "referenceLatitudeDegrees": 47.6062}
+  ],
+  "coveredSpans": [
+    {"name": "Seattle's plane over the city", "referenceLatitudeDegrees": 47.6062, "latitudeDegreesMin": 47.35, "latitudeDegreesMax": 47.85},
+    {"name": "a plane by the equator across it", "referenceLatitudeDegrees": 0.5, "latitudeDegreesMin": -0.5, "latitudeDegreesMax": 1}
+  ],
+  "refusedSpans": [
+    {"name": "Seattle's plane at Vancouver", "referenceLatitudeDegrees": 47.6062, "latitudeDegreesMin": 47.35, "latitudeDegreesMax": 49.3},
+    {"name": "Seattle's plane at Portland", "referenceLatitudeDegrees": 47.6062, "latitudeDegreesMin": 45.5, "latitudeDegreesMax": 47.85},
+    {"name": "latitudes out of order", "referenceLatitudeDegrees": 47.6062, "latitudeDegreesMin": 48, "latitudeDegreesMax": 47},
+    {"name": "a plane by the pole", "referenceLatitudeDegrees": 89.9, "latitudeDegreesMin": 89.8, "latitudeDegreesMax": 89.9}
+  ],
+  "refusedDistances": [
+    {"name": "a distance from no latitude", "source": [0, "NaN"], "target": [0, 0]}
+  ],
+  "refusedLongitudeDegrees": [
+    {"name": "a degree of longitude past the pole", "latitudeDegrees": 91}
+  ]
+}

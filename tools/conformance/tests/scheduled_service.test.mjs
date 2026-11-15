@@ -12,7 +12,7 @@ import {describe, expect, test} from "vitest"
 import {TableKind} from "../../../assets/js/core/offline_answers.js"
 import {seconds} from "../../../test/scripts/routing_timetable.js"
 import {found, savedOf} from "../../../test/scripts/saved_timetable.js"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 // 2026-11-08 at midnight in Seattle, eight hours after midnight UTC, past
 // the change of daylight saving time, so the next date starts a day later.
@@ -254,7 +254,7 @@ const MORNING_DEPARTURE_S1 = departureOf({
   headsign: "Downtown"
 })
 
-describe.each(IMPLEMENTATIONS)("scheduled service ($name)", ({AssertionError, geodesy, scheduledService}) => {
+describe.each(implementationsWith("geodesy", "scheduledService"))("scheduled service ($name)", ({AssertionError, geodesy, scheduledService}) => {
   const {
     ARRIVAL_COUNT_MAX,
     ARRIVAL_HORIZON_SECONDS,

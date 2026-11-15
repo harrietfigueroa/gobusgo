@@ -1,0 +1,22 @@
+{
+  "lerps": [
+    {"name": "the start", "from": 10, "to": 30, "fraction": 0, "value": 10},
+    {"name": "the end", "from": 10, "to": 30, "fraction": 1, "value": 30},
+    {"name": "the middle", "from": 10, "to": 30, "fraction": 0.5, "value": 20},
+    {"name": "backward", "from": 30, "to": 10, "fraction": 0.25, "value": 25},
+    {"name": "past the end", "from": 10, "to": 30, "fraction": 1.5, "value": 40}
+  ],
+  "clamps": [
+    {"name": "below", "value": -5, "min": 0, "max": 10, "clamped": 0},
+    {"name": "inside", "value": 4, "min": 0, "max": 10, "clamped": 4},
+    {"name": "above", "value": 15, "min": 0, "max": 10, "clamped": 10},
+    {"name": "bounds that meet", "value": 15, "min": 3, "max": 3, "clamped": 3}
+  ],
+  "refusedLerps": [
+    {"name": "a fraction that is no number", "from": 0, "to": 1, "fraction": "NaN"}
+  ],
+  "refusedClamps": [
+    {"name": "bounds out of order", "value": 1, "min": 10, "max": 0},
+    {"name": "a value that is no number", "value": "NaN", "min": 0, "max": 1}
+  ]
+}
