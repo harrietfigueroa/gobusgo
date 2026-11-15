@@ -33,7 +33,6 @@ defmodule Gobusgo.WalkGraph.Search do
   @type shard :: %{pieces: [Format.piece()]}
   @type limits :: %{
           distance_meters_max: pos_integer(),
-          margin_meters: pos_integer(),
           snap_meters_max: pos_integer(),
           tile_count_max: pos_integer(),
           edge_count_max: pos_integer(),
@@ -53,7 +52,6 @@ defmodule Gobusgo.WalkGraph.Search do
   def limits do
     %{
       distance_meters_max: 1_500,
-      margin_meters: 200,
       snap_meters_max: 100,
       tile_count_max: 16,
       edge_count_max: 250_000,
@@ -65,25 +63,67 @@ defmodule Gobusgo.WalkGraph.Search do
 
   @doc """
   The tiles of `index`, a `MapSet` of `{row, column}`, that the walk from
-  `from` to `to` reads: the tiles the box of the two ends, widened by
-  `limits.margin_meters`, touches and the index holds, in tile order; or
-  `:too_far` for ends farther apart than `limits.distance_meters_max` or a
-  box of more than `limits.tile_count_max` tiles.
+  `from` to `to` reads: the 3 by 3 tiles around the tile of each end that
+  the index holds, in row then column order; or `:too_far` where the two
+  windows together hold more than `limits.tile_count_max` tiles. The answer
+  is a function of the tiles of the two ends alone.
   """
   @spec tiles_needed(%{from: position(), to: position(), index: MapSet.t(), limits: limits()}) ::
           {:tiles, [Tiles.tile()]} | :too_far
   def tiles_needed(%{from: from, to: to, index: index, limits: limits}) do
     assert_position(from)
     assert_position(to)
-    plane = Graph.plane(from, to)
-    {from_x, from_y} = Graph.to_plane(plane, from)
-    {to_x, to_y} = Graph.to_plane(plane, to)
-    straight_meters = :math.sqrt(:math.pow(to_x - from_x, 2) + :math.pow(to_y - from_y, 2))
+    windowed = MapSet.union(window(from), window(to))
 
-    if straight_meters > limits.distance_meters_max do
+    if MapSet.size(windowed) > limits.tile_count_max do
       :too_far
     else
-      box_tiles(%{from: from, to: to, plane: plane}, index, limits)
+      {:tiles, windowed |> Enum.filter(&MapSet.member?(index, &1)) |> Enum.sort()}
+    end
+  end
+
+  @doc """
+  The answer to the walk from `from` to `to` over `index`, a `MapSet` of the
+  tiles with a shard, and `held`, a map from a tile to its decoded shard:
+  `{:not_loaded, tiles}` naming the tiles of the walk that `held` lacks, in
+  tile order; `{:no_path, :too_far}` for tile windows past the bound or ends
+  more than `limits.distance_meters_max` apart, a distance checked once the
+  tiles are held; and otherwise the answer of `find_path/1`.
+  """
+  @spec plan(%{
+          from: position(),
+          to: position(),
+          index: MapSet.t(),
+          held: %{Tiles.tile() => shard()},
+          limits: limits()
+        }) :: answer() | {:no_path, :too_far} | {:not_loaded, [Tiles.tile()]}
+  def plan(%{from: from, to: to, index: index, held: held, limits: limits}) do
+    case tiles_needed(%{from: from, to: to, index: index, limits: limits}) do
+      :too_far ->
+        {:no_path, :too_far}
+
+      {:tiles, tiles} ->
+        plan_held(%{from: from, to: to, tiles: tiles, held: held, limits: limits})
+    end
+  end
+
+  defp plan_held(%{from: from, to: to, tiles: tiles, held: held, limits: limits}) do
+    missing = Enum.reject(tiles, &Map.has_key?(held, &1))
+
+    if missing == [] do
+      plane = Graph.plane(from, to)
+      {from_x, from_y} = Graph.to_plane(plane, from)
+      {to_x, to_y} = Graph.to_plane(plane, to)
+      straight_meters = :math.sqrt(:math.pow(to_x - from_x, 2) + :math.pow(to_y - from_y, 2))
+      shards = Enum.map(tiles, &Map.fetch!(held, &1))
+
+      if straight_meters > limits.distance_meters_max do
+        {:no_path, :too_far}
+      else
+        find_path(%{from: from, to: to, shards: shards, limits: limits})
+      end
+    else
+      {:not_loaded, missing}
     end
   end
 
@@ -159,41 +199,19 @@ defmodule Gobusgo.WalkGraph.Search do
     )
   end
 
-  defp box_tiles(%{from: from, to: to, plane: plane}, index, limits) do
-    margin_lat = limits.margin_meters / plane.meters_per_lat
-    margin_lon = limits.margin_meters / plane.meters_per_lon
-
-    low =
-      tile_of_units(
-        floor((min(from.lat, to.lat) - margin_lat) * @units_per_degree),
-        floor((min(from.lon, to.lon) - margin_lon) * @units_per_degree)
+  # The 3 by 3 tiles around the tile of `end_position`.
+  defp window(end_position) do
+    {row, column} =
+      Tiles.tile_of(
+        {floor(end_position.lat * @units_per_degree),
+         floor(end_position.lon * @units_per_degree)},
+        Tiles.sizes()
       )
 
-    high =
-      tile_of_units(
-        ceil((max(from.lat, to.lat) + margin_lat) * @units_per_degree),
-        ceil((max(from.lon, to.lon) + margin_lon) * @units_per_degree)
-      )
-
-    {low_row, low_column} = low
-    {high_row, high_column} = high
-    tile_count = (high_row - low_row + 1) * (high_column - low_column + 1)
-
-    if tile_count > limits.tile_count_max do
-      :too_far
-    else
-      tiles =
-        for row <- low_row..high_row,
-            column <- low_column..high_column,
-            MapSet.member?(index, {row, column}),
-            do: {row, column}
-
-      {:tiles, tiles}
-    end
+    MapSet.new(
+      for row_step <- -1..1, column_step <- -1..1, do: {row + row_step, column + column_step}
+    )
   end
-
-  defp tile_of_units(lat_units, lon_units),
-    do: Tiles.tile_of({lat_units, lon_units}, Tiles.sizes())
 
   defp plan_path(%{from: from, to: to, pieces: pieces, limits: limits}) do
     plane = Graph.plane(from, to)

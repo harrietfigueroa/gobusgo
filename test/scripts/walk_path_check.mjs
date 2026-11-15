@@ -50,6 +50,8 @@ const DEGREE_TOLERANCE = 1e-7
 const INDEX_BYTE_SIZE = 3318
 const KIND_VERSION = 1
 const MIDDLE_LAT_UNITS = 4_761_375
+const WINDOW_RADIUS = 1
+const WINDOW_TILE_COUNT = 9
 const ISLAND_LAT_UNITS = 20
 const ISLAND_FIRST_UNITS = 100
 const ISLAND_LAST_UNITS = 300
@@ -153,6 +155,12 @@ function tableOfLines(lines) {
   }
 
   return {pieceCount: lines.length, classes: new Uint8Array(lines.length), pieceStarts: Uint32Array.from(pieceStarts), points: Int32Array.from(points)}
+}
+
+function isTileEqual(tile) {
+  return function isTile(other) {
+    return other.row === tile.row && other.column === tile.column
+  }
 }
 
 function isWalkGraphKind(kind) {
@@ -336,8 +344,11 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
 
 // Ends farther apart than the walk limit read no tile.
 {
-  const far = walk({from: degrees(NORTH, NEAR_WEST), to: degrees(FAR_NORTH_LAT, NEAR_WEST), loaded: loadedBoth})
+  const farEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(FAR_NORTH_LAT, NEAR_WEST)}
+  const far = walk({...farEnds, loaded: loadedBoth})
   deepStrictEqual(far, {kind: WalkPathKind.noPath, reason: NoPathReason.tooFar})
+  const farTiles = walkTilesNeeded({...farEnds, index, limits: WALK_LIMITS})
+  strictEqual(farTiles.kind, "tiles", "the tiles asked for do not depend on the distance")
 }
 
 // A box of more tiles than the bound is too far, whatever the distance.
@@ -345,6 +356,40 @@ const detourEnds = {from: degrees(NORTH, NEAR_WEST), to: degrees(SOUTH, NEAR_WES
   const limits = {...WALK_LIMITS, tileCountMax: CAP_TILES}
   const wide = planWalk({from: degrees(NORTH, NEAR_WEST), to: degrees(NORTH, FAR_EAST_TILE_COLUMN), index, loaded: loadedBoth, limits})
   deepStrictEqual(wide, {kind: WalkPathKind.noPath, reason: NoPathReason.tooFar})
+}
+
+// A walk reads the 3 by 3 tiles around the tile of each end, wherever in its
+// tile the end stands, and no tile past them.
+{
+  const around = []
+  const tileSpan = [-WINDOW_RADIUS, 0, WINDOW_RADIUS]
+
+  for (const rowStep of tileSpan) {
+    for (const columnStep of tileSpan) {
+      around.push({row: WEST_TILE.row + rowStep, column: WEST_TILE.column + columnStep})
+    }
+  }
+
+  const beyond = {row: WEST_TILE.row, column: WEST_TILE.column + WINDOW_RADIUS + 1}
+  const aroundKeys = Array.from(around, tileKey)
+  const beyondKey = tileKey(beyond)
+  const wideIndex = new Set([...aroundKeys, beyondKey])
+  const corner = degrees(NORTH, WEST_COLUMN)
+  const middle = degrees(SOUTH, MIDDLE_COLUMN)
+  const window = walkTilesNeeded({from: corner, to: middle, index: wideIndex, limits: WALK_LIMITS})
+  strictEqual(window.kind, "tiles")
+  strictEqual(window.tiles.length, WINDOW_TILE_COUNT)
+  deepStrictEqual(window.tiles, around, "the window is the nine tiles in row then column order")
+  const isBeyondTile = isTileEqual(beyond)
+  const hasBeyond = window.tiles.some(isBeyondTile)
+  strictEqual(hasBeyond, false, "no tile past the window")
+
+  const sameWindow = walkTilesNeeded({from: middle, to: corner, index: wideIndex, limits: WALK_LIMITS})
+  deepStrictEqual(sameWindow, window, "the ends in either order read the same tiles")
+
+  const farEnd = degrees(SOUTH, FAR_EAST_COLUMN)
+  const twoWindows = walkTilesNeeded({from: corner, to: farEnd, index: wideIndex, limits: {...WALK_LIMITS, tileCountMax: WINDOW_TILE_COUNT}})
+  deepStrictEqual(twoWindows, {kind: "tooFar"}, "two windows past the tile cap")
 }
 
 // A walk where the index holds no tile has no shard.

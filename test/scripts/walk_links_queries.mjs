@@ -7,8 +7,8 @@
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {PackedOutcome} from "../../assets/js/core/packed_container.js"
-import {UNITS_PER_DEGREE, decodeWalkGraphIndex, decodeWalkGraphShard, tileKey} from "../../assets/js/core/walk_graph_file.js"
-import {WALK_LIMITS, WalkPathKind, findWalkPath, walkTilesNeeded} from "../../assets/js/core/walk_path.js"
+import {UNITS_PER_DEGREE, decodeWalkGraphIndex, decodeWalkGraphShard} from "../../assets/js/core/walk_graph_file.js"
+import {NoPathReason, WALK_LIMITS, WalkPathKind, planWalk, walkTilesNeeded} from "../../assets/js/core/walk_path.js"
 
 export const TOLERANCE_METERS = 0.1
 const FIXTURE_DIRECTORY = fileURLToPath(new URL("../fixtures/walk_graph/v1/", import.meta.url))
@@ -81,29 +81,22 @@ function rowAndColumn(tile) {
 
 function answerOf({from, to, shardsByKey, index}) {
   const needed = walkTilesNeeded({from, to, index, limits: WALK_LIMITS})
+  const tiles = Array.from(needed.tiles ?? [], rowAndColumn)
+  const planned = planWalk({from, to, index, loaded: shardsByKey, limits: WALK_LIMITS})
 
-  if (needed.kind !== "tiles") {
-    return {tiles: [], kind: "tooFar"}
+  if (planned.kind === WalkPathKind.found) {
+    return {tiles, kind: "found", meters: planned.meters}
   }
 
-  const shards = []
-
-  for (const tile of needed.tiles) {
-    const shard = shardsByKey.get(tileKey(tile))
-
-    if (shard !== undefined) {
-      shards.push(shard)
-    }
+  if (planned.kind === WalkPathKind.noPath && planned.reason === NoPathReason.tooFar) {
+    return {tiles, kind: "tooFar"}
   }
 
-  const tiles = Array.from(needed.tiles, rowAndColumn)
-  const found = findWalkPath({from, to, shards, limits: WALK_LIMITS})
-
-  if (found.kind === WalkPathKind.found) {
-    return {tiles, kind: "found", meters: found.meters}
+  if (planned.kind === WalkPathKind.notLoaded) {
+    throw new Error("a golden pair reads a tile the fixture lacks: " + JSON.stringify(planned.tiles))
   }
 
-  return {tiles, kind: "noPath", reason: found.reason}
+  return {tiles, kind: "noPath", reason: planned.reason}
 }
 
 /** The index's tile keys and the answer to each pair of points, as the golden file holds them. */

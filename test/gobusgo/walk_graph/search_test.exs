@@ -24,7 +24,6 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   defp limits do
     %{
       distance_meters_max: @golden["limits"]["distanceMetersMax"],
-      margin_meters: @golden["limits"]["marginMeters"],
       snap_meters_max: @golden["limits"]["snapMetersMax"],
       tile_count_max: @golden["limits"]["tileCountMax"],
       edge_count_max: @golden["limits"]["edgeCountMax"],
@@ -85,14 +84,13 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     })
   end
 
-  defp expected_tiles(%{"kind" => "tooFar"}), do: :too_far
+  defp expected_tiles(%{"kind" => "tooFar", "tiles" => []}), do: :too_far
   defp expected_tiles(query), do: {:tiles, tiles_of(query)}
 
-  describe "find_path/1" do
+  describe "plan/1" do
     test "agrees with the browser within a tenth of a meter on every golden pair" do
       mismatches =
         for query <- @golden["queries"],
-            query["kind"] != "tooFar",
             answer = golden_answer(query),
             not agrees?(answer, query),
             do: {query["name"], answer, query["meters"] || query["reason"]}
@@ -102,7 +100,7 @@ defmodule Gobusgo.WalkGraph.SearchTest do
 
     test "answers each kind of outcome the golden file holds" do
       kinds =
-        for query <- @golden["queries"], query["kind"] != "tooFar", into: MapSet.new() do
+        for query <- @golden["queries"], into: MapSet.new() do
           golden_answer(query) |> elem(0)
         end
 
@@ -110,6 +108,45 @@ defmodule Gobusgo.WalkGraph.SearchTest do
       assert MapSet.member?(kinds, :no_path)
     end
 
+    test "names the tiles it lacks before it answers" do
+      query = hd(@golden["queries"])
+
+      assert {:not_loaded, [_first | _rest] = tiles} =
+               Search.plan(%{
+                 from: position(query["from"]),
+                 to: position(query["to"]),
+                 index: index(),
+                 held: %{},
+                 limits: limits()
+               })
+
+      assert tiles == tiles_of(query)
+    end
+
+    test "checks the distance between the ends once the tiles are held" do
+      query = Enum.find(@golden["queries"], &(&1["kind"] == "tooFar" and &1["tiles"] != []))
+
+      assert {:no_path, :too_far} =
+               Search.plan(%{
+                 from: position(query["from"]),
+                 to: position(query["to"]),
+                 index: index(),
+                 held: shards_by_tile(),
+                 limits: limits()
+               })
+
+      assert {:not_loaded, _tiles} =
+               Search.plan(%{
+                 from: position(query["from"]),
+                 to: position(query["to"]),
+                 index: index(),
+                 held: %{},
+                 limits: limits()
+               })
+    end
+  end
+
+  describe "find_path/1" do
     test "chooses the same answer whichever order the shards come in" do
       above = %{pieces: [line(@lat + 18, @lon - 400, @lon + 400)]}
       below = %{pieces: [line(@lat - 18, @lon - 400, @lon + 400)]}
@@ -284,10 +321,11 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     from = position(query["from"])
     to = position(query["to"])
 
-    Search.find_path(%{
+    Search.plan(%{
       from: from,
       to: to,
-      shards: held_shards(tiles_of(query)),
+      index: index(),
+      held: shards_by_tile(),
       limits: limits()
     })
   end
@@ -311,6 +349,8 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   defp agrees?({:no_path, reason}, %{"kind" => "noPath", "reason" => expected}) do
     Atom.to_string(reason) == Macro.underscore(expected)
   end
+
+  defp agrees?({:no_path, :too_far}, %{"kind" => "tooFar"}), do: true
 
   defp agrees?(_answer, _query), do: false
 
