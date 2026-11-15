@@ -13,6 +13,7 @@
 
 use gobusgo_core::assert::{self, AssertionError as CoreAssertionError, number_text};
 use gobusgo_core::math::{angles, checks, geodesy, interpolation};
+use gobusgo_core::{packed_container, routing_snapshot, trip_path};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 // The length of an array that holds a position's two coordinates.
@@ -25,8 +26,8 @@ pub fn core_version() -> String {
     gobusgo_core::core_version().to_owned()
 }
 
-// The failure every assertion throws; the frozen object a tangent plane crosses
-// as, which JavaScript builds so that no value a caller holds points into the
+// The failure every assertion throws; the objects a result crosses as, which
+// JavaScript builds from copies so that no value a caller holds points into the
 // module's memory; and a property read as JavaScript reads `target[key]`.
 #[wasm_bindgen(inline_js = "
 export class AssertionError extends Error {}
@@ -35,6 +36,51 @@ export function plane(referenceLatitudeDegrees, metersPerDegreeLon) {
   return Object.freeze({referenceLatitudeDegrees, metersPerDegreeLon})
 }
 export function property(target, key) { return target[key] }
+export function names(list) { return Object.freeze(Object.fromEntries(list.map((name) => [name, name]))) }
+export function isArrayBuffer(value) { return Object.prototype.toString.call(value) === '[object ArrayBuffer]' }
+export function bufferBytes(buffer) { return new Uint8Array(buffer) }
+export function refusal(kind, reason) { return {kind, reason} }
+export function decoded(kind, records) { return {kind, records} }
+export function texts(text, ends) {
+  const list = new Array(ends.length)
+  let start = 0
+  for (let index = 0; index < ends.length; index += 1) {
+    list[index] = text.slice(start, ends[index])
+    start = ends[index]
+  }
+  return list
+}
+export function trips(idText, idEnds, routeText, routeEnds, offsets) {
+  const ids = texts(idText, idEnds)
+  const routeIds = texts(routeText, routeEnds)
+  return Array.from(ids, (id, index) => ({id, routeId: routeIds[index], serviceDayOffset: offsets[index]}))
+}
+export function transfers(fromStop, toStop, durationS) { return {fromStop, toStop, durationS} }
+export function connections(departureS, arrivalS, departureStop, arrivalStop, trip, sequence, boarding, alighting) {
+  return {departureS, arrivalS, departureStop, arrivalStop, trip, sequence, boarding, alighting}
+}
+export function positions(latMicrodegrees, lonMicrodegrees) { return {latMicrodegrees, lonMicrodegrees} }
+export function decodedTripPath(tripId, routeId, serviceDateMs, key, coordinates, stopValues) {
+  const points = []
+  for (let index = 0; index < coordinates.length; index += 2) {
+    points.push(Object.freeze([coordinates[index], coordinates[index + 1]]))
+  }
+  const stops = []
+  for (let index = 0; index < stopValues.length; index += 3) {
+    stops.push(Object.freeze({distanceMeters: stopValues[index], arrivalSeconds: stopValues[index + 1], departureSeconds: stopValues[index + 2]}))
+  }
+  return checkedTripPath(tripId, routeId, serviceDateMs, key, points, stops)
+}
+export function checkedTripPath(tripId, routeId, serviceDateMs, key, points, stops) {
+  return Object.freeze({tripId, routeId, serviceDateMs, key, points: Object.freeze(points), stops: Object.freeze(stops)})
+}
+export function distancesOf(stops) { return Float64Array.from(stops, (stop) => stop.distanceMeters) }
+export function arrayOf(iterable) { return Array.from(iterable) }
+export function elementsOf(array) { return array }
+export function keysOf(entries) { return Array.from(entries, (entry) => entry[0]) }
+export function valuesOf(entries) { return Array.from(entries, (entry) => entry[1]) }
+export function pathKeys(paths) { return Array.from(paths, (path) => path.key) }
+export function mapOf(keys, values) { return new Map(Array.from(keys, (key, index) => [key, values[index]])) }
 ")]
 extern "C" {
     #[wasm_bindgen(thread_local_v2, js_name = AssertionError)]
@@ -47,6 +93,88 @@ extern "C" {
 
     #[wasm_bindgen(catch, js_name = property)]
     fn try_property(target: &JsValue, key: &str) -> Result<JsValue, JsValue>;
+
+    fn names(list: Vec<String>) -> JsValue;
+
+    #[wasm_bindgen(js_name = isArrayBuffer)]
+    fn is_array_buffer(value: &JsValue) -> bool;
+
+    #[wasm_bindgen(js_name = bufferBytes)]
+    fn buffer_bytes(buffer: &JsValue) -> Vec<u8>;
+
+    fn refusal(kind: &str, reason: &str) -> JsValue;
+
+    fn decoded(kind: &str, records: JsValue) -> JsValue;
+
+    fn texts(text: &str, ends: Vec<u32>) -> JsValue;
+
+    fn trips(
+        id_text: &str,
+        id_ends: Vec<u32>,
+        route_text: &str,
+        route_ends: Vec<u32>,
+        offsets: Vec<u8>,
+    ) -> JsValue;
+
+    fn transfers(from_stop: Vec<u32>, to_stop: Vec<u32>, duration_s: Vec<u32>) -> JsValue;
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a connections file has eight columns"
+    )]
+    fn connections(
+        departure_s: Vec<i32>,
+        arrival_s: Vec<i32>,
+        departure_stop: Vec<u32>,
+        arrival_stop: Vec<u32>,
+        trip: Vec<u32>,
+        sequence: Vec<u16>,
+        boarding: Vec<u8>,
+        alighting: Vec<u8>,
+    ) -> JsValue;
+
+    fn positions(lat_microdegrees: Vec<i32>, lon_microdegrees: Vec<i32>) -> JsValue;
+
+    #[wasm_bindgen(js_name = decodedTripPath)]
+    fn decoded_trip_path(
+        trip_id: &JsValue,
+        route_id: &JsValue,
+        service_date_ms: &JsValue,
+        key: &str,
+        coordinates: Vec<f64>,
+        stop_values: Vec<f64>,
+    ) -> JsValue;
+
+    #[wasm_bindgen(js_name = checkedTripPath)]
+    fn checked_trip_path(
+        trip_id: &JsValue,
+        route_id: &JsValue,
+        service_date_ms: &JsValue,
+        key: &str,
+        points: &JsValue,
+        stops: &JsValue,
+    ) -> JsValue;
+
+    #[wasm_bindgen(catch, js_name = distancesOf)]
+    fn try_distances_of(stops: &JsValue) -> Result<Vec<f64>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = arrayOf)]
+    fn try_array_of(iterable: &JsValue) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = elementsOf)]
+    fn elements_of(array: &JsValue) -> Vec<JsValue>;
+
+    #[wasm_bindgen(js_name = keysOf)]
+    fn keys_of(entries: &JsValue) -> Vec<JsValue>;
+
+    #[wasm_bindgen(js_name = valuesOf)]
+    fn values_of(entries: &JsValue) -> Vec<JsValue>;
+
+    #[wasm_bindgen(js_name = pathKeys)]
+    fn path_keys(paths: &JsValue) -> Vec<JsValue>;
+
+    #[wasm_bindgen(js_name = mapOf)]
+    fn map_of(keys: Vec<String>, values: Vec<JsValue>) -> JsValue;
 }
 
 // JavaScript's `String(value)`, which throws for a value whose conversion to
@@ -287,6 +415,362 @@ pub fn clamp(options: &JsValue) -> f64 {
         min: number_property(options, "min"),
         max: number_property(options, "max"),
     })
+}
+
+/// `routing_snapshot.js`'s `FORMAT_VERSION`.
+#[wasm_bindgen(js_name = routingSnapshotFormatVersion)]
+#[must_use]
+// wasm-bindgen exports no const fn.
+#[expect(clippy::missing_const_for_fn)]
+pub fn routing_snapshot_format_version() -> u16 {
+    routing_snapshot::FORMAT_VERSION
+}
+
+/// `routing_snapshot.js`'s `POSITION_UNKNOWN_MICRODEGREES`.
+#[wasm_bindgen(js_name = positionUnknownMicrodegrees)]
+#[must_use]
+// wasm-bindgen exports no const fn.
+#[expect(clippy::missing_const_for_fn)]
+pub fn position_unknown_microdegrees() -> i32 {
+    routing_snapshot::POSITION_UNKNOWN_MICRODEGREES
+}
+
+/// `routing_snapshot.js`'s `DecodeKind`, a frozen object of the kinds' names.
+#[wasm_bindgen(js_name = routingSnapshotDecodeKind)]
+#[must_use]
+pub fn routing_snapshot_decode_kind() -> JsValue {
+    names(
+        routing_snapshot::DecodeKind::ALL
+            .map(|kind| kind.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `routing_snapshot.js`'s `RefusalReason`, a frozen object of the reasons' names.
+#[wasm_bindgen(js_name = routingSnapshotRefusalReason)]
+#[must_use]
+pub fn routing_snapshot_refusal_reason() -> JsValue {
+    names(
+        routing_snapshot::RefusalReason::ALL
+            .map(|reason| reason.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `routing_snapshot.js`'s `decodeStops`: the stop identifiers of a stops file.
+#[wasm_bindgen(js_name = decodeStops)]
+#[must_use]
+pub fn decode_stops(buffer: &JsValue) -> JsValue {
+    snapshot_result(
+        routing_snapshot::decode_stops(&array_buffer_bytes(buffer)),
+        |stop_ids| {
+            let joined = Joined::of(stop_ids.iter().map(String::as_str));
+            texts(&joined.text, joined.ends)
+        },
+    )
+}
+
+/// `routing_snapshot.js`'s `decodeTrips`: the trips of a trips file.
+#[wasm_bindgen(js_name = decodeTrips)]
+#[must_use]
+pub fn decode_trips(buffer: &JsValue) -> JsValue {
+    snapshot_result(
+        routing_snapshot::decode_trips(&array_buffer_bytes(buffer)),
+        |decoded_trips| {
+            let ids = Joined::of(decoded_trips.iter().map(|trip| trip.id.as_str()));
+            let route_ids = Joined::of(decoded_trips.iter().map(|trip| trip.route_id.as_str()));
+            let offsets = decoded_trips
+                .iter()
+                .map(|trip| trip.service_day_offset)
+                .collect();
+            trips(
+                &ids.text,
+                ids.ends,
+                &route_ids.text,
+                route_ids.ends,
+                offsets,
+            )
+        },
+    )
+}
+
+// A column of strings as one text and the UTF-16 offset each string ends at,
+// so the column crosses the binding as one string, which JavaScript slices
+// apart, where each string crossing alone is decoded alone.
+struct Joined {
+    text: String,
+    ends: Vec<u32>,
+}
+
+impl Joined {
+    fn of<'text>(strings: impl ExactSizeIterator<Item = &'text str>) -> Self {
+        let mut joined = Self {
+            text: String::new(),
+            ends: Vec::with_capacity(strings.len()),
+        };
+        let mut end: u32 = 0;
+        for string in strings {
+            joined.text.push_str(string);
+            let units = u32::try_from(string.encode_utf16().count());
+            let next = units.ok().and_then(|count| end.checked_add(count));
+            let Some(next) = next else {
+                assert::unreachable(&end, "binding: a file's text fits a u32 of UTF-16 units");
+            };
+            end = next;
+            joined.ends.push(end);
+        }
+        joined
+    }
+}
+
+/// `routing_snapshot.js`'s `decodeTransfers`: the walking links of a transfers
+/// file, as typed arrays by column.
+#[wasm_bindgen(js_name = decodeTransfers)]
+#[must_use]
+pub fn decode_transfers(buffer: &JsValue) -> JsValue {
+    snapshot_result(
+        routing_snapshot::decode_transfers(&array_buffer_bytes(buffer)),
+        |links| transfers(links.from_stop, links.to_stop, links.duration_s),
+    )
+}
+
+/// `routing_snapshot.js`'s `decodeConnections`: the connections of a
+/// connections file, as typed arrays by column.
+#[wasm_bindgen(js_name = decodeConnections)]
+#[must_use]
+pub fn decode_connections(buffer: &JsValue) -> JsValue {
+    let bytes = array_buffer_bytes(buffer);
+    snapshot_result(routing_snapshot::decode_connections(&bytes), |columns| {
+        connections(
+            columns.departure_s,
+            columns.arrival_s,
+            columns.departure_stop,
+            columns.arrival_stop,
+            columns.trip,
+            columns.sequence,
+            columns.boarding,
+            columns.alighting,
+        )
+    })
+}
+
+/// `routing_snapshot.js`'s `decodePositions`: the stop positions of a
+/// positions file, as typed arrays of microdegrees by axis.
+#[wasm_bindgen(js_name = decodePositions)]
+#[must_use]
+pub fn decode_positions(buffer: &JsValue) -> JsValue {
+    snapshot_result(
+        routing_snapshot::decode_positions(&array_buffer_bytes(buffer)),
+        |axes| positions(axes.lat_microdegrees, axes.lon_microdegrees),
+    )
+}
+
+/// `packed_container.js`'s `PackedOutcome`, a frozen object of the outcomes' names.
+#[wasm_bindgen(js_name = packedOutcome)]
+#[must_use]
+pub fn packed_outcome() -> JsValue {
+    names(
+        packed_container::Outcome::ALL
+            .map(|outcome| outcome.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `packed_container.js`'s `PackedRefusal`, a frozen object of the reasons' names.
+#[wasm_bindgen(js_name = packedRefusal)]
+#[must_use]
+pub fn packed_refusal() -> JsValue {
+    names(
+        packed_container::Refusal::ALL
+            .map(|reason| reason.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `trip_path.js`'s `TRIP_PATH_COUNT_MAX`.
+#[wasm_bindgen(js_name = tripPathCountMax)]
+#[must_use]
+// wasm-bindgen exports no const fn.
+#[expect(clippy::missing_const_for_fn)]
+pub fn trip_path_count_max() -> usize {
+    trip_path::TRIP_PATH_COUNT_MAX
+}
+
+/// `trip_path.js`'s `tripPathKey`: the key a path is held under.
+#[wasm_bindgen(js_name = tripPathKey)]
+#[must_use]
+pub fn trip_path_key(options: &JsValue) -> String {
+    let trip_id = trip_id_text(&property(options, "tripId"));
+    let service_date_ms = date_number(&property(options, "serviceDateMs"));
+    trip_path::trip_path_key(trip_path::KeyOf {
+        trip_id: &trip_id,
+        service_date_ms,
+    })
+}
+
+/// `trip_path.js`'s `decodeTripPath`: one encoded path, decoded, a frozen
+/// object of frozen points and stops.
+#[wasm_bindgen(js_name = decodeTripPath)]
+#[must_use]
+pub fn decode_trip_path(path: &JsValue) -> JsValue {
+    let points = encoded_text(&property(path, "points"));
+    let stops = encoded_text(&property(path, "stops"));
+    let trip_id_value = property(path, "trip_id");
+    let route_id = property(path, "route_id");
+    let service_date_value = property(path, "service_date_ms");
+    let trip_id = trip_id_text(&trip_id_value);
+    let decoded_path = trip_path::decode_trip_path(trip_path::EncodedPath {
+        trip_id: &trip_id,
+        service_date_ms: date_number(&service_date_value),
+        points: &points,
+        stops: &stops,
+    });
+    let mut coordinates = Vec::with_capacity(decoded_path.points.len().saturating_mul(2));
+    for point in &decoded_path.points {
+        coordinates.push(point.longitude);
+        coordinates.push(point.latitude);
+    }
+    let mut stop_values = Vec::with_capacity(decoded_path.stops.len().saturating_mul(3));
+    for stop in &decoded_path.stops {
+        stop_values.push(stop.distance_meters);
+        stop_values.push(stop.arrival_seconds);
+        stop_values.push(stop.departure_seconds);
+    }
+    decoded_trip_path(
+        &trip_id_value,
+        &route_id,
+        &service_date_value,
+        &decoded_path.key,
+        coordinates,
+        stop_values,
+    )
+}
+
+/// `trip_path.js`'s `tripPathOf`: the decoded path its caller built, checked
+/// and frozen with the arrays it was given.
+#[wasm_bindgen(js_name = tripPathOf)]
+#[must_use]
+pub fn trip_path_of(options: &JsValue) -> JsValue {
+    let trip_id_value = property(options, "tripId");
+    let route_id = property(options, "routeId");
+    let service_date_value = property(options, "serviceDateMs");
+    let points = property(options, "points");
+    let stops = property(options, "stops");
+    let point_count = number_property(&points, "length");
+    let stop_distances_meters = caught(try_distances_of(&stops), "stops");
+    let trip_id = trip_id_text(&trip_id_value);
+    let key = trip_path::trip_path_of(trip_path::TripPathParts {
+        trip_id: &trip_id,
+        service_date_ms: date_number(&service_date_value),
+        point_count: length_of(point_count),
+        stop_distances_meters: &stop_distances_meters,
+    });
+    checked_trip_path(
+        &trip_id_value,
+        &route_id,
+        &service_date_value,
+        &key,
+        &points,
+        &stops,
+    )
+}
+
+/// `trip_path.js`'s `withTripPaths`: a new cache of `cache`'s paths and
+/// `paths`, at most `TRIP_PATH_COUNT_MAX` of them, put earliest leaving first.
+#[wasm_bindgen(js_name = withTripPaths)]
+#[must_use]
+pub fn with_trip_paths(cache: &JsValue, paths: &JsValue) -> JsValue {
+    let entries = caught(try_array_of(cache), "the cache");
+    let held = keyed(&keys_of(&entries), values_of(&entries));
+    let path_list = caught(try_array_of(paths), "the paths");
+    let put = keyed(&path_keys(&path_list), elements_of(&path_list));
+    let next = trip_path::with_trip_paths(held, put);
+    let (keys, values) = next.into_iter().unzip();
+    map_of(keys, values)
+}
+
+// Each value under its key, which must be text, as a path's key is.
+fn keyed(keys: &[JsValue], values: Vec<JsValue>) -> Vec<(String, JsValue)> {
+    keys.iter()
+        .map(|key| {
+            let key_text = key.as_string();
+            assert::condition(key_text.is_some(), || {
+                format!("binding: a path's key {} is not text", text(key))
+            });
+            key_text.unwrap_or_default()
+        })
+        .zip(values)
+        .collect()
+}
+
+// The result of a routing snapshot decoder: its records as `records` builds
+// them, or its refusal.
+fn snapshot_result<Records>(
+    result: Result<Records, routing_snapshot::RefusalReason>,
+    records: impl FnOnce(Records) -> JsValue,
+) -> JsValue {
+    match result {
+        Ok(decoded_records) => decoded(
+            routing_snapshot::DecodeKind::Decoded.name(),
+            records(decoded_records),
+        ),
+        Err(reason) => refusal(routing_snapshot::DecodeKind::Refused.name(), reason.name()),
+    }
+}
+
+// The bytes of `buffer`, which must be an `ArrayBuffer`, as the JavaScript
+// readers read one, copied into the module's memory once.
+fn array_buffer_bytes(buffer: &JsValue) -> Vec<u8> {
+    assert::condition(is_array_buffer(buffer), || {
+        format!("binding: the bytes {} are not an ArrayBuffer", text(buffer))
+    });
+    buffer_bytes(buffer)
+}
+
+// The text of encoded numbers, which must be text.
+fn encoded_text(value: &JsValue) -> String {
+    let encoded = value.as_string();
+    assert::condition(encoded.is_some(), || {
+        trip_path::ENCODED_NOT_TEXT_MESSAGE.to_owned()
+    });
+    encoded.unwrap_or_default()
+}
+
+// The text of a trip identifier, which must be text.
+fn trip_id_text(value: &JsValue) -> String {
+    let trip_id = value.as_string();
+    assert::condition(trip_id.is_some(), || {
+        trip_path::TRIP_ID_NOT_TEXT_MESSAGE.to_owned()
+    });
+    trip_id.unwrap_or_default()
+}
+
+// A service date as a number; a value that is none is NaN, which the core
+// refuses as no integer, as the JavaScript's `Number.isSafeInteger` does.
+fn date_number(value: &JsValue) -> f64 {
+    value.as_f64().unwrap_or(f64::NAN)
+}
+
+// An array's length, a whole count, which its decimal text reads back as.
+fn length_of(length: f64) -> usize {
+    let count = number_text(length).parse::<usize>();
+    assert::condition(count.is_ok(), || {
+        format!("binding: a length {} is not a count", number_text(length))
+    });
+    count.unwrap_or_default()
+}
+
+// The value of a read that JavaScript may throw from, and an assertion's
+// failure where it throws; `name` names what was read.
+fn caught<Value: Default>(read: Result<Value, JsValue>, name: &str) -> Value {
+    let failure = read.as_ref().err().map(text);
+    assert::condition(failure.is_none(), || {
+        format!(
+            "binding: reading {name} threw {}",
+            failure.unwrap_or_default()
+        )
+    });
+    read.unwrap_or_default()
 }
 
 // The pair of positions `[lon, lat]` the JavaScript module destructures.

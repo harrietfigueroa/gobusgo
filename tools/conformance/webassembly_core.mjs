@@ -47,5 +47,23 @@ export const WEBASSEMBLY_CORE = Object.freeze({
   interpolation: Object.freeze({
     lerp: binding.lerp,
     clamp: binding.clamp
+  }),
+  routingSnapshot: Object.freeze({
+    FORMAT_VERSION: binding.routingSnapshotFormatVersion(),
+    POSITION_UNKNOWN_MICRODEGREES: binding.positionUnknownMicrodegrees(),
+    DecodeKind: binding.routingSnapshotDecodeKind(),
+    RefusalReason: binding.routingSnapshotRefusalReason(),
+    decodeStops: binding.decodeStops,
+    decodeTrips: binding.decodeTrips,
+    decodeTransfers: binding.decodeTransfers,
+    decodeConnections: binding.decodeConnections,
+    decodePositions: binding.decodePositions
+  }),
+  tripPath: Object.freeze({
+    TRIP_PATH_COUNT_MAX: binding.tripPathCountMax(),
+    decodeTripPath: binding.decodeTripPath,
+    tripPathKey: binding.tripPathKey,
+    tripPathOf: binding.tripPathOf,
+    withTripPaths: binding.withTripPaths
   })
 })

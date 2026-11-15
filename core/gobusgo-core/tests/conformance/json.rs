@@ -49,6 +49,17 @@ impl Value {
         value
     }
 
+    /// The value of `key`, or `None` where this object holds no such member.
+    pub fn member(&self, key: &str) -> Option<&Self> {
+        let Self::Object(members) = self else {
+            panic!("json: {key} read from a value that is no object: {self:?}");
+        };
+        members
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value)
+    }
+
     /// The number this value is, or the number one of the strings `NaN`,
     /// `Infinity`, and `-Infinity` stands for.
     pub fn number(&self) -> f64 {
