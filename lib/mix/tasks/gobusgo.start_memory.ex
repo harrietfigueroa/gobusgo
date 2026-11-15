@@ -24,8 +24,8 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
 
   With `--walk-basis streets` the container starts with the snapshots'
   walks measured along the streets, the setting `config :gobusgo, :walk`
-  names, which a start flag of the VM sets in place of the configuration
-  file's. The synthetic responses then come with the synthetic walk graph of
+  names, which an `-eval` flag of the VM sets as the VM finishes booting, in
+  place of the release's configuration. The synthetic responses then come with the synthetic walk graph of
   `Gobusgo.StartMemory.WalkGraph` (a `--responses` directory holds its own
   under `intersections/`), and the run also waits for the links to be
   measured, which a start does after it has built its snapshots by the
@@ -267,10 +267,11 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
     ]
   end
 
-  # A start flag of the VM sets an application's setting in place of the
-  # configuration file's.
+  # The release's configuration file wins over a `-gobusgo` flag of the VM, so
+  # the setting is made by an `-eval` flag, which runs as the boot finishes,
+  # before the first run of the snapshot build.
   defp walk_flags(:straight), do: ""
-  defp walk_flags(:streets), do: " -gobusgo walk [{basis,streets}]"
+  defp walk_flags(:streets), do: " -eval application:set_env(gobusgo,walk,[{basis,streets}])."
 
   defp open_port(arguments) do
     Port.open({:spawn_executable, docker_executable()}, [
