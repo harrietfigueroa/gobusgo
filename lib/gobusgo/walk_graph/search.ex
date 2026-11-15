@@ -4,13 +4,12 @@ defmodule Gobusgo.WalkGraph.Search do
   has decoded. Everything here is pure: it reads no file and holds nothing,
   and every search is bounded by `limits`.
 
-  `find_path/1` is one walk between two positions and mirrors
-  `assets/js/core/walk_path.js`: the plane is tangent at the middle of the
-  ends, an A* search runs between the snapped ends, and the answer is the
-  length of the whole line. `reach/1` is one start and many targets in one
-  search over a plane tangent at the start, bounded by a street length. The
-  two agree to about a tenth of a meter, which is the difference of their
-  planes, and a golden file made by the browser's code holds both to it.
+  `find_path/1` is one walk between two positions: the plane is tangent at
+  the middle of the ends, an A* search runs between the snapped ends, and the
+  answer is the length of the whole line. `reach/1` is one start and many
+  targets in one search over a plane tangent at the start, bounded by a
+  street length. A snap and a tie between snaps are decided by geometry,
+  never by the order the shards arrive in.
 
   A position is a map of `lat` and `lon` in degrees. A shard is what
   `Gobusgo.WalkGraph.Format.decode_shard/1` returns. An answer is
@@ -114,7 +113,7 @@ defmodule Gobusgo.WalkGraph.Search do
       plane = Graph.plane(from, to)
       {from_x, from_y} = Graph.to_plane(plane, from)
       {to_x, to_y} = Graph.to_plane(plane, to)
-      straight_meters = :math.sqrt(:math.pow(to_x - from_x, 2) + :math.pow(to_y - from_y, 2))
+      straight_meters = distance_of(to_x - from_x, to_y - from_y)
       shards = Enum.map(tiles, &Map.fetch!(held, &1))
 
       if straight_meters > limits.distance_meters_max do
@@ -272,6 +271,7 @@ defmodule Gobusgo.WalkGraph.Search do
   end
 
   defp relax(state, from, {to, meters}, context) do
+    Assert.condition(meters >= 0, "a step of #{meters} m is below zero")
     candidate = Map.fetch!(state.costs, from) + meters
 
     case state.costs do
@@ -296,7 +296,7 @@ defmodule Gobusgo.WalkGraph.Search do
   # the goal's edge.
   defp steps(:start, %{graph: graph, start: start, goal: goal}) do
     edge = elem(graph.edges, start.edge)
-    ends = [{edge.a, start.along}, {edge.b, edge.length - start.along}]
+    ends = [{edge.a, start.along}, {edge.b, remaining(edge, start)}]
 
     if start.edge == goal.edge do
       [{:goal, abs(goal.along - start.along)} | ends]
@@ -317,7 +317,7 @@ defmodule Gobusgo.WalkGraph.Search do
 
   defp goal_steps(node, goal, goal_edge) do
     from_a = if node == goal_edge.a, do: [{:goal, goal.along}], else: []
-    from_b = if node == goal_edge.b, do: [{:goal, goal_edge.length - goal.along}], else: []
+    from_b = if node == goal_edge.b, do: [{:goal, remaining(goal_edge, goal)}], else: []
     from_a ++ from_b
   end
 
@@ -331,13 +331,12 @@ defmodule Gobusgo.WalkGraph.Search do
     distance_to(Map.fetch!(graph.node_xy, node), goal)
   end
 
-  defp distance_to(%{x: x, y: y}, %{x: goal_x, y: goal_y}) do
-    :math.sqrt(:math.pow(x - goal_x, 2) + :math.pow(y - goal_y, 2))
-  end
+  defp distance_to(%{x: x, y: y}, %{x: goal_x, y: goal_y}),
+    do: distance_of(x - goal_x, y - goal_y)
 
-  defp distance_to({x, y}, %{x: goal_x, y: goal_y}) do
-    :math.sqrt(:math.pow(x - goal_x, 2) + :math.pow(y - goal_y, 2))
-  end
+  defp distance_to({x, y}, %{x: goal_x, y: goal_y}), do: distance_of(x - goal_x, y - goal_y)
+
+  defp distance_of(delta_x, delta_y), do: :math.sqrt(delta_x * delta_x + delta_y * delta_y)
 
   defp reach_targets(%{from: from, targets: targets, pieces: pieces, limits: limits}) do
     plane = Graph.plane(from, from)
@@ -356,17 +355,23 @@ defmodule Gobusgo.WalkGraph.Search do
       {:none, reason} ->
         {:no_path, reason}
 
-      {:chosen, _start, _goal} when search.status == :capped ->
-        {:no_path, :cap_reached}
-
       {:chosen, start, goal} ->
-        classify(street_meters(graph, {start, goal}, search.settled), {start, goal}, limits)
+        street = street_meters(graph, {start, goal}, search.settled)
+        classify(street, {start, goal}, search.status, limits)
     end
   end
 
-  defp classify(:infinity, _snaps, _limits), do: {:no_path, :beyond_bound}
+  # A search that stopped at its node bound settled every node cheaper than
+  # its frontier, so a street no longer than the frontier is exact and any
+  # other is unknown. An atom sorts after every number, so `:infinity` is
+  # past every frontier.
+  defp classify(street, _snaps, {:capped, frontier}, _limits) when street > frontier do
+    {:no_path, :cap_reached}
+  end
 
-  defp classify(street, {start, goal}, limits) do
+  defp classify(:infinity, _snaps, :done, _limits), do: {:no_path, :beyond_bound}
+
+  defp classify(street, {start, goal}, _status, limits) do
     meters = street + start.distance + goal.distance
 
     if meters <= limits.street_meters_max do
@@ -386,15 +391,19 @@ defmodule Gobusgo.WalkGraph.Search do
     through_b = Map.get(settled, goal_edge.b, :infinity)
 
     [
-      sum(through_a, goal.along),
-      sum(through_b, goal_edge.length - goal.along),
+      add_meters(through_a, goal.along),
+      add_meters(through_b, remaining(goal_edge, goal)),
       same_edge_meters(start, goal)
     ]
     |> Enum.min()
   end
 
-  defp sum(:infinity, _meters), do: :infinity
-  defp sum(cost, meters), do: cost + meters
+  defp add_meters(:infinity, _meters), do: :infinity
+  defp add_meters(cost, meters), do: cost + meters
+
+  # The meters from a snap to the far end of its edge, never below zero
+  # whatever the rounding of the along distance.
+  defp remaining(edge, snap), do: max(edge.length - snap.along, 0.0)
 
   defp same_edge_meters(%{edge: edge, along: start_along}, %{edge: edge, along: goal_along}) do
     abs(goal_along - start_along)
@@ -403,18 +412,25 @@ defmodule Gobusgo.WalkGraph.Search do
   defp same_edge_meters(_start, _goal), do: :infinity
 
   # A multi-source Dijkstra from every snap of the start, one per component,
-  # so the components stay apart, settling nodes in order of cost up to the
-  # street bound and the visited bound. `settled` maps each settled node to
-  # its cost.
+  # so the components stay apart, settling nodes in order of cost. A node
+  # whose cost leaves no room for its component's start snap and the street
+  # bound is passed over. `settled` maps each settled node to its cost, and
+  # `status` is `:done` or `{:capped, frontier}`, the cost of the first node
+  # left unsettled at the visited bound.
   defp dijkstra(graph, start_snaps, limits) do
     heap =
       Enum.reduce(start_snaps, :gb_sets.empty(), fn {_component, snap}, heap ->
         edge = elem(graph.edges, snap.edge)
         heap = :gb_sets.add({snap.along, 0, edge.a}, heap)
-        :gb_sets.add({edge.length - snap.along, 1, edge.b}, heap)
+        :gb_sets.add({remaining(edge, snap), 1, edge.b}, heap)
       end)
 
-    state = %{heap: heap, settled: %{}, counter: 2}
+    bounds =
+      Map.new(start_snaps, fn {component, snap} ->
+        {component, limits.street_meters_max - snap.distance}
+      end)
+
+    state = %{heap: heap, settled: %{}, counter: 2, last_cost: 0.0, bounds: bounds}
     dijkstra_loop(state, graph, limits)
   end
 
@@ -428,6 +444,8 @@ defmodule Gobusgo.WalkGraph.Search do
   end
 
   defp settle_node({cost, node}, state, graph, limits) do
+    bound = Map.fetch!(state.bounds, Map.fetch!(graph.node_components, node))
+
     cond do
       Map.has_key?(state.settled, node) ->
         dijkstra_loop(state, graph, limits)
@@ -435,8 +453,11 @@ defmodule Gobusgo.WalkGraph.Search do
       cost > limits.street_meters_max ->
         %{settled: state.settled, status: :done}
 
+      cost > bound ->
+        dijkstra_loop(state, graph, limits)
+
       map_size(state.settled) >= limits.visited_node_count_max ->
-        %{settled: state.settled, status: :capped}
+        %{settled: state.settled, status: {:capped, cost}}
 
       true ->
         state |> reach_from(node, cost, graph) |> dijkstra_loop(graph, limits)
@@ -444,11 +465,17 @@ defmodule Gobusgo.WalkGraph.Search do
   end
 
   defp reach_from(state, node, cost, graph) do
-    settled = Map.put(state.settled, node, cost)
+    Assert.condition(
+      cost >= state.last_cost,
+      "a settled cost #{cost} is below the one before, #{state.last_cost}"
+    )
 
-    Enum.reduce(Map.fetch!(graph.node_edges, node), %{state | settled: settled}, fn index,
-                                                                                    current ->
+    settled = Map.put(state.settled, node, cost)
+    state = %{state | settled: settled, last_cost: cost}
+
+    Enum.reduce(Map.fetch!(graph.node_edges, node), state, fn index, current ->
       edge = elem(graph.edges, index)
+      Assert.condition(edge.length >= 0, "an edge is #{edge.length} m long")
       entry = {cost + edge.length, current.counter, other_end(edge, node)}
       %{current | heap: :gb_sets.add(entry, current.heap), counter: current.counter + 1}
     end)

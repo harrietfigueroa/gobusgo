@@ -1,6 +1,4 @@
 defmodule Gobusgo.WalkGraph.Graph do
-  @tie_units_per_meter 1_000_000
-
   @moduledoc """
   The graph over the pieces of some shards, and the snaps of a point onto
   it. Everything here is pure.
@@ -12,17 +10,20 @@ defmodule Gobusgo.WalkGraph.Graph do
   walk can reach from it.
 
   A point snaps to the nearest point of each component within a bound. Two
-  distances that agree to a micrometer tie, and a tie goes to the lesser x
-  and then the lesser y, never to the order the pieces arrived in; the pair
-  of snaps for two points is chosen the same way (`choose/2`). The same rules
-  stand in `assets/js/core/walk_path.js`, which a golden file holds this
-  module to.
+  distances that agree to a micrometer tie, and a tie goes to the lesser x,
+  then the lesser y, then the lesser ends of the edge, then the lesser start
+  of the segment, so no choice rests on the order the pieces arrived in; the
+  pair of snaps for two points is chosen the same way (`choose/2`). The
+  segments are held in a grid of square cells, so a snap reads only the
+  segments near the point.
   """
 
   alias Gobusgo.Assert
   alias Gobusgo.Math.Geodesy
   alias Gobusgo.WalkGraph.Format
 
+  @tie_units_per_meter 1_000_000
+  @cell_meters 100
   @units_per_degree Format.units_per_degree()
 
   @type position :: %{lat: number(), lon: number()}
@@ -37,12 +38,16 @@ defmodule Gobusgo.WalkGraph.Graph do
           x: float(),
           y: float(),
           distance: float(),
-          along: float()
+          along: float(),
+          ends: {{integer(), integer()}, {integer(), integer()}},
+          key: tuple()
         }
   @type t :: %{
           edges: tuple(),
           node_edges: %{non_neg_integer() => [non_neg_integer()]},
-          node_xy: %{non_neg_integer() => {float(), float()}}
+          node_xy: %{non_neg_integer() => {float(), float()}},
+          node_components: %{non_neg_integer() => non_neg_integer()},
+          cells: %{{integer(), integer()} => [{non_neg_integer(), map()}]}
         }
 
   @doc "The plane tangent at the middle of `from` and `to`, whose latitude and longitude are in degrees."
@@ -91,7 +96,13 @@ defmodule Gobusgo.WalkGraph.Graph do
     labeled =
       for edge <- edges, do: Map.put(edge, :component, Map.fetch!(components, edge.a))
 
-    %{edges: List.to_tuple(labeled), node_edges: node_edges, node_xy: node_xy}
+    %{
+      edges: List.to_tuple(labeled),
+      node_edges: node_edges,
+      node_xy: node_xy,
+      node_components: components,
+      cells: cells_of(labeled)
+    }
   end
 
   @doc "The number of edges of `graph`."
@@ -104,16 +115,18 @@ defmodule Gobusgo.WalkGraph.Graph do
   with no edge that near is left out.
   """
   @spec snaps(t(), {float(), float()}, number()) :: %{non_neg_integer() => snap()}
-  def snaps(%{edges: edges}, {x, y}, snap_meters_max) do
+  def snaps(%{edges: edges, cells: cells}, {x, y}, snap_meters_max) do
     Assert.condition(snap_meters_max > 0, "the snap bound #{snap_meters_max} is positive")
 
-    edges
-    |> Tuple.to_list()
-    |> Enum.with_index()
-    |> Enum.reduce(%{}, fn {edge, index}, snaps ->
-      Enum.reduce(edge.segments, snaps, fn segment, held ->
-        keep_nearer(held, edge.component, index, nearest(segment, x, y), snap_meters_max)
-      end)
+    candidates =
+      for cell_x <- cell_of(x - snap_meters_max)..cell_of(x + snap_meters_max),
+          cell_y <- cell_of(y - snap_meters_max)..cell_of(y + snap_meters_max),
+          entry <- Map.get(cells, {cell_x, cell_y}, []),
+          do: entry
+
+    Enum.reduce(candidates, %{}, fn {index, segment}, held ->
+      edge = elem(edges, index)
+      keep_nearer(held, {index, edge}, nearest(segment, x, y), snap_meters_max)
     end)
   end
 
@@ -127,10 +140,11 @@ defmodule Gobusgo.WalkGraph.Graph do
   @spec choose(%{non_neg_integer() => snap()}, %{non_neg_integer() => snap()}) ::
           {:chosen, snap(), snap()} | {:none, :off_graph | :disconnected}
   def choose(start_snaps, goal_snaps) do
+    shared =
+      Enum.filter(start_snaps, fn {component, _start} -> Map.has_key?(goal_snaps, component) end)
+
     pairs =
-      for {component, start} <- start_snaps,
-          goal = Map.get(goal_snaps, component),
-          do: {start, goal}
+      Enum.map(shared, fn {component, start} -> {start, Map.fetch!(goal_snaps, component)} end)
 
     cond do
       map_size(start_snaps) == 0 or map_size(goal_snaps) == 0 ->
@@ -157,7 +171,8 @@ defmodule Gobusgo.WalkGraph.Graph do
     {a, nodes} = node_at(nodes, List.first(points))
     {b, nodes} = node_at(nodes, List.last(points))
     Assert.condition(a != b, "a piece starts and ends at one node")
-    {%{a: a, b: b, segments: segments, length: length}, nodes}
+    ends = ends_of(List.first(points), List.last(points))
+    {%{a: a, b: b, segments: segments, length: length, ends: ends}, nodes}
   end
 
   defp units_to_plane(plane, lat_units, lon_units) do
@@ -169,13 +184,42 @@ defmodule Gobusgo.WalkGraph.Graph do
       Enum.reduce(rest, {[], first, 0.0}, fn point, {segments, previous, along} ->
         {previous_x, previous_y} = previous
         {x, y} = point
-        segment_length = :math.sqrt(:math.pow(x - previous_x, 2) + :math.pow(y - previous_y, 2))
+        segment_length = distance_of(x - previous_x, y - previous_y)
         segment = %{start: previous, stop: point, along: along, length: segment_length}
         {[segment | segments], point, along + segment_length}
       end)
 
     {Enum.reverse(segments), length}
   end
+
+  # The two ends of an edge, the lesser first, so one piece has one pair of
+  # ends whichever way it is walked.
+  defp ends_of(first, last) when first <= last, do: {first, last}
+  defp ends_of(first, last), do: {last, first}
+
+  defp distance_of(delta_x, delta_y), do: :math.sqrt(delta_x * delta_x + delta_y * delta_y)
+
+  # The segments of every edge in a grid of square cells: each segment is in
+  # every cell its box touches, so the cells a point's bound touches hold
+  # every segment within that bound.
+  defp cells_of(edges) do
+    edges
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {edge, index}, cells ->
+      Enum.reduce(edge.segments, cells, fn segment, held ->
+        {start_x, start_y} = segment.start
+        {stop_x, stop_y} = segment.stop
+
+        for cell_x <- cell_of(min(start_x, stop_x))..cell_of(max(start_x, stop_x)),
+            cell_y <- cell_of(min(start_y, stop_y))..cell_of(max(start_y, stop_y)),
+            reduce: held do
+          acc -> Map.update(acc, {cell_x, cell_y}, [{index, segment}], &[{index, segment} | &1])
+        end
+      end)
+    end)
+  end
+
+  defp cell_of(meters), do: floor(meters / @cell_meters)
 
   defp node_at(nodes, point) do
     case Map.fetch(nodes, point) do
@@ -249,8 +293,9 @@ defmodule Gobusgo.WalkGraph.Graph do
     %{
       x: point_x,
       y: point_y,
-      distance: :math.sqrt(:math.pow(x - point_x, 2) + :math.pow(y - point_y, 2)),
-      along: segment.along + fraction * :math.sqrt(length_squared)
+      distance: distance_of(x - point_x, y - point_y),
+      along: segment.along + fraction * :math.sqrt(length_squared),
+      segment_start: segment.start
     }
   end
 
@@ -260,29 +305,25 @@ defmodule Gobusgo.WalkGraph.Graph do
     ((offset_x * delta_x + offset_y * delta_y) / length_squared) |> max(0.0) |> min(1.0)
   end
 
-  defp keep_nearer(held, component, edge, nearest, snap_meters_max) do
+  defp keep_nearer(held, {index, edge}, nearest, snap_meters_max) do
+    {segment_x, segment_y} = nearest.segment_start
+
     candidate = %{
-      edge: edge,
+      edge: index,
       x: nearest.x,
       y: nearest.y,
       distance: nearest.distance,
-      along: nearest.along
+      along: nearest.along,
+      ends: edge.ends,
+      key: {tie_units(nearest.distance), nearest.x, nearest.y, edge.ends, segment_x, segment_y}
     }
 
     is_near = nearest.distance <= snap_meters_max
-
-    case Map.fetch(held, component) do
-      :error when is_near -> Map.put(held, component, candidate)
-      :error -> held
-      {:ok, current} -> replace_if_closer(held, component, {candidate, current}, is_near)
-    end
-  end
-
-  defp replace_if_closer(held, component, {candidate, current}, is_near) do
-    is_closer = is_near and closer_key(candidate) < closer_key(current)
+    current = Map.get(held, edge.component)
+    is_closer = is_near and (current == nil or candidate.key < current.key)
 
     if is_closer do
-      Map.put(held, component, candidate)
+      Map.put(held, edge.component, candidate)
     else
       held
     end
@@ -290,10 +331,8 @@ defmodule Gobusgo.WalkGraph.Graph do
 
   defp tie_units(meters), do: round(meters * @tie_units_per_meter)
 
-  defp closer_key(snap), do: {tie_units(snap.distance), snap.x, snap.y}
-
   defp pair_key({start, goal}) do
     {tie_units(start.distance + goal.distance), tie_units(start.distance), start.x, start.y,
-     goal.x, goal.y}
+     goal.x, goal.y, start.ends, goal.ends}
   end
 end

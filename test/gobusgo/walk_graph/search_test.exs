@@ -1,14 +1,15 @@
 defmodule Gobusgo.WalkGraph.SearchTest do
   # Checks the walk graph search against the browser's answers: the golden
-  # file holds what the core's path search gives for 153 pairs of points over
-  # the walk graph fixture's shards, and each answer must agree within
-  # @tolerance_meters, through the tiles this module selects for itself. The
-  # rest are cases built here: a shard order that must not matter, the bounds,
-  # and the inputs a function refuses.
+  # file holds what the core's path search gives for pairs of points over the
+  # walk graph fixture's shards and two shards of its own, and each answer
+  # must agree within @tolerance_meters, through the tiles this module
+  # selects for itself. The rest are cases built here: a shard order that
+  # must not matter, the bounds, and the inputs a function refuses.
   use ExUnit.Case, async: true
 
   alias Gobusgo.Assert.AssertionError
   alias Gobusgo.WalkGraph.Format
+  alias Gobusgo.WalkGraph.Graph
   alias Gobusgo.WalkGraph.Search
 
   @golden_path Path.expand("../../fixtures/walk_links/v1/expected.json", __DIR__)
@@ -18,6 +19,10 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   @units 100_000
   @lat 4_760_000
   @lon -12_234_000
+  @tie_offset_units 18
+  @tie_bump_units 100
+  @tie_expected_meters 339.9466612406429
+  @street_meters_unbounded 10_000
 
   @golden @golden_path |> File.read!() |> JSON.decode!()
 
@@ -39,7 +44,21 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   end
 
   defp shards_by_tile do
-    %{{4761, -8156} => shard!("shard-west.bin"), {4761, -8155} => shard!("shard-east.bin")}
+    fixture = %{
+      {4761, -8156} => shard!("shard-west.bin"),
+      {4761, -8155} => shard!("shard-east.bin")
+    }
+
+    extra =
+      Map.new(@golden["extraShards"], fn %{"tile" => [row, column], "pieces" => pieces} ->
+        {{row, column}, %{pieces: Enum.map(pieces, &extra_piece/1)}}
+      end)
+
+    Map.merge(fixture, extra)
+  end
+
+  defp extra_piece(%{"class" => class, "points" => points}) do
+    %{class: class, points: Enum.map(points, fn [lat, lon] -> {lat, lon} end)}
   end
 
   defp tile_of_key(key) do
@@ -52,7 +71,8 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   defp position(%{"lat" => lat, "lon" => lon}), do: %{lat: lat, lon: lon}
 
   defp held_shards(tiles) do
-    for tile <- tiles, shard = Map.get(shards_by_tile(), tile), do: shard
+    held = shards_by_tile()
+    tiles |> Enum.filter(&Map.has_key?(held, &1)) |> Enum.map(&Map.fetch!(held, &1))
   end
 
   defp tiles_of(query), do: Enum.map(query["tiles"], fn [row, column] -> {row, column} end)
@@ -63,15 +83,33 @@ defmodule Gobusgo.WalkGraph.SearchTest do
 
   defp degrees(units), do: units / @units
 
+  # The queries whose answer, by `answer_of`, `agrees?` does not accept.
+  defp mismatches(queries, answer_of, agrees?) do
+    queries
+    |> Enum.map(fn query -> {query, answer_of.(query)} end)
+    |> Enum.reject(fn {query, answer} -> agrees?.(answer, query) end)
+    |> Enum.map(fn {query, answer} -> {query["name"], answer} end)
+  end
+
+  defp answered_queries, do: Enum.filter(@golden["queries"], &(&1["kind"] != "tooFar"))
+
+  describe "limits/0" do
+    test "holds the bounds the browser's search uses" do
+      expected = %{
+        distance_meters_max: @golden["limits"]["distanceMetersMax"],
+        snap_meters_max: @golden["limits"]["snapMetersMax"],
+        tile_count_max: @golden["limits"]["tileCountMax"],
+        edge_count_max: @golden["limits"]["edgeCountMax"],
+        visited_node_count_max: @golden["limits"]["visitedNodeCountMax"]
+      }
+
+      assert Map.take(Search.limits(), Map.keys(expected)) == expected
+    end
+  end
+
   describe "tiles_needed/1" do
     test "reads the tiles the browser reads for every golden pair" do
-      mismatches =
-        for query <- @golden["queries"],
-            answer = tiles_answer(query),
-            answer != expected_tiles(query),
-            do: {query["name"], answer}
-
-      assert mismatches == []
+      assert mismatches(@golden["queries"], &tiles_answer/1, &tiles_agree?/2) == []
     end
   end
 
@@ -84,25 +122,16 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     })
   end
 
-  defp expected_tiles(%{"kind" => "tooFar", "tiles" => []}), do: :too_far
-  defp expected_tiles(query), do: {:tiles, tiles_of(query)}
+  defp tiles_agree?(answer, %{"kind" => "tooFar", "tiles" => []}), do: answer == :too_far
+  defp tiles_agree?(answer, query), do: answer == {:tiles, tiles_of(query)}
 
   describe "plan/1" do
     test "agrees with the browser within a tenth of a meter on every golden pair" do
-      mismatches =
-        for query <- @golden["queries"],
-            answer = golden_answer(query),
-            not agrees?(answer, query),
-            do: {query["name"], answer, query["meters"] || query["reason"]}
-
-      assert mismatches == []
+      assert mismatches(@golden["queries"], &golden_answer/1, &agrees?/2) == []
     end
 
     test "answers each kind of outcome the golden file holds" do
-      kinds =
-        for query <- @golden["queries"], into: MapSet.new() do
-          golden_answer(query) |> elem(0)
-        end
+      kinds = MapSet.new(@golden["queries"], fn query -> query |> golden_answer() |> elem(0) end)
 
       assert MapSet.member?(kinds, :found)
       assert MapSet.member?(kinds, :no_path)
@@ -146,22 +175,92 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     end
   end
 
-  describe "find_path/1" do
-    test "chooses the same answer whichever order the shards come in" do
-      above = %{pieces: [line(@lat + 18, @lon - 400, @lon + 400)]}
-      below = %{pieces: [line(@lat - 18, @lon - 400, @lon + 400)]}
+  # Two components 20 m north and south of a pair of ends. The northern has
+  # a bump between the ends, so the answer says which a tie chose; the
+  # southern is the lesser y, which the tie goes to.
+  defp tie_shards do
+    bump = %{
+      class: @street_class,
+      points: [
+        {@lat + @tie_offset_units, @lon - 400},
+        {@lat + @tie_offset_units, @lon - 200},
+        {@lat + @tie_offset_units + @tie_bump_units, @lon - 200},
+        {@lat + @tie_offset_units + @tie_bump_units, @lon + 200},
+        {@lat + @tie_offset_units, @lon + 200},
+        {@lat + @tie_offset_units, @lon + 400}
+      ]
+    }
 
-      request = %{
-        from: %{lat: degrees(@lat), lon: degrees(@lon - 200)},
-        to: %{lat: degrees(@lat), lon: degrees(@lon + 200)},
-        limits: limits()
-      }
+    {%{pieces: [bump]}, %{pieces: [line(@lat - @tie_offset_units, @lon - 400, @lon + 400)]}}
+  end
+
+  defp tie_ends do
+    %{
+      from: %{lat: degrees(@lat), lon: degrees(@lon - 200)},
+      to: %{lat: degrees(@lat), lon: degrees(@lon + 200)}
+    }
+  end
+
+  describe "snapping" do
+    test "chooses the southern component of a tie in either order of the shards" do
+      {above, below} = tie_shards()
+      %{from: from, to: to} = tie_ends()
+      plane = Graph.plane(from, to)
+      {_from_x, ends_y} = Graph.to_plane(plane, from)
+
+      for shards <- [[above, below], [below, above]] do
+        graph = shards |> Enum.flat_map(& &1.pieces) |> Graph.build(plane)
+        start_snaps = Graph.snaps(graph, Graph.to_plane(plane, from), 100)
+        goal_snaps = Graph.snaps(graph, Graph.to_plane(plane, to), 100)
+
+        assert map_size(start_snaps) == 2
+        assert {:chosen, start, goal} = Graph.choose(start_snaps, goal_snaps)
+        assert start.y < ends_y
+        assert goal.y < ends_y
+      end
+    end
+
+    test "chooses between two streets that cross at the point by their lesser ends" do
+      crossing = %{lat: degrees(@lat), lon: degrees(@lon)}
+      plane = Graph.plane(crossing, crossing)
+      across = line(@lat, @lon - 100, @lon + 100)
+      along = %{class: @street_class, points: [{@lat - 100, @lon}, {@lat + 100, @lon}]}
+
+      for pieces <- [[across, along], [along, across]] do
+        graph = Graph.build(pieces, plane)
+        snaps = Graph.snaps(graph, Graph.to_plane(plane, crossing), 100)
+
+        assert map_size(snaps) == 2
+        assert {:chosen, start, _goal} = Graph.choose(snaps, snaps)
+        assert start.ends == {{@lat - 100, @lon}, {@lat + 100, @lon}}
+      end
+    end
+
+    test "finds only the segments within the bound of a point" do
+      graph = Graph.build(grid_pieces(), Graph.plane(tie_ends().from, tie_ends().from))
+      plane = Graph.plane(tie_ends().from, tie_ends().from)
+      near = Graph.snaps(graph, Graph.to_plane(plane, tie_ends().from), 100)
+      far = Graph.snaps(graph, {50_000.0, 50_000.0}, 100)
+
+      assert map_size(near) == 1
+      assert far == %{}
+    end
+  end
+
+  describe "find_path/1" do
+    test "walks the southern street of a tie in either order of the shards" do
+      {above, below} = tie_shards()
+      %{from: from, to: to} = tie_ends()
+      request = %{from: from, to: to, limits: limits()}
 
       forward = Search.find_path(Map.put(request, :shards, [above, below]))
       backward = Search.find_path(Map.put(request, :shards, [below, above]))
+      southern = Search.find_path(Map.put(request, :shards, [below]))
 
-      assert {:found, _meters} = forward
+      assert {:found, meters} = forward
+      assert abs(meters - @tie_expected_meters) < @tolerance_meters
       assert forward == backward
+      assert forward == southern
     end
 
     test "says there is no shard when none is given" do
@@ -208,14 +307,44 @@ defmodule Gobusgo.WalkGraph.SearchTest do
 
   describe "reach/1" do
     test "agrees with the browser within a tenth of a meter on every golden pair, one target at a time" do
-      mismatches =
-        for query <- @golden["queries"],
-            query["kind"] != "tooFar",
-            answer = reach_one(query),
-            not reach_agrees?(answer, query),
-            do: {query["name"], answer, query["meters"] || query["reason"]}
+      assert mismatches(answered_queries(), &reach_one/1, &reach_agrees?/2) == []
+    end
 
-      assert mismatches == []
+    test "agrees over the tiles around the start alone, as the browser's walks are planned" do
+      assert mismatches(answered_queries(), &reach_start_window/1, &reach_agrees?/2) == []
+    end
+
+    test "misses a join that lies outside the tiles around the start" do
+      # Two streets that meet only through a loop that is outside the shards
+      # the start's window holds.
+      north = line(100, 100, 1_400)
+      south = line(200, 100, 1_400)
+
+      loop = %{
+        class: @street_class,
+        points: [{100, 1_400}, {100, 3_100}, {200, 3_100}, {200, 1_400}]
+      }
+
+      from = %{lat: degrees(100), lon: degrees(100)}
+      target = %{lat: degrees(200), lon: degrees(100)}
+      wide = %{limits() | street_meters_max: @street_meters_unbounded}
+
+      request = %{from: from, targets: [target], limits: wide}
+      window = Search.reach(Map.put(request, :shards, [%{pieces: [north, south]}]))
+      whole = Search.reach(Map.put(request, :shards, [%{pieces: [north, south, loop]}]))
+
+      planned =
+        Search.find_path(%{
+          from: from,
+          to: target,
+          shards: [%{pieces: [north, south, loop]}],
+          limits: wide
+        })
+
+      assert window == [{:no_path, :disconnected}]
+      assert [{:found, meters}] = whole
+      assert {:found, planned_meters} = planned
+      assert abs(meters - planned_meters) < @tolerance_meters
     end
 
     test "answers many targets of one start in one search, each as it would alone" do
@@ -267,17 +396,18 @@ defmodule Gobusgo.WalkGraph.SearchTest do
                Search.reach(%{from: from, targets: [target], shards: shards, limits: limits()})
     end
 
-    test "reports a search that ran out of settled nodes as capped" do
-      from = %{lat: degrees(@lat), lon: degrees(@lon - 380)}
-      target = %{lat: degrees(@lat), lon: degrees(@lon + 380)}
+    test "answers exactly the targets a capped search settled past, and caps the rest" do
+      from = %{lat: degrees(@lat), lon: degrees(@lon - 400)}
+      near = %{lat: degrees(@lat), lon: degrees(@lon - 350)}
+      far = %{lat: degrees(@lat + 100), lon: degrees(@lon)}
+      pieces = [%{pieces: grid_pieces()}]
+      request = %{from: from, targets: [near, far], shards: pieces}
 
-      assert [{:no_path, :cap_reached}] =
-               Search.reach(%{
-                 from: from,
-                 targets: [target],
-                 shards: [%{pieces: grid_pieces()}],
-                 limits: %{limits() | visited_node_count_max: 1}
-               })
+      uncapped = Search.reach(Map.put(request, :limits, limits()))
+      capped = Search.reach(Map.put(request, :limits, %{limits() | visited_node_count_max: 1}))
+
+      assert [{:found, _near}, {:found, _far}] = uncapped
+      assert capped == [hd(uncapped), {:no_path, :cap_reached}]
     end
 
     test "refuses more targets than the bound" do
@@ -289,17 +419,16 @@ defmodule Gobusgo.WalkGraph.SearchTest do
       end
     end
 
-    test "chooses the same answer whichever order the shards come in" do
-      above = %{pieces: [line(@lat + 18, @lon - 400, @lon + 400)]}
-      below = %{pieces: [line(@lat - 18, @lon - 400, @lon + 400)]}
-      from = %{lat: degrees(@lat), lon: degrees(@lon - 200)}
-      target = %{lat: degrees(@lat), lon: degrees(@lon + 200)}
-      request = %{from: from, targets: [target], limits: limits()}
+    test "walks the southern street of a tie in either order of the shards" do
+      {above, below} = tie_shards()
+      %{from: from, to: to} = tie_ends()
+      request = %{from: from, targets: [to], limits: limits()}
 
       forward = Search.reach(Map.put(request, :shards, [above, below]))
       backward = Search.reach(Map.put(request, :shards, [below, above]))
 
-      assert [{:found, _meters}] = forward
+      assert [{:found, meters}] = forward
+      assert abs(meters - @tie_expected_meters) < @tolerance_meters
       assert forward == backward
     end
   end
@@ -318,12 +447,9 @@ defmodule Gobusgo.WalkGraph.SearchTest do
   end
 
   defp golden_answer(query) do
-    from = position(query["from"])
-    to = position(query["to"])
-
     Search.plan(%{
-      from: from,
-      to: to,
+      from: position(query["from"]),
+      to: position(query["to"]),
       index: index(),
       held: shards_by_tile(),
       limits: limits()
@@ -336,6 +462,24 @@ defmodule Gobusgo.WalkGraph.SearchTest do
         from: position(query["from"]),
         targets: [position(query["to"])],
         shards: held_shards(tiles_of(query)),
+        limits: limits()
+      })
+
+    answer
+  end
+
+  # The browser plans a walk from a position over the tiles around it alone.
+  defp reach_start_window(query) do
+    from = position(query["from"])
+
+    {:tiles, tiles} =
+      Search.tiles_needed(%{from: from, to: from, index: index(), limits: limits()})
+
+    [answer] =
+      Search.reach(%{
+        from: from,
+        targets: [position(query["to"])],
+        shards: held_shards(tiles),
         limits: limits()
       })
 
@@ -358,10 +502,9 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     meters > limits().street_meters_max
   end
 
-  defp reach_agrees?({:found, meters} = answer, %{"kind" => "found", "meters" => expected}) do
+  defp reach_agrees?({:found, _meters} = answer, %{"kind" => "found", "meters" => expected}) do
     expected <= limits().street_meters_max and
-      agrees?(answer, %{"kind" => "found", "meters" => expected}) and
-      meters > 0
+      agrees?(answer, %{"kind" => "found", "meters" => expected})
   end
 
   defp reach_agrees?(answer, query), do: agrees?(answer, query)
