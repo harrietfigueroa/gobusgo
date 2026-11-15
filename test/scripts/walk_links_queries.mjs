@@ -58,16 +58,19 @@ const LONG_NEAR_LAT = -2_540
 const LONG_NEAR_COLUMN = -6_300
 const LONG_FAR_LAT = -2_300
 const LONG_STOP_COLUMN = -5_200
+const EXTRA_TILE_ROW = -3
+const EXTRA_WEST_TILE_COLUMN = -5
+const EXTRA_EAST_TILE_COLUMN = -4
 const EXTRA_SHARDS = Object.freeze([
   {
-    tile: [-3, -5],
+    tile: [EXTRA_TILE_ROW, EXTRA_WEST_TILE_COLUMN],
     pieces: [
       [EXTRA_STREET_CLASS, [TIE_NORTH_LAT, TIE_WEST_COLUMN], [TIE_NORTH_LAT, TIE_FIRST_COLUMN], [TIE_BUMP_LAT, TIE_FIRST_COLUMN], [TIE_BUMP_LAT, TIE_SECOND_COLUMN], [TIE_NORTH_LAT, TIE_SECOND_COLUMN], [TIE_NORTH_LAT, TIE_EAST_COLUMN]],
       [EXTRA_STREET_CLASS, [TIE_SOUTH_LAT, TIE_WEST_COLUMN], [TIE_SOUTH_LAT, TIE_EAST_COLUMN]],
       [EXTRA_STREET_CLASS, [LONG_LAT, LONG_START_COLUMN], [LONG_LAT, LONG_TILE_COLUMN]]
     ]
   },
-  {tile: [-3, -4], pieces: [[EXTRA_STREET_CLASS, [LONG_LAT, LONG_TILE_COLUMN], [LONG_LAT, LONG_END_COLUMN]]]}
+  {tile: [EXTRA_TILE_ROW, EXTRA_EAST_TILE_COLUMN], pieces: [[EXTRA_STREET_CLASS, [LONG_LAT, LONG_TILE_COLUMN], [LONG_LAT, LONG_END_COLUMN]]]}
 ])
 
 // The points of the extra shards, each `[name, latitude, longitude]` in
@@ -163,8 +166,12 @@ function tableOfPieces(pieces) {
   return {pieceCount: classes.length, classes: Uint8Array.from(classes), pieceStarts: Uint32Array.from(pieceStarts), points: Int32Array.from(points)}
 }
 
+function pieceRecord([pieceClass, ...positions]) {
+  return {class: pieceClass, points: positions}
+}
+
 function extraShardRecord({tile, pieces}) {
-  const records = Array.from(pieces, ([pieceClass, ...positions]) => ({class: pieceClass, points: positions}))
+  const records = Array.from(pieces, pieceRecord)
   return {tile, pieces: records}
 }
 
@@ -173,10 +180,12 @@ function pairsOf({points, shardsByKey, index}) {
 
   for (let first = 0; first < points.length; first += 1) {
     for (let second = first + 1; second < points.length; second += 1) {
-      const from = degrees(points[first][1], points[first][2])
-      const to = degrees(points[second][1], points[second][2])
+      const [fromName, fromLat, fromLon] = points[first]
+      const [toName, toLat, toLon] = points[second]
+      const from = degrees(fromLat, fromLon)
+      const to = degrees(toLat, toLon)
       const answer = answerOf({from, to, shardsByKey, index})
-      queries.push({name: points[first][0] + " to " + points[second][0], from, to, ...answer})
+      queries.push({name: fromName + " to " + toName, from, to, ...answer})
     }
   }
 
