@@ -104,6 +104,18 @@ deepStrictEqual(
 deepStrictEqual(context.legs[WALK_BETWEEN_STOPS], {kind: "walk", minutes: WALK_BETWEEN_STOPS_MINUTES, from: {id: "1_200", name: "Westlake Station"}, to: {id: "1_200", name: "Westlake Station"}}, "a walk between stops rounds its minutes up")
 deepStrictEqual(context.legs[WALK_TO_POINT], {kind: "walk", minutes: WALK_TO_POINT_MINUTES, from: {id: "1_300", name: "Ballard Locks"}, to: {name: "Ballard Locks"}}, "a walk to a point")
 
+// A walk of a position end planned as a straight line, where the streets
+// were planned for, says so in `straightLine`; the walk between two stops is
+// the snapshot's own and says nothing, and a journey with no such walk adds
+// no field.
+const hedged = contextOf({journey: {...journey, hasStraightLineWalk: true}})
+deepStrictEqual(hedged.legs[WALK_FROM_START], {...context.legs[WALK_FROM_START], straightLine: true}, "a walk from the position, straight")
+deepStrictEqual(hedged.legs[WALK_TO_POINT], {...context.legs[WALK_TO_POINT], straightLine: true}, "a walk to the point, straight")
+deepStrictEqual(hedged.legs[WALK_BETWEEN_STOPS], context.legs[WALK_BETWEEN_STOPS], "a walk between stops says nothing")
+deepStrictEqual(journeyProblem(hedged), {kind: ProblemKind.valid}, "the hedged object is valid")
+const offeredHedged = journeysContext({journeys: [{...journey, hasStraightLineWalk: true}], names, serviceDayStartsMs, timeZone: TIME_ZONE, from: "My location", to: "Ballard Locks", plannedAtMs: NOW_MS})
+deepStrictEqual(offeredHedged.journeys[0].legs[WALK_FROM_START].straightLine, true, "the offered journeys say it too")
+
 // A stop the names do not hold shows its identifier, as the Trip tab does.
 const unnamed = contextOf({names: {stops: {}, routes: {}}})
 deepStrictEqual(unnamed.legs[FIRST_RIDE].route, {id: "1_40", name: "1_40"}, "a route no names hold shows its identifier")

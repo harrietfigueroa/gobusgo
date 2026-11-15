@@ -61,12 +61,13 @@ async function namesOf({files, manifest, journeys}) {
  * each, for `when`, `{mode, day, clockText}`, at `nowMs` on the clock of
  * `timeZone`. `position` is the rider's `{lat, lon}`, which a `from` of the
  * rider's location needs. `files` is the app's search files, which read the
- * stops of a point end and the names. A PlanKind member: journeys with
+ * stops of a point end and the names, and `walkTiles` its walk graph tiles,
+ * which the walks from a position and to a point are planned over. A PlanKind member: journeys with
  * `journeys`, `planned`, `serviceDayStartsMs`, and `names`, or the `state`,
  * a StateKind member, that says why there are none, and whether trying
  * again can help in `isRetry`.
  */
-export async function planTrip({origin, files, from, to, when, position, nowMs, timeZone}) {
+export async function planTrip({origin, files, walkTiles, from, to, when, position, nowMs, timeZone}) {
   const manifestOutcome = await fetchManifest({origin, path: MANIFEST_PATH})
 
   if (manifestOutcome.kind === JourneysKind.failed) {
@@ -80,7 +81,7 @@ export async function planTrip({origin, files, from, to, when, position, nowMs, 
     return {kind: PlanKind.state, state: planned.state, isRetry: planned.state === StateKind.noServiceDate}
   }
 
-  const answer = await routeTo({origin, searchFiles: files, manifest, planned, from: startOf({from, position}), to})
+  const answer = await routeTo({origin, searchFiles: files, walkTiles, manifest, planned, from: startOf({from, position}), to})
   const outcome = answerOutcome({answer, planned})
 
   if (outcome.kind === AnswerKind.state) {

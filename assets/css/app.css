@@ -1698,6 +1698,12 @@ a.inline-target {
   color: var(--filter-kind-color);
 }
 
+.trip-journey-straight {
+  color: var(--filter-kind-color);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
 .trip-journey-marked {
   color: var(--panel-sheet-selected-color);
   font-weight: 600;

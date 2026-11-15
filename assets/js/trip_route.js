@@ -8,17 +8,15 @@
 // never in a request: a start is the router's argument, and a fetch names
 // only a file.
 
-import {unreachable} from "./core/assert.js"
-import {FetchKind, FailureReason, JourneysKind} from "./core/routing_journeys.js"
+import {assertCondition, unreachable} from "./core/assert.js"
+import {FetchKind, FailureReason, FromKind, JourneysKind} from "./core/routing_journeys.js"
 import {routeJourneys, routeJourneysArrivingBy} from "./routing_driver.js"
 import {EndKind, PlannedKind, StateKind, failureState, isRetryable} from "./core/trip_plan.js"
-import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} from "./core/point_journeys.js"
+import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, markStraightLineWalks, targetStops, targetStopsOnStreets} from "./core/point_journeys.js"
 import {isNotSaved} from "./core/offline_bundle.js"
+import {EndWalkKind, PlaceKind, StopsKind, planWalks} from "./trip_walks.js"
 
 const MANIFEST_TIMEOUT_MS = 20 * 1000
-
-// The kinds of a read of a snapshot's stops, beside the router's failure.
-const StopsReadKind = Object.freeze({read: "read"})
 
 /** The kinds of what a router's answer says: journeys to show, or a state to tell the rider. */
 export const AnswerKind = Object.freeze({journeys: "journeys", state: "state"})
@@ -117,7 +115,7 @@ function frontierOf(planned) {
 async function readSnapshotStops({searchFiles, entry}) {
   try {
     const [stopIds, positions] = await searchFiles.snapshotStops({entry})
-    return {kind: StopsReadKind.read, stopIds, positions}
+    return {kind: StopsKind.read, stopIds, positions}
   } catch (error) {
     console.warn("Snapshot stops not read", error)
     return {kind: JourneysKind.failed, reason: FailureReason.fetchFailed, path: entry.files.positions.path}
@@ -146,37 +144,121 @@ export function serviceDayStartsOf(manifest) {
   return starts
 }
 
+// The end of a trip as a place a walk is planned from or to: the position
+// `end` names, in degrees, where `isPosition`, else none.
+function placeOf({isPosition, end}) {
+  if (isPosition) {
+    return {kind: PlaceKind.position, position: {lat: end.lat, lon: end.lon}}
+  }
+
+  return {kind: PlaceKind.absent}
+}
+
+// The router's start: `from`, with the stops a walk along the streets
+// reached where the start's walk was planned on them.
+function startOf({from, walks}) {
+  const isOnStreets = from.kind === FromKind.position && walks.start.kind === EndWalkKind.streets
+
+  if (!isOnStreets) {
+    return from
+  }
+
+  const {stopIds} = walks.stops
+  const streetStops = Array.from(walks.start.stops, (reached) => ({stopId: stopIds[reached.stop], streetM: reached.streetM}))
+  return {...from, streetStops}
+}
+
+// The stops a journey to the point `to` is routed to: those the walk
+// planned along the streets reached, or the stops within the walking radius
+// in a straight line.
+function targetsOf({walk, to, stopIds, positions, transferRules}) {
+  if (walk.kind === EndWalkKind.streets) {
+    return targetStopsOnStreets({stopIds, stops: walk.stops, transferRules, countMax: TARGET_STOP_COUNT_MAX})
+  }
+
+  return targetStops({position: {lat: to.lat, lon: to.lon}, stopIds, positions, transferRules, countMax: TARGET_STOP_COUNT_MAX})
+}
+
+// Says once, at the decision, which ends of the trip fell back to a straight
+// line; a position is never logged.
+function logFallbacks(walks) {
+  for (const [end, walk] of [["start", walks.start], ["destination", walks.destination]]) {
+    if (walk.kind === EndWalkKind.fallback) {
+      console.warn("Walk planned as a straight line", {end, reason: walk.reason})
+    }
+  }
+}
+
+// `answer`, where it found journeys, with each journey's walk marked as a
+// straight line where an end's walk fell back to one.
+function markedAnswer({answer, walks}) {
+  if (answer.kind !== JourneysKind.found) {
+    return answer
+  }
+
+  const journeys = markStraightLineWalks({
+    journeys: answer.journeys,
+    isStartStraight: walks.start.kind === EndWalkKind.fallback,
+    isEndStraight: walks.destination.kind === EndWalkKind.fallback
+  })
+
+  return {...answer, journeys}
+}
+
 /**
  * The journeys from `from`, the router's start, to `to`, a stop end or a
  * point end, for the time `planned` names, fetched from `origin`: to a point,
  * the journeys to each stop within a walk of it, arriving there by the time
  * less the walk for a trip arriving by a time, joined in one frontier.
- * `searchFiles` reads the stops a point's neighbors are found in.
+ * `searchFiles` reads the stops a point's neighbors are found in, and
+ * `walkTiles` is the page's walk graph tiles, which a walk from the
+ * position or to the point is planned over where the snapshot's walks follow
+ * the streets; where they cannot be had the walk is a straight line and each
+ * journey with such a walk has `hasStraightLineWalk`.
  */
-export async function routeTo({origin, searchFiles, manifest, planned, from, to}) {
+export async function routeTo({origin, searchFiles, walkTiles, manifest, planned, from, to}) {
   const {serviceDate} = planned
   const fetchFile = fetchFileFrom(origin)
+  const isFromPosition = from.kind === FromKind.position
+  const isToStop = to.kind === EndKind.stop
 
-  if (to.kind === EndKind.stop) {
+  const isStopToStop = isToStop && !isFromPosition
+
+  if (isStopToStop) {
     return await routeFor({fetchFile, planned, seconds: planned.seconds, manifest, from, toStopId: to.stopId})
   }
 
   const entry = manifest.snapshots.find((candidate) => candidate.serviceDate === serviceDate)
-  const read = await readSnapshotStops({searchFiles, entry})
+  assertCondition(entry !== undefined, "trip route: the manifest holds no snapshot of the service date " + serviceDate)
 
-  if (read.kind === JourneysKind.failed) {
-    return read
+  const walks = await planWalks({
+    walkTiles,
+    entry,
+    readStops: () => readSnapshotStops({searchFiles, entry}),
+    start: placeOf({isPosition: isFromPosition, end: from}),
+    destination: placeOf({isPosition: !isToStop, end: to})
+  })
+
+  logFallbacks(walks)
+
+  if (isToStop) {
+    const answer = await routeFor({fetchFile, planned, seconds: planned.seconds, manifest, from: startOf({from, walks}), toStopId: to.stopId})
+    return markedAnswer({answer, walks})
   }
 
-  const {stopIds, positions} = read
+  if (walks.stops.kind === JourneysKind.failed) {
+    return walks.stops
+  }
 
-  const targets = targetStops({position: {lat: to.lat, lon: to.lon}, stopIds, positions, transferRules: entry.transferRules, countMax: TARGET_STOP_COUNT_MAX})
+  const {stopIds, positions} = walks.stops
+  const targets = targetsOf({walk: walks.destination, to, stopIds, positions, transferRules: entry.transferRules})
 
   if (targets.length === 0) {
     return {kind: PointJourneysKind.noEndStop}
   }
 
   const routed = []
+  const routeFrom = startOf({from, walks})
 
   for (const target of targets) {
     let seconds = planned.seconds
@@ -185,12 +267,13 @@ export async function routeTo({origin, searchFiles, manifest, planned, from, to}
       seconds -= target.walkS
     }
 
-    const answer = await routeFor({fetchFile, planned, seconds, manifest, from, toStopId: target.stopId})
+    const answer = await routeFor({fetchFile, planned, seconds, manifest, from: routeFrom, toStopId: target.stopId})
     routed.push({target, answer})
   }
 
   const destination = {name: to.name, lat: to.lat, lon: to.lon}
-  return journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
+  const joined = journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
+  return markedAnswer({answer: joined, walks})
 }
 
 /**
