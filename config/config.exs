@@ -2,9 +2,10 @@ import Config
 
 # The options every bundle relies on, written out where esbuild has a
 # default for them, so a version of esbuild whose defaults differ builds
-# the same bundles.
+# the same bundles. The targets are the oldest browsers the site supports,
+# so esbuild lowers only the syntax they lack.
 bundle_options =
-  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=es2022)
+  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=chrome110,firefox115,safari16.4)
 
 config :esbuild,
   version: "0.25.5",
