@@ -98,5 +98,9 @@ defmodule Gobusgo.Routing.Transfers do
     Geodesy.meters_per_degree() * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
   end
 
+  @doc "The seconds a walk of `meters` takes, at the walking speed, rounded up to the second."
+  @spec walk_duration_s(number()) :: non_neg_integer()
+  def walk_duration_s(meters) when is_number(meters) and meters >= 0, do: duration_s(meters)
+
   defp duration_s(distance_m), do: ceil(distance_m * 1_000 / @walk_speed_mm_per_s)
 end

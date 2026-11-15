@@ -1,0 +1,282 @@
+defmodule Gobusgo.Routing.WalkLinksTest do
+  # Checks the walking links measured along the walk graph over the shards of
+  # the walk graph fixture: the street a pair of stops takes, the pairs that
+  # have none, which stops a table measures again, and how a snapshot takes
+  # a stop's links from a table. The shards are read by a function the test
+  # holds.
+  use ExUnit.Case, async: true
+
+  alias Gobusgo.Math.Geodesy
+  alias Gobusgo.Routing.WalkLinks
+  alias Gobusgo.Test.WalkGraphFixture
+
+  @build_id "0123456789abcdef"
+  @units 100_000
+  @north 4_761_450
+  @south 4_761_300
+  @west -12_233_600
+  @middle -12_233_400
+  @tolerance_meters 0.1
+  @far_future_ms 4_000_000_000_000
+
+  @west_tile {4761, -8156}
+  @east_tile {4761, -8155}
+
+  defp shards do
+    %{
+      @west_tile => %{pieces: WalkGraphFixture.pieces(:west)},
+      @east_tile => %{pieces: WalkGraphFixture.pieces(:east)}
+    }
+  end
+
+  defp index, do: MapSet.new([@west_tile, @east_tile])
+
+  defp place(lat_units, lon_units), do: %{lat: lat_units / @units, lon: lon_units / @units}
+
+  defp positions do
+    %{
+      "a" => place(@north, @west),
+      "b" => place(@north, @middle),
+      "c" => place(@south, @west),
+      "d" => place(@south, @middle),
+      "island" => place(4_761_800, @west),
+      "off" => place(4_761_600, @middle)
+    }
+  end
+
+  defp load_from(held), do: fn tile -> load(held, tile) end
+
+  defp load(held, tile) do
+    case Map.fetch(held, tile) do
+      {:ok, shard} -> {:ok, shard}
+      :error -> {:error, {:io, :not_found}}
+    end
+  end
+
+  defp compute(overrides \\ %{}) do
+    input =
+      Map.merge(
+        %{
+          positions: positions(),
+          stop_ids: positions() |> Map.keys() |> Enum.sort(),
+          previous: nil,
+          build_id: @build_id,
+          index: index(),
+          load_shard: load_from(shards()),
+          deadline_ms: @far_future_ms
+        },
+        overrides
+      )
+
+    WalkLinks.compute(input)
+  end
+
+  defp links_of(table, stop_id), do: Map.fetch!(table.stops, stop_id).links
+
+  describe "compute/1" do
+    test "measures a pair on one street as the street's length" do
+      {:ok, %{table: table}} = compute()
+      {"b", meters} = Enum.find(links_of(table, "a"), &(elem(&1, 0) == "b"))
+
+      straight = Geodesy.distance_meters(positions()["a"], positions()["b"])
+      assert abs(meters - straight) < @tolerance_meters
+    end
+
+    test "measures a pair whose street goes round a missing link as longer than the straight line" do
+      {:ok, %{table: table}} = compute()
+      {"d", meters} = Enum.find(links_of(table, "b"), &(elem(&1, 0) == "d"))
+
+      straight = Geodesy.distance_meters(positions()["b"], positions()["d"])
+      assert meters > 2 * straight
+    end
+
+    test "leaves a disconnected pair without a link" do
+      {:ok, %{table: table, stats: stats}} = compute()
+
+      refute "island" in Enum.map(links_of(table, "a"), &elem(&1, 0))
+      assert stats.dropped_link_count > 0
+    end
+
+    test "keeps the straight line of a pair with an end off the graph" do
+      {:ok, %{table: table, stats: stats}} = compute()
+      {"off", meters} = Enum.find(links_of(table, "b"), &(elem(&1, 0) == "off"))
+
+      assert abs(meters - Geodesy.distance_meters(positions()["b"], positions()["off"])) <
+               @tolerance_meters
+
+      assert stats.straight_link_count > 0
+    end
+
+    test "orders a stop's links nearest street first" do
+      {:ok, %{table: table}} = compute()
+      meters = Enum.map(links_of(table, "a"), &elem(&1, 1))
+
+      assert meters == Enum.sort(meters)
+    end
+
+    test "measures again only the stops it is given, and keeps the rest of the table" do
+      {:ok, %{table: full}} = compute()
+
+      {:ok, %{table: partial, stats: stats}} =
+        compute(%{stop_ids: ["a"], previous: full})
+
+      assert partial == full
+      assert stats.measured_stop_count == 1
+    end
+
+    test "gives the same table whether it measures every stop at once or after a move" do
+      moved = Map.put(positions(), "b", place(@north, @middle + 20))
+      {:ok, %{table: before_move}} = compute()
+
+      stale =
+        WalkLinks.stale_stop_ids(%{positions: moved, table: before_move, build_id: @build_id})
+
+      {:ok, %{table: incremental}} =
+        compute(%{positions: moved, stop_ids: stale, previous: before_move})
+
+      {:ok, %{table: fresh}} =
+        compute(%{positions: moved, stop_ids: moved |> Map.keys() |> Enum.sort()})
+
+      assert incremental == fresh
+    end
+
+    test "answers a corrupt shard as corrupt, with the tile" do
+      held = Map.new(shards(), fn {tile, shard} -> {tile, shard} end)
+
+      load = fn tile ->
+        if tile == @east_tile, do: {:error, :corrupt}, else: load(held, tile)
+      end
+
+      assert {:error, :corrupt, @east_tile} = compute(%{load_shard: load})
+    end
+
+    test "answers a read that failed as an io failure, with the tile" do
+      load = fn tile -> {:error, {:io, {:timeout, tile}}} end
+
+      assert {:error, :io, {tile, {:timeout, tile}}} = compute(%{load_shard: load})
+    end
+
+    test "answers a computation past its deadline as a deadline" do
+      passed_ms = System.monotonic_time(:millisecond) - 1
+
+      assert {:error, :deadline, _tile} = compute(%{deadline_ms: passed_ms})
+    end
+
+    test "refuses a stop to measure that has no position" do
+      assert_raise Gobusgo.Assert.AssertionError, fn -> compute(%{stop_ids: ["nowhere"]}) end
+    end
+  end
+
+  describe "stale_stop_ids/1" do
+    setup do
+      {:ok, %{table: table}} = compute()
+      %{table: table}
+    end
+
+    test "names every stop for no table, and for a table of another build", %{table: table} do
+      every = positions() |> Map.keys() |> Enum.sort()
+
+      assert Enum.sort(
+               WalkLinks.stale_stop_ids(%{
+                 positions: positions(),
+                 table: nil,
+                 build_id: @build_id
+               })
+             ) ==
+               every
+
+      assert Enum.sort(
+               WalkLinks.stale_stop_ids(%{
+                 positions: positions(),
+                 table: table,
+                 build_id: "fedcba9876543210"
+               })
+             ) == every
+    end
+
+    test "names no stop where nothing changed", %{table: table} do
+      assert WalkLinks.stale_stop_ids(%{
+               positions: positions(),
+               table: table,
+               build_id: @build_id
+             }) == []
+    end
+
+    test "names a moved stop and the stops within the radius of where it was and is", %{
+      table: table
+    } do
+      moved = Map.put(positions(), "island", place(4_761_800, @west + 10))
+      stale = WalkLinks.stale_stop_ids(%{positions: moved, table: table, build_id: @build_id})
+
+      assert "island" in stale
+      refute "d" in stale
+    end
+
+    test "names the stops within the radius of an added stop", %{table: table} do
+      added = Map.put(positions(), "new", place(@north, @middle + 40))
+      stale = WalkLinks.stale_stop_ids(%{positions: added, table: table, build_id: @build_id})
+
+      assert "new" in stale
+      assert "b" in stale
+    end
+
+    test "names the stops within the radius of a stop that left", %{table: table} do
+      left = Map.delete(positions(), "d")
+      stale = WalkLinks.stale_stop_ids(%{positions: left, table: table, build_id: @build_id})
+
+      assert "c" in stale
+      refute "d" in stale
+    end
+  end
+
+  describe "links/1" do
+    test "gives a snapshot's stops their links by position in it, as seconds of the street" do
+      {:ok, %{table: table}} = compute()
+      stop_ids = ["d", "a", "b"]
+      links = WalkLinks.links(%{stop_ids: stop_ids, positions: positions(), table: table})
+
+      {"b", meters} = Enum.find(links_of(table, "a"), &(elem(&1, 0) == "b"))
+      from_a = Enum.find(links, &(&1.from_stop == 1 and &1.to_stop == 2))
+
+      assert from_a.duration_s == ceil(meters * 1_000 / 1_200)
+      assert links == Enum.sort_by(links, &{&1.from_stop, &1.to_stop})
+      assert Enum.all?(links, &(&1.to_stop in 0..2))
+    end
+
+    test "gives a stop with no position no link" do
+      {:ok, %{table: table}} = compute()
+      links = WalkLinks.links(%{stop_ids: ["a", "ghost"], positions: positions(), table: table})
+
+      assert Enum.all?(links, &((&1.from_stop == 0 and &1.to_stop == 0) or &1.to_stop != 1))
+      refute Enum.any?(links, &(&1.from_stop == 1))
+    end
+
+    test "keeps a stop's 64 nearest links" do
+      many = for number <- 1..70, into: %{}, do: {"s#{number}", place(@north, @west + number)}
+      {:ok, %{table: table}} = compute(%{positions: many, stop_ids: Map.keys(many)})
+      links = WalkLinks.links(%{stop_ids: Map.keys(many), positions: many, table: table})
+
+      per_stop = Enum.frequencies_by(links, & &1.from_stop)
+      assert per_stop |> Map.values() |> Enum.max() == 64
+    end
+  end
+
+  describe "pack/1 and key/1" do
+    test "a table packs to one binary and back" do
+      {:ok, %{table: table}} = compute()
+
+      assert table |> WalkLinks.pack() |> WalkLinks.unpack() == table
+    end
+
+    test "the key changes with the build and with a position" do
+      base = WalkLinks.key(%{build_id: @build_id, positions: positions()})
+      other_build = WalkLinks.key(%{build_id: "fedcba9876543210", positions: positions()})
+
+      moved =
+        WalkLinks.key(%{build_id: @build_id, positions: Map.put(positions(), "a", place(1, 1))})
+
+      assert base == WalkLinks.key(%{build_id: @build_id, positions: positions()})
+      assert length(Enum.uniq([base, other_build, moved])) == 3
+    end
+  end
+end

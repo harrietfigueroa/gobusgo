@@ -186,6 +186,57 @@ defmodule Gobusgo.WalkGraph.Search do
     end
   end
 
+  @doc """
+  The graph over the pieces of `shards` on a plane tangent at `reference`,
+  held so that many starts near `reference` can be searched without a build
+  each: `{:ok, prepared}` for `reach_prepared/1`, or `{:no_path, reason}`
+  where the shards hold no piece (`:no_shards`) or more than
+  `limits.edge_count_max` (`:cap_reached`).
+  """
+  @spec prepare(%{reference: position(), shards: [shard()], limits: limits()}) ::
+          {:ok, map()} | {:no_path, :no_shards | :cap_reached}
+  def prepare(%{reference: reference, shards: shards, limits: limits}) do
+    assert_position(reference)
+    pieces = Enum.flat_map(shards, & &1.pieces)
+    piece_count = length(pieces)
+
+    cond do
+      piece_count == 0 ->
+        {:no_path, :no_shards}
+
+      piece_count > limits.edge_count_max ->
+        {:no_path, :cap_reached}
+
+      true ->
+        plane = Graph.plane(reference, reference)
+        {:ok, %{plane: plane, graph: Graph.build(pieces, plane)}}
+    end
+  end
+
+  @doc """
+  The answers of `reach/1` for `from` and `targets` over the graph
+  `prepared` by `prepare/1`, which is the plane of `reference` and not of
+  `from`: a start away from the reference measures on a plane that is off by
+  a few parts in 10,000 a thousand meters out.
+  """
+  @spec reach_prepared(%{
+          prepared: map(),
+          from: position(),
+          targets: [position()],
+          limits: limits()
+        }) :: [answer()]
+  def reach_prepared(%{prepared: prepared, from: from, targets: targets, limits: limits}) do
+    assert_position(from)
+    Enum.each(targets, &assert_position/1)
+
+    Assert.condition(
+      length(targets) <= limits.target_count_max,
+      "#{length(targets)} targets are more than #{limits.target_count_max}"
+    )
+
+    reach_over(prepared, %{from: from, targets: targets, limits: limits})
+  end
+
   defp assert_position(%{lat: lat, lon: lon}) do
     Assert.condition(
       is_number(lat) and abs(lat) <= 90,
@@ -340,7 +391,11 @@ defmodule Gobusgo.WalkGraph.Search do
 
   defp reach_targets(%{from: from, targets: targets, pieces: pieces, limits: limits}) do
     plane = Graph.plane(from, from)
-    graph = Graph.build(pieces, plane)
+    prepared = %{plane: plane, graph: Graph.build(pieces, plane)}
+    reach_over(prepared, %{from: from, targets: targets, limits: limits})
+  end
+
+  defp reach_over(%{plane: plane, graph: graph}, %{from: from, targets: targets, limits: limits}) do
     start_snaps = Graph.snaps(graph, Graph.to_plane(plane, from), limits.snap_meters_max)
     search = dijkstra(graph, start_snaps, limits)
 
