@@ -42,6 +42,7 @@ defmodule Gobusgo.Routing.SnapshotTest do
         connection_count: length(connections)
       },
       walking_links: [],
+      walk_basis: %{kind: :straight, build_id: nil},
       positions: %{"1_A" => %{lat: 47.6080131, lon: -122.3351669}},
       names:
         Names.build(%{

@@ -22,6 +22,7 @@ import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf, w
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
 import {createTripPathReader} from "./trip_path_reader"
+import {createWalkPathReader} from "./walk_path_reader"
 import {
   DayChoice,
   EndKind,
@@ -36,6 +37,7 @@ import {
   failureState,
   isMarkedRow,
   journeyFeatures,
+  journeyWalkEnds,
   journeyRows,
   journeysAnnouncement,
   nameRequest,
@@ -376,6 +378,9 @@ export const TripPlanner = {
     // The paths the chosen journey's rides are drawn along; a path that
     // arrives draws the ride again.
     this.tripPaths = createTripPathReader({fileOrigin: this.fileOrigin, manifestUrl: this.manifestUrl, onPaths: () => { this.onTripPaths() }})
+    // The lines the chosen journey's walks are drawn along, read from the
+    // walk graph; a line that arrives draws the walk again.
+    this.walkPaths = createWalkPathReader({fileOrigin: this.fileOrigin, onWalks: () => { this.onTripPaths() }})
     this.searchFiles = createSearchFiles({origin: this.fileOrigin})
     this.events = pageEvents(this)
     this.build()
@@ -1442,13 +1447,14 @@ export const TripPlanner = {
   draw(row) {
     const {serviceDayStartsMs, origin} = this.shown
     this.tripPaths.request(rideTripsOf({journey: row.journey, serviceDayStartsMs}))
-    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin, paths: this.tripPaths.paths(), serviceDayStartsMs})
+    this.walkPaths.request(journeyWalkEnds({journey: row.journey, origin}))
+    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin, paths: this.tripPaths.paths(), walkLines: this.walkPaths.lines(), serviceDayStartsMs})
     this.tripMap.show(drawn.collection)
     return drawn
   },
 
-  // Draws the selected journey again with the paths that arrived, where the
-  // map is already fitted to it.
+  // Draws the selected journey again with the paths and walk lines that
+  // arrived, where the map is already fitted to it.
   onTripPaths() {
     if (this.shown === null) {
       return
@@ -1483,6 +1489,7 @@ export const TripPlanner = {
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
     this.tripPaths.destroy()
+    this.walkPaths.destroy()
     this.stopTicker()
     this.releaseLiveStops()
 

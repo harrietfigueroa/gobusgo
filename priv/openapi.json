@@ -4,7 +4,7 @@
     "title": "Gobusgo API",
     "version": "1.0.0",
     "summary": "The public HTTP endpoints of Gobusgo.",
-    "description": "The JSON endpoints a client outside the application's own pages may call: the agency API, the manifests of the published routing, address, and intersection files, this document at `/api/openapi.json`, and the MCP endpoint at `/mcp`. Every error is RFC 9457 problem details, except the JSON-RPC errors of `/mcp`. Static files, the browser pages, and the LiveView socket are not described; `GET /health` and `GET /ready` are in the operational document, `openapi.private.json`. Any method on a path under `/api` that no operation here names is answered `404` problem details, and any method but POST on `/mcp` is answered `405` (see `x-fallbacks`). This document is maintained by hand and a test checks only that its operations and catch-alls match the router, not that bodies match its schemas."
+    "description": "The JSON endpoints a client outside the application's own pages may call: the agency API, the manifests of the published routing, address, intersection, and walk graph files, this document at `/api/openapi.json`, and the MCP endpoint at `/mcp`. Every error is RFC 9457 problem details, except the JSON-RPC errors of `/mcp`. Static files, the browser pages, and the LiveView socket are not described; `GET /health` and `GET /ready` are in the operational document, `openapi.private.json`. Any method on a path under `/api` that no operation here names is answered `404` problem details, and any method but POST on `/mcp` is answered `405` (see `x-fallbacks`). This document is maintained by hand and a test checks only that its operations and catch-alls match the router, not that bodies match its schemas."
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
     },
     {
       "name": "Manifests",
-      "description": "The manifests of the published routing, address, and intersection files."
+      "description": "The manifests of the published routing, address, intersection, and walk graph files."
     },
     {
       "name": "Documentation",
@@ -654,6 +654,113 @@
           }
         }
       }
+    },
+    "/api/walk-graph/manifest": {
+      "get": {
+        "operationId": "getWalkGraphManifest",
+        "tags": [
+          "Manifests"
+        ],
+        "summary": "Get the manifest of the walk graph files",
+        "description": "The newest manifest of the walk graph files, read from the store on each request.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest as canonical JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalkGraphManifest"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ManifestUnavailable"
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headWalkGraphManifest",
+        "tags": [
+          "Manifests"
+        ],
+        "summary": "Check the manifest of the walk graph files",
+        "description": "The status and headers the `GET` of this path answers, with no body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest as canonical JSON, `application/json; charset=utf-8`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "304": {
+            "description": "The `if-none-match` header names the current `etag`. No body.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControl"
+              },
+              "Access-Control-Allow-Origin": {
+                "$ref": "#/components/headers/AccessControlAllowOrigin"
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ManifestUnavailable"
+          },
+          "406": {
+            "$ref": "#/components/responses/NotAcceptable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -764,7 +871,7 @@
         }
       },
       "ManifestUnavailable": {
-        "description": "No build is stored yet, or, for the intersection manifest, the stored manifest cannot be read or is not the JSON object a build writes. The `content-type` is `application/problem+json; charset=utf-8`.",
+        "description": "No build is stored yet, or, for the intersection and walk graph manifests, the stored manifest cannot be read or is not the JSON object a build writes. The `content-type` is `application/problem+json; charset=utf-8`.",
         "content": {
           "application/problem+json": {
             "schema": {
@@ -1116,12 +1223,13 @@
           },
           "transferRules": {
             "type": "object",
-            "description": "The rules the walking links and transfers were built with.",
+            "description": "The rules the walking links and transfers were built with. `walkBasis` says how a link's walk was measured: `straight`, by the straight line, `streets`, along the walk graph, or `mixed`, along the walk graph for most stops and by the straight line for the stops that were new or moved since the links were measured and for the links to them. With `streets` or `mixed`, `walkStreetMetersMax` is the longest street a link may have and `walkGraphBuildId` the walk graph build the links were measured on. `walkRadiusM` is a straight-line distance either way.",
             "required": [
               "minimumTransferS",
               "walkRadiusM",
               "walkSpeedMPerS",
-              "walkLinkCountPerStopMax"
+              "walkLinkCountPerStopMax",
+              "walkBasis"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1140,6 +1248,22 @@
               "walkLinkCountPerStopMax": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "walkBasis": {
+                "type": "string",
+                "enum": [
+                  "straight",
+                  "streets",
+                  "mixed"
+                ]
+              },
+              "walkStreetMetersMax": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "walkGraphBuildId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{16}$"
               }
             }
           },
@@ -1467,6 +1591,104 @@
                 "description": "For -32022, `supported` and `requested` protocol versions; for a resource not found, its `uri`."
               }
             }
+          }
+        }
+      },
+      "WalkGraphManifest": {
+        "type": "object",
+        "description": "The newest manifest of the published walk graph files, the pieces of street, path, and crossing a journey's walks are drawn along, a derivative database of OpenStreetMap under the ODbL. A shard's file is named from the build identifier and the tile, in the directory of the index, as `walk-graph-<buildId>-<row>_<column>.bin.gz`.",
+        "required": [
+          "attribution",
+          "buildId",
+          "builtAt",
+          "index",
+          "kindVersion",
+          "license",
+          "pieceCount",
+          "shardCount",
+          "sourceDate",
+          "tile",
+          "unitsPerDegree"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "type": "string",
+            "const": "© OpenStreetMap contributors"
+          },
+          "buildId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "The first 16 hexadecimal digits of the SHA-256 over every shard's tile and stream digest."
+          },
+          "builtAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "index": {
+            "$ref": "#/components/schemas/ManifestFile"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version of the walk graph shard and index kinds the files are written in, which a reader that does not know it refuses before it fetches a shard."
+          },
+          "license": {
+            "type": "object",
+            "required": [
+              "name",
+              "url"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "const": "Open Database License 1.0"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "const": "https://opendatacommons.org/licenses/odbl/1-0/"
+              }
+            }
+          },
+          "pieceCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "shardCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sourceDate": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            "description": "The timestamp of the OpenStreetMap extract, UTC."
+          },
+          "tile": {
+            "type": "object",
+            "description": "The height and width of a tile, in units of the walk graph's positions.",
+            "required": [
+              "latUnits",
+              "lonUnits"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "latUnits": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "lonUnits": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "unitsPerDegree": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The units of a degree of latitude or longitude that a position is stored in."
           }
         }
       }

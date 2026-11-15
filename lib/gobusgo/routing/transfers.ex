@@ -1,6 +1,7 @@
 defmodule Gobusgo.Routing.Transfers do
   @minimum_transfer_s 120
   @walk_radius_m 400
+  @cosine_min 0.01
   @walk_speed_mm_per_s 1_200
   @link_count_per_stop_max 64
 
@@ -84,19 +85,32 @@ defmodule Gobusgo.Routing.Transfers do
     end)
   end
 
-  defp cell(%{lat: lat, lon: lon}, lon_m) do
+  @doc """
+  The cell of `position`, a map of `lat` and `lon`, in the grid the neighbors of
+  a stop are found in: cells of the walking radius on a side, with `lon_m` meters
+  to a degree of longitude.
+  """
+  @spec cell(position(), number()) :: {integer(), integer()}
+  def cell(%{lat: lat, lon: lon}, lon_m) do
     {floor(lat * Geodesy.meters_per_degree() / @walk_radius_m),
      floor(lon * lon_m / @walk_radius_m)}
   end
 
-  # The meters of a degree of longitude at the highest latitude among the
-  # stops, the shortest that any of them has.
-  defp lon_m([]), do: Geodesy.meters_per_degree()
+  @doc """
+  The meters of a degree of longitude at the highest latitude among
+  `located`, maps of `lat` and `lon`, the shortest that any of them has.
+  """
+  @spec lon_m([position()]) :: float()
+  def lon_m([]), do: Geodesy.meters_per_degree()
 
-  defp lon_m(located) do
+  def lon_m(located) do
     lat_max = located |> Enum.map(&abs(&1.lat)) |> Enum.max()
-    Geodesy.meters_per_degree() * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
+    Geodesy.meters_per_degree() * max(:math.cos(Geodesy.radians(lat_max)), @cosine_min)
   end
+
+  @doc "The seconds a walk of `meters` takes, at the walking speed, rounded up to the second."
+  @spec walk_duration_s(number()) :: non_neg_integer()
+  def walk_duration_s(meters) when is_number(meters) and meters >= 0, do: duration_s(meters)
 
   defp duration_s(distance_m), do: ceil(distance_m * 1_000 / @walk_speed_mm_per_s)
 end

@@ -1,6 +1,9 @@
 defmodule Mix.Tasks.Gobusgo.StartMemory do
   @sample_interval_s "0.05"
   @deadline_ms 600_000
+  # The snapshots are built again on the streets by the run after the links
+  # are measured, which is a scheduler interval after the first.
+  @streets_extra_ms 660_000
   @command_timeout_ms 60_000
   @log_line_count_max 200
   @line_bytes_max 4_096
@@ -20,7 +23,16 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   `Gobusgo.StartMemory`, a step logs its failure, the container is killed
   for its memory or exits, or #{div(@deadline_ms, 1_000)} s pass.
 
-      mix gobusgo.start_memory --image gobusgo:local [--responses <directory>] [--date YYYY-MM-DD] [--anon-mib-max <MiB>]
+      mix gobusgo.start_memory --image gobusgo:local [--responses <directory>] [--date YYYY-MM-DD] [--anon-mib-max <MiB>] [--walk-basis straight|streets]
+
+  With `--walk-basis streets` the container starts with the snapshots'
+  walks measured along the streets, the setting `config :gobusgo, :walk`
+  names, which an `-eval` flag of the VM sets as the VM finishes booting, in
+  place of the release's configuration. The synthetic responses then come with the synthetic walk graph of
+  `Gobusgo.StartMemory.WalkGraph` (a `--responses` directory holds its own
+  under `intersections/`), and the run also waits for the links to be
+  measured, which a start does after it has built its snapshots by the
+  straight line.
 
   The start reads the stored responses under `<directory>/raw/`, which are
   copied into a Docker volume of their own, so the directory is read and
@@ -51,7 +63,13 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   def run(arguments) do
     {options, []} =
       OptionParser.parse!(arguments,
-        strict: [image: :string, responses: :string, date: :string, anon_mib_max: :integer]
+        strict: [
+          image: :string,
+          responses: :string,
+          date: :string,
+          anon_mib_max: :integer,
+          walk_basis: :string
+        ]
       )
 
     image =
@@ -66,11 +84,18 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
       Mix.raise("--anon-mib-max must be positive, got: #{anon_mib_max}")
     end
 
-    {responses, generated} = responses(options)
+    walk_basis = walk_basis(options)
+    {responses, generated} = responses(options, walk_basis)
     run_id = "gobusgo-start-memory-#{System.unique_integer([:positive])}"
 
     try do
-      measure(%{image: image, responses: responses, run_id: run_id, anon_mib_max: anon_mib_max})
+      measure(%{
+        image: image,
+        responses: responses,
+        run_id: run_id,
+        anon_mib_max: anon_mib_max,
+        walk_basis: walk_basis
+      })
     after
       docker(["rm", "--force", run_id])
       docker(["volume", "rm", "--force", run_id])
@@ -81,7 +106,15 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
     end
   end
 
-  defp responses(options) do
+  defp walk_basis(options) do
+    case Keyword.get(options, :walk_basis, "straight") do
+      "straight" -> :straight
+      "streets" -> :streets
+      other -> Mix.raise("--walk-basis is straight or streets, got: #{other}")
+    end
+  end
+
+  defp responses(options, walk_basis) do
     case Keyword.fetch(options, :responses) do
       {:ok, directory} ->
         directory = Path.expand(directory)
@@ -99,12 +132,20 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
         date_arguments =
           Enum.flat_map(Keyword.take(options, [:date]), fn {:date, date} -> ["--date", date] end)
 
-        Mix.Task.run("gobusgo.start_memory.fixture", [directory | date_arguments])
+        graph_arguments = if walk_basis == :streets, do: ["--walk-graph"], else: []
+
+        Mix.Task.run(
+          "gobusgo.start_memory.fixture",
+          [directory | date_arguments] ++ graph_arguments
+        )
+
         {directory, true}
     end
   end
 
-  defp measure(%{image: image, responses: responses, run_id: run_id, anon_mib_max: anon_mib_max}) do
+  defp measure(
+         %{image: image, responses: responses, run_id: run_id, anon_mib_max: anon_mib_max} = input
+       ) do
     docker!(["volume", "create", run_id])
 
     # Docker fills an empty volume with what the image holds at the mount
@@ -126,7 +167,8 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
       "#{@data_dir}/raw"
     ])
 
-    docker!(container_arguments(%{image: image, run_id: run_id}))
+    copy_walk_graph(%{image: image, responses: responses, run_id: run_id})
+    docker!(container_arguments(%{image: image, run_id: run_id, walk_basis: input.walk_basis}))
     started_ms = System.monotonic_time(:millisecond)
     log_port = open_port(["logs", "--follow", run_id])
 
@@ -144,6 +186,8 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
         log_port: log_port,
         sampler_port: sampler_port,
         started_ms: started_ms,
+        awaited: StartMemory.awaited(input.walk_basis),
+        deadline_ms: deadline_ms(input.walk_basis),
         events: MapSet.new(),
         lines: [],
         step_lines: [],
@@ -168,7 +212,29 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
     report(%{result: result, verdict: verdict, anon_mib_max: anon_mib_max})
   end
 
-  defp container_arguments(%{image: image, run_id: run_id}) do
+  # The walk graph of the responses, where they hold one, goes to the volume as
+  # the raw responses do.
+  defp copy_walk_graph(%{image: image, responses: responses, run_id: run_id}) do
+    if File.dir?(Path.join(responses, "intersections")) do
+      docker!([
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--volume",
+        "#{run_id}:#{@data_dir}",
+        "--volume",
+        "#{responses}:#{@responses_mount}:ro",
+        image,
+        "cp",
+        "-R",
+        "#{@responses_mount}/intersections",
+        "#{@data_dir}/intersections"
+      ])
+    end
+  end
+
+  defp container_arguments(%{image: image, run_id: run_id, walk_basis: walk_basis}) do
     secret = @secret_byte_count |> :crypto.strong_rand_bytes() |> Base.encode64()
     memory = "#{StartMemory.container_memory_mib()}m"
     cpu_count = Integer.to_string(StartMemory.container_cpu_count())
@@ -192,7 +258,7 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
       # quota, and an allocator instance per scheduler, so the count is set
       # to the instance's processors.
       "--env",
-      "ERL_FLAGS=+S #{cpu_count}:#{cpu_count}",
+      "ERL_FLAGS=+S #{cpu_count}:#{cpu_count}#{walk_flags(walk_basis)}",
       "--env",
       "SECRET_KEY_BASE=#{secret}",
       "--env",
@@ -204,6 +270,16 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
       image
     ]
   end
+
+  # The release's configuration file wins over a `-gobusgo` flag of the VM, so
+  # the setting is made by an `-eval` flag, which runs as the boot finishes. A
+  # build that ran before it would measure the straight line and the run would
+  # end at its deadline with no walk links logged.
+  defp deadline_ms(:straight), do: @deadline_ms
+  defp deadline_ms(:streets), do: @deadline_ms + @streets_extra_ms
+
+  defp walk_flags(:straight), do: ""
+  defp walk_flags(:streets), do: " -eval application:set_env(gobusgo,walk,[{basis,streets}])."
 
   defp open_port(arguments) do
     Port.open({:spawn_executable, docker_executable()}, [
@@ -219,7 +295,7 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   # built or failed, the sampler stops with its container, or the deadline
   # passes.
   defp await(%{log_port: log_port, sampler_port: sampler_port} = state) do
-    remaining_ms = @deadline_ms - (System.monotonic_time(:millisecond) - state.started_ms)
+    remaining_ms = state.deadline_ms - (System.monotonic_time(:millisecond) - state.started_ms)
 
     receive do
       {^log_port, {:data, {_end, line}}} -> state |> log_line(line) |> next()
@@ -232,7 +308,7 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   end
 
   defp next(state) do
-    case StartMemory.ending(state.events) do
+    case StartMemory.ending(state.events, state.awaited) do
       :running -> await(state)
       ending -> Map.put(state, :ending, ending)
     end
@@ -246,10 +322,21 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
         %{state | lines: lines}
 
       event ->
-        events = MapSet.put(state.events, event)
+        events = state.events |> MapSet.put(event) |> after_links(event)
         %{state | lines: lines, events: events, step_lines: [line | state.step_lines]}
     end
   end
+
+  # A snapshot build logged once the links are measured is the first on the streets.
+  defp after_links(events, :snapshots_built) do
+    if MapSet.member?(events, :walk_links_built) do
+      MapSet.put(events, :streets_snapshots_built)
+    else
+      events
+    end
+  end
+
+  defp after_links(events, _event), do: events
 
   defp sample_line(state, line) do
     elapsed_ms = System.monotonic_time(:millisecond) - state.started_ms
