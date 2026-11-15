@@ -61,15 +61,22 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The App's installation token expires after an hour and is revoked when the job ends; it is scoped to the infrastructure repository and to the one permission the dispatch needs.
+      # https://github.com/actions/create-github-app-token/blob/v3.3.0/README.md — checked 2026-11-15
+      - id: token
+        if: steps.head.outputs.current == 'true'
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: harrietfigueroa
+          repositories: gobusgo-infra
+          permission-actions: write
       # The request follows no redirect, so the token goes to the API's host alone.
       # A 200 carries the run that was started, and it is the one status the documentation gives.
       # https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event — checked 2026-11-08
       - if: steps.head.outputs.current == 'true'
         run: |
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error::The secret PRODUCTION_RELEASE_TOKEN is empty."
-            exit 1
-          fi
           body="$(jq --null-input --compact-output --arg commit "$COMMIT" '{ref: "main", inputs: {commit: $commit}}')"
           status="$(curl --silent --show-error --max-time "$REQUEST_SECONDS_MAX" \
             --request POST \
@@ -83,11 +90,11 @@ jobs:
             "$GITHUB_API_URL/repos/$RELEASE_REPOSITORY/actions/workflows/$RELEASE_WORKFLOW/dispatches")"
           if [[ "$status" != "200" ]]; then
             message="$(jq --raw-output '.message // empty' response.json || true)"
-            echo "::error::No release was started: $RELEASE_REPOSITORY answered $status to the request ($message). A 401 means the token in PRODUCTION_RELEASE_TOKEN has expired or was revoked, and a 403 or 404 that it lacks the Actions write permission on that repository."
+            echo "::error::No release was started: $RELEASE_REPOSITORY answered $status to the request ($message). A 403 or 404 means the release App is not installed on that repository or lacks its Actions write permission."
             exit 1
           fi
           run_url="$(jq --raw-output '.html_url' response.json)"
           [[ "$run_url" == "$GITHUB_SERVER_URL/$RELEASE_REPOSITORY/actions/runs/"* ]]
           echo "Asked for a release of \`$COMMIT\`: $run_url" >> "$GITHUB_STEP_SUMMARY"
         env:
-          RELEASE_TOKEN: ${{ secrets.PRODUCTION_RELEASE_TOKEN }}
+          RELEASE_TOKEN: ${{ steps.token.outputs.token }}
