@@ -81,10 +81,10 @@ defmodule Gobusgo.Routing.Snapshots.Build do
   alias Gobusgo.Routing.Names
   alias Gobusgo.Routing.Snapshot
   alias Gobusgo.Routing.Snapshots
+  alias Gobusgo.Routing.Snapshots.Walk
   alias Gobusgo.Routing.Snapshots.TripPaths
   alias Gobusgo.Routing.TripPathRetry
   alias Gobusgo.Routing.Timetable
-  alias Gobusgo.Routing.Transfers
   alias Gobusgo.Writer
 
   @type counts :: %{
@@ -113,7 +113,11 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         write_options: [],
         date_heap_words_max: @date_heap_words_max,
         route_path_view: Gobusgo.OneBusAway.RoutePathView,
-        trip_path_heap_words_max: @trip_path_heap_words_max
+        trip_path_heap_words_max: @trip_path_heap_words_max,
+        walk_basis: nil,
+        walk_read_options: [],
+        walk_heap_words_max: Walk.heap_words_max(),
+        walk_deadline_ms: Walk.deadline_ms()
       ])
 
     started_ms = System.monotonic_time(:millisecond)
@@ -133,6 +137,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       })
 
     built = Snapshots.built(server)
+    walk = Walk.plan(options, positions)
 
     outcomes =
       for date <- dates do
@@ -140,6 +145,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           date: date,
           built: Map.get(built, date),
           positions: positions,
+          walk: walk,
           sources: sources,
           today: today,
           now: now,
@@ -238,7 +244,25 @@ defmodule Gobusgo.Routing.Snapshots.Build do
     end
   end
 
-  defp date_outcome_callback(%{date: date, options: options} = input) do
+  defp date_outcome_callback(input) do
+    case date_walk(input.walk, input.built) do
+      :keep -> unchanged_outcome(input.built, input.now)
+      walk -> date_outcome_over(Map.put(input, :walk, walk))
+    end
+  end
+
+  # The walk a date is built by. Walking links that are not available keep a
+  # date's current entry, and build a date with none by the straight line, so
+  # a start publishes snapshots at once and a later run measures them on the
+  # streets.
+  defp date_walk(%{kind: :unavailable}, %{entry: _entry}), do: :keep
+
+  defp date_walk(%{kind: :unavailable}, _built),
+    do: %{kind: :straight, key: {:straight, :unavailable}}
+
+  defp date_walk(walk, _built), do: walk
+
+  defp date_outcome_over(%{date: date, options: options} = input) do
     schedule_view = Keyword.fetch!(options, :schedule_view)
     today = input.today
     schedules = packed_schedules(schedule_view, date)
@@ -254,7 +278,8 @@ defmodule Gobusgo.Routing.Snapshots.Build do
         previous: previous,
         route_paths: route_paths,
         positions: input.positions,
-        sources: input.sources
+        sources: input.sources,
+        walk_key: input.walk.key
       })
 
     case input.built do
@@ -268,6 +293,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
           previous: previous,
           positions: input.positions,
           sources: input.sources,
+          walk: input.walk,
           inputs_sha256: inputs_sha256,
           now: input.now,
           options: options
@@ -377,7 +403,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
 
     hashed =
       {Enum.sort(requests), Enum.sort(route_paths), Enum.sort(inputs.positions),
-       inputs.sources.sha256}
+       inputs.sources.sha256, inputs.walk_key}
 
     :crypto.hash(:sha256, :erlang.term_to_binary(hashed))
   end
@@ -394,7 +420,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       })
 
     fetch_times = Enum.map(schedules ++ previous, & &1.fetched_at)
-    walking_links = Transfers.walking_links(timetable.stop_ids, input.positions)
+    walking_links = Walk.links(input.walk, timetable.stop_ids, input.positions)
     sources = unpacked_sources(input.sources)
 
     headsigns =
@@ -417,6 +443,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       Snapshot.build(%{
         timetable: timetable,
         walking_links: walking_links,
+        walk_basis: Walk.entry_basis(input.walk),
         positions: input.positions,
         names: names,
         built_at: now,
