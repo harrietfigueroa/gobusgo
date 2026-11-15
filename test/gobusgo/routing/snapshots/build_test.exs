@@ -125,18 +125,22 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
     names
   end
 
-  defp hold(context, service_date) do
+  defp hold(context, service_date, route_id \\ "19_41") do
     data = @fixture_path |> File.read!() |> JSON.decode!() |> Map.fetch!("data")
 
     start_ms =
       DateTime.to_unix(DateTime.new!(service_date, ~T[08:00:00], "Etc/UTC"), :millisecond)
 
-    {:ok, schedule} =
-      RouteSchedules.parse(put_in(data, ["entry", "scheduleDate"], start_ms), "19_41")
+    data =
+      data
+      |> put_in(["entry", "scheduleDate"], start_ms)
+      |> put_in(["entry", "routeId"], route_id)
+
+    {:ok, schedule} = RouteSchedules.parse(data, route_id)
 
     record =
       Records.build(%{
-        route_id: "19_41",
+        route_id: route_id,
         service_date: service_date,
         request_id: Gobusgo.RequestId.generate(),
         fetched_at: ~U[2026-11-06 23:15:00Z],
@@ -226,6 +230,25 @@ defmodule Gobusgo.Routing.Snapshots.BuildTest do
 
     assert {byte_size(stored), Base.encode16(:crypto.hash(:sha256, stored), case: :lower)} ==
              {byte_size, sha256}
+  end
+
+  test "builds one trip row of a trip two routes list and counts the listing it dropped",
+       context do
+    hold(context, ~D[2026-11-07])
+    hold(context, ~D[2026-11-07], "19_42")
+
+    {:ok, counts} = run(context)
+    [entry] = Snapshots.manifest(context.server)["snapshots"]
+
+    assert {entry["tripCount"], counts.duplicate_trip_count} == {2, 2}
+  end
+
+  test "counts no dropped listing where no trip is listed twice", context do
+    hold(context, ~D[2026-11-07])
+
+    {:ok, counts} = run(context)
+
+    assert counts.duplicate_trip_count == 0
   end
 
   test "builds one snapshot per held service date and names it in the manifest", context do

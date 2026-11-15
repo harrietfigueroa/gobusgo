@@ -16,10 +16,15 @@ defmodule Gobusgo.Routing.TimetableTest do
   @long_day_start_ms 1_793_520_000_000
   @long_day_previous_start_ms @long_day_start_ms - 90_000_000
 
-  defp schedule(%{start_ms: start_ms, trips: trips}) do
+  # `listing_route_id` is the route whose schedule lists the trips, and
+  # `own_route_id` the route each trip's own reference names.
+  defp schedule(%{start_ms: start_ms, trips: trips} = input) do
+    listing_route_id = Map.get(input, :listing_route_id, "1_R")
+    own_route_id = Map.get(input, :own_route_id)
+
     {:ok, compact} =
       CompactSchedule.pack(%{
-        route_id: "1_R",
+        route_id: listing_route_id,
         schedule_date_ms: start_ms,
         service_ids: ["s"],
         stop_ids: ["1_A", "1_B", "1_C"],
@@ -29,6 +34,7 @@ defmodule Gobusgo.Routing.TimetableTest do
 
             %{
               id: id,
+              route_id: own_route_id,
               direction_id: "0",
               headsign: nil,
               block_id: nil,
@@ -174,5 +180,197 @@ defmodule Gobusgo.Routing.TimetableTest do
     }
 
     assert Timetable.build(streamed) == Timetable.build(listed)
+  end
+
+  describe "a trip listed under two routes" do
+    # Two routes' schedules list one trip, as the stored responses of
+    # 2026-11-11 do for 52 trips of routes 1_100459 and 1_102769: identical
+    # stop times, and a trip reference that names one of the two routes.
+    defp listed_twice(%{own_route_id: own_route_id, listing_route_ids: listing_route_ids}) do
+      for listing_route_id <- listing_route_ids do
+        schedule(%{
+          start_ms: @start_ms,
+          trips: [{"t1", [3_600, 3_900, 4_200]}],
+          listing_route_id: listing_route_id,
+          own_route_id: own_route_id
+        })
+      end
+    end
+
+    defp build_listed(schedules, previous_schedules \\ []) do
+      Timetable.build(%{
+        service_date: ~D[2026-11-08],
+        schedules: schedules,
+        previous_schedules: previous_schedules
+      })
+    end
+
+    test "keeps one trip row, under the route the trip's own reference names" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: "1_B", listing_route_ids: ["1_A", "1_B"]}))
+
+      assert timetable.trips == [%{id: "t1", route_id: "1_B", service_day_offset: 0}]
+    end
+
+    test "keeps one copy of every connection of the trip" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: "1_B", listing_route_ids: ["1_A", "1_B"]}))
+
+      assert timetable.connection_count == 2
+    end
+
+    test "counts the listings it dropped" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: "1_B", listing_route_ids: ["1_A", "1_B"]}))
+
+      assert timetable.duplicate_trip_count == 1
+    end
+
+    test "counts no dropped listing where no trip is listed twice" do
+      timetable = build([{"t1", [100, 200]}, {"t2", [100, 200]}], [])
+
+      assert timetable.duplicate_trip_count == 0
+    end
+
+    test "keeps the same timetable whatever order the routes' schedules come in" do
+      forward =
+        build_listed(listed_twice(%{own_route_id: "1_B", listing_route_ids: ["1_A", "1_B"]}))
+
+      backward =
+        build_listed(listed_twice(%{own_route_id: "1_B", listing_route_ids: ["1_B", "1_A"]}))
+
+      assert forward == backward
+    end
+
+    test "falls back to the smallest route identifier where the trip's reference names no route" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: nil, listing_route_ids: ["1_C", "1_A", "1_B"]}))
+
+      assert timetable.trips == [%{id: "t1", route_id: "1_A", service_day_offset: 0}]
+    end
+
+    test "counts every listing but the owner's as dropped" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: nil, listing_route_ids: ["1_C", "1_A", "1_B"]}))
+
+      assert timetable.duplicate_trip_count == 2
+    end
+
+    test "names stops only from the hops of the owner's listing, where the listings differ" do
+      owner =
+        schedule(%{
+          start_ms: @start_ms,
+          trips: [{"t1", [3_600, 3_900]}],
+          listing_route_id: "1_B",
+          own_route_id: "1_B"
+        })
+
+      loser =
+        schedule(%{
+          start_ms: @start_ms,
+          trips: [{"t1", [3_600, 3_900, 4_200]}],
+          listing_route_id: "1_A",
+          own_route_id: "1_B"
+        })
+
+      timetable = build_listed([loser, owner])
+
+      assert timetable.stop_ids == ["1_A", "1_B"]
+    end
+
+    test "writes only the owner's hops, where the listings differ" do
+      owner =
+        schedule(%{
+          start_ms: @start_ms,
+          trips: [{"t1", [3_600, 3_900]}],
+          listing_route_id: "1_B",
+          own_route_id: "1_B"
+        })
+
+      loser =
+        schedule(%{
+          start_ms: @start_ms,
+          trips: [{"t1", [3_600, 3_900, 4_200]}],
+          listing_route_id: "1_A",
+          own_route_id: "1_B"
+        })
+
+      assert build_listed([loser, owner]).connection_count == 1
+    end
+
+    test "falls back to the smallest route identifier where the named route does not list the trip" do
+      timetable =
+        build_listed(listed_twice(%{own_route_id: "1_Z", listing_route_ids: ["1_B", "1_A"]}))
+
+      assert timetable.trips == [%{id: "t1", route_id: "1_A", service_day_offset: 0}]
+    end
+
+    test "keeps one trip row of the previous date, apart from this date's" do
+      today = [schedule(%{start_ms: @start_ms, trips: [{"t1", [3_600, 3_900]}]})]
+
+      previous =
+        for listing_route_id <- ["1_A", "1_B"] do
+          schedule(%{
+            start_ms: @previous_start_ms,
+            trips: [{"t1", [86_500, 86_700]}],
+            listing_route_id: listing_route_id,
+            own_route_id: "1_B"
+          })
+        end
+
+      timetable = build_listed(today, previous)
+
+      assert Enum.map(timetable.trips, &{&1.id, &1.route_id, &1.service_day_offset}) ==
+               [{"t1", "1_R", 0}, {"t1", "1_B", 1}]
+    end
+
+    test "counts a dropped listing of the previous date" do
+      previous =
+        for listing_route_id <- ["1_A", "1_B"] do
+          schedule(%{
+            start_ms: @previous_start_ms,
+            trips: [{"t1", [86_500, 86_700]}],
+            listing_route_id: listing_route_id,
+            own_route_id: "1_B"
+          })
+        end
+
+      timetable =
+        build_listed([schedule(%{start_ms: @start_ms, trips: [{"t0", [100, 200]}]})], previous)
+
+      assert timetable.duplicate_trip_count == 1
+    end
+
+    test "keeps each trip that one route lists under that route" do
+      today = [
+        schedule(%{start_ms: @start_ms, trips: [{"t1", [100, 200]}], listing_route_id: "1_A"}),
+        schedule(%{start_ms: @start_ms, trips: [{"t2", [100, 200]}], listing_route_id: "1_B"})
+      ]
+
+      timetable = build_listed(today)
+
+      assert Enum.map(timetable.trips, &{&1.id, &1.route_id}) == [{"t1", "1_A"}, {"t2", "1_B"}]
+    end
+
+    test "drops no listing of a trip that one route lists" do
+      today = [
+        schedule(%{start_ms: @start_ms, trips: [{"t1", [100, 200]}], listing_route_id: "1_A"}),
+        schedule(%{start_ms: @start_ms, trips: [{"t2", [100, 200]}], listing_route_id: "1_B"})
+      ]
+
+      assert build_listed(today).duplicate_trip_count == 0
+    end
+
+    test "refuses two schedules of one route on one date" do
+      schedules = listed_twice(%{own_route_id: "1_A", listing_route_ids: ["1_A", "1_A"]})
+
+      assert_raise Gobusgo.Assert.AssertionError, ~r/route/, fn -> build_listed(schedules) end
+    end
+
+    test "refuses sequences that do not rise within a trip, which a route listing a trip twice gives" do
+      twice = schedule(%{start_ms: @start_ms, trips: [{"t1", [100, 200]}, {"t1", [100, 200]}]})
+
+      assert_raise Gobusgo.Assert.AssertionError, ~r/sequence/, fn -> build_listed([twice]) end
+    end
   end
 end
