@@ -181,9 +181,17 @@ function targetsOf({walk, to, stopIds, positions, transferRules}) {
 
 // Says once, at the decision, which ends of the trip fell back to a straight
 // line; a position is never logged.
-function logFallbacks(walks) {
+// Logs each end of `walks` that fell back and whose reason is `reasonOnly`,
+// or every fallback end where `reasonOnly` is null.
+function logFallbacks({walks, reasonOnly}) {
   for (const [end, walk] of [["start", walks.start], ["destination", walks.destination]]) {
     if (walk.kind !== EndWalkKind.fallback) {
+      continue
+    }
+
+    const isOtherReason = reasonOnly !== null && walk.reason !== reasonOnly
+
+    if (isOtherReason) {
       continue
     }
 
@@ -294,7 +302,7 @@ export async function routeTo({origin, searchFiles, walkTiles, manifest, planned
     destination: placeOf({isPosition: !isToStop, end: to})
   })
 
-  logFallbacks(walks)
+  logFallbacks({walks, reasonOnly: null})
   const context = {fetchFile, planned, manifest, entry, from, to}
   const routed = await routeWithWalks({...context, walks})
   const isRetryDue = hasStreetWalk(walks) && isNoJourney(routed)
@@ -306,7 +314,7 @@ export async function routeTo({origin, searchFiles, walkTiles, manifest, planned
   // A stop the street rules leave out may have been the only way: the
   // journeys that exist on the straight line still exist.
   const straightWalks = straightenedWalks(walks)
-  logFallbacks(straightWalks)
+  logFallbacks({walks: straightWalks, reasonOnly: FallbackReason.noJourney})
   const again = await routeWithWalks({...context, walks: straightWalks})
   return markedAnswer({answer: again, walks: straightWalks})
 }

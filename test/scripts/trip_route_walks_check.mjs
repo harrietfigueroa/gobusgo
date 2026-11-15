@@ -248,10 +248,16 @@ function tilesPerPosition(windowOf) {
     {X: [micro(FAR_LAT), micro(rider.lon + FAR_LAT_DEGREES)]}
   )
 
+  // Each end is logged once: the retry logs only the ends it straightened.
+  const logged = []
+  const realDebug = console.debug
+  console.debug = function recordDebug(message, properties) { logged.push(properties.reason) }
   const answer = await routeServed({served, files, rules: streetRules, walkTiles: walkTilesOf(readyWindow)})
+  console.debug = realDebug
   strictEqual(answer.kind, JourneysKind.found)
   strictEqual(answer.journeys[0].legs[0].toStopId, "B")
   strictEqual(answer.journeys[0].hasStraightLineWalk, true)
+  deepStrictEqual(logged, ["noJourney"], "one log for the end the retry straightened")
 }
 
 // The reasons a walk falls back, each leaving the journey of the straight
