@@ -44,9 +44,17 @@ defmodule Gobusgo.Routing.Snapshots.WalkTest do
              %{kind: :streets, build_id: "0123456789abcdef"}
   end
 
-  test "takes the basis the application is configured with when none is given" do
-    plan = Walk.plan(Keyword.put(options(), :walk_basis, nil), @positions)
+  @tag :tmp_dir
+  test "takes the streets the application is configured with, and the straight line while no graph is published",
+       %{tmp_dir: tmp_dir} do
+    options =
+      Keyword.merge(options(),
+        walk_basis: nil,
+        walk_read_options: [backend: Gobusgo.Reader.LocalFile, base_dir: tmp_dir]
+      )
 
-    assert plan.kind == :straight
+    plan = Walk.plan(options, @positions)
+
+    assert plan.key == {:straight, :no_graph}
   end
 end

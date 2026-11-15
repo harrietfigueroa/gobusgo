@@ -272,13 +272,14 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   end
 
   # The release's configuration file wins over a `-gobusgo` flag of the VM, so
-  # the setting is made by an `-eval` flag, which runs as the boot finishes. A
-  # build that ran before it would measure the straight line and the run would
-  # end at its deadline with no walk links logged.
+  # the setting is made by an `-eval` flag, which runs as the boot finishes, for
+  # either basis. A build that runs before it reads the shipped streets; the
+  # fixture of a straight run publishes no walk graph, so that build measures
+  # the straight line all the same.
   defp deadline_ms(:straight), do: @deadline_ms
   defp deadline_ms(:streets), do: @deadline_ms + @streets_extra_ms
 
-  defp walk_flags(:straight), do: ""
+  defp walk_flags(:straight), do: " -eval application:set_env(gobusgo,walk,[{basis,straight}])."
   defp walk_flags(:streets), do: " -eval application:set_env(gobusgo,walk,[{basis,streets}])."
 
   defp open_port(arguments) do

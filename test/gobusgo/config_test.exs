@@ -570,8 +570,8 @@ defmodule Gobusgo.ConfigTest do
       assert Config.fetch_walk_basis(basis: "streets") == {:error, {:invalid, :walk_basis}}
     end
 
-    test "is the straight line in the configuration the application ships" do
-      assert Config.walk_basis() == {:ok, :straight}
+    test "is the streets in the configuration the application ships" do
+      assert Config.walk_basis() == {:ok, :streets}
     end
   end
 end
