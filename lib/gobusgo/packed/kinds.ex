@@ -16,7 +16,9 @@ defmodule Gobusgo.Packed.Kinds do
     %{number: 4, name: "address index", prefix: "addresses-index"},
     %{number: 5, name: "places", prefix: "places"},
     %{number: 6, name: "intersection shard", prefix: "intersections"},
-    %{number: 7, name: "intersection index", prefix: "intersections-index"}
+    %{number: 7, name: "intersection index", prefix: "intersections-index"},
+    %{number: 8, name: "walk graph shard", prefix: "walk-graph"},
+    %{number: 9, name: "walk graph index", prefix: "walk-graph-index"}
   ]
 
   @typedoc "One row of the kind table."
