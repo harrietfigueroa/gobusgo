@@ -21,6 +21,8 @@ const TIE_OFFSET_METERS = 20
 const LINE_HALF_UNITS = 400
 const ENDS_HALF_UNITS = 200
 const PIECE_COUNT = 1
+const BUMP_UNITS = 100
+const BUMP_POSITION_COUNT = 6
 const STREET_CLASS = 4
 const FIRST_POINT = 0
 const SECOND_POINT = 2
@@ -57,7 +59,9 @@ for (const wanted of WANTED_KINDS) {
 }
 
 // Two components, one on each side of the ends, each as far from both: the
-// lesser start position wins, in either order of the shards.
+// northern one has a bump between the ends, so the answer says which one a
+// tie chose. The lesser start position wins, the southern street, in either
+// order of the shards.
 const offsetUnits = Math.round((TIE_OFFSET_METERS * UNITS_PER_DEGREE) / METERS_PER_DEGREE)
 
 function lineTable({latUnits}) {
@@ -65,7 +69,15 @@ function lineTable({latUnits}) {
   return {pieceCount: PIECE_COUNT, classes: Uint8Array.of(STREET_CLASS), pieceStarts: Uint32Array.of(FIRST_POINT, SECOND_POINT), points}
 }
 
-const above = lineTable({latUnits: TIE_LAT_UNITS + offsetUnits})
+function bumpTable({latUnits}) {
+  const first = TIE_LON_UNITS - ENDS_HALF_UNITS
+  const second = TIE_LON_UNITS + ENDS_HALF_UNITS
+  const bumped = latUnits + BUMP_UNITS
+  const points = Int32Array.of(latUnits, TIE_LON_UNITS - LINE_HALF_UNITS, latUnits, first, bumped, first, bumped, second, latUnits, second, latUnits, TIE_LON_UNITS + LINE_HALF_UNITS)
+  return {pieceCount: PIECE_COUNT, classes: Uint8Array.of(STREET_CLASS), pieceStarts: Uint32Array.of(FIRST_POINT, BUMP_POSITION_COUNT), points}
+}
+
+const above = bumpTable({latUnits: TIE_LAT_UNITS + offsetUnits})
 const below = lineTable({latUnits: TIE_LAT_UNITS - offsetUnits})
 const from = {lat: TIE_LAT_UNITS / UNITS_PER_DEGREE, lon: (TIE_LON_UNITS - ENDS_HALF_UNITS) / UNITS_PER_DEGREE}
 const to = {lat: TIE_LAT_UNITS / UNITS_PER_DEGREE, lon: (TIE_LON_UNITS + ENDS_HALF_UNITS) / UNITS_PER_DEGREE}
@@ -73,3 +85,5 @@ const forward = findWalkPath({from, to, shards: [above, below], limits: WALK_LIM
 const backward = findWalkPath({from, to, shards: [below, above], limits: WALK_LIMITS})
 strictEqual(forward.kind, WalkPathKind.found)
 deepStrictEqual(forward, backward, "the shard order decides the walk")
+const southernOnly = findWalkPath({from, to, shards: [below], limits: WALK_LIMITS})
+deepStrictEqual(forward, southernOnly, "the tie did not choose the southern street")

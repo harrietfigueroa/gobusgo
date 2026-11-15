@@ -60,6 +60,8 @@ const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
 const DRAWN_COST_TOLERANCE_METERS = 0.01
 const TIE_UNITS_PER_METER = 1_000_000
+const KEY_ENDS_FROM = 3
+const KEY_ENDS_TO = 7
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
 const SnapKind = Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
 const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
@@ -68,6 +70,34 @@ function planeOf({from, to}) {
   const referenceLat = (from.lat + to.lat) / MIDDLE_DIVISOR
   const referenceLon = (from.lon + to.lon) / MIDDLE_DIVISOR
   return {referenceLat, referenceLon, metersPerLat: METERS_PER_DEGREE, metersPerLon: metersPerDegreeLongitude(referenceLat)}
+}
+
+// The length of the vector (deltaX, deltaY) as the square root of the sum of
+// its squares, so a sum is computed in one order wherever it is made.
+function distanceOf(deltaX, deltaY) {
+  return Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+}
+
+// The two ends of an edge as one list of four numbers, the lesser end first,
+// so the same piece has the same ends whichever way it is walked.
+function endsOf({firstEnd, lastEnd}) {
+  if (compareLists(firstEnd, lastEnd) <= 0) {
+    return [...firstEnd, ...lastEnd]
+  }
+
+  return [...lastEnd, ...firstEnd]
+}
+
+// The first difference of two lists of numbers, which is negative where
+// `left` comes first, and 0 where they are equal.
+function compareLists(left, right) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return left[index] - right[index]
+    }
+  }
+
+  return 0
 }
 
 // A position in degrees as meters east and north on the plane.
@@ -94,7 +124,7 @@ function assertEnd(end, name) {
 function straightMeters({plane, from, to}) {
   const [fromX, fromY] = degreesToPlane({plane, lat: from.lat, lon: from.lon})
   const [toX, toY] = degreesToPlane({plane, lat: to.lat, lon: to.lon})
-  return Math.hypot(toX - fromX, toY - fromY)
+  return distanceOf(toX - fromX, toY - fromY)
 }
 
 /**
@@ -176,7 +206,7 @@ function edgeOfPiece({shard, piece, plane, nodeAt}) {
 
     if (position > 0) {
       const before = (position - 1) * COORDINATE_COUNT
-      cumulative[position] = cumulative[position - 1] + Math.hypot(x - xy[before], y - xy[before + 1])
+      cumulative[position] = cumulative[position - 1] + distanceOf(x - xy[before], y - xy[before + 1])
     }
   }
 
@@ -184,7 +214,10 @@ function edgeOfPiece({shard, piece, plane, nodeAt}) {
   const lastOffset = (first + count - 1) * COORDINATE_COUNT
   const a = nodeAt({latUnits: shard.points[firstOffset], lonUnits: shard.points[firstOffset + 1]})
   const b = nodeAt({latUnits: shard.points[lastOffset], lonUnits: shard.points[lastOffset + 1]})
-  return {a, b, xy, cumulative, length: cumulative[count - 1], count}
+  const firstEnd = [shard.points[firstOffset], shard.points[firstOffset + 1]]
+  const lastEnd = [shard.points[lastOffset], shard.points[lastOffset + 1]]
+  const ends = endsOf({firstEnd, lastEnd})
+  return {a, b, xy, cumulative, length: cumulative[count - 1], count, ends}
 }
 
 // The graph over `shards`: for each piece an edge between the nodes at its
@@ -273,29 +306,19 @@ function nearestOnSegment({x, y, startX, startY, endX, endY}) {
 
   const pointX = startX + fraction * deltaX
   const pointY = startY + fraction * deltaY
-  return {pointX, pointY, distance: Math.hypot(x - pointX, y - pointY), fraction, segmentLength: Math.sqrt(lengthSquared)}
+  return {pointX, pointY, distance: distanceOf(x - pointX, y - pointY), fraction, segmentLength: Math.sqrt(lengthSquared)}
 }
 
-// Two points whose distances agree to a micrometer tie, and the tie goes to
-// the lesser x and then the lesser y, so the choice rests on geometry and
-// not on the order the pieces arrived in.
+// Two snaps whose distances agree to a micrometer tie, and the tie goes to
+// the lesser x, then the lesser y, then the lesser ends of the edge, then the
+// lesser start of the segment, so the choice rests on geometry and not on
+// the order the pieces arrived in. A snap carries that order as its `key`.
 function tieUnits(meters) {
   return Math.round(meters * TIE_UNITS_PER_METER)
 }
 
-function isCloser({nearest, held}) {
-  const nearestUnits = tieUnits(nearest.distance)
-  const heldUnits = tieUnits(held.distance)
-
-  if (nearestUnits !== heldUnits) {
-    return nearestUnits < heldUnits
-  }
-
-  if (nearest.pointX !== held.x) {
-    return nearest.pointX < held.x
-  }
-
-  return nearest.pointY < held.y
+function snapKey({nearest, edge, startX, startY}) {
+  return [tieUnits(nearest.distance), nearest.pointX, nearest.pointY, ...edge.ends, startX, startY]
 }
 
 // The nearest point to (x, y) within `snapMetersMax` on the edges of each
@@ -310,14 +333,15 @@ function snapsByComponent({graph, x, y, snapMetersMax}) {
       const endOffset = startOffset + COORDINATE_COUNT
       const nearest = nearestOnSegment({x, y, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1], endX: edge.xy[endOffset], endY: edge.xy[endOffset + 1]})
 
+      const key = snapKey({nearest, edge, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1]})
       const held = snaps.get(edge.component)
-      const isNearer = held === undefined || isCloser({nearest, held})
+      const isNearer = held === undefined || compareLists(key, held.key) < 0
       const isNear = nearest.distance <= snapMetersMax
       const isChosen = isNear && isNearer
 
       if (isChosen) {
         const along = edge.cumulative[segment] + nearest.fraction * nearest.segmentLength
-        snaps.set(edge.component, {kind: SnapKind.snapped, edge: edgeIndex, x: nearest.pointX, y: nearest.pointY, distance: nearest.distance, along})
+        snaps.set(edge.component, {kind: SnapKind.snapped, edge: edgeIndex, x: nearest.pointX, y: nearest.pointY, distance: nearest.distance, along, key})
       }
     }
   }
@@ -330,33 +354,15 @@ function snapsByComponent({graph, x, y, snapMetersMax}) {
 // `{kind: "none", reason}` with `offGraph` where an end reaches no
 // component and `disconnected` where the two reach none in common.
 // Sums that agree to a micrometer tie, and the tie goes to the start snap
-// nearer its end, then to the lesser start and goal positions, so the
-// choice rests on geometry and not on the order of the components.
+// nearer its end, then to the lesser start and goal positions, then to the
+// lesser ends of the start and goal edges, so the choice rests on geometry
+// and not on the order of the components.
+function pairKey({start, goal}) {
+  return [tieUnits(start.distance + goal.distance), tieUnits(start.distance), start.x, start.y, goal.x, goal.y, ...start.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO), ...goal.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO)]
+}
+
 function isBetterPair({candidate, best}) {
-  const candidateSum = tieUnits(candidate.start.distance + candidate.goal.distance)
-  const bestSum = tieUnits(best.start.distance + best.goal.distance)
-
-  if (candidateSum !== bestSum) {
-    return candidateSum < bestSum
-  }
-
-  const candidateStart = tieUnits(candidate.start.distance)
-  const bestStart = tieUnits(best.start.distance)
-
-  if (candidateStart !== bestStart) {
-    return candidateStart < bestStart
-  }
-
-  const candidatePoints = [candidate.start.x, candidate.start.y, candidate.goal.x, candidate.goal.y]
-  const bestPoints = [best.start.x, best.start.y, best.goal.x, best.goal.y]
-
-  for (let index = 0; index < candidatePoints.length; index += 1) {
-    if (candidatePoints[index] !== bestPoints[index]) {
-      return candidatePoints[index] < bestPoints[index]
-    }
-  }
-
-  return false
+  return compareLists(pairKey(candidate), pairKey(best)) < 0
 }
 
 function chooseSnaps({startSnaps, goalSnaps}) {
@@ -543,10 +549,10 @@ function search({graph, start, goal, visitedNodeCountMax}) {
     }
 
     if (node === startNode) {
-      return Math.hypot(start.x - goal.x, start.y - goal.y)
+      return distanceOf(start.x - goal.x, start.y - goal.y)
     }
 
-    return Math.hypot(graph.nodeX[node] - goal.x, graph.nodeY[node] - goal.y)
+    return distanceOf(graph.nodeX[node] - goal.x, graph.nodeY[node] - goal.y)
   }
 
   function relax({from, to, meters, edge}) {
@@ -674,7 +680,7 @@ function withoutRepeats(points) {
 
   for (const point of points) {
     const last = kept[kept.length - 1]
-    const isRepeat = last !== undefined && Math.hypot(point[0] - last[0], point[1] - last[1]) < DUPLICATE_METERS
+    const isRepeat = last !== undefined && distanceOf(point[0] - last[0], point[1] - last[1]) < DUPLICATE_METERS
 
     if (!isRepeat) {
       kept.push(point)
@@ -688,7 +694,7 @@ function lengthOf(points) {
   let meters = 0
 
   for (let index = 1; index < points.length; index += 1) {
-    meters += Math.hypot(points[index][0] - points[index - 1][0], points[index][1] - points[index - 1][1])
+    meters += distanceOf(points[index][0] - points[index - 1][0], points[index][1] - points[index - 1][1])
   }
 
   return meters

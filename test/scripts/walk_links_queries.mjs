@@ -7,7 +7,7 @@
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {PackedOutcome} from "../../assets/js/core/packed_container.js"
-import {UNITS_PER_DEGREE, decodeWalkGraphIndex, decodeWalkGraphShard} from "../../assets/js/core/walk_graph_file.js"
+import {UNITS_PER_DEGREE, decodeWalkGraphIndex, decodeWalkGraphShard, tileKey} from "../../assets/js/core/walk_graph_file.js"
 import {NoPathReason, WALK_LIMITS, WalkPathKind, planWalk, walkTilesNeeded} from "../../assets/js/core/walk_path.js"
 
 export const TOLERANCE_METERS = 0.1
@@ -34,6 +34,52 @@ const OFFSET_EAST_UNITS = 8
 const OFFSET_WEST_COLUMN_UNITS = 20
 const OFFSET_MIDDLE_COLUMN_UNITS = 15
 const OFFSET_FAR_COLUMN_UNITS = -30
+
+// Two shards of the golden file's own, in tiles of the index the fixture
+// shards leave empty: tile (-3, -5) holds two parallel streets 20 m north
+// and south of a pair of ends, the northern one with a bump between them, so
+// the street a tie picks changes the length, and the start of a long street
+// that runs on into tile (-3, -4). Each piece is `[class, [latitude,
+// longitude], ...]` in units.
+const EXTRA_STREET_CLASS = 4
+const TIE_NORTH_LAT = -2_482
+const TIE_BUMP_LAT = -2_382
+const TIE_SOUTH_LAT = -2_518
+const TIE_WEST_COLUMN = -7_100
+const TIE_FIRST_COLUMN = -7_000
+const TIE_SECOND_COLUMN = -6_800
+const TIE_EAST_COLUMN = -6_700
+const TIE_ENDS_LAT = -2_500
+const LONG_LAT = -2_560
+const LONG_START_COLUMN = -6_400
+const LONG_TILE_COLUMN = -6_000
+const LONG_END_COLUMN = -5_000
+const LONG_NEAR_LAT = -2_540
+const LONG_NEAR_COLUMN = -6_300
+const LONG_FAR_LAT = -2_300
+const LONG_STOP_COLUMN = -5_200
+const EXTRA_SHARDS = Object.freeze([
+  {
+    tile: [-3, -5],
+    pieces: [
+      [EXTRA_STREET_CLASS, [TIE_NORTH_LAT, TIE_WEST_COLUMN], [TIE_NORTH_LAT, TIE_FIRST_COLUMN], [TIE_BUMP_LAT, TIE_FIRST_COLUMN], [TIE_BUMP_LAT, TIE_SECOND_COLUMN], [TIE_NORTH_LAT, TIE_SECOND_COLUMN], [TIE_NORTH_LAT, TIE_EAST_COLUMN]],
+      [EXTRA_STREET_CLASS, [TIE_SOUTH_LAT, TIE_WEST_COLUMN], [TIE_SOUTH_LAT, TIE_EAST_COLUMN]],
+      [EXTRA_STREET_CLASS, [LONG_LAT, LONG_START_COLUMN], [LONG_LAT, LONG_TILE_COLUMN]]
+    ]
+  },
+  {tile: [-3, -4], pieces: [[EXTRA_STREET_CLASS, [LONG_LAT, LONG_TILE_COLUMN], [LONG_LAT, LONG_END_COLUMN]]]}
+])
+
+// The points of the extra shards, each `[name, latitude, longitude]` in
+// units.
+const EXTRA_POINTS = Object.freeze([
+  ["tie first", TIE_ENDS_LAT, TIE_FIRST_COLUMN],
+  ["tie second", TIE_ENDS_LAT, TIE_SECOND_COLUMN],
+  ["long start", LONG_LAT, LONG_START_COLUMN],
+  ["long stop", LONG_LAT, LONG_STOP_COLUMN],
+  ["long near", LONG_NEAR_LAT, LONG_NEAR_COLUMN],
+  ["long off the graph", LONG_FAR_LAT, LONG_NEAR_COLUMN]
+])
 
 // The points, each `[name, latitude, longitude]` in units.
 const POINTS = Object.freeze([
@@ -99,25 +145,60 @@ function answerOf({from, to, shardsByKey, index}) {
   return {tiles, kind: "noPath", reason: planned.reason}
 }
 
+// The decoded table of the pieces of an extra shard.
+function tableOfPieces(pieces) {
+  const classes = []
+  const pieceStarts = [0]
+  const points = []
+
+  for (const [pieceClass, ...positions] of pieces) {
+    classes.push(pieceClass)
+    pieceStarts.push(pieceStarts[pieceStarts.length - 1] + positions.length)
+
+    for (const [latUnits, lonUnits] of positions) {
+      points.push(latUnits, lonUnits)
+    }
+  }
+
+  return {pieceCount: classes.length, classes: Uint8Array.from(classes), pieceStarts: Uint32Array.from(pieceStarts), points: Int32Array.from(points)}
+}
+
+function extraShardRecord({tile, pieces}) {
+  const records = Array.from(pieces, ([pieceClass, ...positions]) => ({class: pieceClass, points: positions}))
+  return {tile, pieces: records}
+}
+
+function pairsOf({points, shardsByKey, index}) {
+  const queries = []
+
+  for (let first = 0; first < points.length; first += 1) {
+    for (let second = first + 1; second < points.length; second += 1) {
+      const from = degrees(points[first][1], points[first][2])
+      const to = degrees(points[second][1], points[second][2])
+      const answer = answerOf({from, to, shardsByKey, index})
+      queries.push({name: points[first][0] + " to " + points[second][0], from, to, ...answer})
+    }
+  }
+
+  return queries
+}
+
 /** The index's tile keys and the answer to each pair of points, as the golden file holds them. */
 export function goldenQueries() {
   const indexTable = decodeWalkGraphIndex(read("index.bin")).table
   const shardsByKey = new Map([[WEST_TILE_KEY, decodedShard("shard-west.bin")], [EAST_TILE_KEY, decodedShard("shard-east.bin")]])
-  const queries = []
-
-  for (let first = 0; first < POINTS.length; first += 1) {
-    for (let second = first + 1; second < POINTS.length; second += 1) {
-      const from = degrees(POINTS[first][1], POINTS[first][2])
-      const to = degrees(POINTS[second][1], POINTS[second][2])
-      const answer = answerOf({from, to, shardsByKey, index: indexTable.tileKeys})
-      queries.push({name: POINTS[first][0] + " to " + POINTS[second][0], from, to, ...answer})
-    }
+  for (const shard of EXTRA_SHARDS) {
+    shardsByKey.set(tileKey({row: shard.tile[0], column: shard.tile[1]}), tableOfPieces(shard.pieces))
   }
+
+  const index = indexTable.tileKeys
+  const queries = [...pairsOf({points: POINTS, shardsByKey, index}), ...pairsOf({points: EXTRA_POINTS, shardsByKey, index})]
 
   return {
     limits: WALK_LIMITS,
     indexTileKeys: Array.from(indexTable.tileKeys).sort(),
     shardTileKeys: [WEST_TILE_KEY, EAST_TILE_KEY],
+    extraShards: Array.from(EXTRA_SHARDS, extraShardRecord),
     queries
   }
 }

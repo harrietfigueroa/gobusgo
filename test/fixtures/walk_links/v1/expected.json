@@ -17,6 +17,92 @@
   "4761_-8156",
   "4761_-8155"
  ],
+ "extraShards": [
+  {
+   "tile": [
+    -3,
+    -5
+   ],
+   "pieces": [
+    {
+     "class": 4,
+     "points": [
+      [
+       -2482,
+       -7100
+      ],
+      [
+       -2482,
+       -7000
+      ],
+      [
+       -2382,
+       -7000
+      ],
+      [
+       -2382,
+       -6800
+      ],
+      [
+       -2482,
+       -6800
+      ],
+      [
+       -2482,
+       -6700
+      ]
+     ]
+    },
+    {
+     "class": 4,
+     "points": [
+      [
+       -2518,
+       -7100
+      ],
+      [
+       -2518,
+       -6700
+      ]
+     ]
+    },
+    {
+     "class": 4,
+     "points": [
+      [
+       -2560,
+       -6400
+      ],
+      [
+       -2560,
+       -6000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "tile": [
+    -3,
+    -4
+   ],
+   "pieces": [
+    {
+     "class": 4,
+     "points": [
+      [
+       -2560,
+       -6000
+      ],
+      [
+       -2560,
+       -5000
+      ]
+     ]
+    }
+   ]
+  }
+ ],
  "queries": [
   {
    "name": "north west to north middle",
@@ -3519,6 +3605,349 @@
     ]
    ],
    "kind": "tooFar"
+  },
+  {
+   "name": "tie first to tie second",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 262.4203681811642
+  },
+  {
+   "name": "tie first to long start",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie first to long stop",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "tie first to long near",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie first to long off the graph",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "tie second to long start",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie second to long stop",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "tie second to long near",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie second to long off the graph",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long start to long stop",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 1334.3408296124376
+  },
+  {
+   "name": "long start to long near",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 133.43408526761954
+  },
+  {
+   "name": "long start to long off the graph",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long stop to long near",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 1245.384777476746
+  },
+  {
+   "name": "long stop to long off the graph",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long near to long off the graph",
+   "from": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
   }
  ]
 }
