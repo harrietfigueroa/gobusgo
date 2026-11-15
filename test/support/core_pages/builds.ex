@@ -2,8 +2,9 @@ defmodule Gobusgo.Test.CorePages.Builds do
   @moduledoc """
   The two builds of the page's bundles the core page check compares: one
   on the JavaScript core and one on the WebAssembly core, each with the
-  service worker built over its own bundle. Both run the esbuild profile
-  `mix assets.build` runs, `:default`, written to a directory of their own;
+  service worker built over its own bundle. Both run the esbuild profiles
+  of the bundles `mix assets.build` runs, `:default` and `:mcp_apps`,
+  written to a directory of their own, the vehicle page's metafile with them;
   they differ only in the aliases of the core's specifiers, `#core/<module>.js`,
   which `assets/package.json` maps to `assets/js/core/`.
 
@@ -27,9 +28,12 @@ defmodule Gobusgo.Test.CorePages.Builds do
 
   @cores [:javascript, :webassembly]
   @core_alias_prefix "--alias:#core/"
-  # The entry points of the profile `mix assets.build` runs, the bundles a
-  # build writes and installs.
-  @bundles for arg <- Application.compile_env!(:esbuild, [:default, :args]),
+  @metafile_prefix "--metafile="
+  # The esbuild profiles of the bundles `mix assets.build` runs.
+  @bundle_profiles [:default, :mcp_apps]
+  # Their entry points, the bundles a build writes and installs.
+  @bundles for profile <- @bundle_profiles,
+               arg <- Application.compile_env!(:esbuild, [profile, :args]),
                not String.starts_with?(arg, "-"),
                do: Path.basename(arg)
   # Plug.Static answers a request with a compressed copy beside the file,
@@ -153,11 +157,10 @@ defmodule Gobusgo.Test.CorePages.Builds do
         "--alias:#{specifier}=#{path}"
       end
 
-    profile = Application.fetch_env!(:esbuild, :default)
-    profile_args = Enum.reject(profile[:args], &String.starts_with?(&1, @core_alias_prefix))
-    profile = Keyword.put(profile, :args, profile_args)
-    status = run_esbuild(:core_pages_bundles, profile, ["--outdir=#{js_dir}" | alias_args])
-    Assert.condition(status == 0, "the bundles of #{dir} must build, esbuild exited #{status}")
+    for name <- @bundle_profiles do
+      build_profile(%{name: name, dir: dir, js_dir: js_dir, alias_args: alias_args})
+    end
+
     built = js_dir |> File.ls!() |> Enum.sort()
 
     Assert.condition(
@@ -167,6 +170,31 @@ defmodule Gobusgo.Test.CorePages.Builds do
 
     build_service_worker(dir)
   end
+
+  # A profile's own core aliases are dropped, and its metafile is written in
+  # the build's directory, so a build leaves the one `mix assets.build`
+  # wrote as it was.
+  defp build_profile(%{name: name, dir: dir, js_dir: js_dir, alias_args: alias_args}) do
+    profile = Application.fetch_env!(:esbuild, name)
+
+    profile_args =
+      for arg <- profile[:args], not String.starts_with?(arg, @core_alias_prefix) do
+        metafile_in(arg, dir)
+      end
+
+    profile = Keyword.put(profile, :args, profile_args)
+    status = run_esbuild(:core_pages_bundles, profile, ["--outdir=#{js_dir}" | alias_args])
+
+    Assert.condition(
+      status == 0,
+      "the #{name} bundles of #{dir} must build, esbuild exited #{status}"
+    )
+  end
+
+  defp metafile_in(@metafile_prefix <> path, dir),
+    do: @metafile_prefix <> Path.join(dir, Path.basename(path))
+
+  defp metafile_in(arg, _dir), do: arg
 
   # The worker of a build is built over that build's script and the
   # stylesheet and map library `mix assets.build` wrote, so its release and

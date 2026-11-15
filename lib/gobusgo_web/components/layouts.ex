@@ -94,12 +94,7 @@ defmodule GobusgoWeb.Layouts do
           <%= Phoenix.HTML.raw(@theme_script) %>
         </script>
         <link phx-track-static rel="stylesheet" href={Endpoint.static_path("/assets/css/app.css")} />
-        <script
-          defer
-          phx-track-static
-          type="text/javascript"
-          src={Endpoint.static_path("/assets/js/app.js")}
-        >
+        <script phx-track-static type="module" src={Endpoint.static_path("/assets/js/app.js")}>
         </script>
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
