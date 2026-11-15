@@ -29,6 +29,12 @@ pub fn core_version() -> String {
 // The failure every assertion throws; the objects a result crosses as, which
 // JavaScript builds from copies so that no value a caller holds points into the
 // module's memory; and a property read as JavaScript reads `target[key]`.
+//
+// Every function here is imported with `catch` and called through `caught`, so
+// a throw of JavaScript's becomes the core's assertion failure and its panic
+// hook renews the instance: an exception unwinding through the module's frames
+// otherwise skips the hook and leaves a slot of the table of JavaScript values
+// taken, and once the table is full every export fails.
 #[wasm_bindgen(inline_js = "
 export class AssertionError extends Error {}
 export function assertionError(message) { return new AssertionError(message) }
@@ -36,8 +42,9 @@ export function plane(referenceLatitudeDegrees, metersPerDegreeLon) {
   return Object.freeze({referenceLatitudeDegrees, metersPerDegreeLon})
 }
 export function property(target, key) { return target[key] }
-export function names(list) { return Object.freeze(Object.fromEntries(list.map((name) => [name, name]))) }
-export function isArrayBuffer(value) { return Object.prototype.toString.call(value) === '[object ArrayBuffer]' }
+function selfEntry(name) { return [name, name] }
+export function names(list) { return Object.freeze(Object.fromEntries(Array.from(list, selfEntry))) }
+export function typeName(value) { return Object.prototype.toString.call(value) }
 export function bufferBytes(buffer) { return new Uint8Array(buffer) }
 export function refusal(kind, reason) { return {kind, reason} }
 export function decoded(kind, records) { return {kind, records} }
@@ -53,7 +60,11 @@ export function texts(text, ends) {
 export function trips(idText, idEnds, routeText, routeEnds, offsets) {
   const ids = texts(idText, idEnds)
   const routeIds = texts(routeText, routeEnds)
-  return Array.from(ids, (id, index) => ({id, routeId: routeIds[index], serviceDayOffset: offsets[index]}))
+  const list = new Array(ids.length)
+  for (let index = 0; index < ids.length; index += 1) {
+    list[index] = {id: ids[index], routeId: routeIds[index], serviceDayOffset: offsets[index]}
+  }
+  return list
 }
 export function transfers(fromStop, toStop, durationS) { return {fromStop, toStop, durationS} }
 export function connections(departureS, arrivalS, departureStop, arrivalStop, trip, sequence, boarding, alighting) {
@@ -74,55 +85,65 @@ export function decodedTripPath(tripId, routeId, serviceDateMs, key, coordinates
 export function checkedTripPath(tripId, routeId, serviceDateMs, key, points, stops) {
   return Object.freeze({tripId, routeId, serviceDateMs, key, points: Object.freeze(points), stops: Object.freeze(stops)})
 }
-export function distancesOf(stops) { return Float64Array.from(stops, (stop) => stop.distanceMeters) }
-export function arrayOf(iterable) { return Array.from(iterable) }
-export function elementsOf(array) { return array }
-export function keysOf(entries) { return Array.from(entries, (entry) => entry[0]) }
-export function valuesOf(entries) { return Array.from(entries, (entry) => entry[1]) }
-export function pathKeys(paths) { return Array.from(paths, (path) => path.key) }
-export function mapOf(keys, values) { return new Map(Array.from(keys, (key, index) => [key, values[index]])) }
+function distanceOf(stop) { return stop.distanceMeters }
+export function stopDistances(stops) { return Array.from(stops, distanceOf) }
 ")]
 extern "C" {
     #[wasm_bindgen(thread_local_v2, js_name = AssertionError)]
     static ASSERTION_ERROR_CLASS: JsValue;
 
-    #[wasm_bindgen(js_name = assertionError)]
-    fn assertion_error(message: &str) -> JsValue;
+    #[wasm_bindgen(catch, js_name = assertionError)]
+    fn try_assertion_error(message: &str) -> Result<JsValue, JsValue>;
 
-    fn plane(reference_latitude_degrees: f64, meters_per_degree_lon: f64) -> JsValue;
+    #[wasm_bindgen(catch, js_name = plane)]
+    fn try_plane(
+        reference_latitude_degrees: f64,
+        meters_per_degree_lon: f64,
+    ) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch, js_name = property)]
     fn try_property(target: &JsValue, key: &str) -> Result<JsValue, JsValue>;
 
-    fn names(list: Vec<String>) -> JsValue;
+    #[wasm_bindgen(catch, js_name = names)]
+    fn try_names(list: Vec<String>) -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(js_name = isArrayBuffer)]
-    fn is_array_buffer(value: &JsValue) -> bool;
+    #[wasm_bindgen(catch, js_name = typeName)]
+    fn try_type_name(value: &JsValue) -> Result<String, JsValue>;
 
-    #[wasm_bindgen(js_name = bufferBytes)]
-    fn buffer_bytes(buffer: &JsValue) -> Vec<u8>;
+    #[wasm_bindgen(catch, js_name = bufferBytes)]
+    fn try_buffer_bytes(buffer: &JsValue) -> Result<Vec<u8>, JsValue>;
 
-    fn refusal(kind: &str, reason: &str) -> JsValue;
+    #[wasm_bindgen(catch, js_name = refusal)]
+    fn try_refusal(kind: &str, reason: &str) -> Result<JsValue, JsValue>;
 
-    fn decoded(kind: &str, records: JsValue) -> JsValue;
+    #[wasm_bindgen(catch, js_name = decoded)]
+    fn try_decoded(kind: &str, records: JsValue) -> Result<JsValue, JsValue>;
 
-    fn texts(text: &str, ends: Vec<u32>) -> JsValue;
+    #[wasm_bindgen(catch, js_name = texts)]
+    fn try_texts(text: &str, ends: Vec<u32>) -> Result<JsValue, JsValue>;
 
-    fn trips(
+    #[wasm_bindgen(catch, js_name = trips)]
+    fn try_trips(
         id_text: &str,
         id_ends: Vec<u32>,
         route_text: &str,
         route_ends: Vec<u32>,
         offsets: Vec<u8>,
-    ) -> JsValue;
+    ) -> Result<JsValue, JsValue>;
 
-    fn transfers(from_stop: Vec<u32>, to_stop: Vec<u32>, duration_s: Vec<u32>) -> JsValue;
+    #[wasm_bindgen(catch, js_name = transfers)]
+    fn try_transfers(
+        from_stop: Vec<u32>,
+        to_stop: Vec<u32>,
+        duration_s: Vec<u32>,
+    ) -> Result<JsValue, JsValue>;
 
     #[expect(
         clippy::too_many_arguments,
         reason = "a connections file has eight columns"
     )]
-    fn connections(
+    #[wasm_bindgen(catch, js_name = connections)]
+    fn try_connections(
         departure_s: Vec<i32>,
         arrival_s: Vec<i32>,
         departure_stop: Vec<u32>,
@@ -131,50 +152,36 @@ extern "C" {
         sequence: Vec<u16>,
         boarding: Vec<u8>,
         alighting: Vec<u8>,
-    ) -> JsValue;
+    ) -> Result<JsValue, JsValue>;
 
-    fn positions(lat_microdegrees: Vec<i32>, lon_microdegrees: Vec<i32>) -> JsValue;
+    #[wasm_bindgen(catch, js_name = positions)]
+    fn try_positions(
+        lat_microdegrees: Vec<i32>,
+        lon_microdegrees: Vec<i32>,
+    ) -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(js_name = decodedTripPath)]
-    fn decoded_trip_path(
+    #[wasm_bindgen(catch, js_name = decodedTripPath)]
+    fn try_decoded_trip_path(
         trip_id: &JsValue,
         route_id: &JsValue,
         service_date_ms: &JsValue,
         key: &str,
         coordinates: Vec<f64>,
         stop_values: Vec<f64>,
-    ) -> JsValue;
+    ) -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(js_name = checkedTripPath)]
-    fn checked_trip_path(
+    #[wasm_bindgen(catch, js_name = checkedTripPath)]
+    fn try_checked_trip_path(
         trip_id: &JsValue,
         route_id: &JsValue,
         service_date_ms: &JsValue,
         key: &str,
         points: &JsValue,
         stops: &JsValue,
-    ) -> JsValue;
+    ) -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(catch, js_name = distancesOf)]
-    fn try_distances_of(stops: &JsValue) -> Result<Vec<f64>, JsValue>;
-
-    #[wasm_bindgen(catch, js_name = arrayOf)]
-    fn try_array_of(iterable: &JsValue) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_name = elementsOf)]
-    fn elements_of(array: &JsValue) -> Vec<JsValue>;
-
-    #[wasm_bindgen(js_name = keysOf)]
-    fn keys_of(entries: &JsValue) -> Vec<JsValue>;
-
-    #[wasm_bindgen(js_name = valuesOf)]
-    fn values_of(entries: &JsValue) -> Vec<JsValue>;
-
-    #[wasm_bindgen(js_name = pathKeys)]
-    fn path_keys(paths: &JsValue) -> Vec<JsValue>;
-
-    #[wasm_bindgen(js_name = mapOf)]
-    fn map_of(keys: Vec<String>, values: Vec<JsValue>) -> JsValue;
+    #[wasm_bindgen(catch, js_name = stopDistances)]
+    fn try_stop_distances(stops: &JsValue) -> Result<Vec<JsValue>, JsValue>;
 }
 
 // JavaScript's `String(value)`, which throws for a value whose conversion to
@@ -209,7 +216,11 @@ fn throw_assertion_error(info: &std::panic::PanicHookInfo<'_>) {
             None => format!("a panic with no message at {:?}", info.location()),
         },
     };
-    let error = assertion_error(&message);
+    // An error that cannot be built is thrown in its place, still with the
+    // renewal scheduled.
+    let error = match try_assertion_error(&message) {
+        Ok(error) | Err(error) => error,
+    };
     wasm_bindgen::handler::schedule_reinit();
     wasm_bindgen::throw_val(error);
 }
@@ -636,14 +647,13 @@ pub fn decode_trip_path(path: &JsValue) -> JsValue {
         stop_values.push(stop.arrival_seconds);
         stop_values.push(stop.departure_seconds);
     }
-    decoded_trip_path(
-        &trip_id_value,
-        &route_id,
-        &service_date_value,
-        &decoded_path.key,
-        coordinates,
-        stop_values,
-    )
+    let parts = DecodedParts {
+        trip_id: &trip_id_value,
+        route_id: &route_id,
+        service_date_ms: &service_date_value,
+        key: &decoded_path.key,
+    };
+    decoded_trip_path(&parts, coordinates, stop_values)
 }
 
 /// `trip_path.js`'s `tripPathOf`: the decoded path its caller built, checked
@@ -657,7 +667,7 @@ pub fn trip_path_of(options: &JsValue) -> JsValue {
     let points = property(options, "points");
     let stops = property(options, "stops");
     let point_count = number_property(&points, "length");
-    let stop_distances_meters = caught(try_distances_of(&stops), "stops");
+    let stop_distances_meters = stop_distances(&stops);
     let trip_id = trip_id_text(&trip_id_value);
     let key = trip_path::trip_path_of(trip_path::TripPathParts {
         trip_id: &trip_id,
@@ -665,42 +675,31 @@ pub fn trip_path_of(options: &JsValue) -> JsValue {
         point_count: length_of(point_count),
         stop_distances_meters: &stop_distances_meters,
     });
-    checked_trip_path(
-        &trip_id_value,
-        &route_id,
-        &service_date_value,
-        &key,
-        &points,
-        &stops,
-    )
+    let parts = DecodedParts {
+        trip_id: &trip_id_value,
+        route_id: &route_id,
+        service_date_ms: &service_date_value,
+        key: &key,
+    };
+    checked_trip_path(&parts, &points, &stops)
 }
 
-/// `trip_path.js`'s `withTripPaths`: a new cache of `cache`'s paths and
-/// `paths`, at most `TRIP_PATH_COUNT_MAX` of them, put earliest leaving first.
-#[wasm_bindgen(js_name = withTripPaths)]
-#[must_use]
-pub fn with_trip_paths(cache: &JsValue, paths: &JsValue) -> JsValue {
-    let entries = caught(try_array_of(cache), "the cache");
-    let held = keyed(&keys_of(&entries), values_of(&entries));
-    let path_list = caught(try_array_of(paths), "the paths");
-    let put = keyed(&path_keys(&path_list), elements_of(&path_list));
-    let next = trip_path::with_trip_paths(held, put);
-    let (keys, values) = next.into_iter().unzip();
-    map_of(keys, values)
-}
-
-// Each value under its key, which must be text, as a path's key is.
-fn keyed(keys: &[JsValue], values: Vec<JsValue>) -> Vec<(String, JsValue)> {
-    keys.iter()
-        .map(|key| {
-            let key_text = key.as_string();
-            assert::condition(key_text.is_some(), || {
-                format!("binding: a path's key {} is not text", text(key))
-            });
-            key_text.unwrap_or_default()
-        })
-        .zip(values)
-        .collect()
+// Each stop's distance, which must be a number, as no coercion of a value a
+// caller hands is made.
+fn stop_distances(stops: &JsValue) -> Vec<f64> {
+    let distances = caught(try_stop_distances(stops), "reading the stops");
+    let mut meters = Vec::with_capacity(distances.len());
+    for (index, distance) in distances.iter().enumerate() {
+        let number = distance.as_f64();
+        assert::condition(number.is_some(), || {
+            format!(
+                "binding: stop {index}'s distance {} is not a number",
+                text(distance)
+            )
+        });
+        meters.push(number.unwrap_or_default());
+    }
+    meters
 }
 
 // The result of a routing snapshot decoder: its records as `records` builds
@@ -721,11 +720,15 @@ fn snapshot_result<Records>(
 // The bytes of `buffer`, which must be an `ArrayBuffer`, as the JavaScript
 // readers read one, copied into the module's memory once.
 fn array_buffer_bytes(buffer: &JsValue) -> Vec<u8> {
-    assert::condition(is_array_buffer(buffer), || {
-        format!("binding: the bytes {} are not an ArrayBuffer", text(buffer))
+    let type_name = caught(try_type_name(buffer), "naming the bytes' type");
+    assert::condition(type_name == ARRAY_BUFFER_TYPE_NAME, || {
+        format!("binding: the bytes are an {type_name}, not an ArrayBuffer")
     });
-    buffer_bytes(buffer)
+    caught(try_buffer_bytes(buffer), "reading the bytes")
 }
+
+// The name `Object.prototype.toString` gives an `ArrayBuffer`.
+const ARRAY_BUFFER_TYPE_NAME: &str = "[object ArrayBuffer]";
 
 // The text of encoded numbers, which must be text.
 fn encoded_text(value: &JsValue) -> String {
@@ -765,12 +768,128 @@ fn length_of(length: f64) -> usize {
 fn caught<Value: Default>(read: Result<Value, JsValue>, name: &str) -> Value {
     let failure = read.as_ref().err().map(text);
     assert::condition(failure.is_none(), || {
-        format!(
-            "binding: reading {name} threw {}",
-            failure.unwrap_or_default()
-        )
+        format!("binding: {name} threw {}", failure.unwrap_or_default())
     });
     read.unwrap_or_default()
+}
+
+fn plane(reference_latitude_degrees: f64, meters_per_degree_lon: f64) -> JsValue {
+    caught(
+        try_plane(reference_latitude_degrees, meters_per_degree_lon),
+        "building a plane",
+    )
+}
+
+fn names(list: Vec<String>) -> JsValue {
+    caught(try_names(list), "building names")
+}
+
+fn refusal(kind: &str, reason: &str) -> JsValue {
+    caught(try_refusal(kind, reason), "building a refusal")
+}
+
+fn decoded(kind: &str, records: JsValue) -> JsValue {
+    caught(try_decoded(kind, records), "building a result")
+}
+
+fn texts(text: &str, ends: Vec<u32>) -> JsValue {
+    caught(try_texts(text, ends), "building texts")
+}
+
+fn trips(
+    id_text: &str,
+    id_ends: Vec<u32>,
+    route_text: &str,
+    route_ends: Vec<u32>,
+    offsets: Vec<u8>,
+) -> JsValue {
+    caught(
+        try_trips(id_text, id_ends, route_text, route_ends, offsets),
+        "building trips",
+    )
+}
+
+fn transfers(from_stop: Vec<u32>, to_stop: Vec<u32>, duration_s: Vec<u32>) -> JsValue {
+    caught(
+        try_transfers(from_stop, to_stop, duration_s),
+        "building transfers",
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a connections file has eight columns"
+)]
+fn connections(
+    departure_s: Vec<i32>,
+    arrival_s: Vec<i32>,
+    departure_stop: Vec<u32>,
+    arrival_stop: Vec<u32>,
+    trip: Vec<u32>,
+    sequence: Vec<u16>,
+    boarding: Vec<u8>,
+    alighting: Vec<u8>,
+) -> JsValue {
+    caught(
+        try_connections(
+            departure_s,
+            arrival_s,
+            departure_stop,
+            arrival_stop,
+            trip,
+            sequence,
+            boarding,
+            alighting,
+        ),
+        "building connections",
+    )
+}
+
+fn positions(lat_microdegrees: Vec<i32>, lon_microdegrees: Vec<i32>) -> JsValue {
+    caught(
+        try_positions(lat_microdegrees, lon_microdegrees),
+        "building positions",
+    )
+}
+
+// A decoded path's parts as `decodeTripPath` returns them.
+struct DecodedParts<'path> {
+    trip_id: &'path JsValue,
+    route_id: &'path JsValue,
+    service_date_ms: &'path JsValue,
+    key: &'path str,
+}
+
+fn decoded_trip_path(
+    parts: &DecodedParts<'_>,
+    coordinates: Vec<f64>,
+    stop_values: Vec<f64>,
+) -> JsValue {
+    caught(
+        try_decoded_trip_path(
+            parts.trip_id,
+            parts.route_id,
+            parts.service_date_ms,
+            parts.key,
+            coordinates,
+            stop_values,
+        ),
+        "building a path",
+    )
+}
+
+fn checked_trip_path(parts: &DecodedParts<'_>, points: &JsValue, stops: &JsValue) -> JsValue {
+    caught(
+        try_checked_trip_path(
+            parts.trip_id,
+            parts.route_id,
+            parts.service_date_ms,
+            parts.key,
+            points,
+            stops,
+        ),
+        "building a path",
+    )
 }
 
 // The pair of positions `[lon, lat]` the JavaScript module destructures.

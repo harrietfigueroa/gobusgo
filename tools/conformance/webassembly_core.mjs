@@ -63,7 +63,6 @@ export const WEBASSEMBLY_CORE = Object.freeze({
     TRIP_PATH_COUNT_MAX: binding.tripPathCountMax(),
     decodeTripPath: binding.decodeTripPath,
     tripPathKey: binding.tripPathKey,
-    tripPathOf: binding.tripPathOf,
-    withTripPaths: binding.withTripPaths
+    tripPathOf: binding.tripPathOf
   })
 })

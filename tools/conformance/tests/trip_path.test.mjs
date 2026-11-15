@@ -45,7 +45,7 @@ beforeAll(async () => {
 })
 
 describe.each(implementationsWith("geodesy", "tripPath"))("trip path ($name)", ({AssertionError, geodesy, tripPath}) => {
-  const {TRIP_PATH_COUNT_MAX, decodeTripPath, tripPathKey, withTripPaths} = tripPath
+  const {decodeTripPath, tripPathKey, tripPathOf} = tripPath
 
   test("the point count", () => {
     expect(decodeTripPath(event).points.length).toBe(expected.pointCount)
@@ -113,6 +113,27 @@ describe.each(implementationsWith("geodesy", "tripPath"))("trip path ($name)", (
     expect(failing).toThrow(AssertionError)
     expect(failing).toThrow(new AssertionError(refusal.failure))
   })
+
+  // Distances written as text: JavaScript compares "10" before "9" as text,
+  // and the binding takes no value a caller hands as a number unless it is one.
+  test("a built path whose stop distances are text is refused", () => {
+    const textStops = [{distanceMeters: "9"}, {distanceMeters: "10"}]
+    const parts = {tripId: event.trip_id, routeId: event.route_id, serviceDateMs: event.service_date_ms, points: [[0, 0]], stops: textStops}
+    expect(() => tripPathOf(parts)).toThrow(AssertionError)
+  })
+})
+
+// The page's bounded cache holds the page's own objects, so the web keeps it
+// in JavaScript and the WebAssembly binding exports none; an entry runs these
+// cases where its trip path module holds the cache.
+function holdsTripPathCache({tripPath}) {
+  return "withTripPaths" in tripPath
+}
+
+const cacheImplementations = implementationsWith("tripPath").filter(holdsTripPathCache)
+
+describe.each(cacheImplementations)("trip path cache ($name)", ({tripPath}) => {
+  const {TRIP_PATH_COUNT_MAX, tripPathKey, withTripPaths} = tripPath
 
   function heldPath(name) {
     return {key: tripPathKey({tripId: "trip_" + name, serviceDateMs: event.service_date_ms})}
