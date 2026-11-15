@@ -244,7 +244,11 @@ defmodule Gobusgo.Test.CorePages.Scenarios do
     |> click("#trip-search-input")
     |> type("#trip-search-input", "Broadway")
     |> click("[role=option]", Network.stop_name("1_2005"))
+    |> assert_has("#panel-tab-filter:not([aria-label='Filter, 0 applied'])",
+      timeout: @load_timeout_ms
+    )
     |> click_button(mode)
+    |> assert_has(".trip-mode[aria-pressed=true]", text: mode, timeout: @load_timeout_ms)
     |> select("Day", option: "Tomorrow")
     |> fill_in("Time", with: clock)
     |> assert_has(".trip-window", text: window, timeout: @load_timeout_ms)
