@@ -10,9 +10,10 @@ defmodule Gobusgo.WalkGraph.Graph do
   walk can reach from it.
 
   A point snaps to the nearest point of each component within a bound. Two
-  distances that agree to a micrometer tie, and a tie goes to the lesser x,
-  then the lesser y, then the lesser ends of the edge, then the lesser start
-  of the segment, so no choice rests on the order the pieces arrived in; the
+  distances that agree to a micrometer tie, and a tie goes to the lesser ends
+  of the edge, then the lesser start of the segment, both in the graph's
+  units, then the lesser x and y on the plane, so no choice rests on the order
+  the pieces arrived in or on the plane the graph is laid on; the
   pair of snaps for two points is chosen the same way (`choose/2`). The
   segments are held in a grid of square cells, so a snap reads only the
   segments near the point.
@@ -167,7 +168,7 @@ defmodule Gobusgo.WalkGraph.Graph do
     )
 
     xy = for {lat, lon} <- points, do: units_to_plane(plane, lat, lon)
-    {segments, length} = segments_of(xy)
+    {segments, length} = segments_of(xy, points)
     {a, nodes} = node_at(nodes, List.first(points))
     {b, nodes} = node_at(nodes, List.last(points))
     Assert.condition(a != b, "a piece starts and ends at one node")
@@ -179,14 +180,27 @@ defmodule Gobusgo.WalkGraph.Graph do
     to_plane(plane, %{lat: lat_units / @units_per_degree, lon: lon_units / @units_per_degree})
   end
 
-  defp segments_of([first | rest]) do
-    {segments, _last, length} =
-      Enum.reduce(rest, {[], first, 0.0}, fn point, {segments, previous, along} ->
+  # Each segment keeps its start in the graph's units too, which no plane
+  # changes, so a tie between snaps can be broken without the plane.
+  defp segments_of([first | rest], [first_units | rest_units]) do
+    {segments, _last, _last_units, length} =
+      rest
+      |> Enum.zip(rest_units)
+      |> Enum.reduce({[], first, first_units, 0.0}, fn {point, point_units},
+                                                       {segments, previous, previous_units, along} ->
         {previous_x, previous_y} = previous
         {x, y} = point
         segment_length = distance_of(x - previous_x, y - previous_y)
-        segment = %{start: previous, stop: point, along: along, length: segment_length}
-        {[segment | segments], point, along + segment_length}
+
+        segment = %{
+          start: previous,
+          start_units: previous_units,
+          stop: point,
+          along: along,
+          length: segment_length
+        }
+
+        {[segment | segments], point, point_units, along + segment_length}
       end)
 
     {Enum.reverse(segments), length}
@@ -295,7 +309,8 @@ defmodule Gobusgo.WalkGraph.Graph do
       y: point_y,
       distance: distance_of(x - point_x, y - point_y),
       along: segment.along + fraction * :math.sqrt(length_squared),
-      segment_start: segment.start
+      segment_start: segment.start,
+      segment_units: segment.start_units
     }
   end
 
@@ -309,13 +324,16 @@ defmodule Gobusgo.WalkGraph.Graph do
     {segment_x, segment_y} = nearest.segment_start
 
     candidate = %{
+      segment_units: nearest.segment_units,
       edge: index,
       x: nearest.x,
       y: nearest.y,
       distance: nearest.distance,
       along: nearest.along,
       ends: edge.ends,
-      key: {tie_units(nearest.distance), nearest.x, nearest.y, edge.ends, segment_x, segment_y}
+      key:
+        {tie_units(nearest.distance), edge.ends, nearest.segment_units, nearest.x, nearest.y,
+         segment_x, segment_y}
     }
 
     is_near = nearest.distance <= snap_meters_max
@@ -332,7 +350,7 @@ defmodule Gobusgo.WalkGraph.Graph do
   defp tie_units(meters), do: round(meters * @tie_units_per_meter)
 
   defp pair_key({start, goal}) do
-    {tie_units(start.distance + goal.distance), tie_units(start.distance), start.x, start.y,
-     goal.x, goal.y, start.ends, goal.ends}
+    {tie_units(start.distance + goal.distance), tie_units(start.distance), start.ends,
+     start.segment_units, goal.ends, goal.segment_units, start.x, start.y, goal.x, goal.y}
   end
 end

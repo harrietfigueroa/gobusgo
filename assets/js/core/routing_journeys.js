@@ -38,7 +38,7 @@
 import {assertCondition, unreachable} from "./assert.js"
 import {LegKind, OriginKind, createEngine, route, routeArrivingBy} from "./routing_engine.js"
 import {DecodeKind, FORMAT_VERSION, POSITION_UNKNOWN_MICRODEGREES, decodeConnections, decodePositions, decodeStops, decodeTransfers, decodeTrips} from "./routing_snapshot.js"
-import {startsNear} from "./routing_walk.js"
+import {isStreetWalk, startsFromStreets, startsNear, walkBasisOf} from "./routing_walk.js"
 
 /** How long past the earliest arrival a journey with fewer changes is still shown. */
 export const WINDOW_SECONDS = 45 * 60
@@ -304,6 +304,31 @@ function stopIndexOf(stopIds) {
   return index
 }
 
+// The start stops of the position `from`: where the snapshot plans a walk
+// along the streets and the caller found the stops by street, those that
+// the snapshot holds, each walked at its street meters; otherwise the stops
+// within the walking radius in a straight line.
+function positionStartsOf({from, stopIndex, tables, entry}) {
+  const {transferRules} = entry
+  const isOnStreets = isStreetWalk(walkBasisOf(transferRules)) && from.streetStops !== undefined
+
+  if (!isOnStreets) {
+    return startsNear({position: {lat: from.lat, lon: from.lon}, positions: tables.positions, transferRules})
+  }
+
+  const stops = []
+
+  for (const reached of from.streetStops) {
+    const stop = stopIndex.get(reached.stopId)
+
+    if (stop !== undefined) {
+      stops.push({stop, streetM: reached.streetM})
+    }
+  }
+
+  return startsFromStreets({stops, transferRules})
+}
+
 // The engine's origin for `from`, or why there is none.
 function originOf({from, stopIndex, tables, entry}) {
   switch (from.kind) {
@@ -317,8 +342,7 @@ function originOf({from, stopIndex, tables, entry}) {
       return {kind: OriginKind.stop, stop}
     }
     case FromKind.position: {
-      const position = {lat: from.lat, lon: from.lon}
-      const starts = startsNear({position, positions: tables.positions, transferRules: entry.transferRules})
+      const starts = positionStartsOf({from, stopIndex, tables, entry})
 
       if (starts.length === 0) {
         return {kind: JourneysKind.noStartStop}
@@ -1012,7 +1036,10 @@ function advance({manifest, state, files}) {
  * arriving at or before it for `TimeKind.arrivingBy`, seconds from the start
  * of `serviceDate` in `manifest`, from `from` to the stop `toStopId`. `from`
  * is `{kind: FromKind.stop, stopId}` or `{kind: FromKind.position, lat,
- * lon}` in degrees.
+ * lon}` in degrees, which may carry `streetStops`, the `{stopId, streetM}`
+ * of the stops a walk along the streets reaches: a snapshot that plans its
+ * walks along the streets starts from those, and any other from the stops
+ * within the walking radius in a straight line.
  *
  * Returns `{state, step}`: the state to resume with, and either
  * `{kind: StepKind.needFiles, files}`, the manifest entries of the files to

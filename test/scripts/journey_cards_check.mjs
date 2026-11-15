@@ -12,7 +12,7 @@ import {AssertionError} from "../../assets/js/core/assert.js"
 import {LegKind} from "../../assets/js/core/routing_engine.js"
 import {journeyRows} from "../../assets/js/core/trip_plan.js"
 import {LEG_KIND_TO_POINT} from "../../assets/js/core/point_journeys.js"
-import {LiveKind, SegmentKind, SortKind, barSegments, firstRideLive, journeyCard, liveStopIds, sortedCards} from "../../assets/js/journey_cards.js"
+import {LiveKind, STRAIGHT_LINE_WALK_TEXT, SegmentKind, SortKind, barSegments, firstRideLive, journeyCard, liveStopIds, sortedCards} from "../../assets/js/journey_cards.js"
 
 const TIME_ZONE = "America/Los_Angeles"
 const TODAY = "2026-11-08"
@@ -224,6 +224,19 @@ const shownByStop = {"1_431": arrivalsShown({stopId: "1_431", arrivals: [LATE_E]
   const [tomorrowRow] = journeyRows({journeys: [changing], nowMs: dayBeforeMs, serviceDayStartsMs, names, timeZone: TIME_ZONE})
   const tomorrowCard = journeyCard({row: tomorrowRow, order: WALK_ORDER, live: scheduled, nowMs: dayBeforeMs, serviceDayStartsMs, names, timeZone: TIME_ZONE})
   deepStrictEqual(tomorrowCard.leadText, "Leave tomorrow at 8:42 am")
+}
+
+// A journey whose walk fell back to a straight line says so on its card, in
+// words a reader of the card hears; any other journey says nothing of it.
+{
+  const [plainRow] = rowsOf([walkOnly])
+  const [hedgedRow] = rowsOf([{...walkOnly, hasStraightLineWalk: true}])
+  const noRide = {kind: LiveKind.noRide}
+  const plainCard = card({row: plainRow, live: noRide})
+  const hedgedCard = card({row: hedgedRow, live: noRide})
+  deepStrictEqual([plainCard.hasStraightLineWalk, plainCard.straightLineText], [false, ""])
+  deepStrictEqual([hedgedCard.hasStraightLineWalk, hedgedCard.straightLineText], [true, STRAIGHT_LINE_WALK_TEXT])
+  deepStrictEqual(hedgedCard.detailText, plainCard.detailText, "the hedge is not part of the status text")
 }
 
 // A walk alone reads its walk and no bus.

@@ -23,6 +23,7 @@ import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
 import {createTripPathReader} from "./trip_path_reader"
 import {createWalkPathReader} from "./walk_path_reader"
+import {createWalkTiles} from "./walk_tiles"
 import {
   DayChoice,
   EndKind,
@@ -380,7 +381,10 @@ export const TripPlanner = {
     this.tripPaths = createTripPathReader({fileOrigin: this.fileOrigin, manifestUrl: this.manifestUrl, onPaths: () => { this.onTripPaths() }})
     // The lines the chosen journey's walks are drawn along, read from the
     // walk graph; a line that arrives draws the walk again.
-    this.walkPaths = createWalkPathReader({fileOrigin: this.fileOrigin, onWalks: () => { this.onTripPaths() }})
+    // The tiles are the page's, so a plan's walks from a position and the
+    // lines drawn along them read the same ones.
+    this.walkTiles = createWalkTiles({fileOrigin: this.fileOrigin})
+    this.walkPaths = createWalkPathReader({walkTiles: this.walkTiles, onWalks: () => { this.onTripPaths() }})
     this.searchFiles = createSearchFiles({origin: this.fileOrigin})
     this.events = pageEvents(this)
     this.build()
@@ -781,6 +785,9 @@ export const TripPlanner = {
   // typing replaces it, and the list offers what an empty text does.
   openSearch() {
     this.searchFiles.warm({routingManifestUrl: this.manifestUrl})
+    // The walk graph's manifest and index, 3 KB of files that name no
+    // position, are held before a plan asks for the tiles around one.
+    this.walkTiles.ensureSource().catch(reportError)
     this.input.select()
     this.searchText = ""
     this.listbox.hidden = false
@@ -1171,7 +1178,7 @@ export const TripPlanner = {
       return
     }
 
-    const answer = await routeTo({origin: this.fileOrigin, searchFiles: this.searchFiles, manifest, planned, from: start.from, to: query.to})
+    const answer = await routeTo({origin: this.fileOrigin, searchFiles: this.searchFiles, walkTiles: this.walkTiles, manifest, planned, from: start.from, to: query.to})
 
     if (queryNumber !== this.queryCount) {
       return
