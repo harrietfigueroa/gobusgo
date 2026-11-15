@@ -30,7 +30,14 @@ defmodule Gobusgo.StartMemoryTest do
            :snapshots_failed},
           {"02:41:09.456 [info] Route stop tiles built route_count=390", :tiles_built},
           {"02:41:09.456 [error] Route stop tiles not built reason=:timeout", :tiles_failed},
-          {"02:41:00.000 [info] Route schedule view rebuilt processed_count=629", :none}
+          {"02:41:00.000 [info] Route schedule view rebuilt processed_count=629", :none},
+          {"02:41:30.000 [info] Routing walk links built link_count=79828", :walk_links_built},
+          {"02:41:30.000 [warning] Routing walk links not built cause=deadline",
+           :walk_links_failed},
+          {"02:41:30.000 [error] Routing walk links build killed heap_words_max=1",
+           :walk_links_failed},
+          {"02:41:30.000 [error] Routing walk graph corrupt build_id=0123456789abcdef",
+           :walk_links_failed}
         ] do
       test "reads #{inspect(event)} from #{inspect(line)}" do
         assert StartMemory.event(unquote(line)) == unquote(event)
@@ -50,6 +57,25 @@ defmodule Gobusgo.StartMemoryTest do
     test "names the step that logged its failure, whatever else was built" do
       events = MapSet.new([:snapshots_built, :tiles_failed])
       assert StartMemory.ending(events) == {:step_failed, :tiles_failed}
+    end
+
+    test "waits for the links along the streets only where the streets are measured" do
+      built = MapSet.new([:snapshots_built, :tiles_built])
+
+      assert StartMemory.ending(built, StartMemory.awaited(:streets)) == :running
+      assert StartMemory.ending(built, StartMemory.awaited(:straight)) == :built
+
+      assert StartMemory.ending(
+               MapSet.put(built, :walk_links_built),
+               StartMemory.awaited(:streets)
+             ) == :built
+    end
+
+    test "names a failure of the links as the step that failed" do
+      events = MapSet.new([:snapshots_built, :tiles_built, :walk_links_failed])
+
+      assert StartMemory.ending(events, StartMemory.awaited(:streets)) ==
+               {:step_failed, :walk_links_failed}
     end
   end
 

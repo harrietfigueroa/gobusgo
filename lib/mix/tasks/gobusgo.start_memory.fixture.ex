@@ -7,7 +7,11 @@ defmodule Mix.Tasks.Gobusgo.StartMemory.Fixture do
   start fetched on the UTC date `--date` would have stored them, by default
   today's. The same date writes the same files.
 
-      mix gobusgo.start_memory.fixture <directory> [--date YYYY-MM-DD]
+      mix gobusgo.start_memory.fixture <directory> [--date YYYY-MM-DD] [--walk-graph]
+
+  With `--walk-graph` the task also publishes the synthetic walk graph of
+  `Gobusgo.StartMemory.WalkGraph` under `<directory>/intersections/`, where a
+  start that measures its walks along the streets reads it.
 
   The directory must hold no `raw/` yet. The task does not start the
   application.
@@ -15,12 +19,17 @@ defmodule Mix.Tasks.Gobusgo.StartMemory.Fixture do
 
   use Mix.Task
 
+  alias Gobusgo.Deleter
+  alias Gobusgo.Reader
   alias Gobusgo.StartMemory.Fixture
+  alias Gobusgo.StartMemory.WalkGraph
+  alias Gobusgo.WalkGraph.Publication
   alias Gobusgo.Writer
 
   @impl Mix.Task
   def run(arguments) do
-    {options, positional} = OptionParser.parse!(arguments, strict: [date: :string])
+    {options, positional} =
+      OptionParser.parse!(arguments, strict: [date: :string, walk_graph: :boolean])
 
     directory =
       case positional do
@@ -49,6 +58,30 @@ defmodule Mix.Tasks.Gobusgo.StartMemory.Fixture do
     end
 
     Mix.shell().info("  #{summary.route_count} route paths over #{summary.stop_count} stops")
+
+    if Keyword.get(options, :walk_graph, false) do
+      publish_walk_graph(directory)
+    end
+  end
+
+  defp publish_walk_graph(directory) do
+    summary = WalkGraph.summary()
+
+    options = [
+      read_options: [backend: Reader.LocalFile, base_dir: directory],
+      write_options: [backend: Writer.LocalFile, base_dir: directory],
+      delete_options: [backend: Deleter.LocalFile, base_dir: directory]
+    ]
+
+    case Publication.publish(WalkGraph.publication_request(), options) do
+      {:ok, published} ->
+        Mix.shell().info(
+          "Published a walk graph of #{summary.tile_count} tiles and #{summary.piece_count} pieces, #{summary.window_piece_count_max} in the largest window and #{summary.band_piece_count_max} in the largest three rows, as build #{published.build_id}"
+        )
+
+      {:error, reason} ->
+        Mix.raise("The walk graph was not published: #{inspect(reason)}")
+    end
   end
 
   defp date(options) do
