@@ -2,9 +2,12 @@ defmodule Gobusgo.Routing.WalkLinks do
   @street_meters_max 600
   @radius_meters 400
   @link_count_per_stop_max 64
-  @shard_piece_count_max 120_000
+  @shard_piece_count_max 40_000
   @read_concurrency 8
   @read_timeout_ms 60_000
+  @cell_rows 2
+  @cell_columns 2
+  @margin_meters 750
 
   @moduledoc """
   The walking links of a snapshot measured along the walk graph's streets.
@@ -26,11 +29,13 @@ defmodule Gobusgo.Routing.WalkLinks do
   or moved or measured on another build, and each stop within the radius of
   one that moved, appeared, or left.
 
-  `compute/1` measures those stops tile by tile: a tile's stops share one
-  graph over the 3 by 3 tiles around the tile, on a plane tangent at the
-  tile's middle, and one search for each stop. The shards of the last tiles
-  are kept up to #{@shard_piece_count_max} pieces, so a row of tiles reads
-  each shard about once.
+  `compute/1` measures those stops cell by cell, a tile being
+  #{@cell_rows} by #{@cell_columns} cells: a cell's stops share one graph of
+  the pieces within #{@margin_meters} m of the cell, out of the 3 by 3 tiles
+  around its tile, on a plane tangent at the cell's middle, and one search
+  for each stop. The shards of the last tiles are kept up to
+  #{@shard_piece_count_max} pieces, so a row of tiles reads a shard about
+  once or twice.
   """
 
   alias Gobusgo.Assert
@@ -277,6 +282,9 @@ defmodule Gobusgo.Routing.WalkLinks do
     stop_ids
     |> Enum.group_by(fn id -> tile_of(Map.fetch!(positions, id)) end)
     |> Enum.sort()
+    |> Enum.map(fn {tile, ids} ->
+      {tile, ids |> Enum.group_by(&cell_of(Map.fetch!(positions, &1))) |> Enum.sort()}
+    end)
   end
 
   defp tile_of(%{lat: lat, lon: lon}) do
@@ -286,7 +294,16 @@ defmodule Gobusgo.Routing.WalkLinks do
     )
   end
 
-  defp measure_tile({row, column} = tile, ids, state, context) do
+  # A tile is cut into #{@cell_rows} by #{@cell_columns} cells, and a cell's
+  # stops share one graph of the pieces within #{@margin_meters} m of the cell.
+  defp cell_of(%{lat: lat, lon: lon}) do
+    sizes = Tiles.sizes()
+    lat_in_tile = Integer.mod(floor(lat * @units_per_degree), sizes.lat)
+    lon_in_tile = Integer.mod(floor(lon * @units_per_degree), sizes.lon)
+    {div(lat_in_tile * @cell_rows, sizes.lat), div(lon_in_tile * @cell_columns, sizes.lon)}
+  end
+
+  defp measure_tile({row, column} = tile, cells, state, context) do
     if System.monotonic_time(:millisecond) > context.deadline_ms do
       {:error, :deadline, tile}
     else
@@ -299,22 +316,62 @@ defmodule Gobusgo.Routing.WalkLinks do
       with {:ok, cache, read_count} <- ensure_shards(window, state.cache, context) do
         shards = Enum.map(window, &Map.fetch!(cache.shards, &1))
         stats = %{state.stats | read_count: state.stats.read_count + read_count}
+        state = %{state | cache: cache, stats: stats}
 
-        measure_stops(
-          %{tile: tile, ids: ids, shards: shards},
-          %{state | cache: cache, stats: stats},
-          context
-        )
+        {:ok,
+         Enum.reduce(cells, state, fn {cell, ids}, current ->
+           measure_cell(%{tile: tile, cell: cell, ids: ids, shards: shards}, current, context)
+         end)}
       end
     end
   end
 
-  defp measure_stops(%{tile: tile, ids: ids, shards: shards}, state, context) do
-    reference = tile_middle(tile)
-    prepared = Search.prepare(%{reference: reference, shards: shards, limits: limits()})
+  defp measure_cell(%{tile: tile, cell: cell, ids: ids, shards: shards}, state, context) do
+    box = cell_box(tile, cell)
+    pieces = for shard <- shards, piece <- shard.pieces, near_box?(piece, box), do: piece
+    reference = box_middle(box)
 
-    {:ok,
-     Enum.reduce(ids, state, fn id, current -> measure_stop(id, prepared, current, context) end)}
+    prepared =
+      Search.prepare(%{reference: reference, shards: [%{pieces: pieces}], limits: limits()})
+
+    Enum.reduce(ids, state, fn id, current -> measure_stop(id, prepared, current, context) end)
+  end
+
+  # The cell's extent in units, widened by the margin in each direction.
+  defp cell_box({row, column}, {cell_row, cell_column}) do
+    sizes = Tiles.sizes()
+    lat_size = div(sizes.lat, @cell_rows)
+    lon_size = div(sizes.lon, @cell_columns)
+    lat_low = row * sizes.lat + cell_row * lat_size
+    lon_low = column * sizes.lon + cell_column * lon_size
+    lat_mid_degrees = (lat_low + div(lat_size, 2)) / @units_per_degree
+    meters_per_unit = Geodesy.meters_per_degree() / @units_per_degree
+    lat_margin = ceil(@margin_meters / meters_per_unit)
+
+    lon_margin =
+      ceil(@margin_meters / (meters_per_unit * :math.cos(Geodesy.radians(lat_mid_degrees))))
+
+    %{
+      lat_low: lat_low - lat_margin,
+      lat_high: lat_low + lat_size + lat_margin,
+      lon_low: lon_low - lon_margin,
+      lon_high: lon_low + lon_size + lon_margin,
+      middle: %{
+        lat: (lat_low + div(lat_size, 2)) / @units_per_degree,
+        lon: (lon_low + div(lon_size, 2)) / @units_per_degree
+      }
+    }
+  end
+
+  defp box_middle(%{middle: middle}), do: middle
+
+  # A piece is near the box when the box of its positions meets it, which
+  # keeps every piece that a street within the margin of the cell can use.
+  defp near_box?(%{points: points}, box) do
+    {lats, lons} = Enum.unzip(points)
+
+    Enum.min(lats) <= box.lat_high and Enum.max(lats) >= box.lat_low and
+      Enum.min(lons) <= box.lon_high and Enum.max(lons) >= box.lon_low
   end
 
   defp measure_stop(id, prepared, state, context) do
@@ -336,15 +393,6 @@ defmodule Gobusgo.Routing.WalkLinks do
 
     entry = %{lat: position.lat, lon: position.lon, links: links}
     %{state | measured: Map.put(state.measured, id, entry), stats: stats}
-  end
-
-  defp tile_middle({row, column}) do
-    sizes = Tiles.sizes()
-
-    %{
-      lat: (row * sizes.lat + div(sizes.lat, 2)) / @units_per_degree,
-      lon: (column * sizes.lon + div(sizes.lon, 2)) / @units_per_degree
-    }
   end
 
   defp limits, do: %{Search.limits() | street_meters_max: @street_meters_max}

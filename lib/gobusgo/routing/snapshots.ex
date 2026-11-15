@@ -163,7 +163,8 @@ defmodule Gobusgo.Routing.Snapshots do
           positions: WalkLinks.positions(),
           read_options: keyword(),
           heap_words_max: pos_integer(),
-          deadline_ms: pos_integer()
+          deadline_ms: pos_integer(),
+          start?: boolean()
         }
 
   @doc """
@@ -176,6 +177,7 @@ defmodule Gobusgo.Routing.Snapshots do
   @spec walk_links(server(), walk_links_request()) ::
           {:ready, %{table: binary(), build_id: String.t()}}
           | :pending
+          | :not_current
           | {:failed, :corrupt | :killed}
   def walk_links(server, %{manifest: %{build_id: _}, positions: %{}} = request) do
     GenServer.call(server, {:walk_links, request})
@@ -253,13 +255,24 @@ defmodule Gobusgo.Routing.Snapshots do
         {{:failed, :killed}, walk}
 
       true ->
-        {:pending, start_walk_links({build_id, key}, request, walk)}
+        start_or_wait({build_id, key}, request, walk)
     end
   end
 
   # The table is measured in a process of its own, with a full sweep at every
   # collection and a heap cap, linked so it dies with this process; this
   # process traps exits, so the kill of the measuring reaches it as a message.
+  # A request that only asks leaves a table that is not current unmeasured, so a
+  # run of the build asks first and starts the measuring once its dates are
+  # built, and the measuring's memory does not stand beside theirs.
+  defp start_or_wait({build_id, key}, request, walk) do
+    if Map.get(request, :start?, true) do
+      {:pending, start_walk_links({build_id, key}, request, walk)}
+    else
+      {:not_current, walk}
+    end
+  end
+
   defp start_walk_links({build_id, key}, request, walk) do
     parent = self()
     ref = make_ref()

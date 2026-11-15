@@ -1,5 +1,5 @@
 defmodule Gobusgo.Routing.Snapshots.Walk do
-  @heap_words_max 40_000_000
+  @heap_words_max 48_000_000
   @deadline_ms 600_000
 
   @moduledoc """
@@ -104,11 +104,17 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
           deadline_ms: Keyword.fetch!(options, :walk_deadline_ms)
         }
 
-        answer(Snapshots.walk_links(Keyword.fetch!(options, :server), request))
+        answer(
+          Snapshots.walk_links(
+            Keyword.fetch!(options, :server),
+            Map.put(request, :start?, false)
+          ),
+          request
+        )
     end
   end
 
-  defp answer({:ready, %{table: table, build_id: build_id}}) do
+  defp answer({:ready, %{table: table, build_id: build_id}}, _request) do
     %{
       kind: :streets,
       build_id: build_id,
@@ -117,7 +123,20 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     }
   end
 
-  defp answer(_pending_or_failed), do: %{kind: :unavailable}
+  defp answer(:not_current, request), do: %{kind: :unavailable, measure: request}
+  defp answer(_pending_or_failed, _request), do: %{kind: :unavailable}
+
+  @doc """
+  Starts measuring the table of a plan that is not current, once the run's
+  dates are built. Anything else of a plan is left as it is.
+  """
+  @spec measure(t(), keyword()) :: :ok
+  def measure(%{kind: :unavailable, measure: request}, options) do
+    Snapshots.walk_links(Keyword.fetch!(options, :server), Map.put(request, :start?, true))
+    :ok
+  end
+
+  def measure(_plan, _options), do: :ok
 
   defp log_manifest_failure(:corrupt) do
     Logger.error("Routing walk graph manifest not read", cause: :corrupt)

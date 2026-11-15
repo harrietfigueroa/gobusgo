@@ -138,6 +138,15 @@ defmodule Gobusgo.Routing.SnapshotsWalkLinksTest do
     assert %{stops: %{"a" => %{links: [{"b", _meters}]}}} = WalkLinks.unpack(table)
   end
 
+  test "answers that a table is not current, and measures nothing, for a request that only asks",
+       context do
+    only_asking = request(context, %{start?: false})
+
+    assert :not_current = Snapshots.walk_links(context.server, only_asking)
+    assert :not_current = Snapshots.walk_links(context.server, only_asking)
+    assert :pending = Snapshots.walk_links(context.server, request(context))
+  end
+
   test "answers the table at once for positions it already holds", context do
     {:ready, _held} = settled(context)
 

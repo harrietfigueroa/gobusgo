@@ -154,6 +154,7 @@ defmodule Gobusgo.Routing.Snapshots.Build do
       end
 
     :ok = Snapshots.retain(server, dates)
+    :ok = Walk.measure(walk, options)
 
     trip_path_outcomes =
       for {kind, _counts} = outcome <- outcomes, kind in [:built, :retried], do: outcome
