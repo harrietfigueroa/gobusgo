@@ -25,6 +25,7 @@ const SERVICE_DATE = "2026-11-08"
 const DAY_START_MS = 1794124800000
 const WALK_SPEED_M_PER_S = 1.2
 const FORMAT_VERSION = 2
+const WEST_TILE_KEY = "4761_-8156"
 
 const {indexTable, shardsByKey, points} = goldenGraph()
 const index = indexTable.tileKeys
@@ -209,6 +210,119 @@ for (const reason of [WindowFailure.tiles, WindowFailure.timeout, OFFLINE_FAILUR
   strictEqual(lastWalk(fellBack).fromStopId, "B")
   strictEqual(fellBack.journeys[0].hasStraightLineWalk, true)
   ok(lastWalk(fellBack).durationS < SECONDS_PER_MINUTE * SECONDS_PER_MINUTE, "the straight walk is an estimate under an hour")
+}
+
+// A snapshot of `trips` over the base fixture's stops, served from memory.
+function serveTrips(trips, extraPositions) {
+  const served = snapshotOf({...fixture, trips, positions: {...fixture.positions, ...extraPositions}})
+  const servedStops = decodeStops(served.files.stops).records
+  const servedPositions = decodePositions(served.filesByPath.get(served.entry.files.positions.path)).records
+
+  globalThis.fetch = async function fetchServed(url) {
+    return {ok: true, headers: new Headers(), arrayBuffer: async () => served.filesByPath.get(url)}
+  }
+
+  return {served, files: {snapshotStops: async () => [servedStops, servedPositions]}}
+}
+
+async function routeServed({served, files, rules, walkTiles, from = fromRider, to = toStop}) {
+  const manifest = {formatVersion: FORMAT_VERSION, snapshots: [{...served.entry, transferRules: rules}]}
+  return await routeTo({origin: "", searchFiles: files, walkTiles, manifest, planned: leaving, from, to})
+}
+
+function tilesPerPosition(windowOf) {
+  async function fetchWindow({position}) {
+    return windowOf(position)
+  }
+
+  return {fetchWindow}
+}
+
+// The street rules leave out the only stop with a trip to the destination:
+// the island's B. Along the streets only A is reached, and A's trip goes
+// nowhere, so the query is routed again from the straight-line starts and the
+// journey that exists on the straight line is found, with the note.
+{
+  const {served, files} = serveTrips(
+    [{id: "TA", stopTimes: [["A", "08:10"], ["X", "08:20"]]}, {id: "TB", stopTimes: [["B", "08:05"], ["T", "08:15"]]}],
+    {X: [micro(FAR_LAT), micro(rider.lon + FAR_LAT_DEGREES)]}
+  )
+
+  const answer = await routeServed({served, files, rules: streetRules, walkTiles: walkTilesOf(readyWindow)})
+  strictEqual(answer.kind, JourneysKind.found)
+  strictEqual(answer.journeys[0].legs[0].toStopId, "B")
+  strictEqual(answer.journeys[0].hasStraightLineWalk, true)
+}
+
+// The reasons a walk falls back, each leaving the journey of the straight
+// line with the note: no stop in reach within the street bound, a window past
+// the piece bound, and the snapshot's stops not read.
+{
+  const {served, files} = serveTrips(fixture.trips, {})
+  const tinyBound = {...streetRules, walkStreetMetersMax: 5}
+  const noneInReach = await routeServed({served, files, rules: tinyBound, walkTiles: walkTilesOf(readyWindow)})
+  strictEqual(noneInReach.journeys[0].legs[0].toStopId, "B", "none in reach")
+  strictEqual(noneInReach.journeys[0].hasStraightLineWalk, true, "none in reach")
+
+  const heavy = new Map(shardsByKey)
+  heavy.set(WEST_TILE_KEY, {pieceCount: 250_001, classes: new Uint8Array(0), pieceStarts: new Uint32Array(1), points: new Int32Array(0)})
+  const capReached = await routeServed({served, files, rules: streetRules, walkTiles: walkTilesOf({...readyWindow, loaded: heavy})})
+  strictEqual(capReached.journeys[0].legs[0].toStopId, "B", "cap reached")
+  strictEqual(capReached.journeys[0].hasStraightLineWalk, true, "cap reached")
+
+  const unread = {snapshotStops: async () => { throw new Error("the stops file is unreadable") }}
+  const stopsNotRead = await routeServed({served, files: unread, rules: streetRules, walkTiles: walkTilesOf(readyWindow)})
+  strictEqual(stopsNotRead.journeys[0].legs[0].toStopId, "B", "stops not read")
+  strictEqual(stopsNotRead.journeys[0].hasStraightLineWalk, true, "stops not read")
+}
+
+// Both ends at positions: the walk from the rider's position and the walk to
+// the destination point, each marked by its own end's fallback.
+{
+  // C stands on the rider's street and Z on the street the destination is
+  // beside, in the golden graph's east tile, more than a walk from the rider.
+  const near = pointNamed("north west")
+  const eastEnd = pointNamed("east shard end")
+  const beside = pointNamed("east shard off street")
+  const {served, files} = serveTrips(
+    [{id: "TC", stopTimes: [["C", "08:05"], ["Z", "08:15"]]}],
+    {C: [micro(near.lat), micro(near.lon)], Z: [micro(eastEnd.lat), micro(eastEnd.lon)]}
+  )
+
+  const to = {kind: EndKind.point, name: "Near Z", lat: beside.lat, lon: beside.lon}
+
+  function legFlags(answer) {
+    const [first] = answer.journeys
+    return Array.from(first.legs, (leg) => leg.isStraightLine === true)
+  }
+
+  const clean = await routeServed({served, files, rules: streetRules, walkTiles: walkTilesOf(readyWindow), to})
+  deepStrictEqual(legFlags(clean), [false, false, false], "both ends on the streets")
+
+  function failsAtDestination(position) {
+    if (position.lat === beside.lat) {
+      return failedWindow
+    }
+
+    return readyWindow
+  }
+
+  const endOnly = await routeServed({served, files, rules: streetRules, walkTiles: tilesPerPosition(failsAtDestination), to})
+  deepStrictEqual(legFlags(endOnly), [false, false, true], "only the destination fell back")
+
+  function failsAtStart(position) {
+    if (position.lat === rider.lat) {
+      return failedWindow
+    }
+
+    return readyWindow
+  }
+
+  const startOnly = await routeServed({served, files, rules: streetRules, walkTiles: tilesPerPosition(failsAtStart), to})
+  deepStrictEqual(legFlags(startOnly), [true, false, false], "only the start fell back")
+
+  const bothFail = await routeServed({served, files, rules: streetRules, walkTiles: walkTilesOf(failedWindow), to})
+  deepStrictEqual(legFlags(bothFail), [true, false, true], "both ends fell back")
 }
 
 console.log("trip route walks: every case passed")

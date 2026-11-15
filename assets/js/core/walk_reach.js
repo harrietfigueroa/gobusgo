@@ -94,6 +94,7 @@ function dijkstra({graph, startSnaps, limits}) {
   }
 
   let settledCount = 0
+  let lastCost = 0
 
   // Each pass settles a node, drops a stale or passed-over entry, or ends the
   // loop; `visitedNodeCountMax` bounds the settled nodes.
@@ -118,11 +119,14 @@ function dijkstra({graph, startSnaps, limits}) {
       return {kind: SearchKind.capped, cost, settled, frontier: nodeCost}
     }
 
+    assertCondition(nodeCost >= lastCost, `walk reach: a settled cost ${nodeCost} is below the one before, ${lastCost}`)
+    lastCost = nodeCost
     settled[node] = SETTLED
     settledCount += 1
 
     for (const edgeIndex of graph.nodeEdges[node]) {
       const edge = graph.edges[edgeIndex]
+      assertCondition(edge.length >= 0, `walk reach: an edge is ${edge.length} m long`)
       let other = edge.a
 
       if (edge.a === node) {

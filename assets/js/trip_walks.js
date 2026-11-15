@@ -37,7 +37,8 @@ export const FallbackReason = Object.freeze({
   stopsNotRead: "stopsNotRead",
   offGraph: "offGraph",
   noneInReach: "noneInReach",
-  capReached: "capReached"
+  capReached: "capReached",
+  noJourney: "noJourney"
 })
 
 /** The kinds of what the snapshot's stops read gives. */

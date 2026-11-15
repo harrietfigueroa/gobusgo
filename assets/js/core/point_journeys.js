@@ -71,19 +71,42 @@ function isEndWalk(leg) {
   return leg.kind === LEG_KIND_TO_POINT
 }
 
+// `leg`, with `isStraightLine` true where it is a walk of the start and
+// `isStartStraight`, or a walk of the end and `isEndStraight`.
+function markedLeg({leg, isStartStraight, isEndStraight}) {
+  const isStartHedged = isStartStraight && isStartWalk(leg)
+  const isEndHedged = isEndStraight && isEndWalk(leg)
+
+  const isHedged = isStartHedged || isEndHedged
+
+  if (isHedged) {
+    return {...leg, isStraightLine: true}
+  }
+
+  return leg
+}
+
+function isMarkedLeg(leg) {
+  return leg.isStraightLine === true
+}
+
 /**
- * `journeys`, each with `hasStraightLineWalk` set: true where the journey
- * walks from the rider's position and `isStartStraight` says that walk
- * was planned as a straight line where the streets were planned for, or it
- * walks to the point and `isEndStraight` says the same of that walk.
+ * `journeys` with each walk of an end that was planned as a straight line
+ * where the streets were planned for marked `isStraightLine`: the walk from
+ * the rider's position where `isStartStraight`, the walk to the point where
+ * `isEndStraight`. A journey with a marked leg has `hasStraightLineWalk`.
  */
 export function markStraightLineWalks({journeys, isStartStraight, isEndStraight}) {
   const marked = []
 
   for (const journey of journeys) {
-    const isStartHedged = isStartStraight && journey.legs.some(isStartWalk)
-    const isEndHedged = isEndStraight && journey.legs.some(isEndWalk)
-    marked.push({...journey, hasStraightLineWalk: isStartHedged || isEndHedged})
+    const legs = []
+
+    for (const leg of journey.legs) {
+      legs.push(markedLeg({leg, isStartStraight, isEndStraight}))
+    }
+
+    marked.push({...journey, legs, hasStraightLineWalk: legs.some(isMarkedLeg)})
   }
 
   return marked

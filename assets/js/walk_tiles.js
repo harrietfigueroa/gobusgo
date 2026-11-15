@@ -54,14 +54,22 @@ export function createWalkTiles({fileOrigin}) {
   const held = new Map()
   const inflight = new Map()
   const failed = new Set()
+  const pinned = new Set()
 
   function keep({key, table}) {
     held.delete(key)
     held.set(key, table)
 
-    while (held.size > HELD_TILE_COUNT_MAX) {
-      const [oldest] = held.keys()
-      held.delete(oldest)
+    // A tile a window is waiting for is never the one dropped; the oldest
+    // tile no window holds goes first.
+    for (const oldest of held.keys()) {
+      if (held.size <= HELD_TILE_COUNT_MAX) {
+        break
+      }
+
+      if (!pinned.has(oldest)) {
+        held.delete(oldest)
+      }
     }
   }
 
@@ -116,17 +124,32 @@ export function createWalkTiles({fileOrigin}) {
 
     const needed = walkWindowTiles({position, index: sourced.index.tileKeys})
     const pending = []
+    const keys = Array.from(needed, tileKey)
 
-    for (const tile of needed) {
-      failed.delete(tileKey(tile))
-      pending.push(tiles.fetchTile(tile))
+    for (const key of keys) {
+      pinned.add(key)
     }
 
-    await Promise.allSettled(pending)
+    try {
+      for (const tile of needed) {
+        failed.delete(tileKey(tile))
+        pending.push(tiles.fetchTile(tile))
+      }
+
+      await Promise.allSettled(pending)
+      return windowHeld({keys, index: sourced.index.tileKeys})
+    } finally {
+      for (const key of keys) {
+        pinned.delete(key)
+      }
+    }
+  }
+
+  // The window's tiles as a Map of its own, each marked recently used, or the failure.
+  function windowHeld({keys, index}) {
     const loaded = new Map()
 
-    for (const tile of needed) {
-      const key = tileKey(tile)
+    for (const key of keys) {
       const table = held.get(key)
 
       if (table === undefined) {
@@ -138,7 +161,7 @@ export function createWalkTiles({fileOrigin}) {
       loaded.set(key, table)
     }
 
-    return {kind: WindowKind.ready, index: sourced.index.tileKeys, loaded}
+    return {kind: WindowKind.ready, index, loaded}
   }
 
   const tiles = {

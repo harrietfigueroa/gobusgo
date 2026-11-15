@@ -82,14 +82,13 @@ function walkLeg({leg, from, to}) {
   return {kind: ContextLegKind.walk, minutes: walkMinutes(leg.durationS), from, to}
 }
 
-// A walk of an end at a position, which `journey` says was planned as a
-// straight line where the streets were planned for: the same walk with
-// `straightLine` true, so the model does not read its minutes as a walk along
-// streets.
-function endWalkLeg({leg, journey, from, to}) {
+// A walk of an end at a position that `leg` says was planned as a straight
+// line where the streets were planned for: the same walk with `straightLine`
+// true, so the model does not read its minutes as a walk along streets.
+function endWalkLeg({leg, from, to}) {
   const walk = walkLeg({leg, from, to})
 
-  if (journey.hasStraightLineWalk === true) {
+  if (leg.isStraightLine === true) {
     return {...walk, straightLine: true}
   }
 
@@ -110,9 +109,9 @@ function contextLeg({leg, journey, names, fromName, instants}) {
     case LegKind.walk:
       return walkLeg({leg, from: stopPlace({names, stopId: leg.fromStopId}), to: stopPlace({names, stopId: leg.toStopId})})
     case LegKind.walkFromPosition:
-      return endWalkLeg({leg, journey, from: {name: fromName}, to: stopPlace({names, stopId: leg.toStopId})})
+      return endWalkLeg({leg, from: {name: fromName}, to: stopPlace({names, stopId: leg.toStopId})})
     case LEG_KIND_TO_POINT:
-      return endWalkLeg({leg, journey, from: stopPlace({names, stopId: leg.fromStopId}), to: {name: journey.destination.name}})
+      return endWalkLeg({leg, from: stopPlace({names, stopId: leg.fromStopId}), to: {name: journey.destination.name}})
     default:
       return unreachable(leg.kind, "journey context: a leg of unknown kind")
   }

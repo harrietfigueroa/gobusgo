@@ -82,16 +82,27 @@ function stopsWithin({position, positions, transferRules}) {
 
 /**
  * The basis of `transferRules`, a manifest entry's. A manifest that names
- * none, or one this reader does not know, is a straight-line table, which is
- * what a page that predates the streets reads every table as.
+ * none, one this reader does not know, or a streets or mixed basis whose
+ * `walkStreetMetersMax` is not a positive finite number, is a straight-line
+ * table.
  */
 export function walkBasisOf(transferRules) {
-  const {walkBasis} = transferRules
+  const {walkBasis, walkStreetMetersMax} = transferRules
 
   const isText = typeof walkBasis === "string"
   const isKnown = isText && Object.hasOwn(WalkBasis, walkBasis)
 
-  if (isKnown) {
+  if (!isKnown) {
+    return WalkBasis.straight
+  }
+
+  const isStraight = walkBasis === WalkBasis.straight
+  const isBoundNumber = Number.isFinite(walkStreetMetersMax)
+  const isBounded = isBoundNumber && walkStreetMetersMax > 0
+
+  const isUsable = isStraight || isBounded
+
+  if (isUsable) {
     return walkBasis
   }
 

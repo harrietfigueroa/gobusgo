@@ -168,6 +168,15 @@ function lastLeg(kept) {
     const [marked] = markStraightLineWalks({journeys: [hedged.journey], ...hedged.flags})
     deepStrictEqual(marked.hasStraightLineWalk, hedged.expected, hedged.name)
   }
+
+  // Each walk of an end is marked by its own end's fallback.
+  const both = {...rideOnly, legs: [fromPosition, ...rideOnly.legs, toPoint]}
+  const [startOnly] = markStraightLineWalks({journeys: [both], isStartStraight: true, isEndStraight: false})
+  const [endOnly] = markStraightLineWalks({journeys: [both], isStartStraight: false, isEndStraight: true})
+  const startFlags = Array.from(startOnly.legs, (leg) => leg.isStraightLine === true)
+  const endFlags = Array.from(endOnly.legs, (leg) => leg.isStraightLine === true)
+  deepStrictEqual(startFlags, [true, false, false], "only the start's walk is marked")
+  deepStrictEqual(endFlags, [false, false, true], "only the end's walk is marked")
 }
 
 // Each journey gains the walk from its stop, and the answers make one

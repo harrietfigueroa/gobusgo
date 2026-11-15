@@ -60,10 +60,10 @@ const HEAP_ARITY = 2
 const DUPLICATE_METERS = 0.001
 const DRAWN_COST_TOLERANCE_METERS = 0.01
 const TIE_UNITS_PER_METER = 1_000_000
-const KEY_ENDS_FROM = 3
+const KEY_ENDS_FROM = 1
 const KEY_ENDS_TO = 7
 const TilesKind = Object.freeze({tiles: "tiles", tooFar: "tooFar"})
-export const SnapKind =Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
+export const SnapKind = Object.freeze({snapped: "snapped", chosen: "chosen", none: "none"})
 const SearchKind = Object.freeze({reached: "reached", exhausted: "exhausted", capped: "capped"})
 
 export function planeOf({from, to}) {
@@ -249,7 +249,8 @@ function edgeOfPiece({shard, piece, plane, nodeAt}) {
   const firstEnd = [shard.points[firstOffset], shard.points[firstOffset + 1]]
   const lastEnd = [shard.points[lastOffset], shard.points[lastOffset + 1]]
   const ends = endsOf({firstEnd, lastEnd})
-  return {a, b, xy, cumulative, length: cumulative[count - 1], count, ends}
+  const units = shard.points.subarray(first * COORDINATE_COUNT, (first + count) * COORDINATE_COUNT)
+  return {a, b, xy, units, cumulative, length: cumulative[count - 1], count, ends}
 }
 
 // The graph over `shards`: for each piece an edge between the nodes at its
@@ -342,15 +343,19 @@ function nearestOnSegment({x, y, startX, startY, endX, endY}) {
 }
 
 // Two snaps whose distances agree to a micrometer tie, and the tie goes to
-// the lesser x, then the lesser y, then the lesser ends of the edge, then the
-// lesser start of the segment, so the choice rests on geometry and not on
-// the order the pieces arrived in. A snap carries that order as its `key`.
+// the lesser ends of the edge, then the lesser start of the segment, both in
+// the graph's units, which no plane changes, then to the lesser x and y of the
+// snap and of the segment's start on the plane, so the choice rests on
+// geometry and not on the order the pieces arrived in or on the plane the
+// graph is laid on. A snap carries that order as its `key`.
 function tieUnits(meters) {
   return Math.round(meters * TIE_UNITS_PER_METER)
 }
 
-function snapKey({nearest, edge, startX, startY}) {
-  return [tieUnits(nearest.distance), nearest.pointX, nearest.pointY, ...edge.ends, startX, startY]
+function snapKey({nearest, edge, segment, startX, startY}) {
+  const segmentLat = edge.units[segment * COORDINATE_COUNT]
+  const segmentLon = edge.units[segment * COORDINATE_COUNT + 1]
+  return [tieUnits(nearest.distance), ...edge.ends, segmentLat, segmentLon, nearest.pointX, nearest.pointY, startX, startY]
 }
 
 // The nearest point to (x, y) within `snapMetersMax` on the edges of each
@@ -365,7 +370,7 @@ export function snapsByComponent({graph, x, y, snapMetersMax}) {
       const endOffset = startOffset + COORDINATE_COUNT
       const nearest = nearestOnSegment({x, y, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1], endX: edge.xy[endOffset], endY: edge.xy[endOffset + 1]})
 
-      const key = snapKey({nearest, edge, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1]})
+      const key = snapKey({nearest, edge, segment, startX: edge.xy[startOffset], startY: edge.xy[startOffset + 1]})
       const held = snaps.get(edge.component)
       const isNearer = held === undefined || compareLists(key, held.key) < 0
       const isNear = nearest.distance <= snapMetersMax
@@ -386,11 +391,14 @@ export function snapsByComponent({graph, x, y, snapMetersMax}) {
 // `{kind: "none", reason}` with `offGraph` where an end reaches no
 // component and `disconnected` where the two reach none in common.
 // Sums that agree to a micrometer tie, and the tie goes to the start snap
-// nearer its end, then to the lesser start and goal positions, then to the
-// lesser ends of the start and goal edges, so the choice rests on geometry
-// and not on the order of the components.
+// nearer its end, then to the lesser ends and segment starts of the start and
+// goal edges in the graph's units, then to the lesser start and goal
+// positions on the plane, so the choice rests on geometry and not on the
+// order of the components or on the plane.
 function pairKey({start, goal}) {
-  return [tieUnits(start.distance + goal.distance), tieUnits(start.distance), start.x, start.y, goal.x, goal.y, ...start.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO), ...goal.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO)]
+  const startUnits = start.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO)
+  const goalUnits = goal.key.slice(KEY_ENDS_FROM, KEY_ENDS_TO)
+  return [tieUnits(start.distance + goal.distance), tieUnits(start.distance), ...startUnits, ...goalUnits, start.x, start.y, goal.x, goal.y]
 }
 
 function isBetterPair({candidate, best}) {

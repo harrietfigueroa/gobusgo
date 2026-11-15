@@ -14,7 +14,7 @@ import {routeJourneys, routeJourneysArrivingBy} from "./routing_driver.js"
 import {EndKind, PlannedKind, StateKind, failureState, isRetryable} from "./core/trip_plan.js"
 import {FrontierKind, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, markStraightLineWalks, targetStops, targetStopsOnStreets} from "./core/point_journeys.js"
 import {isNotSaved} from "./core/offline_bundle.js"
-import {EndWalkKind, PlaceKind, StopsKind, planWalks} from "./trip_walks.js"
+import {EndWalkKind, FallbackReason, PlaceKind, StopsKind, planWalks} from "./trip_walks.js"
 
 const MANIFEST_TIMEOUT_MS = 20 * 1000
 
@@ -183,10 +183,65 @@ function targetsOf({walk, to, stopIds, positions, transferRules}) {
 // line; a position is never logged.
 function logFallbacks(walks) {
   for (const [end, walk] of [["start", walks.start], ["destination", walks.destination]]) {
-    if (walk.kind === EndWalkKind.fallback) {
+    if (walk.kind !== EndWalkKind.fallback) {
+      continue
+    }
+
+    // A position off the graph, one with no stop in reach, and a query the
+    // streets leave without a journey are outcomes the rules anticipate.
+    if (isExpectedFallback(walk.reason)) {
+      console.debug("Walk planned as a straight line", {end, reason: walk.reason})
+    } else {
       console.warn("Walk planned as a straight line", {end, reason: walk.reason})
     }
   }
+}
+
+function isExpectedFallback(reason) {
+  switch (reason) {
+    case FallbackReason.offGraph:
+    case FallbackReason.noneInReach:
+    case FallbackReason.noJourney:
+      return true
+    case FallbackReason.tiles:
+    case FallbackReason.stopsNotRead:
+    case FallbackReason.capReached:
+      return false
+    default:
+      return unreachable(reason, "trip route: a fallback of unknown reason")
+  }
+}
+
+function hasStreetWalk(walks) {
+  const isStartStreets = walks.start.kind === EndWalkKind.streets
+  const isDestinationStreets = walks.destination.kind === EndWalkKind.streets
+  return isStartStreets || isDestinationStreets
+}
+
+// Whether the router found no journey for a reason another start or target
+// can change: a start or an end with no stop.
+function isNoJourney(answer) {
+  switch (answer.kind) {
+    case JourneysKind.none:
+    case JourneysKind.noStartStop:
+    case PointJourneysKind.noEndStop:
+      return true
+    default:
+      return false
+  }
+}
+
+function straightenedEnd(walk) {
+  if (walk.kind === EndWalkKind.streets) {
+    return {kind: EndWalkKind.fallback, reason: FallbackReason.noJourney}
+  }
+
+  return walk
+}
+
+// `walks` with each end planned along the streets planned as the straight line instead.
+function straightenedWalks(walks) {
+  return {...walks, start: straightenedEnd(walks.start), destination: straightenedEnd(walks.destination)}
 }
 
 // `answer`, where it found journeys, with each journey's walk marked as a
@@ -240,10 +295,26 @@ export async function routeTo({origin, searchFiles, walkTiles, manifest, planned
   })
 
   logFallbacks(walks)
+  const context = {fetchFile, planned, manifest, entry, from, to}
+  const routed = await routeWithWalks({...context, walks})
+  const isRetryDue = hasStreetWalk(walks) && isNoJourney(routed)
 
-  if (isToStop) {
-    const answer = await routeFor({fetchFile, planned, seconds: planned.seconds, manifest, from: startOf({from, walks}), toStopId: to.stopId})
-    return markedAnswer({answer, walks})
+  if (!isRetryDue) {
+    return markedAnswer({answer: routed, walks})
+  }
+
+  // A stop the street rules leave out may have been the only way: the
+  // journeys that exist on the straight line still exist.
+  const straightWalks = straightenedWalks(walks)
+  logFallbacks(straightWalks)
+  const again = await routeWithWalks({...context, walks: straightWalks})
+  return markedAnswer({answer: again, walks: straightWalks})
+}
+
+// The answer of the query from `from` to `to` with the walks `walks` plans.
+async function routeWithWalks({fetchFile, planned, manifest, entry, from, to, walks}) {
+  if (to.kind === EndKind.stop) {
+    return await routeFor({fetchFile, planned, seconds: planned.seconds, manifest, from: startOf({from, walks}), toStopId: to.stopId})
   }
 
   if (walks.stops.kind === JourneysKind.failed) {
@@ -272,8 +343,7 @@ export async function routeTo({origin, searchFiles, walkTiles, manifest, planned
   }
 
   const destination = {name: to.name, lat: to.lat, lon: to.lon}
-  const joined = journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
-  return markedAnswer({answer: joined, walks})
+  return journeysToPoint({routed, destination, serviceDayStartsMs: serviceDayStartsOf(manifest), frontier: frontierOf(planned)})
 }
 
 /**

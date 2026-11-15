@@ -79,16 +79,11 @@ function streetMetersMaxOfNone() {
 // drawn walk has is the reach's, to a tolerance, and any other pair is not
 // reached.
 for (const start of points) {
-  // The two streets a tie chooses between are exactly as near "tie second"
-  // as each other, and the tie goes to the lesser plane coordinates, which
-  // the plane at the position and the plane at the middle of a pair round
-  // differently at the last bit: the reach and the drawn walk may take
-  // different streets of an exact tie, which a real position meets only by
-  // chance. "tie first" is the end the golden file ties from.
-  if (start.name === "tie second") {
-    continue
-  }
-
+  // The two streets of the tie are exactly as near "tie first" and "tie
+  // second" as each other; the tie goes to the ends and segment starts in the
+  // graph's units, which the plane at the position and the plane at the
+  // middle of a pair share, so from either end the reach takes the street
+  // the drawn walk takes.
   const others = points.filter((candidate) => candidate.name !== start.name)
   const targets = Array.from(others, targetOf)
   const reached = reachFrom({start, targets})
@@ -171,6 +166,8 @@ const basisCases = [
   {name: "a mixed table", rules: {...rules, walkBasis: "mixed"}, basis: WalkBasis.mixed, isStreet: true},
   {name: "a straight table", rules: {...rules, walkBasis: "straight"}, basis: WalkBasis.straight, isStreet: false},
   {name: "an older manifest with no basis", rules, basis: WalkBasis.straight, isStreet: false},
+  {name: "a streets table with no street bound", rules: {...rules, walkBasis: "streets", walkStreetMetersMax: undefined}, basis: WalkBasis.straight, isStreet: false},
+  {name: "a mixed table with a zero street bound", rules: {...rules, walkBasis: "mixed", walkStreetMetersMax: 0}, basis: WalkBasis.straight, isStreet: false},
   {name: "a basis this reader does not know", rules: {...rules, walkBasis: "teleport"}, basis: WalkBasis.straight, isStreet: false}
 ]
 
