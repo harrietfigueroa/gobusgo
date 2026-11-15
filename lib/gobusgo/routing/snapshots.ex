@@ -31,7 +31,7 @@ defmodule Gobusgo.Routing.Snapshots do
   its heap and hands to a date's build without a copy. `walk_links/2` asks for
   the table for the positions now held: it answers at once, and a table that
   is not current is measured in a process of its own, linked, under a heap cap
-  and a deadline, so a run of the build never waits for it. A graph build whose
+  and a deadline, so a request never waits for it. A graph build whose
   files are corrupt is not read again, nor are positions whose measuring
   process was killed; a read that failed or a deadline is asked again by the
   next request.
@@ -135,6 +135,18 @@ defmodule Gobusgo.Routing.Snapshots do
     GenServer.call(server, {:retain, service_dates})
   end
 
+  @doc "The milliseconds between two runs of the build."
+  @spec check_interval_ms() :: pos_integer()
+  def check_interval_ms, do: @check_interval_ms
+
+  @doc "The milliseconds a run of the build has."
+  @spec run_deadline_ms() :: pos_integer()
+  def run_deadline_ms, do: @run_deadline_ms
+
+  @doc "The milliseconds past a measuring's deadline that it is left running before it is killed."
+  @spec deadline_grace_ms() :: pos_integer()
+  def deadline_grace_ms, do: @deadline_grace_ms
+
   @doc """
   The spec of the scheduler that builds the snapshots of `options[:server]`.
   The other options go to `Gobusgo.Routing.Snapshots.Build.run/1`. The spec
@@ -174,9 +186,10 @@ defmodule Gobusgo.Routing.Snapshots do
   @doc """
   The table of walking links for `request.positions` on the graph build
   `request.manifest` names: `{:ready, %{table: binary, build_id: build_id}}`
-  when it is held, `:pending` while it is being measured, or `{:failed,
-  reason}` for a build whose files are corrupt or positions whose process
-  was killed.
+  when it is held, `:pending` while it is being measured, `:not_current` for
+  a request that only asks (`start?: false`) when the table is not current and
+  nothing is measuring it, or `{:failed, reason}` for a build whose files are
+  corrupt or positions whose process was killed or crashed.
   """
   @spec walk_links(server(), walk_links_request()) ::
           {:ready, %{table: binary(), build_id: String.t()}}
@@ -283,8 +296,8 @@ defmodule Gobusgo.Routing.Snapshots do
   # collection and a heap cap, linked so it dies with this process; this
   # process traps exits, so the kill of the measuring reaches it as a message.
   # A request that only asks leaves a table that is not current unmeasured, so a
-  # run of the build asks first and starts the measuring once its dates are
-  # built, and the measuring's memory does not stand beside theirs.
+  # requester can ask first and start the measuring later, when the memory of
+  # its own work is freed.
   defp start_or_wait({build_id, key}, request, walk) do
     if Map.get(request, :start?, true) do
       {:pending, start_walk_links({build_id, key}, request, walk)}
@@ -382,6 +395,12 @@ defmodule Gobusgo.Routing.Snapshots do
     )
 
     %{walk | task: nil, corrupt: MapSet.put(walk.corrupt, task.build_id)}
+  end
+
+  defp finish_walk_links({:error, :killed, _detail}, walk), do: lost_walk_links(:killed, walk)
+
+  defp finish_walk_links({:error, :crashed, {_tile, reason}}, walk) do
+    lost_walk_links(reason, walk)
   end
 
   defp finish_walk_links({:error, cause, detail}, %{task: task} = walk)

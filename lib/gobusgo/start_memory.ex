@@ -37,6 +37,7 @@ defmodule Gobusgo.StartMemory do
           | :tiles_built
           | :tiles_failed
           | :walk_links_built
+          | :streets_snapshots_built
           | :walk_links_failed
 
   @typedoc """
@@ -91,7 +92,10 @@ defmodule Gobusgo.StartMemory do
   """
   @spec awaited(:straight | :streets) :: MapSet.t(event())
   def awaited(:straight), do: awaited()
-  def awaited(:streets), do: MapSet.put(awaited(), :walk_links_built)
+
+  def awaited(:streets) do
+    awaited() |> MapSet.put(:walk_links_built) |> MapSet.put(:streets_snapshots_built)
+  end
 
   @doc """
   The anonymous memory in bytes that `text`, the content of a cgroup v2

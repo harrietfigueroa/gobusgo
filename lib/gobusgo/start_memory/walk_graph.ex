@@ -59,7 +59,7 @@ defmodule Gobusgo.StartMemory.WalkGraph do
   @spec piece_count(Tiles.tile()) :: pos_integer()
   def piece_count(tile) do
     side = side(tile)
-    2 * side * (side - 1)
+    2 * side * (side - 1) + 2
   end
 
   defp side(tile), do: ceil(:math.sqrt(drawn_count(tile) / 2)) + 1
@@ -118,7 +118,9 @@ defmodule Gobusgo.StartMemory.WalkGraph do
 
   # A lattice of `side` by `side` nodes across the tile, a street between
   # each pair of neighbors, with a bend between the two nodes so a piece holds
-  # three positions as the real graph's hold about three.
+  # three positions as the real graph's hold about three. The first row and the
+  # first column run on to the tile's far edge, where the neighbor's first node
+  # is, so the tiles join and a walk can cross from one to the next.
   defp pieces({row, column} = tile) do
     side = side(tile)
     sizes = Tiles.sizes()
@@ -130,11 +132,17 @@ defmodule Gobusgo.StartMemory.WalkGraph do
         lat = row * sizes.lat + i * lat_step
         lon = column * sizes.lon + j * lon_step
 
-        case street(
-               direction,
-               %{i: i, j: j, side: side, lat: lat, lon: lon},
-               {lat_step, lon_step}
-             ) do
+        node = %{
+          i: i,
+          j: j,
+          side: side,
+          lat: lat,
+          lon: lon,
+          lat_end: (row + 1) * sizes.lat,
+          lon_end: (column + 1) * sizes.lon
+        }
+
+        case street(direction, node, {lat_step, lon_step}) do
           nil -> pieces
           points -> [packed(points) | pieces]
         end
@@ -149,6 +157,22 @@ defmodule Gobusgo.StartMemory.WalkGraph do
   defp street(:across, %{i: i, side: side, lat: lat, lon: lon}, {lat_step, _lon_step})
        when i < side - 1 do
     [{lat, lon}, {lat + div(lat_step, 2), lon + 1}, {lat + lat_step, lon}]
+  end
+
+  defp street(:along, %{i: 0, j: j, side: side} = node, _steps) when j == side - 1 do
+    [
+      {node.lat, node.lon},
+      {node.lat + 1, div(node.lon + node.lon_end, 2)},
+      {node.lat, node.lon_end}
+    ]
+  end
+
+  defp street(:across, %{j: 0, i: i, side: side} = node, _steps) when i == side - 1 do
+    [
+      {node.lat, node.lon},
+      {div(node.lat + node.lat_end, 2), node.lon + 1},
+      {node.lat_end, node.lon}
+    ]
   end
 
   defp street(_direction, _node, _steps), do: nil

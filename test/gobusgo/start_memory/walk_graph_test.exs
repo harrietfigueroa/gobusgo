@@ -54,6 +54,24 @@ defmodule Gobusgo.StartMemory.WalkGraphTest do
     assert length(pieces) == WalkGraph.piece_count(tile)
   end
 
+  test "joins a tile to the tile east of it, so a walk can cross from one to the next" do
+    request = WalkGraph.publication_request()
+    {row, column} = hd(WalkGraph.tiles())
+    east = {row, column + 1}
+    ends_of = fn tile -> request.tiles |> Map.fetch!(tile) |> Enum.flat_map(&packed_ends/1) end
+    sizes = Tiles.sizes()
+    shared = {row * sizes.lat, (column + 1) * sizes.lon}
+
+    assert shared in ends_of.({row, column})
+    assert shared in ends_of.(east)
+  end
+
+  # The first and the last position of a packed piece.
+  defp packed_ends({_class, positions}) do
+    points = for <<lat::signed-32, lon::signed-32 <- positions>>, do: {lat, lon}
+    [List.first(points), List.last(points)]
+  end
+
   test "is the same graph on every call" do
     assert WalkGraph.summary() == WalkGraph.summary()
   end

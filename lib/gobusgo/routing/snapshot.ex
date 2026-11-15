@@ -118,7 +118,7 @@ defmodule Gobusgo.Routing.Snapshot do
       "stopCount" => length(timetable.stop_ids),
       "tripCount" => length(timetable.trips),
       "connectionCount" => timetable.connection_count,
-      "transferRules" => transfer_rules(Map.get(input, :walk_basis, %{kind: :straight})),
+      "transferRules" => transfer_rules(input.walk_basis),
       "walkingLinkCount" => length(walking_links),
       "files" => %{
         "stops" => file_entry(stops),

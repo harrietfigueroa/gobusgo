@@ -1,13 +1,14 @@
 defmodule Gobusgo.Routing.WalkLinks do
   @street_meters_max 600
-  @radius_meters 400
   @link_count_per_stop_max 64
-  @shard_piece_count_max 40_000
+  @shard_byte_max 16 * 1_024 * 1_024
   @read_concurrency 8
   @read_timeout_ms 60_000
   @cell_rows 2
   @cell_columns 2
-  @margin_meters 750
+  @margin_meters 700
+  @child_heap_words_max_default 24_000_000
+  @receive_timeout_max_ms 4_294_967_295
 
   @moduledoc """
   The walking links of a snapshot measured along the walk graph's streets.
@@ -15,7 +16,7 @@ defmodule Gobusgo.Routing.WalkLinks do
   hands in as a function and which run at most #{@read_concurrency} at a
   time.
 
-  A stop's links are the stops within #{@radius_meters} m of it in a straight
+  A stop's links are the stops within the walking radius of it in a straight
   line whose street is at most #{@street_meters_max} m, nearest street first,
   at most #{@link_count_per_stop_max}. A pair that is disconnected on the
   graph has no link. A pair with an end farther than the snap bound from
@@ -29,23 +30,26 @@ defmodule Gobusgo.Routing.WalkLinks do
   or moved or measured on another build, and each stop within the radius of
   one that moved, appeared, or left.
 
-  `compute/1` measures those stops cell by cell, a tile being
-  #{@cell_rows} by #{@cell_columns} cells: a cell's stops share one graph of
-  the pieces within #{@margin_meters} m of the cell, out of the 3 by 3 tiles
-  around its tile, on a plane tangent at the cell's middle, and one search
-  for each stop. The shards of the last tiles are kept up to
-  #{@shard_piece_count_max} pieces, so a row of tiles reads a shard about
-  once or twice.
+  `compute/1` measures those stops tile by tile, in a process of its own for
+  each tile, which returns its stops' links packed: a tile is
+  #{@cell_rows} by #{@cell_columns} cells, and a cell's stops share one graph
+  of the pieces within #{@margin_meters} m of the cell, out of the 3 by 3
+  tiles around its tile, on a plane tangent at the cell's middle, with one
+  search for each stop. The caller keeps the shards as the binaries it read,
+  off its heap, up to #{@shard_byte_max} bytes, and a tile's process decodes
+  them, so no heap holds the decoded shards of more than one tile.
   """
 
   alias Gobusgo.Assert
   alias Gobusgo.Math.Geodesy
   alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Routing.Transfers
+  alias Gobusgo.WalkGraph.Format
   alias Gobusgo.WalkGraph.Search
   alias Gobusgo.WalkGraph.Tiles
 
-  @units_per_degree Gobusgo.WalkGraph.Format.units_per_degree()
+  @radius_meters Transfers.rules().walk_radius_m
+  @units_per_degree Format.units_per_degree()
 
   @type position :: %{lat: number(), lon: number()}
   @type positions :: %{String.t() => position()}
@@ -61,15 +65,15 @@ defmodule Gobusgo.Routing.WalkLinks do
           dropped_link_count: non_neg_integer(),
           read_count: non_neg_integer()
         }
-  @type load_result :: {:ok, Search.shard()} | {:error, :corrupt | {:io, term()}}
+  @type load_result :: {:ok, binary()} | {:error, :corrupt | {:io, term()}}
 
   @doc "The longest street, in meters, that a link may have."
   @spec street_meters_max() :: pos_integer()
   def street_meters_max, do: @street_meters_max
 
-  @doc "The most shards' pieces kept between tiles."
-  @spec shard_piece_count_max() :: pos_integer()
-  def shard_piece_count_max, do: @shard_piece_count_max
+  @doc "The most bytes of shards kept between tiles."
+  @spec shard_byte_max() :: pos_integer()
+  def shard_byte_max, do: @shard_byte_max
 
   @doc "The identifier of what a table is measured over: the graph build and every position."
   @spec key(%{build_id: String.t(), positions: positions()}) :: binary()
@@ -132,44 +136,52 @@ defmodule Gobusgo.Routing.WalkLinks do
   The table for `input.positions` from `input.previous` and the stops measured
   again: `{:ok, %{table: table, stats: stats}}` or `{:error, kind, reason}`
   with `kind` `:corrupt` for a shard that is not a valid shard of the build, `:io` for
-  a read that failed, and `:deadline` for a computation past
-  `input.deadline_ms` on the monotonic clock.
+  a read that failed, `:deadline` for a computation past `input.deadline_ms`
+  on the monotonic clock, `:killed` for a tile's process that outgrew
+  `input.child_heap_words_max`, and `:crashed` for one that exited otherwise.
 
-  `input.load_shard` reads the shard of a tile: `{:ok, shard}`, `{:error,
-  :corrupt}`, or `{:error, {:io, reason}}`. `input.index` is the `MapSet` of
-  the tiles that have a shard.
+  `input.load_shard` reads the bytes of the shard of a tile: `{:ok, binary}`,
+  `{:error, :corrupt}`, or `{:error, {:io, reason}}`. `input.index` is the
+  `MapSet` of the tiles that have a shard.
   """
   @spec compute(%{
-          positions: positions(),
-          stop_ids: [String.t()],
-          previous: table() | nil,
-          build_id: String.t(),
-          index: MapSet.t(),
-          load_shard: (Tiles.tile() -> load_result()),
-          deadline_ms: integer()
+          :positions => positions(),
+          :stop_ids => [String.t()],
+          :previous => table() | nil,
+          :build_id => String.t(),
+          :index => MapSet.t(),
+          :load_shard => (Tiles.tile() -> load_result()),
+          :deadline_ms => integer(),
+          optional(:child_heap_words_max) => pos_integer()
         }) ::
-          {:ok, %{table: table(), stats: stats()}} | {:error, :corrupt | :io | :deadline, term()}
+          {:ok, %{table: table(), stats: stats()}}
+          | {:error, :corrupt | :io | :deadline | :killed | :crashed, term()}
   def compute(%{positions: positions, stop_ids: stop_ids, build_id: build_id} = input)
       when is_binary(build_id) do
+    assert_margin()
+
     Assert.condition(
       Enum.all?(stop_ids, &Map.has_key?(positions, &1)),
       "every stop to measure has a position"
     )
 
-    spatial = index(positions)
-    tiles = tile_groups(positions, stop_ids)
-
     initial = %{
-      measured: %{},
-      cache: %{shards: %{}, counts: %{}, order: []},
+      measured: [],
+      cache: %{bins: %{}, bytes: %{}, order: []},
       stats: %{straight_link_count: 0, dropped_link_count: 0, read_count: 0}
     }
 
-    context = Map.put(input, :spatial, spatial)
+    context =
+      Map.merge(input, %{
+        spatial: index(positions),
+        child_heap_words_max: Map.get(input, :child_heap_words_max, @child_heap_words_max_default)
+      })
 
     reduced =
-      Enum.reduce_while(tiles, initial, fn {tile, ids}, state ->
-        case measure_tile(tile, ids, state, context) do
+      positions
+      |> tile_groups(stop_ids)
+      |> Enum.reduce_while(initial, fn {tile, cells}, state ->
+        case measure_tile(tile, cells, state, context) do
           {:ok, next} -> {:cont, next}
           {:error, _kind, _reason} = failure -> {:halt, failure}
         end
@@ -218,6 +230,24 @@ defmodule Gobusgo.Routing.WalkLinks do
     end)
   end
 
+  # The margin must hold the longest street and the snap bound, or a street
+  # from a stop leaves the pieces of its cell, and be no more than a tile, or
+  # the 3 by 3 tiles around a cell's tile no longer hold the margin.
+  defp assert_margin do
+    snap_meters_max = Search.limits().snap_meters_max
+    tile_meters = Tiles.sizes().lat * Geodesy.meters_per_degree() / @units_per_degree
+
+    Assert.condition(
+      @margin_meters >= @street_meters_max + snap_meters_max,
+      "the margin of #{@margin_meters} m is under the street bound and the snap bound"
+    )
+
+    Assert.condition(
+      @margin_meters <= tile_meters,
+      "the margin of #{@margin_meters} m is more than a tile of #{tile_meters} m"
+    )
+  end
+
   # ---- Which stops are measured again.
 
   defp changed_positions(positions, held) do
@@ -237,21 +267,23 @@ defmodule Gobusgo.Routing.WalkLinks do
   defp same_position?(%{lat: lat, lon: lon}, %{lat: lat, lon: lon}), do: true
   defp same_position?(_held, _position), do: false
 
-  # ---- The stops by their straight-line neighbors, in cells of the radius.
+  # ---- The stops by their straight-line neighbors, in the cells of Transfers.
 
   defp index(positions) do
-    lon_m = lon_m(positions)
+    lon_m = positions |> Map.values() |> Transfers.lon_m()
 
     cells =
-      Enum.group_by(positions, fn {_id, position} -> cell(position, lon_m) end, fn {id, position} ->
-        {id, position}
-      end)
+      Enum.group_by(
+        positions,
+        fn {_id, position} -> Transfers.cell(position, lon_m) end,
+        fn {id, position} -> {id, position} end
+      )
 
     %{cells: cells, lon_m: lon_m}
   end
 
   defp within(%{cells: cells, lon_m: lon_m}, position, radius_meters) do
-    {row, column} = cell(position, lon_m)
+    {row, column} = Transfers.cell(position, lon_m)
 
     for row_step <- -1..1,
         column_step <- -1..1,
@@ -260,20 +292,6 @@ defmodule Gobusgo.Routing.WalkLinks do
         straight_meters <= radius_meters do
       {straight_meters, id}
     end
-  end
-
-  defp cell(%{lat: lat, lon: lon}, lon_m) do
-    {floor(lat * Geodesy.meters_per_degree() / @radius_meters),
-     floor(lon * lon_m / @radius_meters)}
-  end
-
-  # The meters of a degree of longitude at the highest latitude among the
-  # stops, the shortest that any of them has.
-  defp lon_m(positions) when map_size(positions) == 0, do: Geodesy.meters_per_degree()
-
-  defp lon_m(positions) do
-    lat_max = positions |> Map.values() |> Enum.map(&abs(&1.lat)) |> Enum.max()
-    Geodesy.meters_per_degree() * max(:math.cos(Geodesy.radians(lat_max)), 0.01)
   end
 
   # ---- The measuring, tile by tile.
@@ -294,8 +312,6 @@ defmodule Gobusgo.Routing.WalkLinks do
     )
   end
 
-  # A tile is cut into #{@cell_rows} by #{@cell_columns} cells, and a cell's
-  # stops share one graph of the pieces within #{@margin_meters} m of the cell.
   defp cell_of(%{lat: lat, lon: lon}) do
     sizes = Tiles.sizes()
     lat_in_tile = Integer.mod(floor(lat * @units_per_degree), sizes.lat)
@@ -313,28 +329,126 @@ defmodule Gobusgo.Routing.WalkLinks do
             MapSet.member?(context.index, {row + row_step, column + column_step}),
             do: {row + row_step, column + column_step}
 
-      with {:ok, cache, read_count} <- ensure_shards(window, state.cache, context) do
-        shards = Enum.map(window, &Map.fetch!(cache.shards, &1))
-        stats = %{state.stats | read_count: state.stats.read_count + read_count}
-        state = %{state | cache: cache, stats: stats}
+      with {:ok, cache, read_count} <- ensure_shards(window, state.cache, context),
+           {:ok, packed, tally} <- measure_in_process(tile, window, cells, cache, context) do
+        stats = %{
+          state.stats
+          | read_count: state.stats.read_count + read_count,
+            straight_link_count: state.stats.straight_link_count + tally.straight,
+            dropped_link_count: state.stats.dropped_link_count + tally.dropped
+        }
 
-        {:ok,
-         Enum.reduce(cells, state, fn {cell, ids}, current ->
-           measure_cell(%{tile: tile, cell: cell, ids: ids, shards: shards}, current, context)
-         end)}
+        {:ok, %{state | cache: cache, stats: stats, measured: [packed | state.measured]}}
       end
     end
   end
 
-  defp measure_cell(%{tile: tile, cell: cell, ids: ids, shards: shards}, state, context) do
+  # A tile is measured in a process that ends with it, so the decoded shards
+  # and the graph are freed with it. It gets the shards as binaries, which are
+  # not copied, and the stops of the tile with the positions of their
+  # neighbors, and returns the links packed.
+  defp measure_in_process(tile, window, cells, cache, context) do
+    positions = context.positions
+    binaries = Enum.map(window, &{&1, Map.fetch!(cache.bins, &1)})
+
+    jobs =
+      for {cell, ids} <- cells do
+        {cell, Enum.map(ids, &stop_job(&1, positions, context.spatial))}
+      end
+
+    parent = self()
+    ref = make_ref()
+
+    {pid, monitor} =
+      :erlang.spawn_opt(
+        fn -> send(parent, {ref, measure_tile_pure(tile, binaries, jobs)}) end,
+        [
+          :monitor,
+          fullsweep_after: 0,
+          max_heap_size: %{size: context.child_heap_words_max, kill: true, error_logger: false}
+        ]
+      )
+
+    remaining_ms =
+      context.deadline_ms
+      |> Kernel.-(System.monotonic_time(:millisecond))
+      |> max(0)
+      |> min(@receive_timeout_max_ms)
+
+    receive do
+      {^ref, result} ->
+        Process.demonitor(monitor, [:flush])
+        result
+
+      {:DOWN, ^monitor, :process, ^pid, :killed} ->
+        {:error, :killed, tile}
+
+      {:DOWN, ^monitor, :process, ^pid, reason} ->
+        {:error, :crashed, {tile, reason}}
+    after
+      remaining_ms ->
+        Process.exit(pid, :kill)
+        Process.demonitor(monitor, [:flush])
+        {:error, :deadline, tile}
+    end
+  end
+
+  defp stop_job(id, positions, spatial) do
+    position = Map.fetch!(positions, id)
+
+    candidates =
+      for {straight_meters, other} <- within(spatial, position, @radius_meters),
+          other != id,
+          do: {other, Map.fetch!(positions, other), straight_meters}
+
+    {id, position, candidates}
+  end
+
+  # What a tile's process does: decode the shards, and for each cell build one
+  # graph and measure its stops. The answer is the stops' links packed, with the
+  # counts of the links kept as straight lines and the pairs dropped.
+  defp measure_tile_pure(tile, binaries, jobs) do
+    case decode_all(binaries) do
+      {:ok, shards} ->
+        {entries, tally} =
+          Enum.reduce(jobs, {%{}, %{straight: 0, dropped: 0}}, fn {cell, stops}, acc ->
+            measure_cell(%{tile: tile, cell: cell, stops: stops, shards: shards}, acc)
+          end)
+
+        {:ok, :erlang.term_to_binary(entries), tally}
+
+      {:error, bad_tile} ->
+        {:error, :corrupt, bad_tile}
+    end
+  end
+
+  defp decode_all(binaries) do
+    Enum.reduce_while(binaries, {:ok, []}, fn {tile, binary}, {:ok, shards} ->
+      case Format.decode_shard(binary) do
+        {:ok, shard} -> {:cont, {:ok, [shard | shards]}}
+        {:error, _refusal} -> {:halt, {:error, tile}}
+      end
+    end)
+  end
+
+  defp measure_cell(%{tile: tile, cell: cell, stops: stops, shards: shards}, {entries, tally}) do
     box = cell_box(tile, cell)
     pieces = for shard <- shards, piece <- shard.pieces, near_box?(piece, box), do: piece
-    reference = box_middle(box)
 
     prepared =
-      Search.prepare(%{reference: reference, shards: [%{pieces: pieces}], limits: limits()})
+      Search.prepare(%{reference: box.middle, shards: [%{pieces: pieces}], limits: limits()})
 
-    Enum.reduce(ids, state, fn id, current -> measure_stop(id, prepared, current, context) end)
+    Enum.reduce(stops, {entries, tally}, fn {id, position, candidates}, {held, counts} ->
+      answers = answers(prepared, position, candidates)
+      {links, tallied} = links_of(candidates, answers)
+      entry = %{lat: position.lat, lon: position.lon, links: links}
+
+      {Map.put(held, id, entry),
+       %{
+         straight: counts.straight + tallied.straight,
+         dropped: counts.dropped + tallied.dropped
+       }}
+    end)
   end
 
   # The cell's extent in units, widened by the margin in each direction.
@@ -363,8 +477,6 @@ defmodule Gobusgo.Routing.WalkLinks do
     }
   end
 
-  defp box_middle(%{middle: middle}), do: middle
-
   # A piece is near the box when the box of its positions meets it, which
   # keeps every piece that a street within the margin of the cell can use.
   defp near_box?(%{points: points}, box) do
@@ -374,42 +486,26 @@ defmodule Gobusgo.Routing.WalkLinks do
       Enum.min(lons) <= box.lon_high and Enum.max(lons) >= box.lon_low
   end
 
-  defp measure_stop(id, prepared, state, context) do
-    position = Map.fetch!(context.positions, id)
-
-    candidates =
-      for {straight_meters, other} <- within(context.spatial, position, @radius_meters),
-          other != id,
-          do: {other, straight_meters}
-
-    answers = answers(prepared, position, candidates, context.positions)
-    {links, tally} = links_of(candidates, answers)
-
-    stats = %{
-      state.stats
-      | straight_link_count: state.stats.straight_link_count + tally.straight,
-        dropped_link_count: state.stats.dropped_link_count + tally.dropped
-    }
-
-    entry = %{lat: position.lat, lon: position.lon, links: links}
-    %{state | measured: Map.put(state.measured, id, entry), stats: stats}
-  end
-
   defp limits, do: %{Search.limits() | street_meters_max: @street_meters_max}
 
-  # A tile whose window holds no piece answers every target as off the
-  # graph, so its stops keep their straight lines.
-  defp answers({:no_path, _reason}, _position, candidates, _positions) do
+  # A cell with no piece in its margin has every end off the graph, so its
+  # stops keep their straight lines; one whose graph is past the piece bound
+  # answers nothing, and its pairs are dropped.
+  defp answers({:no_path, :no_shards}, _position, candidates) do
     Enum.map(candidates, fn _candidate -> {:no_path, :off_graph} end)
   end
 
-  defp answers({:ok, prepared}, position, candidates, positions) do
+  defp answers({:no_path, :cap_reached}, _position, candidates) do
+    Enum.map(candidates, fn _candidate -> {:no_path, :cap_reached} end)
+  end
+
+  defp answers({:ok, prepared}, position, candidates) do
     chunk_size = limits().target_count_max
 
     candidates
     |> Enum.chunk_every(chunk_size)
     |> Enum.flat_map(fn chunk ->
-      targets = Enum.map(chunk, fn {other, _meters} -> Map.fetch!(positions, other) end)
+      targets = Enum.map(chunk, fn {_other, other_position, _meters} -> other_position end)
 
       Search.reach_prepared(%{
         prepared: prepared,
@@ -427,10 +523,10 @@ defmodule Gobusgo.Routing.WalkLinks do
       candidates
       |> Enum.zip(answers)
       |> Enum.reduce({[], %{straight: 0, dropped: 0}}, fn
-        {{other, _straight}, {:found, meters}}, {links, tally} ->
+        {{other, _position, _straight}, {:found, meters}}, {links, tally} ->
           {[{other, meters} | links], tally}
 
-        {{other, straight_meters}, {:no_path, :off_graph}}, {links, tally} ->
+        {{other, _position, straight_meters}, {:no_path, :off_graph}}, {links, tally} ->
           {[{other, straight_meters} | links], %{tally | straight: tally.straight + 1}}
 
         {_candidate, {:no_path, _reason}}, {links, tally} ->
@@ -445,10 +541,11 @@ defmodule Gobusgo.Routing.WalkLinks do
     {kept, tally}
   end
 
-  # ---- The shards, read at most @read_concurrency at a time and kept by tile.
+  # ---- The shards, read at most @read_concurrency at a time and kept by tile as
+  # the binaries read.
 
   defp ensure_shards(window, cache, context) do
-    missing = Enum.reject(window, &Map.has_key?(cache.shards, &1))
+    missing = Enum.reject(window, &Map.has_key?(cache.bins, &1))
 
     stream =
       Task.async_stream(missing, context.load_shard,
@@ -462,7 +559,7 @@ defmodule Gobusgo.Routing.WalkLinks do
 
     case first_failure(results) do
       :none ->
-        loaded = for {tile, {:ok, {:ok, shard}}} <- results, do: {tile, shard}
+        loaded = for {tile, {:ok, {:ok, binary}}} <- results, do: {tile, binary}
         {:ok, keep(cache, loaded, window), length(missing)}
 
       {:failed, kind, reason} ->
@@ -472,7 +569,7 @@ defmodule Gobusgo.Routing.WalkLinks do
 
   defp first_failure(results) do
     Enum.find_value(results, :none, fn
-      {_tile, {:ok, {:ok, _shard}}} -> nil
+      {_tile, {:ok, {:ok, _binary}}} -> nil
       {tile, {:ok, {:error, :corrupt}}} -> {:failed, :corrupt, tile}
       {tile, {:ok, {:error, {:io, reason}}}} -> {:failed, :io, {tile, reason}}
       {tile, {:exit, reason}} -> {:failed, :io, {tile, reason}}
@@ -480,44 +577,48 @@ defmodule Gobusgo.Routing.WalkLinks do
   end
 
   # The cache keeps the shards of the window and, of the shards before it, the
-  # newest while the pieces held stay within the bound.
+  # newest while the bytes held stay within the bound.
   defp keep(cache, loaded, window) do
-    shards =
-      Enum.reduce(loaded, cache.shards, fn {tile, shard}, held -> Map.put(held, tile, shard) end)
+    bins =
+      Enum.reduce(loaded, cache.bins, fn {tile, binary}, held -> Map.put(held, tile, binary) end)
 
-    counts =
-      Enum.reduce(loaded, cache.counts, fn {tile, shard}, held ->
-        Map.put(held, tile, length(shard.pieces))
+    bytes =
+      Enum.reduce(loaded, cache.bytes, fn {tile, binary}, held ->
+        Map.put(held, tile, byte_size(binary))
       end)
 
     order = Enum.uniq(Enum.map(loaded, &elem(&1, 0)) ++ cache.order)
-    trim(%{shards: shards, counts: counts, order: order}, window)
+    trim(%{bins: bins, bytes: bytes, order: order}, window)
   end
 
-  # The newest shards first, each kept while the pieces kept stay within the
+  # The newest shards first, each kept while the bytes kept stay within the
   # bound, and the window's always, so a window larger than the bound still
   # holds its own shards.
-  defp trim(%{shards: shards, counts: counts, order: order}, window) do
+  defp trim(%{bins: bins, bytes: bytes, order: order}, window) do
     {kept, _total} =
       Enum.reduce(order, {[], 0}, fn tile, {kept, total} ->
-        count = Map.fetch!(counts, tile)
-        within_bound = total + count <= @shard_piece_count_max
+        size = Map.fetch!(bytes, tile)
 
-        if tile in window or within_bound do
-          {[tile | kept], total + count}
+        if tile in window or total + size <= @shard_byte_max do
+          {[tile | kept], total + size}
         else
           {kept, total}
         end
       end)
 
-    %{shards: Map.take(shards, kept), counts: Map.take(counts, kept), order: Enum.reverse(kept)}
+    %{bins: Map.take(bins, kept), bytes: Map.take(bytes, kept), order: Enum.reverse(kept)}
   end
 
   # ---- The table: what was measured and what the previous table still holds.
 
-  defp assemble(input, measured, stats) do
+  defp assemble(input, packed_tiles, stats) do
     positions = input.positions
     stale = MapSet.new(input.stop_ids)
+
+    measured =
+      Enum.reduce(packed_tiles, %{}, fn packed, entries ->
+        Map.merge(entries, :erlang.binary_to_term(packed, [:safe]))
+      end)
 
     held =
       case input.previous do

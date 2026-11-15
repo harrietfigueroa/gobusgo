@@ -24,8 +24,8 @@ defmodule Gobusgo.Routing.WalkLinksTest do
 
   defp shards do
     %{
-      @west_tile => %{pieces: WalkGraphFixture.pieces(:west)},
-      @east_tile => %{pieces: WalkGraphFixture.pieces(:east)}
+      @west_tile => WalkGraphFixture.encode_shard(:west),
+      @east_tile => WalkGraphFixture.encode_shard(:east)
     }
   end
 
@@ -148,6 +148,16 @@ defmodule Gobusgo.Routing.WalkLinksTest do
       end
 
       assert {:error, :corrupt, @east_tile} = compute(%{load_shard: load})
+    end
+
+    test "answers a shard that is not a shard as corrupt, with the tile" do
+      held = Map.put(shards(), @east_tile, "not a shard")
+
+      assert {:error, :corrupt, @east_tile} = compute(%{load_shard: load_from(held)})
+    end
+
+    test "answers a tile's process that outgrew its heap as killed, with the tile" do
+      assert {:error, :killed, _tile} = compute(%{child_heap_words_max: 1_000})
     end
 
     test "answers a read that failed as an io failure, with the tile" do

@@ -1,11 +1,9 @@
 defmodule Gobusgo.Routing.Snapshots.Walk do
-  @heap_words_max 48_000_000
-  @deadline_ms 600_000
+  @heap_words_max 8_000_000
 
   @moduledoc """
-  How one run of `Gobusgo.Routing.Snapshots.Build` measures the walks of the
-  snapshots it builds, decided once per run from the configured walk basis
-  and the walk graph.
+  How the walks of a set of snapshots are measured, decided once from the
+  configured walk basis and the walk graph.
 
   The plan is one of:
 
@@ -26,21 +24,43 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
 
   require Logger
 
+  alias Gobusgo.Assert
   alias Gobusgo.Config
   alias Gobusgo.Routing.Snapshots
   alias Gobusgo.Routing.Transfers
   alias Gobusgo.Routing.WalkLinks
   alias Gobusgo.Routing.WalkLinks.Store
 
-  @type t :: %{required(:kind) => :straight | :streets | :unavailable, optional(atom()) => term()}
+  @type t ::
+          %{kind: :straight, key: term()}
+          | %{kind: :streets, build_id: String.t(), table: binary(), key: term()}
+          | %{
+              required(:kind) => :unavailable,
+              optional(:measure) => Gobusgo.Routing.Snapshots.walk_links_request(),
+              required(:stale) => %{table: binary(), build_id: String.t()} | nil
+            }
 
   @doc "The heap cap, in words, of the process that measures the links."
   @spec heap_words_max() :: pos_integer()
   def heap_words_max, do: @heap_words_max
 
-  @doc "The milliseconds the process that measures the links has."
+  @doc """
+  The milliseconds the process that measures the links has: the time between
+  two runs of the build less the time a run has, so a measuring, which a run
+  starts as it ends, is over, with the grace it is killed after, before the next
+  run starts.
+  """
   @spec deadline_ms() :: pos_integer()
-  def deadline_ms, do: @deadline_ms
+  def deadline_ms do
+    deadline_ms = Snapshots.check_interval_ms() - Snapshots.run_deadline_ms()
+
+    Assert.condition(
+      deadline_ms + Snapshots.deadline_grace_ms() <= Snapshots.check_interval_ms(),
+      "a measuring of #{deadline_ms} ms and its grace outlast the interval between runs"
+    )
+
+    deadline_ms
+  end
 
   @doc """
   The plan for `positions`, the position of each stop by identifier. The

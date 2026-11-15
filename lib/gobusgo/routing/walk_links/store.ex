@@ -46,16 +46,18 @@ defmodule Gobusgo.Routing.WalkLinks.Store do
     end
   end
 
-  @doc "The function that reads and decodes the shard of a tile of the build `build_id`."
-  @spec loader(String.t(), keyword()) :: (Tiles.tile() -> {:ok, map()} | {:error, term()})
+  @doc """
+  The function that reads the shard of a tile of the build `build_id`, as the
+  bytes of its expanded container, which the measuring decodes where it uses
+  them.
+  """
+  @spec loader(String.t(), keyword()) :: (Tiles.tile() -> {:ok, binary()} | {:error, term()})
   def loader(build_id, read_options) when is_list(read_options) do
     fn tile ->
       destination =
         "#{Publication.directory()}/" <> Format.shard_file_name(%{build_id: build_id, tile: tile})
 
-      with {:ok, content} <- read(destination, read_options) do
-        decode(&Format.decode_shard/1, content)
-      end
+      read(destination, read_options)
     end
   end
 

@@ -65,8 +65,11 @@ defmodule Gobusgo.StartMemoryTest do
       assert StartMemory.ending(built, StartMemory.awaited(:streets)) == :running
       assert StartMemory.ending(built, StartMemory.awaited(:straight)) == :built
 
+      measured = MapSet.put(built, :walk_links_built)
+      assert StartMemory.ending(measured, StartMemory.awaited(:streets)) == :running
+
       assert StartMemory.ending(
-               MapSet.put(built, :walk_links_built),
+               MapSet.put(measured, :streets_snapshots_built),
                StartMemory.awaited(:streets)
              ) == :built
     end

@@ -1,6 +1,9 @@
 defmodule Mix.Tasks.Gobusgo.StartMemory do
   @sample_interval_s "0.05"
   @deadline_ms 600_000
+  # The snapshots are built again on the streets by the run after the links
+  # are measured, which is a scheduler interval after the first.
+  @streets_extra_ms 660_000
   @command_timeout_ms 60_000
   @log_line_count_max 200
   @line_bytes_max 4_096
@@ -184,6 +187,7 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
         sampler_port: sampler_port,
         started_ms: started_ms,
         awaited: StartMemory.awaited(input.walk_basis),
+        deadline_ms: deadline_ms(input.walk_basis),
         events: MapSet.new(),
         lines: [],
         step_lines: [],
@@ -268,8 +272,13 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   end
 
   # The release's configuration file wins over a `-gobusgo` flag of the VM, so
-  # the setting is made by an `-eval` flag, which runs as the boot finishes,
-  # before the first run of the snapshot build.
+  # the setting is made by an `-eval` flag, which runs as the boot finishes. A
+  # build that ran before it would measure the straight line and the run would
+  # end at its deadline with no walk links logged, which a rerun cures; it has
+  # not happened in the runs made.
+  defp deadline_ms(:straight), do: @deadline_ms
+  defp deadline_ms(:streets), do: @deadline_ms + @streets_extra_ms
+
   defp walk_flags(:straight), do: ""
   defp walk_flags(:streets), do: " -eval application:set_env(gobusgo,walk,[{basis,streets}])."
 
@@ -287,7 +296,7 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
   # built or failed, the sampler stops with its container, or the deadline
   # passes.
   defp await(%{log_port: log_port, sampler_port: sampler_port} = state) do
-    remaining_ms = @deadline_ms - (System.monotonic_time(:millisecond) - state.started_ms)
+    remaining_ms = state.deadline_ms - (System.monotonic_time(:millisecond) - state.started_ms)
 
     receive do
       {^log_port, {:data, {_end, line}}} -> state |> log_line(line) |> next()
@@ -314,10 +323,21 @@ defmodule Mix.Tasks.Gobusgo.StartMemory do
         %{state | lines: lines}
 
       event ->
-        events = MapSet.put(state.events, event)
+        events = state.events |> MapSet.put(event) |> after_links(event)
         %{state | lines: lines, events: events, step_lines: [line | state.step_lines]}
     end
   end
+
+  # A snapshot build logged once the links are measured is the first on the streets.
+  defp after_links(events, :snapshots_built) do
+    if MapSet.member?(events, :walk_links_built) do
+      MapSet.put(events, :streets_snapshots_built)
+    else
+      events
+    end
+  end
+
+  defp after_links(events, _event), do: events
 
   defp sample_line(state, line) do
     elapsed_ms = System.monotonic_time(:millisecond) - state.started_ms
