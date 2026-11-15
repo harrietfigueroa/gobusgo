@@ -43,16 +43,16 @@ pub struct Position {
 pub fn assert_position(coordinates: &[f64], label: &str) -> Position {
     let coordinate_count = coordinates.len();
     assert::condition(coordinate_count == COORDINATE_COUNT, || {
-        format!("{label}: a position has two coordinates, not {coordinate_count}")
+        coordinate_count_message(label, &coordinate_count.to_string())
     });
     let &[lon, lat] = coordinates else {
         assert::unreachable(&coordinate_count, "geodesy: two coordinates are a pair");
     };
     assert::condition(lon.is_finite(), || {
-        format!("{label}: longitude {} is not a number", number_text(lon))
+        not_a_coordinate_message(label, Axis::Longitude, &number_text(lon))
     });
     assert::condition(lat.is_finite(), || {
-        format!("{label}: latitude {} is not a number", number_text(lat))
+        not_a_coordinate_message(label, Axis::Latitude, &number_text(lat))
     });
     assert::condition(lon.abs() <= LONGITUDE_DEGREES_MAX, || {
         format!("{label}: longitude {} is out of range", number_text(lon))
@@ -61,6 +61,38 @@ pub fn assert_position(coordinates: &[f64], label: &str) -> Position {
         format!("{label}: latitude {} is out of range", number_text(lat))
     });
     Position { lon, lat }
+}
+
+/// A coordinate of a position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    Longitude,
+    Latitude,
+}
+
+impl Axis {
+    /// The coordinate's name in a message.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Longitude => "longitude",
+            Self::Latitude => "latitude",
+        }
+    }
+}
+
+/// The message of `assert_position`'s failure for coordinates that number
+/// `count_text`, for a binding that counts a value of its platform.
+#[must_use]
+pub fn coordinate_count_message(label: &str, count_text: &str) -> String {
+    format!("{label}: a position has two coordinates, not {count_text}")
+}
+
+/// The message of `assert_position`'s failure for a coordinate on `axis` that
+/// `value_text` writes and that is no number.
+#[must_use]
+pub fn not_a_coordinate_message(label: &str, axis: Axis, value_text: &str) -> String {
+    format!("{label}: {} {value_text} is not a number", axis.name())
 }
 
 /// Two positions, the one a measure starts from and the one it ends at.

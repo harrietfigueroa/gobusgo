@@ -8,8 +8,15 @@ use crate::assert::{self, number_text};
 #[track_caller]
 pub fn assert_finite(value: f64, label: &str) {
     assert::condition(value.is_finite(), || {
-        format!("{label}: {} is not a finite number", number_text(value))
+        not_finite_message(label, &number_text(value))
     });
+}
+
+/// The message of `assert_finite`'s failure for the value `value_text` writes,
+/// for a binding that refuses a value of its platform no number.
+#[must_use]
+pub fn not_finite_message(label: &str, value_text: &str) -> String {
+    format!("{label}: {value_text} is not a finite number")
 }
 
 /// A pair of numbers that must be in order, and the label that names them.

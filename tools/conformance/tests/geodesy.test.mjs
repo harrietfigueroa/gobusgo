@@ -21,6 +21,17 @@ const DistanceKind = Object.freeze({degree: "degree", quarter: "quarter", half: 
 // shared fixture, whose Rust cases take coordinates as doubles.
 const refusedObject = {name: "an object", position: {lon: 0, lat: 0}}
 
+// Coordinates that are no numbers, which JavaScript's types alone can write.
+const refusedCoordinates = [
+  {name: "numerals", position: ["5", "6"]},
+  {name: "a longitude of null", position: [null, 6]},
+  {name: "a longitude of undefined", position: [undefined, 6]}
+]
+
+// A failure's count large enough to use up a binding that leaks a little on
+// each, such as a slot of wasm-bindgen's table of JavaScript values.
+const REPEATED_FAILURE_COUNT = 1000
+
 function place(name) {
   return cases.places[name]
 }
@@ -35,6 +46,9 @@ function refusedPositions() {
     refused.push({name, position: coordinatesOf(position)})
   }
   refused.push(refusedObject)
+  for (const refusedCoordinate of refusedCoordinates) {
+    refused.push(refusedCoordinate)
+  }
   return refused
 }
 
@@ -95,6 +109,29 @@ describe.each(implementationsWith("geodesy"))("geodesy ($name)", ({AssertionErro
 
   test.each(refusedPositions())("refused position: $name", ({name, position}) => {
     expect(() => geodesy.assertPosition(position, name)).toThrow(AssertionError)
+  })
+
+  // A coordinate of undefined is named as `String` writes it.
+  test("refused position: the message of a longitude of undefined", () => {
+    const failing = () => geodesy.assertPosition([undefined, 6], "a stop")
+    expect(failing).toThrow(new AssertionError("a stop: longitude undefined is not a number"))
+  })
+
+  test("a plane of no latitude", () => {
+    const failing = () => geodesy.tangentPlane({})
+    expect(failing).toThrow(AssertionError)
+    expect(failing).toThrow(/undefined/)
+  })
+
+  // A position of null throws, a TypeError in JavaScript and an
+  // AssertionError through the binding, and a distance follows a long run of
+  // such throws.
+  test("a distance after many positions of null", () => {
+    for (let index = 0; index < REPEATED_FAILURE_COUNT; index++) {
+      expect(() => geodesy.distanceMeters(null, place("origin"))).toThrow()
+    }
+    const meters = geodesy.distanceMeters(place("origin"), place("oneNorth"))
+    expect(Math.abs(meters - geodesy.METERS_PER_DEGREE)).toBeLessThanOrEqual(TOLERANCE_METERS)
   })
 
   test.each(cases.planes)("$name", ({referenceLatitudeDegrees}) => {

@@ -4,12 +4,19 @@
 //! read through its properties where that module takes one, so a stand-in for
 //! the module renames nothing.
 //!
-//! A failed assertion of the core throws this module's `AssertionError`, which
-//! `assertionErrorClass` returns, with the core's message.
+//! Every argument crosses as a `JsValue` and is read inside the call: a number
+//! must be one, where wasm-bindgen's conversion would coerce a string or `null`
+//! to a number, and text is read with `String`, so `undefined` reads as
+//! `undefined`, as the JavaScript writes it. A failed assertion of the core, and
+//! any exception JavaScript throws while the binding reads an argument, throws
+//! this module's `AssertionError`, which `assertionErrorClass` returns.
 
-use gobusgo_core::assert::{self, AssertionError as CoreAssertionError};
+use gobusgo_core::assert::{self, AssertionError as CoreAssertionError, number_text};
 use gobusgo_core::math::{angles, checks, geodesy, interpolation};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
+
+// The length of an array that holds a position's two coordinates.
+const COORDINATE_COUNT: f64 = 2.0;
 
 /// The version of the core this module was built from.
 #[wasm_bindgen(js_name = coreVersion)]
@@ -18,15 +25,16 @@ pub fn core_version() -> String {
     gobusgo_core::core_version().to_owned()
 }
 
-// The failure every assertion throws, and the frozen object a tangent plane
-// crosses as, which JavaScript builds so that no value a caller holds points
-// into the module's memory.
+// The failure every assertion throws; the frozen object a tangent plane crosses
+// as, which JavaScript builds so that no value a caller holds points into the
+// module's memory; and a property read as JavaScript reads `target[key]`.
 #[wasm_bindgen(inline_js = "
 export class AssertionError extends Error {}
 export function assertionError(message) { return new AssertionError(message) }
 export function plane(referenceLatitudeDegrees, metersPerDegreeLon) {
   return Object.freeze({referenceLatitudeDegrees, metersPerDegreeLon})
 }
+export function property(target, key) { return target[key] }
 ")]
 extern "C" {
     #[wasm_bindgen(thread_local_v2, js_name = AssertionError)]
@@ -36,70 +44,17 @@ extern "C" {
     fn assertion_error(message: &str) -> JsValue;
 
     fn plane(reference_latitude_degrees: f64, meters_per_degree_lon: f64) -> JsValue;
+
+    #[wasm_bindgen(catch, js_name = property)]
+    fn try_property(target: &JsValue, key: &str) -> Result<JsValue, JsValue>;
 }
 
-// JavaScript's own conversions: `String(value)`, and the coordinates of an
-// array as doubles, which is empty for a value no array.
+// JavaScript's `String(value)`, which throws for a value whose conversion to
+// text throws.
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_name = String)]
-    fn js_string(value: &JsValue) -> String;
-
-    #[wasm_bindgen(js_namespace = Float64Array, js_name = from)]
-    fn float64_array_from(value: &JsValue) -> Vec<f64>;
-}
-
-// The options objects the JavaScript modules take, read through their
-// properties.
-#[wasm_bindgen]
-extern "C" {
-    pub type OrderedOptions;
-    #[wasm_bindgen(method, getter)]
-    fn low(this: &OrderedOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn high(this: &OrderedOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn label(this: &OrderedOptions) -> String;
-
-    pub type TurnOptions;
-    #[wasm_bindgen(method, getter)]
-    fn from(this: &TurnOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn to(this: &TurnOptions) -> f64;
-
-    pub type LerpOptions;
-    #[wasm_bindgen(method, getter)]
-    fn from(this: &LerpOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn to(this: &LerpOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn fraction(this: &LerpOptions) -> f64;
-
-    pub type ClampOptions;
-    #[wasm_bindgen(method, getter)]
-    fn value(this: &ClampOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn min(this: &ClampOptions) -> f64;
-    #[wasm_bindgen(method, getter)]
-    fn max(this: &ClampOptions) -> f64;
-
-    pub type PlaneOptions;
-    #[wasm_bindgen(method, getter = referenceLatitudeDegrees)]
-    fn reference_latitude_degrees(this: &PlaneOptions) -> f64;
-
-    pub type Plane;
-    #[wasm_bindgen(method, getter = referenceLatitudeDegrees)]
-    fn reference_latitude_degrees(this: &Plane) -> f64;
-    #[wasm_bindgen(method, getter = metersPerDegreeLon)]
-    fn meters_per_degree_lon(this: &Plane) -> f64;
-
-    pub type CoverageOptions;
-    #[wasm_bindgen(method, getter)]
-    fn plane(this: &CoverageOptions) -> Plane;
-    #[wasm_bindgen(method, getter = latitudeDegreesMin)]
-    fn latitude_degrees_min(this: &CoverageOptions) -> f64;
-    #[wasm_bindgen(method, getter = latitudeDegreesMax)]
-    fn latitude_degrees_max(this: &CoverageOptions) -> f64;
+    #[wasm_bindgen(catch, js_name = String)]
+    fn try_js_string(value: &JsValue) -> Result<JsValue, JsValue>;
 }
 
 // A panic of the core throws the AssertionError with its message, and the
@@ -107,11 +62,12 @@ extern "C" {
 // unfinished, with the module's stack and its count of panics where the panic
 // left them.
 //
-// An export takes text as a `JsValue` and reads it through `String` inside the
-// call. The loader wasm-bindgen 0.2.130 writes copies a `&str` argument into
-// the module's memory with `passStringToWasm0` before `__wbg_call_guard` makes
-// the instance anew, so the first call after a failure reads that text from
+// An export takes no `&str`: the loader of wasm-bindgen 0.2.130 copies such an
+// argument into the module's memory ahead of the call guard that makes the
+// instance anew, so the first call after a failure would read the text from
 // the new instance's memory, where it is not.
+// https://docs.rs/crate/wasm-bindgen-cli-support/0.2.130/source/src/js/binding.rs
+// (`maybe_wrap_export_call`, which wraps the call alone) — checked 2026-11-14
 #[wasm_bindgen(start)]
 fn start() {
     std::panic::set_hook(Box::new(throw_assertion_error));
@@ -140,29 +96,31 @@ pub fn assertion_error_class() -> JsValue {
 /// `assert.js`'s `assertCondition`: throws unless `condition` is truthy.
 #[wasm_bindgen(js_name = assertCondition)]
 pub fn assert_condition(condition: &JsValue, message: &JsValue) {
-    assert::condition(condition.is_truthy(), || js_string(message));
+    assert::condition(condition.is_truthy(), || text(message));
 }
 
 /// `assert.js`'s `unreachable`: throws naming `value` as `String(value)` writes it.
 #[wasm_bindgen]
 pub fn unreachable(value: &JsValue, message: &JsValue) {
-    let text = js_string(value);
-    assert::unreachable(&text, &js_string(message));
+    let value_text = text(value);
+    assert::unreachable(&value_text, &text(message));
 }
 
 /// `math/checks.js`'s `assertFinite`.
 #[wasm_bindgen(js_name = assertFinite)]
-pub fn assert_finite(value: f64, label: &JsValue) {
-    checks::assert_finite(value, &js_string(label));
+pub fn assert_finite(value: &JsValue, label: &JsValue) {
+    let label = text(label);
+    let finite = finite_number(value, &label);
+    checks::assert_finite(finite, &label);
 }
 
 /// `math/checks.js`'s `assertOrdered`.
 #[wasm_bindgen(js_name = assertOrdered)]
-pub fn assert_ordered(options: &OrderedOptions) {
-    let label = options.label();
+pub fn assert_ordered(options: &JsValue) {
+    let label = text(&property(options, "label"));
     checks::assert_ordered(checks::Ordered {
-        low: options.low(),
-        high: options.high(),
+        low: number_property(options, "low"),
+        high: number_property(options, "high"),
         label: &label,
     });
 }
@@ -188,31 +146,31 @@ pub fn degrees_per_half_turn() -> f64 {
 /// `math/angles.js`'s `radians`.
 #[wasm_bindgen]
 #[must_use]
-pub fn radians(degrees: f64) -> f64 {
-    angles::radians(degrees)
+pub fn radians(degrees: &JsValue) -> f64 {
+    angles::radians(finite_number(degrees, "angles: degrees"))
 }
 
 /// `math/angles.js`'s `degrees`.
 #[wasm_bindgen]
 #[must_use]
-pub fn degrees(radians: f64) -> f64 {
-    angles::degrees(radians)
+pub fn degrees(radians: &JsValue) -> f64 {
+    angles::degrees(finite_number(radians, "angles: radians"))
 }
 
 /// `math/angles.js`'s `normalizedDegrees`.
 #[wasm_bindgen(js_name = normalizedDegrees)]
 #[must_use]
-pub fn normalized_degrees(degrees: f64) -> f64 {
-    angles::normalized_degrees(degrees)
+pub fn normalized_degrees(degrees: &JsValue) -> f64 {
+    angles::normalized_degrees(finite_number(degrees, "angles: degrees"))
 }
 
 /// `math/angles.js`'s `turnDegrees`.
 #[wasm_bindgen(js_name = turnDegrees)]
 #[must_use]
-pub fn turn_degrees(options: &TurnOptions) -> f64 {
+pub fn turn_degrees(options: &JsValue) -> f64 {
     angles::turn_degrees(angles::Turn {
-        from: options.from(),
-        to: options.to(),
+        from: number_property(options, "from"),
+        to: number_property(options, "to"),
     })
 }
 
@@ -243,16 +201,22 @@ pub fn plane_scale_error_max() -> f64 {
     geodesy::PLANE_SCALE_ERROR_MAX
 }
 
-/// `math/geodesy.js`'s `assertPosition`: `position` must be an array, and its
-/// coordinates a position.
+/// `math/geodesy.js`'s `assertPosition`: `position` must be an array of two
+/// numbers, and those a position.
 #[wasm_bindgen(js_name = assertPosition)]
 pub fn assert_position(position: &JsValue, label: &JsValue) {
-    let label = js_string(label);
+    let label = text(label);
     assert::condition(position.is_array(), || {
         format!("{label}: a position is [lon, lat]")
     });
-    let coordinates = float64_array_from(position);
-    let _ = geodesy::assert_position(&coordinates, &label);
+    let length = number_property(position, "length");
+    let is_pair = length.total_cmp(&COORDINATE_COUNT).is_eq();
+    assert::condition(is_pair, || {
+        geodesy::coordinate_count_message(&label, &number_text(length))
+    });
+    let lon = coordinate(position, geodesy::Axis::Longitude, &label);
+    let lat = coordinate(position, geodesy::Axis::Latitude, &label);
+    let _ = geodesy::assert_position(&[lon, lat], &label);
 }
 
 /// `math/geodesy.js`'s `distanceMeters`.
@@ -272,15 +236,16 @@ pub fn initial_bearing_degrees(source: &JsValue, target: &JsValue) -> f64 {
 /// `math/geodesy.js`'s `metersPerDegreeLongitude`.
 #[wasm_bindgen(js_name = metersPerDegreeLongitude)]
 #[must_use]
-pub fn meters_per_degree_longitude(latitude_degrees: f64) -> f64 {
-    geodesy::meters_per_degree_longitude(latitude_degrees)
+pub fn meters_per_degree_longitude(latitude_degrees: &JsValue) -> f64 {
+    geodesy::meters_per_degree_longitude(number(latitude_degrees, "geodesy: latitude"))
 }
 
 /// `math/geodesy.js`'s `tangentPlane`, a frozen object as that module returns.
 #[wasm_bindgen(js_name = tangentPlane)]
 #[must_use]
-pub fn tangent_plane(options: &PlaneOptions) -> JsValue {
-    let tangent = geodesy::tangent_plane(options.reference_latitude_degrees());
+pub fn tangent_plane(options: &JsValue) -> JsValue {
+    let reference = number_property(options, "referenceLatitudeDegrees");
+    let tangent = geodesy::tangent_plane(reference);
     plane(
         tangent.reference_latitude_degrees,
         tangent.meters_per_degree_lon,
@@ -289,42 +254,42 @@ pub fn tangent_plane(options: &PlaneOptions) -> JsValue {
 
 /// `math/geodesy.js`'s `assertPlaneCovers`.
 #[wasm_bindgen(js_name = assertPlaneCovers)]
-pub fn assert_plane_covers(options: &CoverageOptions) {
-    let covered = options.plane();
+pub fn assert_plane_covers(options: &JsValue) {
+    let covered = property(options, "plane");
     geodesy::assert_plane_covers(geodesy::PlaneCoverage {
         plane: geodesy::TangentPlane {
-            reference_latitude_degrees: covered.reference_latitude_degrees(),
-            meters_per_degree_lon: covered.meters_per_degree_lon(),
+            reference_latitude_degrees: number_property(&covered, "referenceLatitudeDegrees"),
+            meters_per_degree_lon: number_property(&covered, "metersPerDegreeLon"),
         },
-        latitude_degrees_min: options.latitude_degrees_min(),
-        latitude_degrees_max: options.latitude_degrees_max(),
+        latitude_degrees_min: number_property(options, "latitudeDegreesMin"),
+        latitude_degrees_max: number_property(options, "latitudeDegreesMax"),
     });
 }
 
 /// `math/interpolation.js`'s `lerp`.
 #[wasm_bindgen]
 #[must_use]
-pub fn lerp(options: &LerpOptions) -> f64 {
+pub fn lerp(options: &JsValue) -> f64 {
+    let fraction = property(options, "fraction");
     interpolation::lerp(interpolation::Lerp {
-        from: options.from(),
-        to: options.to(),
-        fraction: options.fraction(),
+        from: number_property(options, "from"),
+        to: number_property(options, "to"),
+        fraction: finite_number(&fraction, "interpolation: a fraction"),
     })
 }
 
 /// `math/interpolation.js`'s `clamp`.
 #[wasm_bindgen]
 #[must_use]
-pub fn clamp(options: &ClampOptions) -> f64 {
+pub fn clamp(options: &JsValue) -> f64 {
     interpolation::clamp(interpolation::Clamp {
-        value: options.value(),
-        min: options.min(),
-        max: options.max(),
+        value: number_property(options, "value"),
+        min: number_property(options, "min"),
+        max: number_property(options, "max"),
     })
 }
 
-// The pair of positions `[lon, lat]` the JavaScript module destructures, a
-// missing coordinate reading as no number as it does there.
+// The pair of positions `[lon, lat]` the JavaScript module destructures.
 fn between(source: &JsValue, target: &JsValue) -> geodesy::Between {
     geodesy::Between {
         source: position_of(source),
@@ -333,11 +298,86 @@ fn between(source: &JsValue, target: &JsValue) -> geodesy::Between {
 }
 
 fn position_of(value: &JsValue) -> geodesy::Position {
-    let coordinates = float64_array_from(value);
-    let mut numbers = coordinates.iter().copied();
-    let lon = numbers.next().unwrap_or(f64::NAN);
-    let lat = numbers.next().unwrap_or(f64::NAN);
-    geodesy::Position { lon, lat }
+    let label = "geodesy: a position";
+    geodesy::Position {
+        lon: coordinate(value, geodesy::Axis::Longitude, label),
+        lat: coordinate(value, geodesy::Axis::Latitude, label),
+    }
+}
+
+// The coordinate on `axis` of the array `position`, which must be a number.
+fn coordinate(position: &JsValue, axis: geodesy::Axis, label: &str) -> f64 {
+    let index = match axis {
+        geodesy::Axis::Longitude => "0",
+        geodesy::Axis::Latitude => "1",
+    };
+    let value = property(position, index);
+    let coordinate = value.as_f64();
+    assert::condition(coordinate.is_some(), || {
+        geodesy::not_a_coordinate_message(label, axis, &text(&value))
+    });
+    let Some(coordinate) = coordinate else {
+        assert::unreachable(
+            &index,
+            "binding: a coordinate checked to be a number is one",
+        );
+    };
+    coordinate
+}
+
+// The number the property `key` of `options` holds, which must be one.
+fn number_property(options: &JsValue, key: &str) -> f64 {
+    let value = property(options, key);
+    number(&value, key)
+}
+
+// The number `value` is, which must be one; `name` names it in a failure.
+fn number(value: &JsValue, name: &str) -> f64 {
+    let number = value.as_f64();
+    assert::condition(number.is_some(), || {
+        format!("{name} {} is not a number", text(value))
+    });
+    let Some(number) = number else {
+        assert::unreachable(&name, "binding: a value checked to be a number is one");
+    };
+    number
+}
+
+// The number `value` is, which must be one, refused with the message of the
+// core's `assert_finite` where it is none.
+fn finite_number(value: &JsValue, label: &str) -> f64 {
+    let number = value.as_f64();
+    assert::condition(number.is_some(), || {
+        checks::not_finite_message(label, &text(value))
+    });
+    let Some(number) = number else {
+        assert::unreachable(&label, "binding: a value checked to be a number is one");
+    };
+    number
+}
+
+// `target[key]`, and an assertion's failure where reading it throws, as it
+// does for a `target` that is `null` or `undefined`.
+fn property(target: &JsValue, key: &str) -> JsValue {
+    let read = try_property(target, key);
+    let failure = read.as_ref().err().map(text);
+    assert::condition(failure.is_none(), || {
+        format!(
+            "binding: reading {key} threw {}",
+            failure.unwrap_or_default()
+        )
+    });
+    read.unwrap_or_default()
+}
+
+// `String(value)`, and an assertion's failure where the conversion throws.
+fn text(value: &JsValue) -> String {
+    let converted = try_js_string(value);
+    let written = converted.as_ref().ok().and_then(JsValue::as_string);
+    assert::condition(written.is_some(), || {
+        "binding: a value String cannot write".to_owned()
+    });
+    written.unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -346,16 +386,5 @@ mod tests {
     #[test]
     fn core_version_is_the_core_version() {
         assert_eq!(super::core_version(), gobusgo_core::core_version());
-    }
-
-    // A conversion that crosses as plain doubles passes the core's value
-    // through unchanged.
-    #[test]
-    fn radians_are_the_core_radians() {
-        let degrees = 47.6062;
-        assert_eq!(
-            super::radians(degrees),
-            gobusgo_core::math::angles::radians(degrees)
-        );
     }
 }
