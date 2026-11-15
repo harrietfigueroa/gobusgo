@@ -22,9 +22,9 @@ defmodule Gobusgo.Routing.Timetable do
   previous date has the service day offset `1`, so it stays a trip of its
   own beside the same trip identifier of this date.
 
-  OneBusAway lists a trip in the schedule of every route whose stop groups
-  hold it, so one trip identifier can come with identical stop times from
-  two schedules. A trip is one row, under the route its own reference
+  One trip identifier can come from the schedules of two routes: on
+  2026-11-11, 52 trips appeared in two routes' schedules with identical
+  stop times. A date holds one schedule of each route, and a trip is one row, under the route its own reference
   names or, where that route does not list it, under the smallest route
   identifier among the schedules that do; only that schedule's hops become
   connections. Sequences rise within a trip index, which is asserted.
@@ -94,10 +94,9 @@ defmodule Gobusgo.Routing.Timetable do
     previous = previous_day(previous_schedules, start_ms)
     days = [today | previous]
 
-    named =
-      Enum.reduce(days, %{stops: MapSet.new(), trips: %{}, listing_count: 0}, &name_day/2)
-
-    stop_ids = Enum.sort(named.stops)
+    named = Enum.reduce(days, %{trips: %{}, listing_count: 0}, &name_day/2)
+    stops = Enum.reduce(days, MapSet.new(), &stops_day(&1, &2, named.trips))
+    stop_ids = Enum.sort(stops)
     stop_index = stop_ids |> Enum.with_index() |> Map.new()
 
     trips =
@@ -141,20 +140,34 @@ defmodule Gobusgo.Routing.Timetable do
   end
 
   # The day start every schedule names, nil for no schedule, and the count
-  # of schedules.
+  # of schedules. A date holds one schedule of each route.
   defp day_start(schedules) do
-    initial = %{start_ms: nil, schedule_count: 0}
+    initial = %{start_ms: nil, schedule_count: 0, route_ids: MapSet.new()}
 
-    Enum.reduce(schedules, initial, fn %{schedule_date_ms: schedule_start_ms}, day ->
-      if day.schedule_count >= 1 do
+    day =
+      Enum.reduce(schedules, initial, fn schedule, day ->
+        %{schedule_date_ms: schedule_start_ms, route_id: route_id} = schedule
+
         Assert.condition(
-          schedule_start_ms == day.start_ms,
-          "every schedule of a date must start at the same time"
+          not MapSet.member?(day.route_ids, route_id),
+          "a date must hold one schedule of route #{route_id}"
         )
-      end
 
-      %{start_ms: schedule_start_ms, schedule_count: day.schedule_count + 1}
-    end)
+        if day.schedule_count >= 1 do
+          Assert.condition(
+            schedule_start_ms == day.start_ms,
+            "every schedule of a date must start at the same time"
+          )
+        end
+
+        %{
+          start_ms: schedule_start_ms,
+          schedule_count: day.schedule_count + 1,
+          route_ids: MapSet.put(day.route_ids, route_id)
+        }
+      end)
+
+    Map.take(day, [:start_ms, :schedule_count])
   end
 
   # Reduces the hops of `trip` that depart at or after the start of the
@@ -171,7 +184,8 @@ defmodule Gobusgo.Routing.Timetable do
     end)
   end
 
-  # The first pass: the stops and trips the kept hops use.
+  # The first pass: the trips the kept hops use, each with the rank of the
+  # listing that owns it.
   defp name_day(day, named) do
     for schedule <- day.schedules, trip <- schedule.trips, reduce: named do
       named -> name_trip(named, schedule, trip, day)
@@ -179,30 +193,48 @@ defmodule Gobusgo.Routing.Timetable do
   end
 
   defp name_trip(named, schedule, trip, %{offset: offset, shift_s: shift_s}) do
-    {stops, kept} =
-      reduce_kept_hops(trip, shift_s, {named.stops, false}, fn hop, {stops, _kept} ->
-        stops =
-          stops
-          |> MapSet.put(elem(schedule.stop_ids, hop.from_index))
-          |> MapSet.put(elem(schedule.stop_ids, hop.to_index))
-
-        {stops, true}
-      end)
+    kept = reduce_kept_hops(trip, shift_s, false, fn _hop, _kept -> true end)
 
     if kept do
-      rank = {trip_listing_rank(trip, schedule), schedule.route_id}
+      rank = listing_rank(trip, schedule)
       trips = Map.update(named.trips, {offset, trip.id}, rank, &min(&1, rank))
-      %{named | stops: stops, trips: trips, listing_count: named.listing_count + 1}
+      %{named | trips: trips, listing_count: named.listing_count + 1}
     else
       named
     end
   end
 
-  # Orders the schedules that list one trip: the route the trip's own
-  # reference names first, then by route identifier, so the owner does not
-  # depend on the order the schedules arrive in.
-  defp trip_listing_rank(trip, schedule) do
-    if trip.route_id == schedule.route_id, do: 0, else: 1
+  # The second pass: the stops of the kept hops of each trip's owning
+  # listing, so the stops are those the connections use.
+  defp stops_day(%{offset: offset, shift_s: shift_s} = day, stops, owners) do
+    for schedule <- day.schedules, trip <- schedule.trips, reduce: stops do
+      stops ->
+        if Map.get(owners, {offset, trip.id}) == listing_rank(trip, schedule) do
+          reduce_kept_hops(trip, shift_s, stops, fn hop, stops ->
+            stops
+            |> MapSet.put(elem(schedule.stop_ids, hop.from_index))
+            |> MapSet.put(elem(schedule.stop_ids, hop.to_index))
+          end)
+        else
+          stops
+        end
+    end
+  end
+
+  @doc """
+  Returns the rank of the listing of `trip` in `schedule`, the schedule of
+  one route. Of the schedules that list a trip, the lowest rank owns it: the
+  route the trip's own reference names ranks first, then the smallest route
+  identifier, so the owner does not depend on the order the schedules
+  arrive in.
+  """
+  @spec listing_rank(CompactSchedule.trip(), schedule()) :: {0 | 1, String.t()}
+  def listing_rank(trip, schedule) do
+    if trip.route_id == schedule.route_id do
+      {0, schedule.route_id}
+    else
+      {1, schedule.route_id}
+    end
   end
 
   # The second pass: each kept hop's sort key, appended to the binary of
