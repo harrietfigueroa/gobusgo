@@ -1,10 +1,17 @@
 import Config
 
+# The options every bundle relies on, written out where esbuild has a
+# default for them, so a version of esbuild whose defaults differ builds
+# the same bundles.
+bundle_options =
+  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=es2022)
+
 config :esbuild,
   version: "0.25.5",
   default: [
     args:
-      ~w(js/app.js js/trip_app.js js/arrivals_board.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
+      ~w(js/app.js js/trip_app.js js/arrivals_board.js --format=iife --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js) ++
+        bundle_options,
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ],
@@ -13,7 +20,7 @@ config :esbuild,
   # gobusgo.assets.service_worker` runs it with the release and the paths
   # the worker stores.
   service_worker: [
-    args: ~w(js/service_worker.js --bundle --target=es2022 --outfile=../priv/static/sw.js),
+    args: ~w(js/service_worker.js --format=iife --outfile=../priv/static/sw.js) ++ bundle_options,
     cd: Path.expand("../assets", __DIR__)
   ],
   # MapLibre's module files are copied as they are and served beside each
