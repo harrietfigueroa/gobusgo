@@ -270,8 +270,7 @@ pub fn trip_path_of(parts: TripPathParts<'_>) -> String {
 ///
 /// Its points, and each stop's distance along them in meters and its
 /// scheduled times in seconds from `service_date_ms`, in the order the trip
-/// serves them. A stop's distance is the sum of haversine
-/// distances between the points on a sphere of radius 6,371,008.8 m.
+/// serves them.
 #[must_use]
 pub fn decode_trip_path(path: EncodedPath<'_>) -> DecodedPath {
     let points = decode_points(path.points);

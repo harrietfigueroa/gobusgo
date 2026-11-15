@@ -95,7 +95,8 @@ fn edited_bytes(bytes: &[u8], edits: &json::Value) -> Vec<u8> {
 /// The count a fixture's number writes, which must be a whole count.
 fn byte_count(value: &json::Value) -> usize {
     let number = value.number();
-    assert!(number >= 0.0 && number.fract() == 0.0, "count: {number}");
+    assert!(number >= 0.0, "count: {number} is below zero");
+    assert!(number.fract() == 0.0, "count: {number} is no whole number");
     format!("{number}").parse().unwrap()
 }
 

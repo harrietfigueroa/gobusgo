@@ -5,9 +5,13 @@ import {assertCondition} from "../../assets/js/core/assert.js"
 
 const HEX_RADIX = 16
 const HEX_DIGITS_PER_BYTE = 2
+const HEX_PATTERN = /^[0-9a-fA-F]*$/
 
-/** The bytes `hex` spells, two hexadecimal digits a byte. */
+/** The bytes `hex` spells, two hexadecimal digits a byte, and nothing else. */
 export function hexBytes(hex) {
+  const isWholeBytes = hex.length % HEX_DIGITS_PER_BYTE === 0
+  assertCondition(isWholeBytes, `bytes: an odd count of digits in ${hex}`)
+  assertCondition(HEX_PATTERN.test(hex), `bytes: ${hex} holds a character that is no hexadecimal digit`)
   const byteCount = Math.trunc(hex.length / HEX_DIGITS_PER_BYTE)
   const bytes = new Uint8Array(byteCount)
 
@@ -42,6 +46,7 @@ function appliedEdit(bytes, edit) {
   }
 
   if ("cut" in edit) {
+    assertCondition(edit.cut <= bytes.length, `bytes: a cut of ${edit.cut} from ${bytes.length} bytes`)
     return bytes.slice(0, bytes.length - edit.cut)
   }
 

@@ -6,8 +6,8 @@
 
 use gobusgo_core::math::geodesy::{Between, Position, distance_meters};
 use gobusgo_core::trip_path::{
-    DecodedPath, ENCODED_NOT_TEXT_MESSAGE, EncodedPath, KeyOf, Point, TRIP_ID_NOT_TEXT_MESSAGE,
-    TRIP_PATH_COUNT_MAX, decode_trip_path, trip_path_key, with_trip_paths,
+    DecodedPath, EncodedPath, KeyOf, Point, TRIP_PATH_COUNT_MAX, decode_trip_path, trip_path_key,
+    with_trip_paths,
 };
 
 use crate::failure_of;
@@ -167,17 +167,13 @@ fn refused_event(case: &Value, event: &Value) -> Value {
     Value::Object(changed)
 }
 
-// The message a binding writes for a field of the event that is no text, as
-// the core takes text there, or `None` where every text field is text.
-fn not_text_failure(event: &Value) -> Option<&'static str> {
+// Whether every field the core reads as text is text: a case that hands a
+// field of another type tests a binding's check, which the browser suite runs
+// through the WebAssembly binding, so the core's cases leave it out.
+fn has_text_fields(event: &Value) -> bool {
     let is_text = |name: &str| matches!(event.get(name), Value::Text(_));
-    if !is_text("points") || !is_text("stops") {
-        return Some(ENCODED_NOT_TEXT_MESSAGE);
-    }
-    if !is_text("trip_id") {
-        return Some(TRIP_ID_NOT_TEXT_MESSAGE);
-    }
-    None
+    let are_encoded_texts = is_text("points") && is_text("stops");
+    are_encoded_texts && is_text("trip_id")
 }
 
 #[test]
@@ -185,12 +181,16 @@ fn refused_paths() {
     let fixture = loop_fixture();
     for case in refusals().get("cases").items() {
         let event = refused_event(case, fixture.get("event"));
-        let expected = case.get("failure").text();
-        let message = match not_text_failure(&event) {
-            Some(message) => message.to_owned(),
-            None => failure_of(|| decoded(&event)).message().to_owned(),
-        };
-        assert_eq!(message, expected, "case: {}", case.get("name").text());
+        if !has_text_fields(&event) {
+            continue;
+        }
+        let message = failure_of(|| decoded(&event)).message().to_owned();
+        assert_eq!(
+            message,
+            case.get("failure").text(),
+            "case: {}",
+            case.get("name").text()
+        );
     }
 }
 
