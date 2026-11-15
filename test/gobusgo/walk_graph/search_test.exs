@@ -305,6 +305,59 @@ defmodule Gobusgo.WalkGraph.SearchTest do
     end
   end
 
+  describe "prepare/1 and reach_prepared/1" do
+    test "answer as reach/1 does for a start at the reference, over one graph for many starts" do
+      shards = Map.values(shards_by_tile())
+      reference = %{lat: degrees(4_761_450), lon: degrees(-12_233_600)}
+      targets = [%{lat: degrees(4_761_450), lon: degrees(-12_233_400)}]
+
+      assert {:ok, prepared} =
+               Search.prepare(%{reference: reference, shards: shards, limits: limits()})
+
+      prepared_answers =
+        Search.reach_prepared(%{
+          prepared: prepared,
+          from: reference,
+          targets: targets,
+          limits: limits()
+        })
+
+      assert prepared_answers ==
+               Search.reach(%{
+                 from: reference,
+                 targets: targets,
+                 shards: shards,
+                 limits: limits()
+               })
+
+      other = %{lat: degrees(4_761_300), lon: degrees(-12_233_600)}
+
+      assert [{:found, meters}] =
+               Search.reach_prepared(%{
+                 prepared: prepared,
+                 from: other,
+                 targets: [reference],
+                 limits: limits()
+               })
+
+      assert meters > 0
+    end
+
+    test "say there is no shard, and refuse more pieces than the bound" do
+      reference = %{lat: degrees(4_761_450), lon: degrees(-12_233_600)}
+
+      assert {:no_path, :no_shards} =
+               Search.prepare(%{reference: reference, shards: [], limits: limits()})
+
+      assert {:no_path, :cap_reached} =
+               Search.prepare(%{
+                 reference: reference,
+                 shards: Map.values(shards_by_tile()),
+                 limits: %{limits() | edge_count_max: 1}
+               })
+    end
+  end
+
   describe "reach/1" do
     test "agrees with the browser within a tenth of a meter on every golden pair, one target at a time" do
       assert mismatches(answered_queries(), &reach_one/1, &reach_agrees?/2) == []

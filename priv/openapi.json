@@ -1223,12 +1223,13 @@
           },
           "transferRules": {
             "type": "object",
-            "description": "The rules the walking links and transfers were built with.",
+            "description": "The rules the walking links and transfers were built with. `walkBasis` says how a link's walk was measured: `straight`, by the straight line, `streets`, along the walk graph, or `mixed`, along the walk graph for most stops and by the straight line for the stops that were new or moved since the links were measured and for the links to them. With `streets` or `mixed`, `walkStreetMetersMax` is the longest street a link may have and `walkGraphBuildId` the walk graph build the links were measured on. `walkRadiusM` is a straight-line distance either way.",
             "required": [
               "minimumTransferS",
               "walkRadiusM",
               "walkSpeedMPerS",
-              "walkLinkCountPerStopMax"
+              "walkLinkCountPerStopMax",
+              "walkBasis"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1247,6 +1248,22 @@
               "walkLinkCountPerStopMax": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "walkBasis": {
+                "type": "string",
+                "enum": [
+                  "straight",
+                  "streets",
+                  "mixed"
+                ]
+              },
+              "walkStreetMetersMax": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "walkGraphBuildId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{16}$"
               }
             }
           },
