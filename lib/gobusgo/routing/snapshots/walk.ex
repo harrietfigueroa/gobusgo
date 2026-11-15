@@ -12,10 +12,15 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     * `%{kind: :streets, build_id: build_id, table: binary, key: key}`: the
       streets of the graph build `build_id`, with the packed table of
       links.
-    * `%{kind: :unavailable}`: the streets are configured and a graph is
-      published, and its links are not measured yet or cannot be, or its
-      manifest cannot be read. A date with an entry keeps it, and one without
-      is built by the straight line.
+    * `%{kind: :mixed, build_id: build_id, table: binary, straight: ids, key: key}`:
+      the streets of the graph build `build_id` for the stops the packed table
+      measured at their present position, and the straight line for the stops
+      `ids` and every link to one. It stands in for a table that is not
+      current.
+    * `%{kind: :unavailable, build_id: build_id, stale: stale}`: the streets are
+      configured and a graph is published, and its links are not measured yet
+      or cannot be, or its manifest cannot be read (`build_id` is then `nil`).
+      A date with an entry keeps it, and one without is built by `fallback/2`.
 
   `key` is part of a date's inputs, so a date is built again when the basis,
   the graph build, or the table changes. With the straight line configured
@@ -35,7 +40,15 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
           %{kind: :straight, key: term()}
           | %{kind: :streets, build_id: String.t(), table: binary(), key: term()}
           | %{
+              kind: :mixed,
+              build_id: String.t(),
+              table: binary(),
+              straight: MapSet.t(String.t()),
+              key: term()
+            }
+          | %{
               required(:kind) => :unavailable,
+              required(:build_id) => String.t() | nil,
               optional(:measure) => Gobusgo.Routing.Snapshots.walk_links_request(),
               required(:stale) => %{table: binary(), build_id: String.t()} | nil
             }
@@ -86,8 +99,23 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     Transfers.walking_links(stop_ids, positions)
   end
 
-  @doc "What the manifest entry says of how its walks were measured."
-  @spec entry_basis(t()) :: %{kind: :straight | :streets, build_id: String.t() | nil}
+  def links(%{kind: :mixed, table: table, straight: straight}, stop_ids, positions) do
+    WalkLinks.mixed_links(%{
+      stop_ids: stop_ids,
+      positions: positions,
+      table: WalkLinks.unpack(table),
+      straight_ids: straight
+    })
+  end
+
+  @doc """
+  What the manifest entry says of how its walks were measured: `:mixed` where
+  some stops' links are the straight line and the rest are the streets of the
+  build, so the entry does not claim the streets for links that are not.
+  """
+  @spec entry_basis(t()) :: %{kind: :straight | :streets | :mixed, build_id: String.t() | nil}
+  def entry_basis(%{kind: :mixed, build_id: build_id}), do: %{kind: :mixed, build_id: build_id}
+
   def entry_basis(%{kind: :streets, build_id: build_id}),
     do: %{kind: :streets, build_id: build_id}
 
@@ -113,7 +141,12 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
 
       {:error, cause} ->
         log_manifest_failure(cause)
-        %{kind: :unavailable, stale: Snapshots.walk_table(Keyword.fetch!(options, :server))}
+
+        %{
+          kind: :unavailable,
+          build_id: nil,
+          stale: Snapshots.walk_table(Keyword.fetch!(options, :server))
+        }
 
       {:ok, manifest} ->
         request = %{
@@ -121,7 +154,8 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
           positions: positions,
           read_options: read_options,
           heap_words_max: Keyword.fetch!(options, :walk_heap_words_max),
-          deadline_ms: Keyword.fetch!(options, :walk_deadline_ms)
+          deadline_ms: Keyword.fetch!(options, :walk_deadline_ms),
+          deadline_grace_ms: Snapshots.deadline_grace_ms()
         }
 
         server = Keyword.fetch!(options, :server)
@@ -139,11 +173,62 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
   end
 
   defp answer(:not_current, request, server) do
-    %{kind: :unavailable, measure: request, stale: Snapshots.walk_table(server)}
+    %{
+      kind: :unavailable,
+      build_id: request.manifest.build_id,
+      measure: request,
+      stale: Snapshots.walk_table(server)
+    }
   end
 
-  defp answer(_pending_or_failed, _request, server) do
-    %{kind: :unavailable, stale: Snapshots.walk_table(server)}
+  defp answer(_pending_or_failed, request, server) do
+    %{
+      kind: :unavailable,
+      build_id: request.manifest.build_id,
+      stale: Snapshots.walk_table(server)
+    }
+  end
+
+  @doc """
+  The plan a date is built by where `plan` is unavailable. The last table held
+  stands in only on the graph build the manifest names now: its stops that
+  have an entry at their present position keep its street links, and the stops
+  it has no measure of, a new stop or a moved one, have the straight line, as
+  do the links to them. A table of another build, or a manifest that was not
+  read, has no stand-in, and the straight line builds every stop.
+  """
+  @spec fallback(t(), WalkLinks.positions()) :: t()
+  def fallback(
+        %{kind: :unavailable, build_id: build_id, stale: %{build_id: build_id} = stale},
+        positions
+      )
+      when is_binary(build_id) do
+    table = WalkLinks.unpack(stale.table)
+    straight = WalkLinks.unmeasured_stop_ids(%{positions: positions, table: table})
+    held_sha256 = :crypto.hash(:sha256, stale.table)
+
+    if MapSet.size(straight) == 0 do
+      %{
+        kind: :streets,
+        build_id: build_id,
+        table: stale.table,
+        key: {:streets, build_id, held_sha256}
+      }
+    else
+      straight_sha256 = :crypto.hash(:sha256, :erlang.term_to_binary(Enum.sort(straight)))
+
+      %{
+        kind: :mixed,
+        build_id: build_id,
+        table: stale.table,
+        straight: straight,
+        key: {:mixed, build_id, held_sha256, straight_sha256}
+      }
+    end
+  end
+
+  def fallback(%{kind: :unavailable}, _positions) do
+    %{kind: :straight, key: {:straight, :unavailable}}
   end
 
   @doc """

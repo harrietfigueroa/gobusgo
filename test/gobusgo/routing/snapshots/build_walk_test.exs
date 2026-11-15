@@ -267,14 +267,15 @@ defmodule Gobusgo.Routing.Snapshots.BuildWalkTest do
                run(context, unreadable(clock: next_day))
     end
 
-    test "builds a date again by the last table held, where a table was measured", context do
+    test "builds a date again by the straight line, as a table's build is not comparable to a manifest that cannot be read",
+         context do
       publish_graph(context)
       {:ok, %{built_count: 1}} = run(context, walk_basis: :streets)
-      %{"walkGraphBuildId" => build_id} = run_until_streets(context)
+      %{"walkGraphBuildId" => _build_id} = run_until_streets(context)
       hold(context, ~D[2026-11-07])
 
       assert {:ok, %{built_count: 1}} = run(context, unreadable())
-      assert %{"walkBasis" => "streets", "walkGraphBuildId" => ^build_id} = rules(context)
+      assert %{"walkBasis" => "straight"} = rules(context)
     end
 
     test "keeps a date built today from the same inputs, whatever the walk", context do

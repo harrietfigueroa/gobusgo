@@ -7,6 +7,7 @@ defmodule Gobusgo.Routing.WalkLinksTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.Math.Geodesy
+  alias Gobusgo.Routing.Transfers
   alias Gobusgo.Routing.WalkLinks
   alias Gobusgo.Test.WalkGraphFixture
 
@@ -18,6 +19,10 @@ defmodule Gobusgo.Routing.WalkLinksTest do
   @middle -12_233_400
   @tolerance_meters 0.1
   @far_future_ms 4_000_000_000_000
+  @crowd_stop_count 1_100
+  @crowd_heap_words_max 100_000_000
+  @tile_start_timeout_ms 30_000
+  @tile_end_timeout_ms 1_000
 
   @west_tile {4761, -8156}
   @east_tile {4761, -8155}
@@ -72,6 +77,33 @@ defmodule Gobusgo.Routing.WalkLinksTest do
   end
 
   defp links_of(table, stop_id), do: Map.fetch!(table.stops, stop_id).links
+
+  # Runs a measuring that has the tile's process of `crowd`, many stops close
+  # enough to keep it busy, once the test has set its tracing.
+  defp measure_when_told(crowd) do
+    receive do
+      :go ->
+        compute(%{
+          positions: crowd,
+          stop_ids: Map.keys(crowd),
+          child_heap_words_max: @crowd_heap_words_max
+        })
+    end
+  end
+
+  # The tile's process is the one the measuring spawns from its own function.
+  defp await_tile_process do
+    assert_receive {:trace, _parent, :spawn, spawned, {:erlang, :apply, [spawned_fun, []]}},
+                   @tile_start_timeout_ms
+
+    {:name, name} = Function.info(spawned_fun, :name)
+
+    if String.contains?(Atom.to_string(name), "measure_in_process") do
+      spawned
+    else
+      await_tile_process()
+    end
+  end
 
   describe "compute/1" do
     test "measures a pair on one street as the street's length" do
@@ -158,6 +190,26 @@ defmodule Gobusgo.Routing.WalkLinksTest do
 
     test "answers a tile's process that outgrew its heap as killed, with the tile" do
       assert {:error, :killed, _tile} = compute(%{child_heap_words_max: 1_000})
+    end
+
+    test "ends a tile's process when the process measuring is killed" do
+      crowd =
+        for number <- 1..@crowd_stop_count, into: %{} do
+          {"s#{number}",
+           place(@north + rem(number, 30) * 3, @west + Integer.floor_div(number, 30) * 3)}
+        end
+
+      measuring = spawn(fn -> measure_when_told(crowd) end)
+      1 = :erlang.trace(measuring, true, [:procs, :set_on_spawn])
+      send(measuring, :go)
+
+      tile_process = await_tile_process()
+      monitor = Process.monitor(tile_process)
+      assert Process.alive?(tile_process)
+
+      Process.exit(measuring, :kill)
+
+      assert_receive {:DOWN, ^monitor, :process, ^tile_process, :killed}, @tile_end_timeout_ms
     end
 
     test "answers a read that failed as an io failure, with the tile" do
@@ -268,6 +320,51 @@ defmodule Gobusgo.Routing.WalkLinksTest do
 
       per_stop = Enum.frequencies_by(links, & &1.from_stop)
       assert per_stop |> Map.values() |> Enum.max() == 64
+    end
+  end
+
+  describe "mixed_links/1" do
+    setup do
+      {:ok, %{table: table}} = compute()
+      %{table: table}
+    end
+
+    test "gives a stop in straight_ids the straight line, and every link to it", %{table: table} do
+      stop_ids = ["a", "b", "c"]
+
+      links =
+        WalkLinks.mixed_links(%{
+          stop_ids: stop_ids,
+          positions: positions(),
+          table: table,
+          straight_ids: MapSet.new(["b"])
+        })
+
+      straight_links = Transfers.walking_links(stop_ids, positions())
+
+      assert Enum.filter(links, &(&1.from_stop == 1 or &1.to_stop == 1)) ==
+               Enum.filter(straight_links, &(&1.from_stop == 1 or &1.to_stop == 1))
+    end
+
+    test "gives the stops outside straight_ids their street links", %{table: table} do
+      input = %{stop_ids: ["a", "c", "d"], positions: positions(), table: table}
+
+      assert WalkLinks.mixed_links(Map.put(input, :straight_ids, MapSet.new())) ==
+               WalkLinks.links(input)
+    end
+  end
+
+  describe "unmeasured_stop_ids/1" do
+    test "names a stop with no entry and a stop whose position differs from its entry's" do
+      {:ok, %{table: table}} = compute()
+
+      changed =
+        positions()
+        |> Map.put("a", place(@north + 1, @west))
+        |> Map.put("new", place(@north, @middle + 40))
+
+      assert WalkLinks.unmeasured_stop_ids(%{positions: changed, table: table}) ==
+               MapSet.new(["a", "new"])
     end
   end
 

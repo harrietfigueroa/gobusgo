@@ -109,7 +109,8 @@ defmodule Gobusgo.Routing.SnapshotsWalkLinksTest do
         positions: positions(),
         read_options: context.read_options,
         heap_words_max: @heap_words,
-        deadline_ms: @deadline_ms
+        deadline_ms: @deadline_ms,
+        deadline_grace_ms: Snapshots.deadline_grace_ms()
       },
       overrides
     )

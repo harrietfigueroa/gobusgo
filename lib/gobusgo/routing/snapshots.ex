@@ -171,7 +171,8 @@ defmodule Gobusgo.Routing.Snapshots do
   What `walk_links/2` is asked: the `manifest` of the graph build to measure
   over (`Gobusgo.Routing.WalkLinks.Store.manifest/1`), the `positions` of the
   stops, the reader's `read_options`, the heap cap of the measuring process in
-  words, and how many milliseconds it has.
+  words, how many milliseconds it has, and the milliseconds past that before it
+  is killed.
   """
   @type walk_links_request :: %{
           manifest: Store.manifest(),
@@ -179,8 +180,8 @@ defmodule Gobusgo.Routing.Snapshots do
           read_options: keyword(),
           heap_words_max: pos_integer(),
           deadline_ms: pos_integer(),
-          start?: boolean(),
-          deadline_grace_ms: non_neg_integer()
+          deadline_grace_ms: non_neg_integer(),
+          start?: boolean()
         }
 
   @doc """
@@ -325,7 +326,7 @@ defmodule Gobusgo.Routing.Snapshots do
     Process.send_after(
       self(),
       {:walk_links_deadline, ref},
-      request.deadline_ms + Map.get(request, :deadline_grace_ms, @deadline_grace_ms)
+      request.deadline_ms + request.deadline_grace_ms
     )
 
     task = %{

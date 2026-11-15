@@ -162,9 +162,9 @@ defmodule Gobusgo.Routing.Snapshot do
   # The rules a reader applies to a walk, and how this snapshot's links were
   # measured: by the straight line, or along the streets of a graph build,
   # with the longest street a link may have.
-  defp transfer_rules(%{kind: :streets, build_id: build_id}) do
+  defp transfer_rules(%{kind: kind, build_id: build_id}) when kind in [:streets, :mixed] do
     Map.merge(transfer_rules(%{kind: :straight}), %{
-      "walkBasis" => "streets",
+      "walkBasis" => Atom.to_string(kind),
       "walkStreetMetersMax" => WalkLinks.street_meters_max(),
       "walkGraphBuildId" => build_id
     })

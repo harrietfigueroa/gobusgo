@@ -202,21 +202,87 @@ defmodule Gobusgo.Routing.WalkLinks do
   """
   @spec links(%{stop_ids: [String.t()], positions: positions(), table: table()}) ::
           [SnapshotFormat.transfer()]
-  def links(%{stop_ids: stop_ids, positions: positions, table: %{stops: stops}}) do
+  def links(%{stop_ids: stop_ids, positions: positions, table: table}) do
+    street_links(%{
+      stop_ids: stop_ids,
+      positions: positions,
+      table: table,
+      straight_ids: MapSet.new()
+    })
+  end
+
+  @doc """
+  The identifiers of the stops of `input.positions` that `input.table` holds no
+  measure of: a stop it has no entry for, and one whose position differs from
+  its entry's. The table's links of such a stop are missing or measured from
+  another place.
+  """
+  @spec unmeasured_stop_ids(%{positions: positions(), table: table()}) :: MapSet.t(String.t())
+  def unmeasured_stop_ids(%{positions: positions, table: %{stops: held}}) do
+    ids = for {id, position} <- positions, not same_position?(Map.get(held, id), position), do: id
+    MapSet.new(ids)
+  end
+
+  @doc """
+  The links of a snapshot as `links/1` gives them, where the stops of
+  `input.straight_ids` have the straight-line links of
+  `Gobusgo.Routing.Transfers.walking_links/2` and so does every link to one,
+  and every other stop has its street links from `input.table`. A stop keeps its
+  #{@link_count_per_stop_max} links with the shortest walk of the two kinds
+  together, ordered by the stop they leave, then the one they reach.
+  """
+  @spec mixed_links(%{
+          stop_ids: [String.t()],
+          positions: positions(),
+          table: table(),
+          straight_ids: MapSet.t(String.t())
+        }) :: [SnapshotFormat.transfer()]
+  def mixed_links(%{stop_ids: stop_ids, positions: positions, straight_ids: straight_ids} = input) do
+    streets = street_links(input)
+    indices = for {id, index} <- Enum.with_index(stop_ids), id in straight_ids, do: index
+    straight_indices = MapSet.new(indices)
+
+    straight =
+      for link <- Transfers.walking_links(stop_ids, positions),
+          link.from_stop in straight_indices or link.to_stop in straight_indices,
+          do: link
+
+    streets
+    |> Enum.concat(straight)
+    |> Enum.group_by(& &1.from_stop)
+    |> Enum.flat_map(fn {_from_stop, links} ->
+      links
+      |> Enum.sort_by(&{&1.duration_s, &1.to_stop})
+      |> Enum.take(@link_count_per_stop_max)
+    end)
+    |> Enum.sort_by(&{&1.from_stop, &1.to_stop})
+  end
+
+  defp street_links(%{
+         stop_ids: stop_ids,
+         positions: positions,
+         table: %{stops: stops},
+         straight_ids: straight_ids
+       }) do
     indexed = Map.new(Enum.with_index(stop_ids))
+    context = %{indexed: indexed, straight_ids: straight_ids}
 
     for {stop_id, from_stop} <- Enum.with_index(stop_ids),
         Map.has_key?(positions, stop_id),
-        link <- links_from(from_stop, Map.get(stops, stop_id), indexed) do
+        not MapSet.member?(straight_ids, stop_id),
+        link <- links_from(from_stop, Map.get(stops, stop_id), context) do
       link
     end
     |> Enum.sort_by(&{&1.from_stop, &1.to_stop})
   end
 
-  defp links_from(_from_stop, nil, _indexed), do: []
+  defp links_from(_from_stop, nil, _context), do: []
 
-  defp links_from(from_stop, %{links: links}, indexed) do
-    reachable = Enum.filter(links, fn {other, _meters} -> Map.has_key?(indexed, other) end)
+  defp links_from(from_stop, %{links: links}, %{indexed: indexed, straight_ids: straight_ids}) do
+    reachable =
+      Enum.filter(links, fn {other, _meters} ->
+        Map.has_key?(indexed, other) and not MapSet.member?(straight_ids, other)
+      end)
 
     reachable
     |> Enum.sort_by(fn {other, meters} -> {meters, other} end)
@@ -361,7 +427,10 @@ defmodule Gobusgo.Routing.WalkLinks do
 
     {pid, monitor} =
       :erlang.spawn_opt(
-        fn -> send(parent, {ref, measure_tile_pure(tile, binaries, jobs)}) end,
+        fn ->
+          spawn_watcher(parent, self())
+          send(parent, {ref, measure_tile_pure(tile, binaries, jobs)})
+        end,
         [
           :monitor,
           fullsweep_after: 0,
@@ -391,6 +460,27 @@ defmodule Gobusgo.Routing.WalkLinks do
         Process.demonitor(monitor, [:flush])
         {:error, :deadline, tile}
     end
+  end
+
+  # A tile's process is monitored and not linked: the measuring process does
+  # not trap exits, so a link would carry a tile's kill by its heap cap to the
+  # measuring process, where it reads as that process's own heap kill. The
+  # watcher ends the tile once the measuring process is gone, and itself once
+  # the tile is. The tile starts it, so a measuring process already gone is a
+  # monitor of a dead process, which delivers its `:DOWN` at once.
+  defp spawn_watcher(parent, tile_process) do
+    spawn(fn ->
+      parent_monitor = Process.monitor(parent)
+      tile_monitor = Process.monitor(tile_process)
+
+      receive do
+        {:DOWN, ^parent_monitor, :process, ^parent, _reason} ->
+          Process.exit(tile_process, :kill)
+
+        {:DOWN, ^tile_monitor, :process, ^tile_process, _reason} ->
+          :ok
+      end
+    end)
   end
 
   defp stop_job(id, positions, spatial) do
