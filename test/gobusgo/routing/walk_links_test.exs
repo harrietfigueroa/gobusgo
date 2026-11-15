@@ -21,8 +21,8 @@ defmodule Gobusgo.Routing.WalkLinksTest do
   @far_future_ms 4_000_000_000_000
   @crowd_stop_count 1_100
   @crowd_heap_words_max 100_000_000
-  @tile_start_timeout_ms 30_000
-  @tile_end_timeout_ms 1_000
+  @spawn_timeout_ms 30_000
+  @end_timeout_ms 5_000
 
   @west_tile {4761, -8156}
   @east_tile {4761, -8155}
@@ -78,8 +78,8 @@ defmodule Gobusgo.Routing.WalkLinksTest do
 
   defp links_of(table, stop_id), do: Map.fetch!(table.stops, stop_id).links
 
-  # Runs a measuring that has the tile's process of `crowd`, many stops close
-  # enough to keep it busy, once the test has set its tracing.
+  # Runs a measuring over `crowd`, many stops close enough that a tile's process
+  # works for seconds, once the test has set its tracing.
   defp measure_when_told(crowd) do
     receive do
       :go ->
@@ -91,17 +91,20 @@ defmodule Gobusgo.Routing.WalkLinksTest do
     end
   end
 
-  # The tile's process is the one the measuring spawns from its own function.
-  defp await_tile_process do
-    assert_receive {:trace, _parent, :spawn, spawned, {:erlang, :apply, [spawned_fun, []]}},
-                   @tile_start_timeout_ms
+  # The tile's process starts its watcher first of all, so the process that
+  # spawns one is the tile. It is suspended there, with seconds of work left,
+  # so it stays alive until the kill of the measuring process reaches it.
+  defp suspend_tile_process do
+    assert_receive {:trace, tile_process, :spawn, _watcher, {:erlang, :apply, [watcher_fun, []]}},
+                   @spawn_timeout_ms
 
-    {:name, name} = Function.info(spawned_fun, :name)
+    {:name, name} = Function.info(watcher_fun, :name)
 
-    if String.contains?(Atom.to_string(name), "measure_in_process") do
-      spawned
+    if String.contains?(Atom.to_string(name), "spawn_watcher") do
+      :erlang.suspend_process(tile_process)
+      tile_process
     else
-      await_tile_process()
+      suspend_tile_process()
     end
   end
 
@@ -203,13 +206,13 @@ defmodule Gobusgo.Routing.WalkLinksTest do
       1 = :erlang.trace(measuring, true, [:procs, :set_on_spawn])
       send(measuring, :go)
 
-      tile_process = await_tile_process()
+      tile_process = suspend_tile_process()
+      on_exit(fn -> Process.exit(tile_process, :kill) end)
       monitor = Process.monitor(tile_process)
-      assert Process.alive?(tile_process)
 
       Process.exit(measuring, :kill)
 
-      assert_receive {:DOWN, ^monitor, :process, ^tile_process, :killed}, @tile_end_timeout_ms
+      assert_receive {:DOWN, ^monitor, :process, ^tile_process, :killed}, @end_timeout_ms
     end
 
     test "answers a read that failed as an io failure, with the tile" do

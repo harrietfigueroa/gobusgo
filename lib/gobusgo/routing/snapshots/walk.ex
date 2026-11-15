@@ -12,8 +12,8 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     * `%{kind: :streets, build_id: build_id, table: binary, key: key}`: the
       streets of the graph build `build_id`, with the packed table of
       links.
-    * `%{kind: :mixed, build_id: build_id, table: binary, straight: ids, key: key}`:
-      the streets of the graph build `build_id` for the stops the packed table
+    * `%{kind: :mixed, build_id: build_id, table: table, straight: ids, key: key}`:
+      the streets of the graph build `build_id` for the stops the decoded table
       measured at their present position, and the straight line for the stops
       `ids` and every link to one. It stands in for a table that is not
       current.
@@ -42,7 +42,7 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
           | %{
               kind: :mixed,
               build_id: String.t(),
-              table: binary(),
+              table: WalkLinks.table(),
               straight: MapSet.t(String.t()),
               key: term()
             }
@@ -103,7 +103,7 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
     WalkLinks.mixed_links(%{
       stop_ids: stop_ids,
       positions: positions,
-      table: WalkLinks.unpack(table),
+      table: table,
       straight_ids: straight
     })
   end
@@ -220,7 +220,7 @@ defmodule Gobusgo.Routing.Snapshots.Walk do
       %{
         kind: :mixed,
         build_id: build_id,
-        table: stale.table,
+        table: table,
         straight: straight,
         key: {:mixed, build_id, held_sha256, straight_sha256}
       }
