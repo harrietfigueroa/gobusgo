@@ -122,6 +122,8 @@ impl Reader<'_> {
             self.skip_whitespace();
             self.expect(':');
             let value = self.value(depth);
+            let is_new_key = members.iter().all(|(name, _)| *name != key);
+            assert!(is_new_key, "json: the key {key} appears twice in an object");
             members.push((key, value));
             self.skip_whitespace();
             match self.characters.next() {
@@ -159,8 +161,9 @@ impl Reader<'_> {
                 Some('"') => return text,
                 Some('\\') => text.push(self.escape()),
                 Some(character) => {
+                    // JSON forbids only U+0000 to U+001F unescaped in a string.
                     assert!(
-                        !character.is_control(),
+                        character >= '\u{20}',
                         "json: a control character in a string"
                     );
                     text.push(character);
@@ -210,17 +213,56 @@ impl Reader<'_> {
 
     fn number(&mut self) -> Value {
         let mut text = String::new();
-        while let Some(&character) = self.characters.peek() {
-            let is_number_character = character.is_ascii_digit() || "+-.eE".contains(character);
-            if !is_number_character {
-                break;
-            }
-            text.push(character);
-            self.characters.next();
+        self.take_if(&mut text, |character| character == '-');
+        let is_zero = self.take_if(&mut text, |character| character == '0');
+        if is_zero {
+            let leading_digit = self.characters.peek().copied();
+            assert!(
+                !leading_digit.is_some_and(|character| character.is_ascii_digit()),
+                "json: a number with a leading zero"
+            );
+        } else {
+            let integer_count = self.digits(&mut text);
+            assert!(integer_count > 0, "json: a number without digits");
+        }
+        let has_fraction = self.take_if(&mut text, |character| character == '.');
+        if has_fraction {
+            let fraction_count = self.digits(&mut text);
+            assert!(fraction_count > 0, "json: a decimal point without digits");
+        }
+        let has_exponent =
+            self.take_if(&mut text, |character| character == 'e' || character == 'E');
+        if has_exponent {
+            self.take_if(&mut text, |character| character == '+' || character == '-');
+            let exponent_count = self.digits(&mut text);
+            assert!(exponent_count > 0, "json: an exponent without digits");
         }
         // Rust reads a decimal as the nearest double, as JavaScript does.
         let number = text.parse::<f64>().expect("json: a number");
         Value::Number(number)
+    }
+
+    // Moves the next character into `text` where `accepts` takes it, and says
+    // whether it did.
+    fn take_if(&mut self, text: &mut String, accepts: impl Fn(char) -> bool) -> bool {
+        let next = self.characters.peek().copied();
+        let Some(character) = next.filter(|character| accepts(*character)) else {
+            return false;
+        };
+        text.push(character);
+        self.characters.next();
+        true
+    }
+
+    // Moves a run of decimal digits into `text`, and counts them.
+    fn digits(&mut self, text: &mut String) -> usize {
+        let mut count = 0_usize;
+        while self.take_if(text, |character| character.is_ascii_digit()) {
+            count = count
+                .checked_add(1)
+                .expect("json: a digit count fits a usize");
+        }
+        count
     }
 
     fn word(&mut self, word: &str, value: Value) -> Value {
@@ -305,5 +347,36 @@ mod tests {
     #[should_panic]
     fn refuses_an_unclosed_array() {
         let _ = parse("[1, 2");
+    }
+
+    #[test]
+    #[should_panic]
+    fn refuses_a_leading_zero() {
+        let _ = parse("01");
+    }
+
+    #[test]
+    #[should_panic]
+    fn refuses_a_decimal_point_without_digits() {
+        let _ = parse("1.");
+    }
+
+    #[test]
+    #[should_panic]
+    fn refuses_a_key_twice_in_an_object() {
+        let _ = parse(r#"{"a": 1, "a": 2}"#);
+    }
+
+    #[test]
+    #[should_panic]
+    fn refuses_an_unescaped_control_character() {
+        let _ = parse("\"a\u{1f}b\"");
+    }
+
+    // Only U+0000 to U+001F are forbidden, so DEL and the C1 controls read.
+    #[test]
+    fn reads_delete_and_the_c1_controls() {
+        let value = parse("\"\u{7f}\u{85}\"");
+        assert_eq!(value, Value::Text("\u{7f}\u{85}".to_owned()));
     }
 }

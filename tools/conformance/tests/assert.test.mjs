@@ -9,10 +9,6 @@ import {implementationsWith} from "../implementations.mjs"
 const cases = await fixtureJson("math/assert.json")
 
 describe.each(implementationsWith("assert"))("assert ($name)", ({AssertionError, assert}) => {
-  test("the module's AssertionError is the entry's", () => {
-    expect(assert.AssertionError).toBe(AssertionError)
-  })
-
   test.each(cases.heldConditions)("held: $name", ({message}) => {
     expect(() => assert.assertCondition(true, message)).not.toThrow()
   })

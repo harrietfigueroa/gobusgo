@@ -70,5 +70,7 @@ export function implementationsWith(...moduleNames) {
       entries.push(implementation)
     }
   }
+  assert.assertCondition(entries.length > 0, `conformance: no implementation holds ${moduleNames.join(", ")}`)
+  assert.assertCondition(entries[0].name === "javascript", `conformance: ${entries[0].name} comes before the JavaScript entry`)
   return entries
 }

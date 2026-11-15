@@ -43,19 +43,55 @@ pub fn clamp(clamp: Clamp) -> f64 {
         high: max,
         label: "interpolation: a clamp's bounds",
     });
-    // Comparisons keep a value that is no number, as JavaScript's `Math.max`
-    // and `Math.min` do, where `f64::max` and `f64::min` pass over it.
-    let clamped = if value < min {
-        min
-    } else if value > max {
-        max
-    } else {
-        value
-    };
+    let raised = larger(min, value);
+    let clamped = smaller(max, raised);
     assert_ordered(Ordered {
         low: min,
         high: clamped,
         label: "interpolation: a clamped value",
     });
     clamped
+}
+
+// The larger of `first` and `second` as JavaScript's `Math.max` takes it: a
+// value that is no number wins, where `f64::max` passes over it, and +0 is
+// above -0.
+fn larger(first: f64, second: f64) -> f64 {
+    if first.is_nan() {
+        return first;
+    }
+    if second.is_nan() {
+        return second;
+    }
+    if first > second {
+        return first;
+    }
+    if second > first {
+        return second;
+    }
+    if first.is_sign_positive() {
+        return first;
+    }
+    second
+}
+
+// The smaller of `first` and `second` as JavaScript's `Math.min` takes it: a
+// value that is no number wins, and -0 is below +0.
+fn smaller(first: f64, second: f64) -> f64 {
+    if first.is_nan() {
+        return first;
+    }
+    if second.is_nan() {
+        return second;
+    }
+    if first < second {
+        return first;
+    }
+    if second < first {
+        return second;
+    }
+    if first.is_sign_negative() {
+        return first;
+    }
+    second
 }

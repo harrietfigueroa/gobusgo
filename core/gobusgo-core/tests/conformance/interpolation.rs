@@ -34,9 +34,10 @@ fn clamp_of(case: &Value) -> Clamp {
 fn lerps() {
     for case in cases().get("lerps").items() {
         let value = lerp(line_of(case));
+        // Bits rather than `==`, which takes -0 for +0.
         assert_eq!(
-            value,
-            case.get("value").number(),
+            value.to_bits(),
+            case.get("value").number().to_bits(),
             "case: {}",
             case.get("name").text()
         );
@@ -48,8 +49,8 @@ fn clamps() {
     for case in cases().get("clamps").items() {
         let clamped = clamp(clamp_of(case));
         assert_eq!(
-            clamped,
-            case.get("clamped").number(),
+            clamped.to_bits(),
+            case.get("clamped").number().to_bits(),
             "case: {}",
             case.get("name").text()
         );
