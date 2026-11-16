@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The nightly run checks main with every job, the core's included, which the changes job otherwise runs only for their own paths.
+  schedule:
+    - cron: "0 11 * * *"
 
 permissions:
   contents: read
@@ -11,8 +14,9 @@ permissions:
 # A run on main that has started is never canceled, because it publishes the image of its commit.
 # A group holds one waiting run, and a newer waiting run replaces it, so of the commits merged while a run is in progress only the newest gets an image.
 # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency — checked 2026-11-08
+# The event is in the group, so the nightly run neither waits behind a push to main nor replaces one waiting for its turn.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The eight mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
@@ -197,7 +201,7 @@ jobs:
       - run: npm run --prefix tools/lint lint:core
 
   # Decides which of the core's jobs a change needs, from the paths AGENTS.md lists for each, against the pull request's base or the commit a push to main moved from.
-  # Any change to this file runs every job, and so does a run with no base to compare against, such as a push whose previous commit cannot be fetched.
+  # Any change to this file runs every job, and so does a run with no base to compare against: the nightly run, and a push whose previous commit cannot be fetched.
   changes:
     name: changes
     runs-on: ubuntu-24.04
