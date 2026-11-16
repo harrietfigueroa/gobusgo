@@ -5,7 +5,7 @@ import Config
 # the same bundles. The targets are the oldest browsers the site supports,
 # so esbuild lowers only the syntax they lack.
 bundle_options =
-  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=chrome110,firefox115,safari16.4)
+  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=chrome110,firefox115,safari16.4,ios16.4)
 
 config :esbuild,
   version: "0.25.5",

@@ -17,20 +17,20 @@
 
 ### Supported browsers
 
-The site supports Chrome 110, Firefox 115, and Safari 16.4 and newer, macOS and iOS alike, and every esbuild profile of a bundle and the service worker's names them as its targets (`--target=chrome110,firefox115,safari16.4`), so esbuild lowers only the syntax those versions lack (GOB-438). Each minimum is the newest of the first versions that ship the APIs the bundles and the worker call without a check, read from MDN's browser compatibility data, `@mdn/browser-compat-data` 8.1.9, checked 2026-11-15:
+The site supports Chrome 110, Firefox 115, Safari 16.4, and iOS Safari 16.4 and newer, the floor the user confirmed on 2026-11-15, and every esbuild profile of a bundle and the service worker's names them as its targets (`--target=chrome110,firefox115,safari16.4,ios16.4`), so esbuild lowers only the syntax those versions lack (GOB-438). esbuild reads iOS Safari as an engine of its own, `ios`, so a feature that iOS Safari ships at another version than Safari on macOS is lowered for it. Each minimum is the newest of the first versions that ship the APIs the bundles and the worker call without a check, read from MDN's browser compatibility data, `@mdn/browser-compat-data` 8.1.9, checked 2026-11-15; Safari and iOS Safari ship each of them at the same version:
 
 | API | Where | Chrome | Firefox | Safari |
 | --- | --- | --- | --- | --- |
 | `Array.prototype.toReversed` | `report_tie.js` | 110 | 115 | 16 |
 | `DecompressionStream` | `names_stream.js`, `packed_stream.js`, `shared_vehicles.js` | 80 | 113 | 16.4 |
 | `CanvasRenderingContext2D.roundRect` | `vehicle_marker_shapes.js`, `stop_marker_shapes.js`, `trip_map.js` | 99 | 112 | 16 |
-| `AbortSignal.timeout` | the bundles and the worker | 103 | 100 | 16 |
+| `AbortSignal.timeout` | the bundles and the worker | 103 (partial) | 100 | 16 |
 | `AbortSignal.throwIfAborted` | the vendored `pmtiles` | 100 | 97 | 15.4 |
 | `Object.hasOwn` | the bundles | 93 | 92 | 15.4 |
 | `Array.prototype.at`, `String.prototype.at` | `place_file.js`, `address_file.js` | 92 | 90 | 15.4 |
 | `String.prototype.replaceAll` | `place_search.js`, `address_lookup.js`, `intersection_lookup.js` | 85 | 77 | 13.1 |
 
-Chrome before 124 aborts an `AbortSignal.timeout` with an `AbortError` where later versions throw a `TimeoutError`, so `vehicle_markers.js` names a timed-out file fetch as a failed fetch there, which the trip path files retry alike. What the page uses only after checking for it sets no minimum: `structuredClone` and `moveBefore` in LiveView, `requestIdleCallback`, `DeviceOrientationEvent.requestPermission`, `Error.captureStackTrace` in `fflate`, `DecompressionStream` in `pmtiles`, which falls back to `fflate`, and `fetch`'s `priority`, a hint a browser without it ignores. A module script is supported from Chrome 61, Firefox 60, and Safari 10.1, and a top-level `await` from Chrome 89, Firefox 89, and Safari 15; Safari before 27 fails a module that several modules import at once while it awaits (WebKit bug 242740), which a bundle of one module never meets.
+MDN records Chrome's full support from 124: Chrome before 124 aborts an `AbortSignal.timeout` with an `AbortError` where later versions throw a `TimeoutError`, so `vehicle_markers.js` names a timed-out file fetch as a failed fetch there, which the trip path files retry alike. What the page uses only after checking for it sets no minimum: `structuredClone` and `moveBefore` in LiveView, `requestIdleCallback`, `DeviceOrientationEvent.requestPermission`, `Error.captureStackTrace` in `fflate`, `DecompressionStream` in `pmtiles`, which falls back to `fflate`, and `fetch`'s `priority`, a hint a browser without it ignores. A module script is supported from Chrome 61, Firefox 60, and Safari 10.1, and a top-level `await` from Chrome 89, Firefox 89, and Safari 15; Safari before 27 fails a module that several modules import at once while it awaits (WebKit bug 242740), which a bundle of one module never meets.
 
 ## Stylesheet
 
