@@ -212,7 +212,16 @@ if config_env() == :test do
       assets_dir: "tools/conformance",
       browser_pools: [
         [id: :chromium, browser: :chromium, size: 1],
-        [id: :firefox, browser: :firefox, size: 1],
+        # Firefox on CI's runner refuses a WebGL2 context, logging "AllowWebgl2:false
+        # restricts context creation on this system", and MapLibre draws only on
+        # WebGL2. `webgl.force-enabled` skips that check in `CreateAndInitGL`.
+        # https://raw.githubusercontent.com/mozilla-firefox/firefox/main/dom/canvas/WebGLContext.cpp — checked 2026-11-20
+        [
+          id: :firefox,
+          browser: :firefox,
+          size: 1,
+          browser_launch_opts: [firefox_user_prefs: %{"webgl.force-enabled" => true}]
+        ],
         [id: :webkit, browser: :webkit, size: 1]
       ],
       browser_launch_timeout: 30_000,
