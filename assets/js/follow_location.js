@@ -17,7 +17,7 @@ import {isReducedMotion, isResizeMove} from "./map_move"
 import {canRequestMotionPermission, isMotionPermissionDenied, requestMotionPermission} from "./motion_permission"
 import {CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME, DetailKind} from "./panel_detail"
 import {sheetInsets} from "./panel_sheet"
-import {LatestKind, OutcomeKind, PermissionKind} from "./position_watch"
+import {LatestKind, OutcomeKind} from "./position_watch"
 import {FOLLOW_HOLDER, currentPermission, holdPosition, latestFix, releasePosition} from "./rider_position"
 import {
   CONE_WIDTH_DEGREES,
@@ -45,6 +45,9 @@ import {
   FixPlace,
   FollowEventKind,
   FollowKind,
+  LAUNCH_WAIT_MS_MAX,
+  LaunchIntent,
+  LaunchKind,
   MoveKind,
   OFF,
   accuracyDiameterPixels,
@@ -55,6 +58,8 @@ import {
   isActive,
   isInside,
   keepOffset,
+  keepsFlag,
+  launchDecision,
   moveDurationMs,
   transition
 } from "./follow_state"
@@ -111,6 +116,7 @@ export const FollowLocation = {
     this.fix = null
     this.frame = null
     this.restoreOffered = false
+    this.launchTimer = null
     this.bounds = JSON.parse(this.el.dataset.bounds)
     this.isShown = isDirectionShown()
     this.compass = NO_READING
@@ -196,28 +202,52 @@ export const FollowLocation = {
     }
   },
 
-  // A browser that has denied the permission gets the button disabled, and
-  // the first map of a page whose browser stored the flag, and gives a
-  // position with no prompt, starts following.
+  // A browser that reports the permission denied gets the button disabled
+  // and the flag erased, and the first map of a page whose browser stored
+  // the flag starts following, which asks where the browser no longer holds
+  // the grant. A restore the browser leaves unanswered falls back to resume
+  // after the launch wait.
   async readPermission() {
     const permission = await currentPermission()
-
-    if (permission === PermissionKind.denied) {
-      this.dispatch({kind: FollowEventKind.denied})
-      return
-    }
-
-    const isFirstMap = !this.restoreOffered
-    this.restoreOffered = true
-    const isGrantedOnFirstMap = isFirstMap && permission === PermissionKind.granted
-
-    if (!isGrantedOnFirstMap) {
-      return
-    }
+    let intent = LaunchIntent.off
 
     if (storedSettings.readLocationFollow()) {
-      this.dispatch({kind: FollowEventKind.restore})
+      intent = LaunchIntent.on
     }
+
+    const isRestoreOffered = this.restoreOffered
+    this.restoreOffered = true
+    const launch = launchDecision({intent, permission, isRestoreOffered})
+
+    switch (launch.kind) {
+      case LaunchKind.restore:
+        this.dispatch({kind: FollowEventKind.restore})
+        this.startLaunchWait()
+        break
+      case LaunchKind.blocked:
+        this.dispatch({kind: FollowEventKind.denied})
+        this.storeFlag(false)
+        break
+      case LaunchKind.off:
+        break
+      default:
+        unreachable(launch.kind, "follow location: a launch of unknown kind")
+    }
+  },
+
+  startLaunchWait() {
+    if (this.launchTimer !== null) {
+      window.clearTimeout(this.launchTimer)
+    }
+
+    this.launchTimer = window.setTimeout(() => {
+      this.launchTimer = null
+      this.dispatch({kind: FollowEventKind.launchTimeout})
+    }, LAUNCH_WAIT_MS_MAX)
+  },
+
+  storeFlag(isOn) {
+    storedSettings.writeLocationFollow(isOn)
   },
 
   cameraMoved(event) {
@@ -238,10 +268,16 @@ export const FollowLocation = {
   // geolocation hands its outcome back from inside the call.
   dispatch(event) {
     const wasActive = isActive(this.state)
+    const wasKept = keepsFlag(this.state)
     const wasFollowing = this.state.kind === FollowKind.following
     const {state, effects} = transition({state: this.state, event})
     this.state = state
     const isOn = isActive(state)
+    const isKept = keepsFlag(state)
+
+    if (isKept !== wasKept) {
+      this.storeFlag(isKept)
+    }
 
     if (isOn !== wasActive) {
       this.switchWatch(isOn)
@@ -263,8 +299,6 @@ export const FollowLocation = {
   },
 
   switchWatch(isOn) {
-    storedSettings.writeLocationFollow(isOn)
-
     if (isOn) {
       holdPosition({holder: FOLLOW_HOLDER, onOutcome: (outcome) => { this.received(outcome) }})
       this.readLatest()
@@ -553,6 +587,10 @@ export const FollowLocation = {
     window.removeEventListener(ORIENTATION_EVENT_NAMES[this.compassSource], this.onOrientation)
     document.removeEventListener("visibilitychange", this.onVisibility)
     releasePosition({holder: FOLLOW_HOLDER})
+
+    if (this.launchTimer !== null) {
+      window.clearTimeout(this.launchTimer)
+    }
 
     if (this.frame !== null) {
       window.cancelAnimationFrame(this.frame)

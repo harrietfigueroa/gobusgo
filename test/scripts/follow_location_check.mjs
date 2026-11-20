@@ -48,7 +48,7 @@ function state(fields) {
 }
 
 const waiting = state({kind: FollowKind.following, isNoticeOwed: true})
-const restored = state({kind: FollowKind.following})
+const restored = state({kind: FollowKind.following, isLaunchWaiting: true})
 const following = state({kind: FollowKind.following, isCentered: true, place: FixPlace.inside})
 const followingStale = state({kind: FollowKind.following, isCentered: true, place: FixPlace.inside, isStale: true})
 const located = state({kind: FollowKind.located, place: FixPlace.inside})
@@ -316,7 +316,8 @@ deepStrictEqual(NoticeMessage, {
   stopped: {headline: "Stopped following your location", caption: "Press the location button to follow again."},
   denied: {headline: "Location is off", caption: "Allow location in your browser's settings. The map stays where it is."},
   unavailable: {headline: "Can't find your location", caption: "The map stays where it is."},
-  outside: {headline: "You're outside this map", caption: "The map stays where it is."}
+  outside: {headline: "You're outside this map", caption: "The map stays where it is."},
+  resume: {headline: "Your location is paused", caption: "Press the location button to follow it again."}
 }, "the notices' messages")
 
 console.log("follow location check passed")

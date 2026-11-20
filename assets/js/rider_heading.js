@@ -254,13 +254,14 @@ export function listensOrientation({isDotDrawn, isVisible, isShown}) {
 
 /**
  * Whether a click on the location button asks for the motion permission:
- * a click that moves Off to Following, with the setting on, no denial
- * stored, and a browser that asks.
+ * a click that moves Off or resume to Following, with the setting on, no
+ * denial stored, and a browser that asks.
  */
 export function asksMotionPermission({previousKind, nextKind, isShown, isDenied, canRequest}) {
   assertCondition(followKinds.includes(previousKind), `rider heading: a state of kind ${String(previousKind)}`)
   assertCondition(followKinds.includes(nextKind), `rider heading: a state of kind ${String(nextKind)}`)
-  const isStart = previousKind === FollowKind.off
+  const isFromOff = previousKind === FollowKind.off
+  const isStart = isFromOff || previousKind === FollowKind.resume
   const isStartFollowing = isStart && nextKind === FollowKind.following
   const isAskable = canRequest && !isDenied
   const isShownAskable = isShown && isAskable

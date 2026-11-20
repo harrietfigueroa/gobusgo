@@ -72,7 +72,8 @@ import {LatestKind, OutcomeKind} from "./position_watch"
 import {appendMessage} from "./message"
 import {pageEvents} from "./page_events"
 import {HandoffKind, NO_HANDOFF, takeHandoffState} from "./hook_handoff"
-import {SEARCH_HOLDER, TRIP_HOLDER, holdPosition, latestFix, permissionGranted, releasePosition} from "./rider_position"
+import {SEARCH_HOLDER, TRIP_HOLDER, currentPermission, holdPosition, latestFix, releasePosition} from "./rider_position"
+import {LaunchKind, launchDecision, tripLaunchIntent} from "./follow_state"
 import {storedSettings} from "./stored_settings"
 
 const STRIP_ID = "trip-strip"
@@ -142,6 +143,17 @@ function locate(resolve) {
 // Whether the browser gives the rider's position, and the position.
 function currentPosition() {
   return new Promise(locate)
+}
+
+// Whether a page load starts from the rider's location: where the rider's
+// last trip started from My location, or the browser reports the
+// permission granted, and the permission does not read denied.
+async function launchesFromLocation() {
+  const permission = await currentPermission()
+  const recentTrips = storedSettings.listRecentTrips(RECENT_TRIP_COUNT_MAX)
+  const intent = tripLaunchIntent({recentTrips})
+  const launch = launchDecision({intent, permission, isRestoreOffered: false})
+  return launch.kind === LaunchKind.restore
 }
 
 // `elements` as one fragment, to put in place of an element's children.
@@ -443,12 +455,12 @@ export const TripPlanner = {
     }
   },
 
-  // From starts as the rider's location where the browser gives it with no
-  // prompt, so opening the page never raises one.
+  // From starts as the rider's location by the launch decision. Choosing
+  // the end asks nothing; the browser asks when a trip is planned from it.
   async startFromLocation() {
-    const granted = await permissionGranted()
+    const isLaunched = await launchesFromLocation()
     const isUnchosen = this.ends[TripEnd.from].kind === EndKind.none
-    const isLocationStart = granted && isUnchosen
+    const isLocationStart = isLaunched && isUnchosen
 
     if (isLocationStart) {
       this.ends[TripEnd.from] = LOCATION_END
@@ -797,12 +809,12 @@ export const TripPlanner = {
     this.holdSearchPosition()
   },
 
-  // Holds the page's position watch while the list is open, where the
-  // browser gives the position with no prompt, so the results rank from
-  // where the rider stands; a fix writes the list again.
+  // Holds the page's position watch while the list is open, by the launch
+  // decision, so the results rank from where the rider stands; a fix writes
+  // the list again.
   async holdSearchPosition() {
-    const granted = await permissionGranted()
-    const isHeld = granted && this.isListOpen()
+    const isLaunched = await launchesFromLocation()
+    const isHeld = isLaunched && this.isListOpen()
 
     if (!isHeld) {
       return
@@ -1086,8 +1098,8 @@ export const TripPlanner = {
   },
 
   // Ends the trip: no end, no journey, nothing drawn, and the rider's own
-  // filter on the map. From starts again as the rider's location where the
-  // browser gives it with no prompt.
+  // filter on the map. From starts again as the rider's location by the
+  // launch decision.
   clear() {
     stopPicking()
     this.ends = {[TripEnd.from]: NO_END, [TripEnd.to]: NO_END}

@@ -42,9 +42,10 @@
 //   refused one removed. No key, null, and text that is not JSON read as no
 //   filter. Losing it shows every vehicle.
 // - `gobusgo:snap-to-location`: the text "true" while the rider left the
-//   location button on, Following or Located, never a position; turning
-//   the button off removes the key. Any other text, and no key, read as
-//   off. Losing it ends the follow on load.
+//   location button on, Following or Located, or in the resume a restore
+//   falls back to, never a position; turning the button off and a denial
+//   remove the key. Any other text, and no key, read as off. Losing it ends
+//   the follow on load.
 // - `gobusgo:offline-schedules`: the text "off" while the rider keeps
 //   saving schedules for offline use turned off. No key is on, the default,
 //   and any other text reads as on. Losing it turns saving back on.
