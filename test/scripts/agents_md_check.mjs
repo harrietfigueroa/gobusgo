@@ -26,6 +26,7 @@ const GENERATED_PATHS = Object.freeze({
   "priv/vendor/": "mix gobusgo.vendor.fetch downloads the vendored archives here",
   "priv/static/assets/": "mix assets.build writes the built stylesheet, script, and MapLibre's files here",
   "priv/static/sw.js": "mix gobusgo.assets.service_worker bundles the service worker here",
+  "priv/static/sw_release.json": "mix gobusgo.assets.service_worker writes the release the worker was built for here",
   "tools/lint/rendered/": "the accessibility test writes the rendered pages here for html-eslint"
 })
 

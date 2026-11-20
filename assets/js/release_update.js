@@ -4,6 +4,12 @@
 // take over, and reloads once it has, so the page and its files always
 // come from one release.
 //
+// Before it offers, the page asks the waiting worker for its release and
+// compares it with the one the root layout names (`offerStep`). A worker of
+// the page's own release, the case of a page loaded from the network after
+// a release, takes over with no offer and no reload; a worker that gives no
+// release within RELEASE_ANSWER_WAIT_MS is offered.
+//
 // Every open page shows the offer, and the worker one page has take over
 // controls them all, so the offer of another page can name a worker that
 // has already taken over: its click reloads at once (`reloadStep`). A
@@ -15,12 +21,24 @@
 
 import {unreachable} from "./core/assert.js"
 import {writeMessage} from "./message.js"
-import {RELOAD_WAIT_MS, ReloadStepKind, TAKEOVER_LATE_MESSAGE, reloadStep} from "./release_offer.js"
+import {
+  NO_RELEASE_ANSWER,
+  OfferStepKind,
+  RELEASE_ANSWER_WAIT_MS,
+  RELOAD_WAIT_MS,
+  ReloadStepKind,
+  TAKEOVER_LATE_MESSAGE,
+  offerStep,
+  pageReleaseOf,
+  releaseAnswerOf,
+  reloadStep
+} from "./release_offer.js"
 import {MessageKind} from "./service_worker_strategy.js"
 
 const SERVICE_WORKER_PATH = "/sw.js"
 const SERVICE_WORKER_SCOPE = "/"
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
+const RELEASE_ELEMENT_SELECTOR = 'meta[name="gobusgo:release"]'
 
 // The page's one offer. Its click acts on the worker the offer named last,
 // so a newer release that installs while the offer is shown replaces the
@@ -73,9 +91,73 @@ function releaseOffer() {
   return show
 }
 
-// A worker that installs while another controls the page is a new release;
+// The release the root layout names, read once, since it is the release of
+// the files the page loaded.
+function readPageRelease() {
+  const element = document.querySelector(RELEASE_ELEMENT_SELECTOR)
+
+  if (element === null) {
+    return pageReleaseOf(null)
+  }
+
+  const content = element.getAttribute("content")
+  return pageReleaseOf(content)
+}
+
+// Asks `worker` for its release on a port of its own, and settles on its
+// answer or, once RELEASE_ANSWER_WAIT_MS has passed, on none.
+function askRelease(worker) {
+  function askReleaseExecutor(resolve) {
+    const channel = new MessageChannel()
+    let timer = null
+
+    function settled(answer) {
+      window.clearTimeout(timer)
+      channel.port1.close()
+      resolve(answer)
+    }
+
+    function answered(event) {
+      const answer = releaseAnswerOf(event.data)
+      settled(answer)
+    }
+
+    function waitEnded() {
+      settled(NO_RELEASE_ANSWER)
+    }
+
+    channel.port1.onmessage = answered
+    timer = window.setTimeout(waitEnded, RELEASE_ANSWER_WAIT_MS)
+    worker.postMessage({kind: MessageKind.release}, [channel.port2])
+  }
+
+  return new Promise(askReleaseExecutor)
+}
+
+// Offers a waiting worker of another release, and has one of the page's own
+// release take over with no offer. The worker's state is read after the
+// answer, since a newer install can replace it meanwhile.
+async function settleWaiting({worker, pageRelease, offerReload}) {
+  const answer = await askRelease(worker)
+  const step = offerStep({pageRelease, answer, workerState: worker.state})
+
+  switch (step) {
+    case OfferStepKind.offer:
+      offerReload(worker)
+      break
+    case OfferStepKind.activate:
+      worker.postMessage({kind: MessageKind.activate})
+      break
+    case OfferStepKind.none:
+      break
+    default:
+      unreachable(step, "offer step")
+  }
+}
+
+// A worker that installs while another controls the page is a new worker;
 // one that installs with none is the first, which takes over by itself.
-function watchInstalling({registration, offerReload}) {
+function watchInstalling({registration, pageRelease, offerReload}) {
   const worker = registration.installing
 
   function stateChanged() {
@@ -83,7 +165,7 @@ function watchInstalling({registration, offerReload}) {
     const isNewRelease = isInstalled && navigator.serviceWorker.controller !== null
 
     if (isNewRelease) {
-      offerReload(worker)
+      settleWaiting({worker, pageRelease, offerReload})
     }
   }
 
@@ -100,6 +182,7 @@ async function checkForRelease(registration) {
 
 async function register() {
   const offerReload = releaseOffer()
+  const pageRelease = readPageRelease()
   let registration = null
 
   try {
@@ -114,11 +197,11 @@ async function register() {
   }
 
   if (registration.waiting !== null) {
-    offerReload(registration.waiting)
+    settleWaiting({worker: registration.waiting, pageRelease, offerReload})
   }
 
   function updateFound() {
-    watchInstalling({registration, offerReload})
+    watchInstalling({registration, pageRelease, offerReload})
   }
 
   registration.addEventListener("updatefound", updateFound)

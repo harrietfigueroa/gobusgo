@@ -6,7 +6,9 @@ defmodule Mix.Tasks.Gobusgo.Assets.ServiceWorker do
   built: it reads the files the worker stores when it installs, takes the
   release from their content with `GobusgoWeb.ServiceWorker`, and runs
   esbuild's `service_worker` profile with the release and the paths defined
-  as `SERVICE_WORKER_BUILD`.
+  as `SERVICE_WORKER_BUILD`. It then writes the release file beside the
+  worker, `priv/static/sw_release.json`, which the root layout names the
+  page's release from.
 
       mix gobusgo.assets.service_worker
       mix gobusgo.assets.service_worker --digested
@@ -40,6 +42,8 @@ defmodule Mix.Tasks.Gobusgo.Assets.ServiceWorker do
     definition = JSON.encode!(build)
 
     Mix.Task.run("esbuild", [@esbuild_profile, "--define:SERVICE_WORKER_BUILD=#{definition}"])
+    release_path = Path.join(@static_dir, ServiceWorker.release_file_name())
+    File.write!(release_path, ServiceWorker.release_file(release))
     Mix.shell().info("Service worker built for release #{release}")
   end
 

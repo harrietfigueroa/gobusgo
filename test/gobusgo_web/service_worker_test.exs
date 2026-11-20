@@ -81,6 +81,31 @@ defmodule GobusgoWeb.ServiceWorkerTest do
     end
   end
 
+  describe "release_file/1 and release_of_file/1" do
+    test "reads back the release a release file was written with" do
+      content = ServiceWorker.release_file("0123456789abcdef")
+
+      assert ServiceWorker.release_of_file(content) == {:ok, "0123456789abcdef"}
+    end
+
+    test "refuses to write a release that is not 16 lowercase hexadecimal digits" do
+      assert_raise Gobusgo.Assert.AssertionError, fn -> ServiceWorker.release_file("release") end
+    end
+
+    for {name, content} <- [
+          {"text that is not JSON", "release"},
+          {"an object with no release", ~s({"other":"0123456789abcdef"})},
+          {"a release in uppercase", ~s({"release":"0123456789ABCDEF"})},
+          {"a release one digit short", ~s({"release":"0123456789abcde"})},
+          {"a release that is not text", ~s({"release":16})},
+          {"a list", ~s(["0123456789abcdef"])}
+        ] do
+      test "refuses #{name}" do
+        assert ServiceWorker.release_of_file(unquote(content)) == {:error, :malformed}
+      end
+    end
+  end
+
   describe "basemap_assets_id/0" do
     test "is the start of the content hash the lock file pins for the basemap's fonts and sprites" do
       {:ok, lock} = Lock.decode(File.read!("assets/vendor.lock.json"))
