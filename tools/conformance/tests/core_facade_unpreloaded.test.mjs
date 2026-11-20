@@ -1,7 +1,7 @@
 // Checks the facade's refusal of a document that does not preload the core's
-// module: importing `assets/js/core.js` with no preload in the head rejects
-// with the AssertionError, and fetches nothing. Each test file runs in a page
-// of its own, so this one's import is the facade's first.
+// module: importing the facade with no preload in the head rejects with the
+// AssertionError. Each test file runs in a page of its own, so this one's
+// import is the facade's first.
 
 import {expect, test} from "vitest"
 import {AssertionError} from "../../../assets/js/core/assert.js"

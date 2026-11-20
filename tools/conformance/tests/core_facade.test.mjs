@@ -1,8 +1,7 @@
 // Checks that a function crosses the facade the shell loads the core through:
-// the case writes the root layout's preload of the core's module into the
-// document, imports `assets/js/core.js`, which finishes loading the module
-// before its importer runs, and compares `coreVersion` with the workspace
-// version in `core/Cargo.toml`.
+// the case writes a preload of the core's module into the document, as the
+// root layout does, imports the facade, and compares `coreVersion` with the
+// one version line of the workspace's manifest.
 
 import {beforeAll, expect, test} from "vitest"
 import {server} from "vitest/browser"
