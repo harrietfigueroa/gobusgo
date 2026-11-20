@@ -23,7 +23,7 @@ import {SCHEDULED_MARKERS_EVENT_NAME} from "./offline_service"
 import {TableKind} from "#core/offline_answers.js"
 import {isFallbackDue} from "#core/scheduled_path.js"
 import {MapItemKind, OPEN_EVENT_NAME} from "./map_items"
-import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRouteOf} from "./route_emphasis"
+import {dimmedOpacity, EMPHASIS_EVENT_NAME, emphasizedRoutesOf} from "./route_emphasis"
 import {attachVehicleOverlay, HitKind, overlayHitAt} from "./vehicle_overlay"
 import {
   BADGE_FONT,
@@ -66,24 +66,23 @@ import {TieKind, reportTie, tiedMarkerIds} from "./report_tie"
 import {TIE_REDRAW_INTERVAL_MS} from "./report_tie_layout"
 import {tripPathKey, withTripPaths} from "#core/trip_path.js"
 import {
-  FILE_FETCH_TIMEOUT_MS,
-  FileFailure,
-  FileKind,
-  FileOutcomeKind,
-  INDEX_EXPANDED_BYTES_MAX,
-  ManifestOutcomeKind,
-  SHARD_EXPANDED_BYTES_MAX,
   emptyTripPathFiles,
   fileFetched,
-  hasExpectedSize,
   manifestFetched,
   planTripPathFiles
 } from "#core/trip_path_files.js"
-import {PackedOutcome} from "#core/packed_container.js"
-import {expandStream} from "./packed_stream.js"
+import {fetchManifestOutcome, fetchTripPathFile} from "./trip_path_fetch"
 import {preparePath} from "./vehicle_prediction"
 import {registerImageResolver} from "./style_images"
 import {createYourBusLabel} from "./your_bus_label"
+import {PositionKind, createVehicleFollower} from "./vehicle_follower"
+import {
+  FOLLOW_REQUEST_EVENT_NAME,
+  VehicleLookupKind,
+  isMarkerHeld,
+  labelOf,
+  markerForVehicle
+} from "./vehicle_follow"
 
 const SOURCE_NAME = "vehicle-markers"
 const IMAGE_RESOLVER_KEY = "vehicle-markers"
@@ -127,84 +126,6 @@ const hasRoute = ["==", ["typeof", ["get", "route"]], "string"]
 // report lacks for a vehicle with no route.
 const hasRouteBadge = ["any", hasRoute, ["match", ["get", "status"], ["stale", "unknown"], true, false]]
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
-
-function failureOfError(error) {
-  const isDomException = error instanceof DOMException
-  const isTimeout = isDomException && error.name === "TimeoutError"
-
-  if (isTimeout) {
-    return {kind: FileOutcomeKind.failed, reason: FileFailure.timeout}
-  }
-
-  return {kind: FileOutcomeKind.failed, reason: FileFailure.fetch}
-}
-
-// The manifest, revalidated with the browser's own conditional request: a
-// body whose etag is the held one is unchanged, so the rules keep what they
-// hold.
-async function fetchManifestOutcome({url, etag}) {
-  const signal = AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(url, {signal, cache: "no-cache", credentials: "same-origin", headers: {accept: "application/json"}})
-
-    if (!response.ok) {
-      return {kind: ManifestOutcomeKind.failed}
-    }
-
-    const manifest = await response.json()
-    const received = response.headers.get("etag")
-
-    const isHeldEtag = received !== null && received === etag
-
-    if (isHeldEtag) {
-      return {kind: ManifestOutcomeKind.unchanged}
-    }
-
-    return {kind: ManifestOutcomeKind.changed, manifest, etag: received}
-  } catch {
-    // A refused or timed-out fetch and a body that is not JSON are the same
-    // outcome to the rules: the manifest is not held.
-    return {kind: ManifestOutcomeKind.failed}
-  }
-}
-
-// One index or shard the manifest or the index names, fetched from `origin`
-// as the browser caches it, of the size named, and expanded within its bound.
-async function fetchTripPathFile({origin, file}) {
-  const signal = AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS)
-
-  try {
-    const url = origin + file.path
-    const response = await fetch(url, {signal, cache: "default", credentials: "same-origin"})
-
-    if (!response.ok) {
-      return {kind: FileOutcomeKind.failed, reason: FileFailure.fetch}
-    }
-
-    const buffer = await response.arrayBuffer()
-
-    if (!hasExpectedSize({fetch: file, byteLength: buffer.byteLength})) {
-      return {kind: FileOutcomeKind.failed, reason: FileFailure.sizeMismatch}
-    }
-
-    let expandedByteSizeMax = SHARD_EXPANDED_BYTES_MAX
-
-    if (file.kind === FileKind.index) {
-      expandedByteSizeMax = INDEX_EXPANDED_BYTES_MAX
-    }
-
-    const expanded = await expandStream(new Uint8Array(buffer), {expandedByteSizeMax})
-
-    if (expanded.kind === PackedOutcome.refused) {
-      return {kind: FileOutcomeKind.failed, reason: FileFailure.decode}
-    }
-
-    return {kind: FileOutcomeKind.expanded, bytes: expanded.bytes}
-  } catch (error) {
-    return failureOfError(error)
-  }
-}
 
 function point(coordinates) {
   return {type: "Point", coordinates}
@@ -545,9 +466,9 @@ export const VehicleMarkers = {
     this.statusLabels = new Map(labelEntries)
     this.markersByAgency = new Map()
     this.map = null
-    // The route whose line is emphasized, or null; the markers of every
-    // other route are drawn dimmed while it is set.
-    this.emphasizedRouteId = null
+    // The routes whose lines are emphasized, none for an empty array; the
+    // markers of every other route are drawn dimmed while any is set.
+    this.emphasizedRouteIds = []
     this.drawn = new Map()
     this.gliding = new Map()
     // The chevrons that turn back to their reported headings in the
@@ -599,6 +520,14 @@ export const VehicleMarkers = {
     // The label beside the chosen journey's first bus.
     this.yourBus = createYourBusLabel({sourceName: SOURCE_NAME, onLabel: (label) => { this.markYourBus(label) }})
     this.reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY)
+    // Follows one vehicle's marker with the map, from a tap on the marker or
+    // a request from an arrival's button.
+    this.follower = createVehicleFollower({
+      positionOf: (markerId) => this.followPositionOf(markerId),
+      isHeld: (markerId) => isMarkerHeld({markerLists: this.markersByAgency.values(), markerId})
+    })
+    this.onFollowRequest = (event) => { this.followVehicleOf(event.detail.vehicleId) }
+    window.addEventListener(FOLLOW_REQUEST_EVENT_NAME, this.onFollowRequest)
 
     this.onVisibilityChange = () => { this.visibilityChanged() }
     this.onReducedMotionChange = () => { this.decideMotion() }
@@ -643,7 +572,7 @@ export const VehicleMarkers = {
     window.addEventListener(OPEN_EVENT_NAME, this.onItemOpen)
 
     this.onEmphasis = (event) => {
-      this.emphasizedRouteId = emphasizedRouteOf(event.detail)
+      this.emphasizedRouteIds = emphasizedRoutesOf(event.detail)
       this.applyEmphasis()
     }
 
@@ -690,6 +619,7 @@ export const VehicleMarkers = {
       this.decideMotion()
       this.draw({isSnapped: false})
       this.updateView(markers)
+      this.follower.markersChanged()
     })
 
     // The saved schedule's markers move along their trips' paths on a clock
@@ -712,6 +642,7 @@ export const VehicleMarkers = {
       if (isFirst) {
         this.drawInSource()
         this.tier = STILL_TIER
+        this.follower.scheduleShown()
       }
 
       this.decideMotion()
@@ -761,6 +692,7 @@ export const VehicleMarkers = {
 
     this.addLayers(map)
     const canvas = map.getCanvas()
+    this.follower.attach(map)
 
     // A map keeps the listeners of a layer while the layer is added again.
     for (const layerName of markerLayerNames) {
@@ -794,7 +726,7 @@ export const VehicleMarkers = {
     this.overlay = attachVehicleOverlay({map, statuses: this.statuses, glyphZoomMin: this.glyphZoomMin})
     this.overlay.markSelected(this.viewMarkerId)
     this.overlay.markYourBus(this.yourBus.current())
-    this.overlay.markEmphasis(this.emphasizedRouteId)
+    this.overlay.markEmphasis(this.emphasizedRouteIds)
 
     map.on("click", (event) => {
       const hit = overlayHitAt({map, point: event.point})
@@ -976,6 +908,50 @@ export const VehicleMarkers = {
   // shows it in the details view.
   openVehicle(feature) {
     this.selectVehicle({properties: feature.properties, lngLat: feature.geometry.coordinates})
+    this.followMarker({markerId: feature.properties.markerId, route: feature.properties.route})
+  },
+
+  // Keeps the map on the marker of `markerId`, after the selection has
+  // moved the map beside the sheet, so the selection's own move ends no follow.
+  followMarker({markerId, route}) {
+    // The saved schedule's markers are not live positions, so they are
+    // selected and never followed.
+    if (this.isScheduled) {
+      this.follower.refuse()
+      return
+    }
+
+    this.follower.start({markerId, label: labelOf({route})})
+  },
+
+  // Follows the vehicle of an arrival, named by `vehicleId`, where the page
+  // holds its marker, and says so where it does not.
+  followVehicleOf(vehicleId) {
+    const lookup = markerForVehicle({markerLists: this.markersByAgency.values(), vehicleId})
+    if (lookup.kind === VehicleLookupKind.found) {
+      this.followMarker({markerId: lookup.marker.id, route: lookup.marker.route})
+    } else {
+      this.follower.refuse()
+    }
+  },
+
+  // Where the page draws the marker of `markerId` now, on the canvas or in
+  // the source.
+  followPositionOf(markerId) {
+    const tracked = this.tracked.get(markerId)
+    const isOnCanvas = this.onCanvas.has(markerId) && tracked !== undefined
+
+    if (isOnCanvas) {
+      return {kind: PositionKind.found, position: tracked.drawn.position}
+    }
+
+    const position = this.drawn.get(markerId)
+
+    if (position === undefined) {
+      return {kind: PositionKind.missing}
+    }
+
+    return {kind: PositionKind.found, position}
   },
 
   // Marks the vehicle the view shows, in the layers and on the canvas,
@@ -1138,12 +1114,12 @@ export const VehicleMarkers = {
   // its status's for a dot, and shape and glyph are drawn at it too, so a
   // status stays told by form.
   markerOpacities() {
-    const {emphasizedRouteId} = this
+    const {emphasizedRouteIds} = this
     const colors = mapColors(currentTheme())
     const statusOpacities = statusOpacity(this.statuses)
-    const dot = dimmedOpacity({emphasizedRouteId, opacity: statusOpacities})
-    const dotStroke = dimmedOpacity({emphasizedRouteId, opacity: dotStrokeOpacity({opacity: statusOpacities, colors})})
-    const symbol = dimmedOpacity({emphasizedRouteId, opacity: SYMBOL_OPACITY})
+    const dot = dimmedOpacity({emphasizedRouteIds, opacity: statusOpacities})
+    const dotStroke = dimmedOpacity({emphasizedRouteIds, opacity: dotStrokeOpacity({opacity: statusOpacities, colors})})
+    const symbol = dimmedOpacity({emphasizedRouteIds, opacity: SYMBOL_OPACITY})
     return {dot, dotStroke, symbol}
   },
 
@@ -1151,7 +1127,7 @@ export const VehicleMarkers = {
   // to those of the emphasized route. It sets paint only, never source data.
   applyEmphasis() {
     if (this.overlay !== null) {
-      this.overlay.markEmphasis(this.emphasizedRouteId)
+      this.overlay.markEmphasis(this.emphasizedRouteIds)
     }
 
     if (this.map === null) {
@@ -1823,6 +1799,8 @@ export const VehicleMarkers = {
     window.removeEventListener(EMPHASIS_EVENT_NAME, this.onEmphasis)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(CHOSEN_CHANGE_EVENT_NAME, this.onChosenChange)
+    window.removeEventListener(FOLLOW_REQUEST_EVENT_NAME, this.onFollowRequest)
+    this.follower.destroy()
     this.yourBus.destroy()
     this.events.release()
   }

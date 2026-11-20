@@ -17,7 +17,7 @@
 import {assertCondition} from "./assert.js"
 import {lerp} from "./math/interpolation.js"
 import {TableKind, savedRouteChip, savedRouteName} from "./offline_answers.js"
-import {POSITION_UNKNOWN_MICRODEGREES} from "./routing_snapshot.js"
+import {POSITION_UNKNOWN_MICRODEGREES, PREVIOUS_DATE_OFFSET, previousDate} from "./routing_snapshot.js"
 import {connectionsByTrip, fallbackPath} from "./scheduled_path.js"
 
 /** How often an offline page places its markers and writes its arrivals again. */
@@ -53,10 +53,7 @@ export const SCHEDULED_STATUS = "scheduled"
 const SECOND_MS = 1000
 const MINUTE_SECONDS = 60
 const MINUTE_MS = 60 * 1000
-const DAY_MS = 24 * 60 * 60 * 1000
 const MICRODEGREES_PER_DEGREE = 1000000
-const PREVIOUS_DATE_OFFSET = 1
-const ISO_DATE_LENGTH = 10
 const NO_LOCATION_REPORTED = "No location reported"
 const REAL_TIME_NO = "No"
 const NO_CONNECTION = -1
@@ -114,14 +111,6 @@ export function chunksAt({entry, nowMs}) {
   }
 
   return chunks
-}
-
-// The ISO 8601 date the day before `serviceDate`.
-function previousDate(serviceDate) {
-  const dayMs = Date.parse(`${serviceDate}T00:00:00.000Z`)
-  assertCondition(Number.isFinite(dayMs), `a service date is an ISO 8601 date: ${serviceDate}`)
-  const previous = new Date(dayMs - DAY_MS)
-  return previous.toISOString().slice(0, ISO_DATE_LENGTH)
 }
 
 // The key of one run of a trip, the same in both snapshots that hold it:

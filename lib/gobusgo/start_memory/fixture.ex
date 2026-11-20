@@ -152,6 +152,17 @@ defmodule Gobusgo.StartMemory.Fixture do
     }
   end
 
+  @doc "The position of every stop of the network, one per stop."
+  @spec stop_positions() :: [%{lat: float(), lon: float()}]
+  def stop_positions do
+    cells = routes() |> Enum.flat_map(& &1.stop_cells) |> Enum.uniq() |> Enum.sort()
+
+    for cell <- cells do
+      [longitude, latitude] = point(cell)
+      %{lat: latitude, lon: longitude}
+    end
+  end
+
   @doc "The routes of the network, each with its stops in the order of its first direction."
   @spec routes() :: [route()]
   def routes do

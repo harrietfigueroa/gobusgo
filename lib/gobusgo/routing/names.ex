@@ -32,6 +32,7 @@ defmodule Gobusgo.Routing.Names do
   alias Gobusgo.CanonicalJson
   alias Gobusgo.OneBusAway.CompactSchedule
   alias Gobusgo.Routing.SnapshotFormat
+  alias Gobusgo.Routing.Timetable
   alias Gobusgo.Schema
 
   @typedoc "A stop's names, each `nil` where the stop view holds none."
@@ -86,11 +87,17 @@ defmodule Gobusgo.Routing.Names do
           previous_schedules: Enumerable.t(CompactSchedule.t())
         }) :: headsigns()
   def headsigns(%{schedules: schedules, previous_schedules: previous_schedules}) do
-    for {offset, offset_schedules} <- [{0, schedules}, {1, previous_schedules}],
-        schedule <- offset_schedules,
-        trip <- schedule.trips,
-        into: %{},
-        do: {{offset, trip.id}, trip.headsign}
+    ranked =
+      for {offset, offset_schedules} <- [{0, schedules}, {1, previous_schedules}],
+          schedule <- offset_schedules,
+          trip <- schedule.trips,
+          reduce: %{} do
+        ranked ->
+          candidate = {Timetable.listing_rank(trip, schedule), trip.headsign}
+          Map.update(ranked, {offset, trip.id}, candidate, &min(&1, candidate))
+      end
+
+    for {key, {_rank, headsign}} <- ranked, into: %{}, do: {key, headsign}
   end
 
   @doc """

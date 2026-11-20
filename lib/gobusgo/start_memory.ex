@@ -31,7 +31,14 @@ defmodule Gobusgo.StartMemory do
   alias Gobusgo.Assert
 
   @typedoc "A start step's outcome, as one log line names it."
-  @type event :: :snapshots_built | :snapshots_failed | :tiles_built | :tiles_failed
+  @type event ::
+          :snapshots_built
+          | :snapshots_failed
+          | :tiles_built
+          | :tiles_failed
+          | :walk_links_built
+          | :streets_snapshots_built
+          | :walk_links_failed
 
   @typedoc """
   How a run of the check ended: with every step built, with a step that
@@ -40,7 +47,7 @@ defmodule Gobusgo.StartMemory do
   """
   @type ending ::
           :built
-          | {:step_failed, :snapshots_failed | :tiles_failed}
+          | {:step_failed, :snapshots_failed | :tiles_failed | :walk_links_failed}
           | :out_of_memory
           | {:exited, integer()}
           | :deadline
@@ -54,7 +61,11 @@ defmodule Gobusgo.StartMemory do
     {"Routing snapshots not built", :snapshots_failed},
     {"Routing snapshot build killed", :snapshots_failed},
     {"Route stop tiles built", :tiles_built},
-    {"Route stop tiles not built", :tiles_failed}
+    {"Route stop tiles not built", :tiles_failed},
+    {"Routing walk links built", :walk_links_built},
+    {"Routing walk links not built", :walk_links_failed},
+    {"Routing walk links build killed", :walk_links_failed},
+    {"Routing walk graph corrupt", :walk_links_failed}
   ]
 
   @doc "The container's memory limit in MiB, production's hard limit."
@@ -72,6 +83,19 @@ defmodule Gobusgo.StartMemory do
   @doc "The successes a run waits for before it ends."
   @spec awaited() :: MapSet.t(event())
   def awaited, do: MapSet.new([:snapshots_built, :tiles_built])
+
+  @doc """
+  The successes a run waits for where the walks of the snapshots are measured
+  by `basis`: those of `awaited/0`, and, along the streets, the links
+  measured on the walk graph, which a start does after it has built its
+  snapshots by the straight line.
+  """
+  @spec awaited(:straight | :streets) :: MapSet.t(event())
+  def awaited(:straight), do: awaited()
+
+  def awaited(:streets) do
+    awaited() |> MapSet.put(:walk_links_built) |> MapSet.put(:streets_snapshots_built)
+  end
 
   @doc """
   The anonymous memory in bytes that `text`, the content of a cgroup v2
@@ -115,10 +139,15 @@ defmodule Gobusgo.StartMemory do
   The ending `events`, the step outcomes logged so far, amount to, or
   `:running` while a step is still awaited and none failed.
   """
-  @spec ending(MapSet.t(event())) :: ending() | :running
-  def ending(%MapSet{} = events) do
-    failed = Enum.find([:snapshots_failed, :tiles_failed], &MapSet.member?(events, &1))
-    built = MapSet.subset?(awaited(), events)
+  @spec ending(MapSet.t(event()), MapSet.t(event())) :: ending() | :running
+  def ending(%MapSet{} = events, %MapSet{} = awaited \\ awaited()) do
+    failed =
+      Enum.find(
+        [:snapshots_failed, :tiles_failed, :walk_links_failed],
+        &MapSet.member?(events, &1)
+      )
+
+    built = MapSet.subset?(awaited, events)
 
     cond do
       failed != nil -> {:step_failed, failed}

@@ -90,10 +90,26 @@ defmodule GobusgoWeb.StopArrivalsTest do
                    time_ms: in_minutes(12),
                    predicted: true,
                    trip_id: "1_800582101",
+                   vehicle_id: "1_4342",
                    scheduled_ms: in_minutes(10)
                  }
                ]
              }
+    end
+
+    test "names the vehicle of an arrival that holds a prediction" do
+      assert line(%{"vehicleId" => "1_77"}).vehicle_id == "1_77"
+    end
+
+    test "names no vehicle for an arrival that holds only its schedule" do
+      fields = %{"predictedArrivalTimeMs" => nil, "predictedDepartureTimeMs" => nil}
+
+      assert line(fields).vehicle_id == nil
+    end
+
+    test "names no vehicle for an arrival whose vehicle identifier is missing or empty" do
+      assert line(%{"vehicleId" => nil}).vehicle_id == nil
+      assert line(%{"vehicleId" => ""}).vehicle_id == nil
     end
 
     test "gives the scheduled departure as the scheduled time of an arrival that only departs" do

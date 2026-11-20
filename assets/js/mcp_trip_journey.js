@@ -17,7 +17,10 @@
 //   changes       the rides after the first
 //   legs          in the order taken, each of one kind:
 //     ride        route {id, name}, from {id, name}, to {id, name} stops, departsAt, arrivesAt
-//     walk        minutes, from and to places, a stop as {id, name} or a place as {name}
+//     walk        minutes, from and to places, a stop as {id, name} or a place as {name},
+//                 and `straightLine: true` on a walk from the rider's position or to a
+//                 place that was timed as a straight line where the streets were
+//                 planned for, and absent otherwise
 //
 // A change to a field's meaning, or a field removed, is a new version; a
 // field added keeps the version.
@@ -79,6 +82,19 @@ function walkLeg({leg, from, to}) {
   return {kind: ContextLegKind.walk, minutes: walkMinutes(leg.durationS), from, to}
 }
 
+// A walk of an end at a position that `leg` says was planned as a straight
+// line where the streets were planned for: the same walk with `straightLine`
+// true, so the model does not read its minutes as a walk along streets.
+function endWalkLeg({leg, from, to}) {
+  const walk = walkLeg({leg, from, to})
+
+  if (leg.isStraightLine === true) {
+    return {...walk, straightLine: true}
+  }
+
+  return walk
+}
+
 function contextLeg({leg, journey, names, fromName, instants}) {
   switch (leg.kind) {
     case LegKind.ride:
@@ -93,9 +109,9 @@ function contextLeg({leg, journey, names, fromName, instants}) {
     case LegKind.walk:
       return walkLeg({leg, from: stopPlace({names, stopId: leg.fromStopId}), to: stopPlace({names, stopId: leg.toStopId})})
     case LegKind.walkFromPosition:
-      return walkLeg({leg, from: {name: fromName}, to: stopPlace({names, stopId: leg.toStopId})})
+      return endWalkLeg({leg, from: {name: fromName}, to: stopPlace({names, stopId: leg.toStopId})})
     case LEG_KIND_TO_POINT:
-      return walkLeg({leg, from: stopPlace({names, stopId: leg.fromStopId}), to: {name: journey.destination.name}})
+      return endWalkLeg({leg, from: stopPlace({names, stopId: leg.fromStopId}), to: {name: journey.destination.name}})
     default:
       return unreachable(leg.kind, "journey context: a leg of unknown kind")
   }

@@ -1,6 +1,6 @@
 # Packed container
 
-The packed container is the one binary form every published data file of a kind added after the routing snapshot uses: trip path shards (GOB-357), address shards (GOB-361), places (GOB-366), and intersections (GOB-364) each add a kind to it. The routing snapshot's own files keep their formats, which `lib/gobusgo/routing/AGENTS.md` holds (GOB-369). The Elixir core is `lib/gobusgo/packed.ex` with the submodules of `lib/gobusgo/packed/`, and the JavaScript core is `assets/js/core/packed_container.js`. Both are pure but for the expansion of a stream, which the JavaScript does apart, in `assets/js/packed_stream.js`, and neither knows the columns of a kind.
+The packed container is the one binary form every published data file of a kind added after the routing snapshot uses: trip path shards (GOB-357), address shards (GOB-361), places (GOB-366), intersections (GOB-364), and the walk graph (GOB-467) each add a kind to it. The routing snapshot's own files keep their formats, which `lib/gobusgo/routing/AGENTS.md` holds (GOB-369). The Elixir core is `lib/gobusgo/packed.ex` with the submodules of `lib/gobusgo/packed/`, and the JavaScript core is `assets/js/core/packed_container.js`. Both are pure but for the expansion of a stream, which the JavaScript does apart, in `assets/js/packed_stream.js`, and neither knows the columns of a kind.
 
 ## Layout
 
@@ -28,6 +28,8 @@ The table is `Gobusgo.Packed.Kinds`, the `KINDS` constant of `assets/js/core/pac
 | 5 | places | `places` | GOB-366, GOB-404 (version 2 adds the localities column, versions 1 and 2 are read), `lib/gobusgo/places/AGENTS.md` |
 | 6 | intersection shard | `intersections` | GOB-364, `lib/gobusgo/intersections/AGENTS.md` |
 | 7 | intersection index | `intersections-index` | GOB-364, `lib/gobusgo/intersections/AGENTS.md` |
+| 8 | walk graph shard | `walk-graph` | GOB-467, `lib/gobusgo/walk_graph/AGENTS.md` |
+| 9 | walk graph index | `walk-graph-index` | GOB-467, `lib/gobusgo/walk_graph/AGENTS.md` |
 
 ## Versions
 
@@ -53,4 +55,4 @@ A reader expands under a bound. `Gobusgo.Packed.expand/2` returns `{:error, :too
 
 ## Mix task
 
-`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format`, `Gobusgo.Routing.TripPathShard`, `Gobusgo.Routing.TripPathIndex`, `Gobusgo.Addresses.Format`, and `Gobusgo.Intersections.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/routing/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`, `lib/gobusgo/intersections/AGENTS.md`). A refused file exits with the reason.
+`mix gobusgo.packed.decode <file> [--bytes-max N] [--kind-module Module]` reads a stored stream, a file named with the `.gz` ending, or an expanded file, expands the stream within `--bytes-max`, by default `Gobusgo.Compression.content_bytes_max/0`, decodes the header and string table for any kind and version, and prints JSON: the header, the strings, and per section its byte length and its base64 bytes. With `--kind-module`, a module that implements `Gobusgo.Packed.Kind`, it prints what that module's `inspect/1` returns instead. `Gobusgo.Places.Format`, `Gobusgo.Routing.TripPathShard`, `Gobusgo.Routing.TripPathIndex`, `Gobusgo.Addresses.Format`, `Gobusgo.Intersections.Format`, and `Gobusgo.WalkGraph.Format` are the kind modules so far (`lib/gobusgo/places/AGENTS.md`, `lib/gobusgo/routing/AGENTS.md`, `lib/gobusgo/addresses/AGENTS.md`, `lib/gobusgo/intersections/AGENTS.md`, `lib/gobusgo/walk_graph/AGENTS.md`). A refused file exits with the reason.

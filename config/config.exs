@@ -178,6 +178,11 @@ config :gobusgo, :map_style, validated: config_env() != :prod
 # pages the tests mount would be written into the data directory.
 config :gobusgo, :usage, recorded: config_env() != :test
 
+# The routing snapshots measure a walk along the walk graph's streets.
+# `:straight` measures it by the straight line between two positions, which a
+# snapshot also falls back to while no walk graph is published.
+config :gobusgo, :walk, basis: :streets
+
 # Phoenix's list with `.mjs` and `.wasm` added, so the digest writes a gzip
 # copy of MapLibre's ES module files and of the core's WebAssembly module as it
 # does of the bundle.
