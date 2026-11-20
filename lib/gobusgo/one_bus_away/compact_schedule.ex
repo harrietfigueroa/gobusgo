@@ -31,6 +31,7 @@ defmodule Gobusgo.OneBusAway.CompactSchedule do
   @typedoc "One trip, its stop times packed into binaries."
   @type trip :: %{
           id: String.t(),
+          route_id: String.t() | nil,
           direction_id: String.t(),
           headsign: String.t() | nil,
           block_id: String.t() | nil,
@@ -58,6 +59,7 @@ defmodule Gobusgo.OneBusAway.CompactSchedule do
   @typedoc "One trip with its stop times as lists, one entry per stop time in each."
   @type listed_trip :: %{
           id: String.t(),
+          route_id: String.t() | nil,
           direction_id: String.t(),
           headsign: String.t() | nil,
           block_id: String.t() | nil,
@@ -187,6 +189,7 @@ defmodule Gobusgo.OneBusAway.CompactSchedule do
         {:ok,
          %{
            id: id,
+           route_id: trip.route_id,
            direction_id: trip.direction_id,
            headsign: trip.headsign,
            block_id: trip.block_id,

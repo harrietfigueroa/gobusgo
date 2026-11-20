@@ -48,7 +48,7 @@ defmodule Gobusgo.OneBusAway.CompactScheduleTest do
     end
 
     test "keep every trip's own fields" do
-      fields = [:id, :direction_id, :headsign, :block_id, :service_id, :shape_id]
+      fields = [:id, :route_id, :direction_id, :headsign, :block_id, :service_id, :shape_id]
 
       assert Enum.map(packed().trips, &Map.take(&1, fields)) ==
                Enum.map(schedule().trips, &Map.take(&1, fields))

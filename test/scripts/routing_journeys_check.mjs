@@ -282,6 +282,32 @@ const fromRider = {kind: FromKind.position, lat: RIDER.lat, lon: RIDER.lon}
 const located = await routeJourneys({manifest: manifestOf(positionSnapshot), serviceDate: positionFixture.serviceDate, fetchFile: positionFetch.fetchFile, from: fromRider, toStopId: "T", departureS: seconds("07:50")})
 deepStrictEqual(readable(located.journeys), [{arrive: "08:10", changes: 0, isEarliest: true, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]}])
 
+// Where the snapshot's links are measured along the streets, the start of a
+// position takes the stops the shell found by street, each walk at its street
+// meters: only N1 is reached, 150 m along the street, so the journey takes
+// T1 from N1 and walks 125 s, where the straight line took N2. A start the
+// shell found no street stops for, a snapshot measured in a straight line,
+// and a stop the snapshot does not hold keep the straight line's starts; a
+// mixed table plans the street walks too.
+const STREET_WALK_S = 125
+const STREET_RULES = {...TRANSFER_RULES, walkBasis: "streets", walkStreetMetersMax: 600}
+const streetsOf = [{stopId: "N1", streetM: 150}, {stopId: "NOT_A_STOP", streetM: 10}]
+const onStreets = {kind: FromKind.position, lat: RIDER.lat, lon: RIDER.lon, streetStops: streetsOf}
+const streetCases = [
+  {name: "streets, found", rules: STREET_RULES, from: onStreets, legs: [`walkFromPosition N1 ${STREET_WALK_S}`, "ride T1 N1 08:00 T 08:20"]},
+  {name: "a mixed table", rules: {...STREET_RULES, walkBasis: "mixed"}, from: onStreets, legs: [`walkFromPosition N1 ${STREET_WALK_S}`, "ride T1 N1 08:00 T 08:20"]},
+  {name: "streets, none found", rules: STREET_RULES, from: fromRider, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]},
+  {name: "a straight table", rules: {...TRANSFER_RULES, walkBasis: "straight"}, from: onStreets, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]},
+  {name: "a table of no basis", rules: TRANSFER_RULES, from: onStreets, legs: ["walkFromPosition N2 250", "ride T2 N2 08:05 T 08:10"]},
+]
+
+for (const streetCase of streetCases) {
+  const streetManifest = {formatVersion: FORMAT_VERSION, snapshots: [{...positionSnapshot.entry, transferRules: streetCase.rules}]}
+  const streetFetch = memoryFetch(positionSnapshot)
+  const answered = await routeJourneys({manifest: streetManifest, serviceDate: positionFixture.serviceDate, fetchFile: streetFetch.fetchFile, from: streetCase.from, toStopId: "T", departureS: seconds("07:50")})
+  deepStrictEqual(readable(answered.journeys)[0].legs, streetCase.legs, streetCase.name)
+}
+
 // A journey holds the positions of the stops it names, in degrees, and a
 // stop with no known position has none.
 deepStrictEqual(located.journeys[0].stopPositions, {
@@ -295,6 +321,15 @@ const passedSnapshot = snapshotOf(passedFixture)
 const passed = await routeJourneys({manifest: manifestOf(passedSnapshot), serviceDate: passedFixture.serviceDate, fetchFile: memoryFetch(passedSnapshot).fetchFile, from: {kind: FromKind.stop, stopId: "A"}, toStopId: "C", departureS: seconds("07:55")})
 deepStrictEqual(passed.journeys[0].legs[0].stopIds, ["A", "B", "C"])
 deepStrictEqual(passed.journeys[0].stopPositions, {})
+
+// A ride names the hops it boards and leaves at, the position of each in
+// its trip, so a ride from the middle of a trip names the hops after the
+// trip's first.
+const wholeRide = passed.journeys[0].legs[0]
+deepStrictEqual([wholeRide.boardSequence, wholeRide.alightSequence], [0, 1], "a ride of a whole trip names its first and last hops")
+const middleJourney = await routeJourneys({manifest: manifestOf(passedSnapshot), serviceDate: passedFixture.serviceDate, fetchFile: memoryFetch(passedSnapshot).fetchFile, from: {kind: FromKind.stop, stopId: "B"}, toStopId: "C", departureS: seconds("08:05")})
+const middleRide = middleJourney.journeys[0].legs[0]
+deepStrictEqual([middleRide.stopIds, middleRide.boardSequence, middleRide.alightSequence], [["B", "C"], 1, 1], "a ride from the middle of a trip names the hops it takes")
 
 for (const path of positionFetch.requested) {
   deepStrictEqual(positionSnapshot.filesByPath.has(path), true)

@@ -28,9 +28,9 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
     * `data.serviceIds`: the services running that date.
     * `data.stopIds`: every stop the trips serve, once, in the order the
       trips first serve them.
-    * `data.trips`: each with `id`, `directionId`, `headsign`, `blockId`,
-      `serviceId`, and `shapeId`, the last four `null` where the source
-      sends none but `serviceId`, and its stop times as five lists of one
+    * `data.trips`: each with `id`, `routeId`, `directionId`, `headsign`,
+      `blockId`, `serviceId`, and `shapeId`, `routeId` and the last three
+      but `serviceId` `null` where the source sends none, and its stop times as five lists of one
       entry per stop time: `stopIndexes` into `data.stopIds`, `arrivalS` and
       `departureS` in seconds from the start of the service day, and
       `arrivalEnabled` and `departureEnabled`.
@@ -71,6 +71,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   @trip_schema {:map,
                 %{
                   "id" => :string,
+                  "routeId" => {:nullable, :string},
                   "directionId" => :string,
                   "headsign" => {:nullable, :string},
                   "blockId" => {:nullable, :string},
@@ -143,6 +144,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   defp trip_data(trip) do
     %{
       "id" => trip.id,
+      "routeId" => trip.route_id,
       "directionId" => trip.direction_id,
       "headsign" => trip.headsign,
       "blockId" => trip.block_id,
@@ -206,6 +208,7 @@ defmodule Gobusgo.OneBusAway.RouteScheduleBatch.Records do
   defp listed_trip(trip) do
     %{
       id: trip["id"],
+      route_id: trip["routeId"],
       direction_id: trip["directionId"],
       headsign: trip["headsign"],
       block_id: trip["blockId"],

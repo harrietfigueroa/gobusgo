@@ -44,6 +44,14 @@ defmodule Gobusgo.Config do
   @type usage :: %{recorded: boolean()}
   @type usage_error :: {:invalid, :recorded}
 
+  @typedoc """
+  What the routing snapshots measure a walk by: `:straight`, the straight
+  line between two positions, or `:streets`, the shortest way along the walk
+  graph.
+  """
+  @type walk_basis :: :straight | :streets
+  @type walk_basis_error :: {:invalid, :walk_basis}
+
   @type shared_vehicles :: %{interval_ms: pos_integer()}
   @type shared_vehicles_error :: {:invalid, :shared_vehicles_interval_ms}
 
@@ -229,6 +237,25 @@ defmodule Gobusgo.Config do
       {:ok, _other} ->
         {:error, {:invalid, :shared_vehicles_interval_ms}}
     end
+  end
+
+  @doc """
+  Returns the walk basis of the routing snapshots from `env`: `:basis`,
+  `:straight` or `:streets`. A missing value is `{:ok, :straight}`.
+  """
+  @spec fetch_walk_basis(Keyword.t()) :: {:ok, walk_basis()} | {:error, walk_basis_error()}
+  def fetch_walk_basis(env) when is_list(env) do
+    case Keyword.fetch(env, :basis) do
+      :error -> {:ok, :straight}
+      {:ok, basis} when basis in [:straight, :streets] -> {:ok, basis}
+      {:ok, _other} -> {:error, {:invalid, :walk_basis}}
+    end
+  end
+
+  @doc "Reads the walk basis configured for the running application."
+  @spec walk_basis() :: {:ok, walk_basis()} | {:error, walk_basis_error()}
+  def walk_basis do
+    :gobusgo |> Application.get_env(:walk, []) |> fetch_walk_basis()
   end
 
   @doc "Reads the shared vehicle settings configured for the running application."

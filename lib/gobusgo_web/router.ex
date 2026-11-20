@@ -69,6 +69,8 @@ defmodule GobusgoWeb.Router do
     head "/addresses/manifest", AddressManifestController, :show
     get "/intersections/manifest", IntersectionManifestController, :show
     head "/intersections/manifest", IntersectionManifestController, :show
+    get "/walk-graph/manifest", WalkGraphManifestController, :show
+    head "/walk-graph/manifest", WalkGraphManifestController, :show
     get "/openapi.json", OpenApiController, :show
     head "/openapi.json", OpenApiController, :show
   end

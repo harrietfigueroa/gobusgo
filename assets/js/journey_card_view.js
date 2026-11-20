@@ -24,6 +24,17 @@ export function summaryText(row) {
   return parts.join(", ")
 }
 
+const STRAIGHT_LINE_EXPLANATION = ", the walking time is estimated in a straight line and not along streets"
+
+// The note that a walk is a straight line: the visible words, and what a
+// reader of the card hears beside them, both text of the card's button, so
+// its accessible name holds them.
+function straightLineElement(text) {
+  const note = element({tag: "span", className: "trip-journey-straight", text})
+  note.append(element({tag: "span", className: HIDDEN_TEXT_CLASS_NAME, text: STRAIGHT_LINE_EXPLANATION}))
+  return note
+}
+
 /** The card of `card`, a card of `journeyCard`, as a button. */
 export function cardElement(card) {
   const item = button({className: "trip-journey"})
@@ -39,6 +50,10 @@ export function cardElement(card) {
   }
 
   detail.append(element({tag: "span", className: "trip-journey-status", text: card.detailText}))
+  if (card.hasStraightLineWalk) {
+    detail.append(straightLineElement(card.straightLineText))
+  }
+
   const badge = element({tag: "span", className: "trip-journey-badge", text: card.row.badgeText})
   badge.classList.toggle("trip-journey-marked", card.row.isMarked)
   detail.append(badge)

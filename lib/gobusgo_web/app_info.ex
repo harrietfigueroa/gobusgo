@@ -288,9 +288,10 @@ defmodule GobusgoWeb.AppInfo do
     },
     path: "/intersections/",
     summary:
-      "The street intersections the search finds are made from the named roads of " <>
-        "OpenStreetMap. The files that list them are a derivative database, offered to " <>
-        "anyone under the same license."
+      "The street intersections the search finds, and the streets and paths a journey's " <>
+        "walks are drawn along, are made from the roads and paths of OpenStreetMap. The " <>
+        "files that hold them are a derivative database, offered to anyone under the same " <>
+        "license."
   }
 
   @recorded [
