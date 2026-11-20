@@ -8,8 +8,10 @@
 import {beforeAll, describe, expect, test} from "vitest"
 import {fixtureBytes} from "../fixtures.mjs"
 import {implementationsWith} from "../implementations.mjs"
+import {FAILURE_BUDGET_MS} from "../repeated_failures.mjs"
 
 const REFUSED_CALL_COUNT = 1100
+const REFUSED_CALL_TIMEOUT_MS = REFUSED_CALL_COUNT * FAILURE_BUDGET_MS
 
 let stopsBuffer = null
 
@@ -74,5 +76,5 @@ describe.each(implementationsWith("routingSnapshot", "tripPath"))("refused calls
 
     const stops = routingSnapshot.decodeStops(stopsBuffer)
     expect(stops.kind).toBe(routingSnapshot.DecodeKind.decoded)
-  })
+  }, REFUSED_CALL_TIMEOUT_MS)
 })
