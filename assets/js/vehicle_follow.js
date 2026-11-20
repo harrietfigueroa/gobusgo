@@ -4,7 +4,7 @@
 // notice says, what each frame of the follow does, and which arrival can be
 // followed are functions of them alone.
 
-import {assertCondition, unreachable} from "./core/assert.js"
+import {assertCondition, unreachable} from "#core/assert.js"
 import {MoveKind, followMove} from "./follow_state.js"
 
 /** A follow centers the map at this zoom or closer, where a vehicle is a bus glyph with its route badge. */

@@ -7,9 +7,9 @@
 // the graph past it. A position is an argument of the pure reach and never of
 // a request: the requests name the tiles around the position's tile.
 
-import {assertCondition, unreachable} from "./core/assert.js"
-import {isStreetWalk, streetMetersMaxOf, walkBasisOf, walkCandidatesNear} from "./core/routing_walk.js"
-import {ReachKind, walkReach, walkReachLimits} from "./core/walk_reach.js"
+import {assertCondition, unreachable} from "#core/assert.js"
+import {isStreetWalk, streetMetersMaxOf, walkBasisOf, walkCandidatesNear} from "#core/routing_walk.js"
+import {ReachKind, walkReach, walkReachLimits} from "#core/walk_reach.js"
 import {WindowKind} from "./walk_tiles.js"
 
 /**

@@ -5,9 +5,9 @@
 // trip needs are decided by the pure plan over the files held, and each
 // fetch the plan asks for runs here.
 
-import {assertCondition} from "./core/assert.js"
-import {withTripPaths} from "./core/trip_path"
-import {emptyTripPathFiles, fileFetched, manifestFetched, planTripPathFiles} from "./core/trip_path_files"
+import {assertCondition} from "#core/assert.js"
+import {withTripPaths} from "#core/trip_path.js"
+import {emptyTripPathFiles, fileFetched, manifestFetched, planTripPathFiles} from "#core/trip_path_files.js"
 import {fetchManifestOutcome, fetchTripPathFile} from "./trip_path_fetch"
 
 /** The most trips one request names: a journey rides a handful of trips. */

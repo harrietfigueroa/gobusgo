@@ -6,7 +6,8 @@
 
 - **No async work.** No module here is async, awaits, makes or waits on a promise, imports dynamically, or reaches a global that starts work finishing later: `fetch`, a timer, a stream, the Cache API, IndexedDB. A module takes values and returns values, and the shell does the IO and hands the results in. `npm run --prefix tools/lint lint:core` enforces it with the rule in `tools/lint/rules/no_async_work.mjs`, after `npm ci --prefix tools/lint`, and CI runs it in its `core-lint` job.
 - **Pure.** No module reads the DOM, storage, or a clock it is not handed.
-- **Self-contained.** A module here imports only from this directory; the shell imports the core and never the reverse.
+- **Self-contained.** A module here imports only from this directory, by relative paths; the shell imports the core and never the reverse.
+- **The shell imports a module by its specifier.** A module outside this directory imports `<module>.js` of the core as `#core/<module>.js`, with its extension, never by a relative path. `assets/package.json` maps `#core/*` to this directory for esbuild, node, and Vite, so a build that aliases one specifier switches that module's callers to another implementation and leaves the rest on this one (GOB-424).
 - **A query that needs files asks for them.** `routing_journeys.js` decides a journey query and fetches nothing (GOB-420): `startQuery` and `resumeQuery` each return the query's state, a plain value that holds no bytes, and its next step, the manifest entries of the files it needs or its answer. The caller fetches the files, holds their bytes for the query, and hands every file it holds to each resume; `assets/js/routing_driver.js` is the web's driver. `ROUND_COUNT_MAX` bounds the resumes and `FETCH_TIMEOUT_MS` the wait for one file, and the core checks each file against the manifest's size. `trip_path_files.js` plans the fetches of the trip path files and folds each result in the same way.
 - **The gzip streams are expanded outside.** `packed_container.js` and `routing_names.js` read expanded bytes; `assets/js/packed_stream.js` and `assets/js/names_stream.js` expand a stored file with the browser's `DecompressionStream`, which a native app replaces with its own.
 
@@ -23,4 +24,4 @@
 
 ## Checks
 
-The node checks under `test/scripts/` that `assets/AGENTS.md` ("Checks") lists cover each module. `npm run --prefix tools/lint check` lints code written out by hand to check that the rule still reports each kind of async work and passes over synchronous code, a generator, and a binding named like a global.
+The node checks under `test/scripts/` that `assets/AGENTS.md` ("Checks") lists cover each module. The core page check compares the pages a build on this core and a build on the Rust core render (GOB-424); a port that switches a module group's callers adds each module's specifier to `@webassembly_aliases` of `test/support/core_pages/builds.ex`. `npm run --prefix tools/lint check` lints code written out by hand to check that the rule still reports each kind of async work and passes over synchronous code, a generator, and a binding named like a global.

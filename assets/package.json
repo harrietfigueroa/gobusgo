@@ -1,0 +1,9 @@
+{
+  "name": "gobusgo-assets",
+  "private": true,
+  "description": "Maps the shell's imports of the core, #core/<module>, to assets/js/core/. esbuild, node, and Vite read the map, and a build that aliases one of these specifiers switches that module's callers to another implementation. No package is installed here.",
+  "type": "module",
+  "imports": {
+    "#core/*": "./js/core/*"
+  }
+}

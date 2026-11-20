@@ -4,7 +4,7 @@
 // bound, and decoded. Each answers with an outcome value, a fetched table or
 // the reason it failed, and none throws.
 
-import {PackedOutcome} from "./core/packed_container.js"
+import {PackedOutcome} from "#core/packed_container.js"
 import {
   ManifestKind,
   WALK_GRAPH_INDEX_EXPANDED_BYTES_MAX,
@@ -12,7 +12,7 @@ import {
   acceptWalkManifest,
   decodeWalkGraphIndex,
   decodeWalkGraphShard
-} from "./core/walk_graph_file.js"
+} from "#core/walk_graph_file.js"
 import {expandStream} from "./packed_stream.js"
 
 const FETCH_TIMEOUT_MS = 20 * 1000

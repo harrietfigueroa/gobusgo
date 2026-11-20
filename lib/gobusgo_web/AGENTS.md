@@ -125,4 +125,4 @@ Every response leaves compressed when the client accepts it. Bandit compresses t
 
 ## Tests
 
-Tests send requests through the endpoint with `Phoenix.ConnTest` and mount pages with `Phoenix.LiveViewTest`; no socket is opened and no test runs the JavaScript. `test/gobusgo_web/accessibility/rendered_pages_test.exs` renders the browser pages and checks them against `Gobusgo.Test.Accessibility`, as the root file's toolchain section describes.
+Tests send requests through the endpoint with `Phoenix.ConnTest` and mount pages with `Phoenix.LiveViewTest`; no socket is opened and no test runs the JavaScript, but the core page check, `test/gobusgo_web/core_pages_test.exs`, tagged `core_pages` and left out of `mix test`, which serves the endpoint over HTTP and drives the pages in three browsers (GOB-424, root file). `test/gobusgo_web/accessibility/rendered_pages_test.exs` renders the browser pages and checks them against `Gobusgo.Test.Accessibility`, as the root file's toolchain section describes.

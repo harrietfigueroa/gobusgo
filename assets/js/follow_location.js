@@ -37,7 +37,7 @@ import {
 import {CHANGE_EVENT_NAME as DIRECTION_CHANGE_EVENT_NAME, isDirectionShown} from "./show_direction"
 import {storedSettings} from "./stored_settings"
 import {LOCATION_FOLLOW_START_EVENT_NAME, VEHICLE_FOLLOW_START_EVENT_NAME} from "./vehicle_follow"
-import {assertCondition, unreachable} from "./core/assert"
+import {assertCondition, unreachable} from "#core/assert.js"
 import {
   BUTTON_CLASS_NAMES,
   CenterZoom,

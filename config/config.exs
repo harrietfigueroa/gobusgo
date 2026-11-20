@@ -177,6 +177,28 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
+# The core page check drives the vehicle page and the MCP apps in Chromium,
+# Firefox, and WebKit through the Playwright of the conformance suite,
+# `tools/conformance/node_modules/playwright/cli.js`, so both tools run one
+# Playwright release. The browser keeps the time zone and the language of
+# the region the pages serve.
+if config_env() == :test do
+  config :phoenix_test,
+    otp_app: :gobusgo,
+    playwright: [
+      assets_dir: "tools/conformance",
+      browser_pools: [
+        [id: :chromium, browser: :chromium, size: 1],
+        [id: :firefox, browser: :firefox, size: 1],
+        [id: :webkit, browser: :webkit, size: 1]
+      ],
+      browser_launch_timeout: 30_000,
+      timeout: 10_000,
+      trace_dir: "tmp/core_pages/traces",
+      browser_context_opts: [timezone_id: "America/Los_Angeles", locale: "en-US"]
+    ]
+end
+
 if config_env() == :dev do
   config :gobusgo, GobusgoWeb.Endpoint,
     watchers: [

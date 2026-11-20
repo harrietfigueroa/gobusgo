@@ -4,7 +4,7 @@
 // expanded within a bound. Each answers with an outcome value and none
 // throws.
 
-import {PackedOutcome} from "./core/packed_container"
+import {PackedOutcome} from "#core/packed_container.js"
 import {
   FILE_FETCH_TIMEOUT_MS,
   FileFailure,
@@ -14,7 +14,7 @@ import {
   ManifestOutcomeKind,
   SHARD_EXPANDED_BYTES_MAX,
   hasExpectedSize
-} from "./core/trip_path_files"
+} from "#core/trip_path_files.js"
 import {expandStream} from "./packed_stream.js"
 
 function failureOfError(error) {
