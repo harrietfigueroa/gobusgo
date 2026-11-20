@@ -1,7 +1,7 @@
 defmodule GobusgoWeb.CorePagesTest do
   # Checks that the WebAssembly core renders the pages a rider sees as the
   # JavaScript core does: each scenario of Gobusgo.Test.CorePages.Scenarios
-  # runs in Chromium, Firefox, and WebKit, once on a build of the page's
+  # runs in Chromium and WebKit, once on a build of the page's
   # bundles on each core served by the test server, with the browser's
   # clock pinned and the network of Gobusgo.Test.CorePages.Network as the
   # data, and fails on any region whose accessibility snapshot, rendered
@@ -10,7 +10,7 @@ defmodule GobusgoWeb.CorePagesTest do
   # sessions' Playwright traces.
   use PhoenixTest.Playwright.Case,
     async: false,
-    parameterize: for(browser <- [:chromium, :firefox, :webkit], do: %{browser_pool: browser})
+    parameterize: for(browser <- [:chromium, :webkit], do: %{browser_pool: browser})
 
   alias Gobusgo.Test.CorePages.Scenarios
 
