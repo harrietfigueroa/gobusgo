@@ -73,6 +73,12 @@ defmodule GobusgoWeb.LayoutsTest do
     assert script =~ "storedThemes.indexOf(setting) !== -1"
   end
 
+  test "loads the page's script as an ES module" do
+    script = head(~s(script[src="/assets/js/app.js"]))
+
+    assert LazyHTML.attribute(script, "type") == ["module"]
+  end
+
   test "links the web app manifest" do
     assert head(~s(link[rel="manifest"])) |> LazyHTML.attribute("href") == [
              "/manifest.webmanifest"

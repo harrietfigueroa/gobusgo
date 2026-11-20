@@ -1,19 +1,38 @@
 import Config
 
+# The options every bundle relies on, written out where esbuild has a
+# default for them, so a version of esbuild whose defaults differ builds
+# the same bundles. The targets are the oldest browsers the site supports,
+# so esbuild lowers only the syntax they lack.
+bundle_options =
+  ~w(--bundle --platform=browser --charset=utf8 --tree-shaking=true --legal-comments=eof --target=chrome110,firefox115,safari16.4,ios16.4)
+
 config :esbuild,
   version: "0.25.5",
+  # The vehicle page's script, an ES module. The metafile names every input
+  # and its bytes in the bundle.
   default: [
     args:
-      ~w(js/app.js js/trip_app.js js/arrivals_board.js --bundle --target=es2022 --outdir=../priv/static/assets/js --alias:fflate=./vendor/fflate/esm/browser.js),
+      ~w(js/app.js --format=esm --outdir=../priv/static/assets/js --metafile=../_build/assets/app.meta.json --alias:fflate=./vendor/fflate/esm/browser.js) ++
+        bundle_options,
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ],
+  # The MCP apps' scripts, which a host's frame of another origin loads as
+  # classic scripts, since the files are served with no CORS header a module
+  # script from another origin needs.
+  mcp_apps: [
+    args:
+      ~w(js/trip_app.js js/arrivals_board.js --format=iife --outdir=../priv/static/assets/js) ++
+        bundle_options,
+    cd: Path.expand("../assets", __DIR__)
   ],
   # The service worker is a script of its own at the root, so its scope is
   # the whole site. The profile defines no build: `mix
   # gobusgo.assets.service_worker` runs it with the release and the paths
   # the worker stores.
   service_worker: [
-    args: ~w(js/service_worker.js --bundle --target=es2022 --outfile=../priv/static/sw.js),
+    args: ~w(js/service_worker.js --format=iife --outfile=../priv/static/sw.js) ++ bundle_options,
     cd: Path.expand("../assets", __DIR__)
   ],
   # MapLibre's module files are copied as they are and served beside each
@@ -198,6 +217,7 @@ if config_env() == :dev do
   config :gobusgo, GobusgoWeb.Endpoint,
     watchers: [
       esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
+      esbuild_mcp_apps: {Esbuild, :install_and_run, [:mcp_apps, ~w(--sourcemap=inline --watch)]},
       tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
     ]
 end
