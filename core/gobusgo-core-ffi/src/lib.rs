@@ -1,14 +1,27 @@
 //! The core's binding for Swift and Kotlin. Each export converts its arguments
-//! and result across uniffi and holds no logic of its own. A record here mirrors
-//! a struct of the core field for field, since the core takes no crate and so
-//! derives none of uniffi's traits.
+//! and result across uniffi and holds no logic of its own. The core takes no
+//! crate and so derives none of uniffi's traits: a `#[uniffi::remote]` item here
+//! restates a type of the core, which uniffi then passes as that type, and the
+//! compiler refuses a restatement whose fields differ from the core's. A record
+//! declared here with a derive is one the core has no owned type for.
 //!
 //! A failed assertion of the core aborts the app, as the release profile aborts
 //! on every panic: an assertion's failure is a programmer error, and a native
 //! caller handles none.
 
-use gobusgo_core::math::{angles, checks, geodesy, interpolation};
-use gobusgo_core::{routing_snapshot, trip_path};
+use gobusgo_core::math::angles::{self, Turn};
+use gobusgo_core::math::checks;
+use gobusgo_core::math::geodesy::{self, Between, PlaneCoverage, Position, TangentPlane};
+use gobusgo_core::math::interpolation::{self, Clamp, Lerp};
+use gobusgo_core::routing_snapshot::{self, Connections, Transfers, Trip};
+use gobusgo_core::trip_path;
+
+// The names Swift and Kotlin know these types by, where the core's own name is
+// another.
+type SnapshotRefusal = routing_snapshot::RefusalReason;
+type SnapshotPositions = routing_snapshot::Positions;
+type PathPoint = trip_path::Point;
+type PathStop = trip_path::Stop;
 
 uniffi::setup_scaffolding!();
 
@@ -28,14 +41,14 @@ pub struct Ordered {
 }
 
 /// Two compass directions in degrees, the one turned from and the one turned to.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Turn {
     pub from: f64,
     pub to: f64,
 }
 
 /// A line from `from` to `to`, and the share of the way along it to go.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Lerp {
     pub from: f64,
     pub to: f64,
@@ -43,7 +56,7 @@ pub struct Lerp {
 }
 
 /// A value and the bounds to bring it inside, both included.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Clamp {
     pub value: f64,
     pub min: f64,
@@ -51,77 +64,32 @@ pub struct Clamp {
 }
 
 /// A position on the Earth, in degrees.
-#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Position {
     pub lon: f64,
     pub lat: f64,
 }
 
 /// Two positions, the one a measure starts from and the one it ends at.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Between {
     pub source: Position,
     pub target: Position,
 }
 
 /// A plane tangent at a latitude, with the meters of a degree of longitude on it.
-#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct TangentPlane {
     pub reference_latitude_degrees: f64,
     pub meters_per_degree_lon: f64,
 }
 
 /// A plane and the span of latitudes it must measure.
-#[derive(Debug, Clone, Copy, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct PlaneCoverage {
     pub plane: TangentPlane,
     pub latitude_degrees_min: f64,
     pub latitude_degrees_max: f64,
-}
-
-impl From<Position> for geodesy::Position {
-    fn from(position: Position) -> Self {
-        Self {
-            lon: position.lon,
-            lat: position.lat,
-        }
-    }
-}
-
-impl From<geodesy::Position> for Position {
-    fn from(position: geodesy::Position) -> Self {
-        Self {
-            lon: position.lon,
-            lat: position.lat,
-        }
-    }
-}
-
-impl From<Between> for geodesy::Between {
-    fn from(between: Between) -> Self {
-        Self {
-            source: between.source.into(),
-            target: between.target.into(),
-        }
-    }
-}
-
-impl From<TangentPlane> for geodesy::TangentPlane {
-    fn from(plane: TangentPlane) -> Self {
-        Self {
-            reference_latitude_degrees: plane.reference_latitude_degrees,
-            meters_per_degree_lon: plane.meters_per_degree_lon,
-        }
-    }
-}
-
-impl From<geodesy::TangentPlane> for TangentPlane {
-    fn from(plane: geodesy::TangentPlane) -> Self {
-        Self {
-            reference_latitude_degrees: plane.reference_latitude_degrees,
-            meters_per_degree_lon: plane.meters_per_degree_lon,
-        }
-    }
 }
 
 /// Asserts that `value` is a finite number; `label` names it in a failure.
@@ -180,10 +148,7 @@ pub fn normalized_degrees(degrees: f64) -> f64 {
 #[uniffi::export]
 #[must_use]
 pub fn turn_degrees(turn: Turn) -> f64 {
-    angles::turn_degrees(angles::Turn {
-        from: turn.from,
-        to: turn.to,
-    })
+    angles::turn_degrees(turn)
 }
 
 /// The mean radius of the Earth in meters.
@@ -211,21 +176,21 @@ pub const fn plane_scale_error_max() -> f64 {
 #[uniffi::export]
 #[must_use]
 pub fn assert_position(coordinates: &[f64], label: &str) -> Position {
-    geodesy::assert_position(coordinates, label).into()
+    geodesy::assert_position(coordinates, label)
 }
 
 /// The great-circle distance in meters between two positions.
 #[uniffi::export]
 #[must_use]
 pub fn distance_meters(between: Between) -> f64 {
-    geodesy::distance_meters(between.into())
+    geodesy::distance_meters(between)
 }
 
 /// The initial great-circle bearing between two positions, in degrees from north.
 #[uniffi::export]
 #[must_use]
 pub fn initial_bearing_degrees(between: Between) -> f64 {
-    geodesy::initial_bearing_degrees(between.into())
+    geodesy::initial_bearing_degrees(between)
 }
 
 /// The meters of a degree of longitude at `latitude_degrees`.
@@ -239,43 +204,31 @@ pub fn meters_per_degree_longitude(latitude_degrees: f64) -> f64 {
 #[uniffi::export]
 #[must_use]
 pub fn tangent_plane(reference_latitude_degrees: f64) -> TangentPlane {
-    geodesy::tangent_plane(reference_latitude_degrees).into()
+    geodesy::tangent_plane(reference_latitude_degrees)
 }
 
 /// Asserts that a plane measures every latitude of a span closely enough.
 #[uniffi::export]
 pub fn assert_plane_covers(coverage: PlaneCoverage) {
-    geodesy::assert_plane_covers(geodesy::PlaneCoverage {
-        plane: coverage.plane.into(),
-        latitude_degrees_min: coverage.latitude_degrees_min,
-        latitude_degrees_max: coverage.latitude_degrees_max,
-    });
+    geodesy::assert_plane_covers(coverage);
 }
 
 /// The value `fraction` of the way from `from` to `to`.
 #[uniffi::export]
 #[must_use]
 pub fn lerp(line: Lerp) -> f64 {
-    interpolation::lerp(interpolation::Lerp {
-        from: line.from,
-        to: line.to,
-        fraction: line.fraction,
-    })
+    interpolation::lerp(line)
 }
 
 /// `value` brought inside `min` and `max`, both included.
 #[uniffi::export]
 #[must_use]
 pub fn clamp(bounds: Clamp) -> f64 {
-    interpolation::clamp(interpolation::Clamp {
-        value: bounds.value,
-        min: bounds.min,
-        max: bounds.max,
-    })
+    interpolation::clamp(bounds)
 }
 
 /// Why a routing snapshot file was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[uniffi::remote(Enum)]
 pub enum SnapshotRefusal {
     InvalidHeader,
     UnsupportedVersion,
@@ -284,20 +237,8 @@ pub enum SnapshotRefusal {
     InvalidPosition,
 }
 
-impl From<routing_snapshot::RefusalReason> for SnapshotRefusal {
-    fn from(reason: routing_snapshot::RefusalReason) -> Self {
-        match reason {
-            routing_snapshot::RefusalReason::InvalidHeader => Self::InvalidHeader,
-            routing_snapshot::RefusalReason::UnsupportedVersion => Self::UnsupportedVersion,
-            routing_snapshot::RefusalReason::InvalidLength => Self::InvalidLength,
-            routing_snapshot::RefusalReason::InvalidText => Self::InvalidText,
-            routing_snapshot::RefusalReason::InvalidPosition => Self::InvalidPosition,
-        }
-    }
-}
-
 /// A trip of a trips file.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Trip {
     pub id: String,
     pub route_id: String,
@@ -305,7 +246,7 @@ pub struct Trip {
 }
 
 /// The walking links of a transfers file, by column.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Transfers {
     pub from_stop: Vec<u32>,
     pub to_stop: Vec<u32>,
@@ -313,7 +254,7 @@ pub struct Transfers {
 }
 
 /// The connections of a connections file in departure order, by column.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct Connections {
     pub departure_s: Vec<i32>,
     pub arrival_s: Vec<i32>,
@@ -326,7 +267,7 @@ pub struct Connections {
 }
 
 /// The stop positions of a positions file, in microdegrees by axis.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct SnapshotPositions {
     pub lat_microdegrees: Vec<i32>,
     pub lon_microdegrees: Vec<i32>,
@@ -387,9 +328,7 @@ pub const fn position_unknown_microdegrees() -> i32 {
 pub fn decode_stops(bytes: &[u8]) -> StopsOutcome {
     match routing_snapshot::decode_stops(bytes) {
         Ok(stop_ids) => StopsOutcome::Decoded { stop_ids },
-        Err(reason) => StopsOutcome::Refused {
-            reason: reason.into(),
-        },
+        Err(reason) => StopsOutcome::Refused { reason },
     }
 }
 
@@ -398,19 +337,8 @@ pub fn decode_stops(bytes: &[u8]) -> StopsOutcome {
 #[must_use]
 pub fn decode_trips(bytes: &[u8]) -> TripsOutcome {
     match routing_snapshot::decode_trips(bytes) {
-        Ok(decoded) => TripsOutcome::Decoded {
-            trips: decoded
-                .into_iter()
-                .map(|trip| Trip {
-                    id: trip.id,
-                    route_id: trip.route_id,
-                    service_day_offset: trip.service_day_offset,
-                })
-                .collect(),
-        },
-        Err(reason) => TripsOutcome::Refused {
-            reason: reason.into(),
-        },
+        Ok(trips) => TripsOutcome::Decoded { trips },
+        Err(reason) => TripsOutcome::Refused { reason },
     }
 }
 
@@ -419,16 +347,8 @@ pub fn decode_trips(bytes: &[u8]) -> TripsOutcome {
 #[must_use]
 pub fn decode_transfers(bytes: &[u8]) -> TransfersOutcome {
     match routing_snapshot::decode_transfers(bytes) {
-        Ok(links) => TransfersOutcome::Decoded {
-            transfers: Transfers {
-                from_stop: links.from_stop,
-                to_stop: links.to_stop,
-                duration_s: links.duration_s,
-            },
-        },
-        Err(reason) => TransfersOutcome::Refused {
-            reason: reason.into(),
-        },
+        Ok(transfers) => TransfersOutcome::Decoded { transfers },
+        Err(reason) => TransfersOutcome::Refused { reason },
     }
 }
 
@@ -437,21 +357,8 @@ pub fn decode_transfers(bytes: &[u8]) -> TransfersOutcome {
 #[must_use]
 pub fn decode_connections(bytes: &[u8]) -> ConnectionsOutcome {
     match routing_snapshot::decode_connections(bytes) {
-        Ok(columns) => ConnectionsOutcome::Decoded {
-            connections: Connections {
-                departure_s: columns.departure_s,
-                arrival_s: columns.arrival_s,
-                departure_stop: columns.departure_stop,
-                arrival_stop: columns.arrival_stop,
-                trip: columns.trip,
-                sequence: columns.sequence,
-                boarding: columns.boarding,
-                alighting: columns.alighting,
-            },
-        },
-        Err(reason) => ConnectionsOutcome::Refused {
-            reason: reason.into(),
-        },
+        Ok(connections) => ConnectionsOutcome::Decoded { connections },
+        Err(reason) => ConnectionsOutcome::Refused { reason },
     }
 }
 
@@ -460,20 +367,13 @@ pub fn decode_connections(bytes: &[u8]) -> ConnectionsOutcome {
 #[must_use]
 pub fn decode_positions(bytes: &[u8]) -> PositionsOutcome {
     match routing_snapshot::decode_positions(bytes) {
-        Ok(axes) => PositionsOutcome::Decoded {
-            positions: SnapshotPositions {
-                lat_microdegrees: axes.lat_microdegrees,
-                lon_microdegrees: axes.lon_microdegrees,
-            },
-        },
-        Err(reason) => PositionsOutcome::Refused {
-            reason: reason.into(),
-        },
+        Ok(positions) => PositionsOutcome::Decoded { positions },
+        Err(reason) => PositionsOutcome::Refused { reason },
     }
 }
 
 /// A point of a path in degrees.
-#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct PathPoint {
     pub longitude: f64,
     pub latitude: f64,
@@ -481,7 +381,7 @@ pub struct PathPoint {
 
 /// A stop of a path: its distance along the points in meters, and its
 /// scheduled arrival and departure in seconds from the start of the service day.
-#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+#[uniffi::remote(Record)]
 pub struct PathStop {
     pub distance_meters: f64,
     pub arrival_seconds: f64,
@@ -547,23 +447,8 @@ pub fn decode_trip_path(path: EncodedPath) -> TripPath {
         route_id: path.route_id,
         service_date_ms: path.service_date_ms,
         key: decoded.key,
-        points: decoded
-            .points
-            .into_iter()
-            .map(|point| PathPoint {
-                longitude: point.longitude,
-                latitude: point.latitude,
-            })
-            .collect(),
-        stops: decoded
-            .stops
-            .into_iter()
-            .map(|stop| PathStop {
-                distance_meters: stop.distance_meters,
-                arrival_seconds: stop.arrival_seconds,
-                departure_seconds: stop.departure_seconds,
-            })
-            .collect(),
+        points: decoded.points,
+        stops: decoded.stops,
     }
 }
 
@@ -591,8 +476,7 @@ mod tests {
     #[test]
     fn tangent_plane_is_the_core_plane() {
         let reference = 47.6062;
-        let plane: gobusgo_core::math::geodesy::TangentPlane =
-            super::tangent_plane(reference).into();
+        let plane = super::tangent_plane(reference);
         assert_eq!(plane, gobusgo_core::math::geodesy::tangent_plane(reference));
     }
 }

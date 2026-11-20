@@ -11,8 +11,8 @@ defmodule GobusgoWeb.ServiceWorker do
   reads the built files and writes the worker.
 
   A release is a hash of the files the worker stores when it installs, so a
-  build whose stylesheet, script, and map library are unchanged is the same
-  release, and any other build is another.
+  build whose stylesheet, script, core module, and map library are unchanged
+  is the same release, and any other build is another.
   """
 
   alias Gobusgo.Assert
@@ -27,8 +27,13 @@ defmodule GobusgoWeb.ServiceWorker do
   @basemap_assets_id binary_part(content_sha256, 0, @basemap_assets_id_length)
 
   # The files the root layout loads, by their logical names in the digest's
-  # cache manifest.
-  @layout_assets ["assets/css/app.css", "assets/js/app.js"]
+  # cache manifest: the stylesheet, the script, and the core's WebAssembly
+  # module, which the layout preloads for the script.
+  @layout_assets [
+    "assets/css/app.css",
+    "assets/js/app.js",
+    "assets/core/gobusgo_core_bg.wasm"
+  ]
 
   @typedoc """
   How the built assets are named: `{:digested, latest}` with the cache
@@ -38,9 +43,10 @@ defmodule GobusgoWeb.ServiceWorker do
   @type digests :: {:digested, %{String.t() => String.t()}} | :undigested
 
   @doc """
-  Returns the paths the worker stores when it installs: the stylesheet and
-  the script under the names a page requests them by, and the map library's
-  module files. A digest that names no stylesheet or no script raises.
+  Returns the paths the worker stores when it installs: the stylesheet, the
+  script, and the core module under the names a page requests them by, and
+  the map library's module files. A digest that leaves out one of the first
+  three raises.
   """
   @spec precache_paths(digests()) :: [String.t(), ...]
   def precache_paths(digests) do
