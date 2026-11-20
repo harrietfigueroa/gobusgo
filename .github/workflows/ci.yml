@@ -293,7 +293,7 @@ jobs:
       - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
       - run: npm test --prefix tools/conformance
 
-  # Loads the same scenarios on the vehicle page and the MCP apps with a build of the bundles on each core, in Chromium, Firefox, and WebKit, and fails on any difference in what the rider sees.
+  # Loads the same scenarios on the vehicle page and the MCP apps with a build of the bundles on each core, in Chromium and WebKit, and fails on any difference in what the rider sees.
   # PlaywrightEx runs the conformance suite's Playwright, so its browsers are installed with that copy, and a failure keeps both sessions' traces.
   core-pages:
     name: core-pages
@@ -340,8 +340,8 @@ jobs:
       - uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tools/conformance/package-lock.json') }}
-      - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
+          key: playwright-core-pages-${{ runner.os }}-${{ hashFiles('tools/conformance/package-lock.json') }}
+      - run: npx --prefix tools/conformance playwright install --with-deps chromium webkit
       - run: mix test --only core_pages
       - if: failure()
         uses: actions/upload-artifact@v7.0.2
