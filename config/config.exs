@@ -178,10 +178,14 @@ config :gobusgo, :map_style, validated: config_env() != :prod
 # pages the tests mount would be written into the data directory.
 config :gobusgo, :usage, recorded: config_env() != :test
 
-# Phoenix's list with `.mjs` added, so the digest writes a gzip copy of
-# MapLibre's ES module files as it does of the bundle.
-# deps/phoenix/mix.exs, `gzippable_exts` — checked 2026-10-14
-config :phoenix, :gzippable_exts, ~w(.js .mjs .map .css .txt .text .html .json .svg .eot .ttf)
+# Phoenix's list with `.mjs` and `.wasm` added, so the digest writes a gzip
+# copy of MapLibre's ES module files and of the core's WebAssembly module as it
+# does of the bundle.
+# deps/phoenix/mix.exs, `gzippable_exts` — checked 2026-11-20
+config :phoenix,
+       :gzippable_exts,
+       ~w(.js .mjs .wasm .map .css .txt .text .html .json .svg .eot .ttf)
+
 config :phoenix, :json_library, JSON
 
 config :tailwind,
