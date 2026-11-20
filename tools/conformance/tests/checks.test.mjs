@@ -13,7 +13,7 @@ const cases = await fixtureJson("math/checks.json")
 // A failure's count large enough to use up a binding that leaks a little on
 // each, such as a slot of wasm-bindgen's table of JavaScript values.
 const REPEATED_FAILURE_COUNT = 1000
-const REPEATED_FAILURE_TIMEOUT_MS = REPEATED_FAILURE_COUNT * FAILURE_BUDGET_MS
+const repeatedFailureTimeoutMs = REPEATED_FAILURE_COUNT * FAILURE_BUDGET_MS
 
 // Values a caller hands as numbers that are none, which JavaScript's types
 // alone can write, so their cases live here rather than in the shared fixture.
@@ -65,5 +65,5 @@ describe.each(implementationsWith("checks"))("checks ($name)", ({AssertionError,
       expect(() => checks.assertOrdered({low: 1, high: 0})).toThrow(AssertionError)
     }
     expect(() => checks.assertOrdered({low: 0, high: 1, label: "a pair"})).not.toThrow()
-  }, REPEATED_FAILURE_TIMEOUT_MS)
+  }, repeatedFailureTimeoutMs)
 })

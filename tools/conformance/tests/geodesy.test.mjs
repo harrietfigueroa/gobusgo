@@ -32,7 +32,7 @@ const refusedCoordinates = [
 // A failure's count large enough to use up a binding that leaks a little on
 // each, such as a slot of wasm-bindgen's table of JavaScript values.
 const REPEATED_FAILURE_COUNT = 1000
-const REPEATED_FAILURE_TIMEOUT_MS = REPEATED_FAILURE_COUNT * FAILURE_BUDGET_MS
+const repeatedFailureTimeoutMs = REPEATED_FAILURE_COUNT * FAILURE_BUDGET_MS
 
 function place(name) {
   return cases.places[name]
@@ -134,7 +134,7 @@ describe.each(implementationsWith("geodesy"))("geodesy ($name)", ({AssertionErro
     }
     const meters = geodesy.distanceMeters(place("origin"), place("oneNorth"))
     expect(Math.abs(meters - geodesy.METERS_PER_DEGREE)).toBeLessThanOrEqual(TOLERANCE_METERS)
-  }, REPEATED_FAILURE_TIMEOUT_MS)
+  }, repeatedFailureTimeoutMs)
 
   test.each(cases.planes)("$name", ({referenceLatitudeDegrees}) => {
     const plane = geodesy.tangentPlane({referenceLatitudeDegrees})
