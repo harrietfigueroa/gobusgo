@@ -25,6 +25,7 @@ import {PlanKind, planTrip} from "./mcp_trip_plan"
 import {unmatchedContext} from "./mcp_trip_unmatched"
 import {PositionKind, SEARCH_CENTER_DEFAULT, searchPoints} from "./where_to"
 import {createSearchFiles} from "./where_to_files"
+import {createWalkTiles} from "./walk_tiles"
 import {EndKind, LOCATION_END, QueryKind, StateKind, TimeMode, TripEnd, journeyRows, journeysAnnouncement, queryOf, stateMessage} from "#core/trip_plan.js"
 
 const APP_INFO = Object.freeze({name: "gobusgo-trip-planner", version: "1"})
@@ -256,6 +257,7 @@ function endElement({end, state, isLocationOffered, handlers}) {
 export function startTripApp({root, origin, host}) {
   assertCondition(PROTOCOL_PREFIX.test(origin), "trip app: the file origin is not an http address: " + origin)
   const files = createSearchFiles({origin})
+  const walkTiles = createWalkTiles({fileOrigin: origin})
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const app = {
     input: null,
@@ -412,7 +414,7 @@ export function startTripApp({root, origin, host}) {
 
     app.plan = {kind: "planning"}
     render()
-    const outcome = await planTrip({origin, files, from, to, when: app.input.when, position: app.position, nowMs: Date.now(), timeZone})
+    const outcome = await planTrip({origin, files, walkTiles, from, to, when: app.input.when, position: app.position, nowMs: Date.now(), timeZone})
 
     if (planNumber !== app.planCount) {
       return

@@ -7,8 +7,9 @@
 // arguments.
 
 import {assertCondition, unreachable} from "./assert.js"
+import {LegKind} from "./routing_engine.js"
 import {JourneysKind, WINDOW_SECONDS} from "./routing_journeys.js"
-import {startsNear} from "./routing_walk.js"
+import {startsFromStreets, startsNear} from "./routing_walk.js"
 
 /** The kind of the walk that ends a journey to a point, after its last stop. */
 export const LEG_KIND_TO_POINT = "walkToPoint"
@@ -41,6 +42,74 @@ export function targetStops({position, stopIds, positions, transferRules, countM
   const starts = startsNear({position, positions, transferRules})
   const kept = starts.slice(0, countMax)
   return Array.from(kept, (start) => ({stopId: stopIds[start.stop], walkS: start.walkS}))
+}
+
+/**
+ * The stops a journey to a point is routed to where the walk is planned
+ * along the streets: `stops`, the `{stop, streetM}` of a found reach from
+ * the point, as `targetStops` answers them over `stopIds`, each walked at
+ * its street meters, nearest by street first, at most `countMax`.
+ */
+export function targetStopsOnStreets({stopIds, stops, transferRules, countMax}) {
+  assertCondition(Number.isInteger(countMax), "point journeys: the stop bound is not whole: " + countMax)
+
+  for (const reached of stops) {
+    assertCondition(reached.stop >= 0, `point journeys: a stop reached by street is ${reached.stop}`)
+    assertCondition(reached.stop < stopIds.length, `point journeys: a stop reached by street is ${reached.stop} of ${stopIds.length} stops`)
+  }
+
+  const starts = startsFromStreets({stops, transferRules})
+  const kept = starts.slice(0, countMax)
+  return Array.from(kept, (start) => ({stopId: stopIds[start.stop], walkS: start.walkS}))
+}
+
+function isStartWalk(leg) {
+  return leg.kind === LegKind.walkFromPosition
+}
+
+function isEndWalk(leg) {
+  return leg.kind === LEG_KIND_TO_POINT
+}
+
+// `leg`, with `isStraightLine` true where it is a walk of the start and
+// `isStartStraight`, or a walk of the end and `isEndStraight`.
+function markedLeg({leg, isStartStraight, isEndStraight}) {
+  const isStartHedged = isStartStraight && isStartWalk(leg)
+  const isEndHedged = isEndStraight && isEndWalk(leg)
+
+  const isHedged = isStartHedged || isEndHedged
+
+  if (isHedged) {
+    return {...leg, isStraightLine: true}
+  }
+
+  return leg
+}
+
+function isMarkedLeg(leg) {
+  return leg.isStraightLine === true
+}
+
+/**
+ * `journeys` with each walk of an end that was planned as a straight line
+ * where the streets were planned for marked `isStraightLine`: the walk from
+ * the rider's position where `isStartStraight`, the walk to the point where
+ * `isEndStraight`. A journey with a marked leg has `hasStraightLineWalk`.
+ */
+export function markStraightLineWalks({journeys, isStartStraight, isEndStraight}) {
+  const marked = []
+
+  for (const journey of journeys) {
+    const legs = []
+
+    for (const leg of journey.legs) {
+      legs.push(markedLeg({leg, isStartStraight, isEndStraight}))
+    }
+
+    marked.push({...journey, legs, hasStraightLineWalk: legs.some(isMarkedLeg)})
+  }
+
+  return marked
 }
 
 // The milliseconds since the Unix epoch of `seconds` from the start of a

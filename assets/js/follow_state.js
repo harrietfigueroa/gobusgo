@@ -37,7 +37,8 @@ export const FollowEventKind = Object.freeze({
   failed: "failed",
   denied: "denied",
   cameraMove: "cameraMove",
-  detailOpen: "detailOpen"
+  detailOpen: "detailOpen",
+  vehicleFollow: "vehicleFollow"
 })
 
 /** What the button asks of the map and the notice after an event. */
@@ -221,6 +222,19 @@ function onFollowEnd(state) {
   return unchanged(state)
 }
 
+// A bus followed takes the map from the location follow, centered or still
+// waiting for its first fix, and leaves the dot drawn. The bus follow's own
+// notice says what the map follows, so this one writes none.
+function onVehicleFollow(state) {
+  const isFollowing = state.kind === FollowKind.following
+
+  if (isFollowing) {
+    return {state: {...state, kind: FollowKind.located, isCentered: false, isNoticeOwed: false}, effects: NO_EFFECTS}
+  }
+
+  return unchanged(state)
+}
+
 /**
  * The state after `event` and what the hook does for it, in order: center
  * the map on the latest fix, move it if the dot has strayed, or write the
@@ -248,6 +262,8 @@ export function transition({state, event}) {
       return onFollowEnd(state)
     case FollowEventKind.detailOpen:
       return onFollowEnd(state)
+    case FollowEventKind.vehicleFollow:
+      return onVehicleFollow(state)
     default:
       return unreachable(event.kind, "follow state: an event of unknown kind")
   }

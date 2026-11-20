@@ -102,20 +102,42 @@ const rowCases = [
     rows: {
       kind: ArrivalRowsKind.rows,
       rows: [
-        {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", time: "2 min", isLive: true},
-        {route: "49", color: null, headsign: "University District", time: "11 min", isLive: false}
+        {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", time: "2 min", isLive: true, vehicleId: null},
+        {route: "49", color: null, headsign: "University District", time: "11 min", isLive: false, vehicleId: null}
       ]
     }
   },
   {
     name: "an arrival now, with no route and no headsign",
     shown: {status: "arrivals", age_minutes: 0, arrivals: [{route: null, color: null, headsign: null, minutes: 0, predicted: true}]},
-    rows: {kind: ArrivalRowsKind.rows, rows: [{route: null, color: null, headsign: null, time: "now", isLive: true}]}
+    rows: {kind: ArrivalRowsKind.rows, rows: [{route: null, color: null, headsign: null, time: "now", isLive: true, vehicleId: null}]}
   },
   {
     name: "a saved schedule's arrival, which names no color",
     shown: {status: "arrivals", age_minutes: 0, scheduled: true, arrivals: [{route: "49", headsign: null, minutes: 3, predicted: false}]},
-    rows: {kind: ArrivalRowsKind.rows, rows: [{route: "49", color: null, headsign: null, time: "3 min", isLive: false}]}
+    rows: {kind: ArrivalRowsKind.rows, rows: [{route: "49", color: null, headsign: null, time: "3 min", isLive: false, vehicleId: null}]}
+  },
+  {
+    name: "a live arrival names its vehicle, which a scheduled one does not, whatever its feed names",
+    shown: {
+      status: "arrivals",
+      age_minutes: 0,
+      arrivals: [
+        {...liveRow, vehicle_id: "1_4342"},
+        {...scheduledRow, vehicle_id: "1_77"},
+        {...liveRow, vehicle_id: null},
+        {...liveRow, vehicle_id: ""}
+      ]
+    },
+    rows: {
+      kind: ArrivalRowsKind.rows,
+      rows: [
+        {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", time: "2 min", isLive: true, vehicleId: "1_4342"},
+        {route: "49", color: null, headsign: "University District", time: "11 min", isLive: false, vehicleId: null},
+        {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", time: "2 min", isLive: true, vehicleId: null},
+        {route: "E Line", color: "#b91c1c", headsign: "Aurora Village", time: "2 min", isLive: true, vehicleId: null}
+      ]
+    }
   }
 ]
 

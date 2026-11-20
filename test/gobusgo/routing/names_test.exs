@@ -6,6 +6,7 @@ defmodule Gobusgo.Routing.NamesTest do
   use ExUnit.Case, async: true
 
   alias Gobusgo.Compression
+  alias Gobusgo.OneBusAway.CompactSchedule
   alias Gobusgo.Routing.Names
   alias Gobusgo.Test.RoutingNamesFixture
 
@@ -26,6 +27,43 @@ defmodule Gobusgo.Routing.NamesTest do
     assert built()["tripHeadsigns"] == ["Downtown Seattle", nil, "Othello Station"]
   end
 
+  test "takes a trip's headsign from the listing that owns it, whatever order the schedules come in" do
+    listing = fn route_id, headsign ->
+      {:ok, compact} =
+        CompactSchedule.pack(%{
+          route_id: route_id,
+          schedule_date_ms: 0,
+          service_ids: ["s"],
+          stop_ids: ["1_A", "1_B"],
+          trips: [
+            %{
+              id: "t1",
+              route_id: "1_B",
+              direction_id: "0",
+              headsign: headsign,
+              block_id: nil,
+              service_id: "s",
+              shape_id: nil,
+              stop_indexes: [0, 1],
+              arrival_s: [100, 200],
+              departure_s: [100, 200],
+              arrival_enabled: [true, true],
+              departure_enabled: [true, true]
+            }
+          ]
+        })
+
+      compact
+    end
+
+    schedules = [listing.("1_A", "From A"), listing.("1_B", "From B")]
+
+    forward = Names.headsigns(%{schedules: schedules, previous_schedules: []})
+    backward = Names.headsigns(%{schedules: Enum.reverse(schedules), previous_schedules: []})
+
+    assert {forward, backward} == {%{{0, "t1"} => "From B"}, %{{0, "t1"} => "From B"}}
+  end
+
   test "holds the routes the trips name and the names of their agencies" do
     assert {Map.keys(built()["routes"]), built()["agencyNames"]} ==
              {["1_100479", "29_7"], %{"1" => "Metro Transit"}}
@@ -42,7 +80,13 @@ defmodule Gobusgo.Routing.NamesTest do
 
   test "takes each trip's headsign from its own service date's schedule" do
     schedule = fn trips ->
-      %{trips: Enum.map(trips, fn {id, headsign} -> %{id: id, headsign: headsign} end)}
+      %{
+        route_id: "1_R",
+        trips:
+          Enum.map(trips, fn {id, headsign} ->
+            %{id: id, route_id: nil, headsign: headsign}
+          end)
+      }
     end
 
     assert Names.headsigns(%{

@@ -3,7 +3,10 @@
 // the "Tomorrow" label of a journey that leaves on the next day, whether two
 // ends make a query, the time a query leaves at or arrives by and its
 // window line, the names the page is asked for, the routes of a trip's
-// filter, and what the map draws of a journey.
+// filter, the trips whose paths the map draws rides along, and what the map
+// draws of a journey: a ride along its trip's path where the page holds it
+// and through its stops where it does not, and a walk along its line where
+// the page holds one.
 
 import {describe, expect, test} from "vitest"
 import {implementationsWith} from "../implementations.mjs"
@@ -34,6 +37,11 @@ const ROUTE_COUNT_MAX_ONE = 1
 const NAME_COUNT_MAX = 10
 const NAME_COUNT_MAX_TWO = 2
 const FINAL_STEP_COUNT = 2
+const PREVIOUS_START_MS = TODAY_START_MS - DAY_MS
+const PREVIOUS_DATE_OFFSET = 1
+const STOP_COUNT_THREE = 3
+const STOP_COUNT_TWO = 2
+const FEATURE_ENDS_COUNT = 2
 
 // The stops' positions, written as the router hands them over, in degrees.
 const PIKE = {lat: 47.61, lon: -122.34}
@@ -43,6 +51,14 @@ const JACKSON = {lat: 47.59, lon: -122.33}
 const OTHELLO = {lat: 47.54, lon: -122.28}
 const RIDER = {lat: 47.612, lon: -122.341}
 const MARKET = {lat: 47.6094, lon: -122.3422}
+const BEND = {lat: 47.605, lon: -122.345}
+
+const FIRST_TRIP = {tripId: "trip-1_102576", routeId: "1_102576", serviceDateMs: TODAY_START_MS}
+const SECOND_TRIP = {tripId: "trip-1_100210", routeId: "1_100210", serviceDateMs: TODAY_START_MS}
+const OVERNIGHT_TRIP = {tripId: "trip-1_100275", routeId: "1_100275", serviceDateMs: PREVIOUS_START_MS}
+const startsWithPrevious = {...serviceDayStartsMs, "2026-11-07": PREVIOUS_START_MS}
+const noPaths = new Map()
+const noWalkLines = new Map()
 
 const names = {
   stops: {
@@ -75,6 +91,19 @@ function featureCount(collection) {
   return collection.features.length
 }
 
+function entryOfPath(path) {
+  return [path.key, path]
+}
+
+function pathsOf(...held) {
+  const entries = Array.from(held, entryOfPath)
+  return new Map(entries)
+}
+
+function coordinatesOfFeature(feature) {
+  return feature.geometry.coordinates
+}
+
 function dayEntry({serviceDate, serviceDayStartMs}) {
   return {serviceDate, serviceDayStartMs, connectionChunks: [{departureSMin: 0, departureSMax: LAST_DEPARTURE_S}]}
 }
@@ -85,7 +114,9 @@ const twoDays = {
 }
 const todayOnly = {formatVersion: 2, snapshots: [dayEntry({serviceDate: "2026-11-08", serviceDayStartMs: TODAY_START_MS})]}
 
-describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJourneys", "tripPlan"))("trip plan ($name)", ({AssertionError, pointJourneys, routingEngine, routingJourneys, tripPlan}) => {
+describe.each(implementationsWith("geodesy", "pointJourneys", "routingEngine", "routingJourneys", "tripPath", "tripPlan"))("trip plan ($name)", ({AssertionError, geodesy, pointJourneys, routingEngine, routingJourneys, tripPath, tripPlan}) => {
+  const {distanceMeters} = geodesy
+  const {tripPathOf} = tripPath
   const {LegKind} = routingEngine
   const {FailureReason, JourneysKind} = routingJourneys
   const {LEG_KIND_TO_POINT} = pointJourneys
@@ -105,6 +136,7 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
     defaultClock,
     failureState,
     journeyFeatures,
+    journeyWalkEnds,
     journeyRows,
     journeysAnnouncement,
     nameRequest,
@@ -112,20 +144,56 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
     pickingMessage,
     plannedTime,
     pointEnd,
+    rideTripsOf,
     stateMessage,
     stopEnd,
     swappedEnds,
     tripRouteIds,
+    walkEndsOf,
+    walkKey,
     wallClockMs,
     windowText
   } = tripPlan
 
-  function ride({routeId, from, departs, to, arrives, passing = []}) {
-    return {kind: LegKind.ride, tripId: `trip-${routeId}`, routeId, serviceDayOffset: 0, fromStopId: from, departureS: seconds(departs), toStopId: to, arrivalS: seconds(arrives), stopIds: [from, ...passing, to]}
+  function ride({routeId, from, departs, to, arrives, passing = [], boardSequence = 0, serviceDayOffset = 0}) {
+    const stopIds = [from, ...passing, to]
+    const hopCount = stopIds.length - 1
+    return {kind: LegKind.ride, tripId: `trip-${routeId}`, routeId, serviceDayOffset, boardSequence, alightSequence: boardSequence + hopCount - 1, fromStopId: from, departureS: seconds(departs), toStopId: to, arrivalS: seconds(arrives), stopIds}
   }
 
   function walk({from, to, durationS}) {
     return {kind: LegKind.walk, fromStopId: from, toStopId: to, durationS}
+  }
+
+  function isWalkFeature(feature) {
+    return feature.properties.kind === FeatureKind.walk
+  }
+
+  function isWalkLeg(leg) {
+    return leg.kind === LegKind.walk
+  }
+
+  function drawnFeatures({journey, origin, paths = noPaths, walkLines = noWalkLines, starts = serviceDayStartsMs}) {
+    return journeyFeatures({journey, names, origin, paths, walkLines, serviceDayStartsMs: starts})
+  }
+
+  // The path of a trip along `points`, with `stopCount` stops spread evenly
+  // from the first point to the last, at the distances along the points.
+  function tripPathAlong({trip, points, stopCount}) {
+    let lengthMeters = 0
+
+    for (let index = 1; index < points.length; index += 1) {
+      lengthMeters += distanceMeters(points[index - 1], points[index])
+    }
+
+    const stops = []
+
+    for (let index = 0; index < stopCount; index += 1) {
+      const distance = (lengthMeters * index) / (stopCount - 1)
+      stops.push({distanceMeters: distance, arrivalSeconds: 0, departureSeconds: 0})
+    }
+
+    return tripPathOf({...trip, points, stops})
   }
 
   // The earliest journey changes once, from E to 36 after a three-minute
@@ -481,7 +549,7 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
   // The map draws a line per ride through every stop it passes, in its
   // route's color, a line per walk, and the two ends.
   test("the map draws a journey's rides, walks, and ends", () => {
-    const drawn = journeyFeatures({journey: earliest, names, origin: null})
+    const drawn = drawnFeatures({journey: earliest, origin: null})
     const drawnKinds = Array.from(drawn.collection.features, kindOf)
     expect(drawnKinds).toStrictEqual([FeatureKind.ride, FeatureKind.walk, FeatureKind.ride, FeatureKind.origin, FeatureKind.destination])
     const [firstRide, , , , destination] = drawn.collection.features
@@ -494,7 +562,7 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
   // A journey from the rider's position starts its first walk there.
   test("a journey from the rider's position starts its first walk there", () => {
     const located = {...direct, legs: [{kind: LegKind.walkFromPosition, toStopId: "1_431", durationS: 240}, ...direct.legs]}
-    const fromRider = journeyFeatures({journey: located, names, origin: RIDER})
+    const fromRider = drawnFeatures({journey: located, origin: RIDER})
     const [walkFromRider, , origin] = fromRider.collection.features
     expect(walkFromRider.geometry.coordinates).toStrictEqual([lonLat(RIDER), lonLat(PIKE)])
     expect(origin.geometry.coordinates).toStrictEqual(lonLat(RIDER))
@@ -519,7 +587,7 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
     expect(finalSteps).toStrictEqual(["walk 5 min to Pike Place Market", "9:19 am arrive at Pike Place Market"])
     const marketNames = nameRequest({journeys: [toMarket], countMax: NAME_COUNT_MAX})
     expect(marketNames.stopIds).toStrictEqual(["1_431", "1_11920"])
-    const toPoint = journeyFeatures({journey: toMarket, names, origin: null})
+    const toPoint = drawnFeatures({journey: toMarket, origin: null})
     const walkToMarket = toPoint.collection.features[1]
     expect(walkToMarket.geometry.coordinates).toStrictEqual([lonLat(OTHELLO), lonLat(MARKET)])
     const destinationPoint = toPoint.collection.features.find(isDestinationFeature)
@@ -528,8 +596,94 @@ describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJour
 
   // A journey whose stops have no known position draws nothing.
   test("a journey with no known position draws nothing", () => {
-    const unplaced = journeyFeatures({journey: {...direct, stopPositions: {}}, names, origin: null})
+    const unplaced = drawnFeatures({journey: {...direct, stopPositions: {}}, origin: null})
     expect(featureCount(unplaced.collection)).toBe(0)
     expect(unplaced.bounds).toStrictEqual({kind: BoundsKind.none})
+  })
+
+  // The ends of a walk are its stops' positions; a ride has none, and so does a
+  // walk whose stops have no known position.
+  test("the ends of a walk", () => {
+    const walkingLeg = earliest.legs.find(isWalkLeg)
+    const ends = {from: CHERRY, to: JACKSON}
+    expect(walkEndsOf({journey: earliest, leg: walkingLeg, origin: null})).toStrictEqual({kind: "ends", ...ends})
+    expect(walkEndsOf({journey: earliest, leg: earliest.legs[0], origin: null})).toStrictEqual({kind: "none"})
+    expect(walkEndsOf({journey: {...earliest, stopPositions: {}}, leg: walkingLeg, origin: null})).toStrictEqual({kind: "none"})
+    expect(journeyWalkEnds({journey: earliest, origin: null})).toStrictEqual([ends])
+  })
+
+  // A walk from the rider's position starts at it.
+  test("a walk from the position starts at it", () => {
+    const located = {...direct, legs: [{kind: LegKind.walkFromPosition, toStopId: "1_431", durationS: 240}, ...direct.legs]}
+    const [firstEnds] = journeyWalkEnds({journey: located, origin: RIDER})
+    expect(firstEnds.from).toStrictEqual(RIDER)
+  })
+
+  // A walk is drawn along its line where the page holds one for its ends, and
+  // straight between them otherwise.
+  test("a walk is drawn along its line where the page holds one", () => {
+    const [straightWalk] = drawnFeatures({journey: earliest, origin: null}).collection.features.filter(isWalkFeature)
+    const [walkFrom, walkTo] = straightWalk.geometry.coordinates
+    const streetLine = [walkFrom, [walkFrom[0], walkTo[1]], walkTo]
+    const walkLines = new Map([[walkKey({from: CHERRY, to: JACKSON}), streetLine]])
+    const [alongWalk] = drawnFeatures({journey: earliest, origin: null, walkLines}).collection.features.filter(isWalkFeature)
+    expect(alongWalk.geometry.coordinates).toStrictEqual(streetLine)
+    const otherLines = new Map([[walkKey({from: {lat: 0, lon: 0}, to: JACKSON}), streetLine]])
+    const [straightAgain] = drawnFeatures({journey: earliest, origin: null, walkLines: otherLines}).collection.features.filter(isWalkFeature)
+    expect(straightAgain.geometry.coordinates).toStrictEqual(straightWalk.geometry.coordinates)
+  })
+
+  // A ride is drawn along its trip's path where the page holds it: the path's
+  // points from the boarding stop's distance to the alighting stop's. Another
+  // ride of the journey, whose path the page lacks, keeps the line through its
+  // stops, and the ends stay at the stops.
+  test("a ride is drawn along its trip's path where the page holds it", () => {
+    const roadPoints = [lonLat(PIKE), lonLat(BEND), lonLat(CHERRY)]
+    const firstPath = tripPathAlong({trip: FIRST_TRIP, points: roadPoints, stopCount: STOP_COUNT_THREE})
+    const followed = drawnFeatures({journey: earliest, origin: null, paths: pathsOf(firstPath)})
+    const [followedFirst, followedWalk, followedSecond] = followed.collection.features
+    expect(followedFirst.geometry.coordinates).toStrictEqual(roadPoints)
+    expect(followedWalk.geometry.coordinates).toStrictEqual([lonLat(CHERRY), lonLat(JACKSON)])
+    expect(followedSecond.geometry.coordinates).toStrictEqual([lonLat(JACKSON), lonLat(OTHELLO)])
+    const followedEnds = followed.collection.features.slice(-FEATURE_ENDS_COUNT)
+    const followedEndCoordinates = Array.from(followedEnds, coordinatesOfFeature)
+    expect(followedEndCoordinates).toStrictEqual([lonLat(PIKE), lonLat(OTHELLO)])
+    expect(followed.bounds).toStrictEqual({kind: BoundsKind.bounds, bounds: [[BEND.lon, OTHELLO.lat], [OTHELLO.lon, PIKE.lat]]})
+  })
+
+  // A pattern with fewer stops than the ride keeps the line through its stops.
+  test("a pattern of fewer stops keeps the ride's stops", () => {
+    const roadPoints = [lonLat(PIKE), lonLat(BEND), lonLat(CHERRY)]
+    const shortPath = tripPathAlong({trip: FIRST_TRIP, points: roadPoints, stopCount: STOP_COUNT_TWO})
+    const mismatched = drawnFeatures({journey: earliest, origin: null, paths: pathsOf(shortPath)})
+    expect(mismatched.collection.features[0].geometry.coordinates).toStrictEqual([lonLat(PIKE), lonLat(PASSED), lonLat(CHERRY)])
+  })
+
+  // The trips to read a path for are the rides', each once, on the service day
+  // each runs on: a run of the previous date takes that date's start, one whose
+  // date has no start is left out, and a walk alone has none.
+  test("the trips of a journey's rides, on their service days", () => {
+    const backRide = ride({routeId: "1_102576", from: "1_11920", departs: "09:10", to: "1_431", arrives: "09:30"})
+    const twice = {...earliest, legs: [...earliest.legs, backRide]}
+    const overnight = {...direct, legs: [ride({routeId: "1_100275", from: "1_431", departs: "08:46", to: "1_11920", arrives: "09:14", serviceDayOffset: PREVIOUS_DATE_OFFSET})]}
+    const walkAlone = {...direct, legs: [walk({from: "1_431", to: "1_440", durationS: 60})]}
+    expect(rideTripsOf({journey: earliest, serviceDayStartsMs})).toStrictEqual([FIRST_TRIP, SECOND_TRIP])
+    expect(rideTripsOf({journey: twice, serviceDayStartsMs})).toStrictEqual([FIRST_TRIP, SECOND_TRIP])
+    expect(rideTripsOf({journey: overnight, serviceDayStartsMs: startsWithPrevious})).toStrictEqual([OVERNIGHT_TRIP])
+    expect(rideTripsOf({journey: overnight, serviceDayStartsMs})).toStrictEqual([])
+    expect(rideTripsOf({journey: walkAlone, serviceDayStartsMs})).toStrictEqual([])
+  })
+
+  // The run of the previous date follows the path held under that date's key,
+  // and a path held under today's key is not its path.
+  test("a run of the previous date follows its own date's path", () => {
+    const overnight = {...direct, legs: [ride({routeId: "1_100275", from: "1_431", departs: "08:46", to: "1_11920", arrives: "09:14", serviceDayOffset: PREVIOUS_DATE_OFFSET})]}
+    const overnightPoints = [lonLat(PIKE), lonLat(BEND), lonLat(OTHELLO)]
+    const overnightPath = tripPathAlong({trip: OVERNIGHT_TRIP, points: overnightPoints, stopCount: STOP_COUNT_TWO})
+    const ownDate = drawnFeatures({journey: overnight, origin: null, paths: pathsOf(overnightPath), starts: startsWithPrevious})
+    expect(ownDate.collection.features[0].geometry.coordinates).toStrictEqual(overnightPoints)
+    const todaysPath = tripPathAlong({trip: {...OVERNIGHT_TRIP, serviceDateMs: TODAY_START_MS}, points: overnightPoints, stopCount: STOP_COUNT_TWO})
+    const otherDate = drawnFeatures({journey: overnight, origin: null, paths: pathsOf(todaysPath), starts: startsWithPrevious})
+    expect(otherDate.collection.features[0].geometry.coordinates).toStrictEqual([lonLat(PIKE), lonLat(OTHELLO)])
   })
 })

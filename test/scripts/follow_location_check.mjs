@@ -64,6 +64,7 @@ const failed = {kind: FollowEventKind.failed}
 const denied = {kind: FollowEventKind.denied}
 const cameraMove = {kind: FollowEventKind.cameraMove}
 const detailOpen = {kind: FollowEventKind.detailOpen}
+const vehicleFollow = {kind: FollowEventKind.vehicleFollow}
 
 function notice(message) {
   return {kind: EffectKind.notice, message}
@@ -139,7 +140,12 @@ const transitionCases = [
   {name: "a camera move before the first fix keeps following", from: waiting, event: cameraMove, to: waiting, effects: []},
   {name: "a camera move in Located changes nothing", from: located, event: cameraMove, to: located, effects: []},
   {name: "an opened details view in Following moves to Located", from: following, event: detailOpen, to: located, effects: [notice(NoticeMessage.stopped)]},
-  {name: "an opened details view in Off changes nothing", from: OFF, event: detailOpen, to: OFF, effects: []}
+  {name: "an opened details view in Off changes nothing", from: OFF, event: detailOpen, to: OFF, effects: []},
+  {name: "a bus followed in Following moves to Located with no notice", from: following, event: vehicleFollow, to: located, effects: []},
+  {name: "a bus followed before the first fix moves to Located, so no later fix centers the map", from: waiting, event: vehicleFollow, to: state({kind: FollowKind.located}), effects: []},
+  {name: "a bus followed in Located changes nothing", from: located, event: vehicleFollow, to: located, effects: []},
+  {name: "a bus followed in Off changes nothing", from: OFF, event: vehicleFollow, to: OFF, effects: []},
+  {name: "a bus followed in Blocked changes nothing", from: blocked, event: vehicleFollow, to: blocked, effects: []}
 ]
 
 for (const {name, from, event, to, effects} of transitionCases) {

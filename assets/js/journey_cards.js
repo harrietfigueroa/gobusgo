@@ -38,6 +38,12 @@ const MATCH_TOLERANCE_MINUTES = 5
 const MATCH_TOLERANCE_MS = MATCH_TOLERANCE_MINUTES * MINUTE_MS
 const ARRIVALS_STATUS = "arrivals"
 const WALK_ONLY_TEXT = "Walk only"
+
+/**
+ * What a card says of a walk planned as a straight line where the streets
+ * were planned for: the walk's time is an estimate along no street.
+ */
+export const STRAIGHT_LINE_WALK_TEXT = "Straight-line walk"
 const SEPARATOR = " · "
 
 function firstRide(journey) {
@@ -187,6 +193,14 @@ function leadText({leaveMs, nowMs, dayPhrase, timeZone}) {
   return `Leave ${dayPhrase}at ${clockText({ms: leaveMs, timeZone})}`
 }
 
+function straightLineTextOf(journey) {
+  if (journey.hasStraightLineWalk === true) {
+    return STRAIGHT_LINE_WALK_TEXT
+  }
+
+  return ""
+}
+
 function walkSecondsOf(journey) {
   let walkS = 0
 
@@ -205,7 +219,9 @@ function walkSecondsOf(journey) {
  * when to leave, "Leave now", "Leave in 4 min", or a clock time an hour or
  * more ahead with its day where it is not today; `arriveText`; `isLive`;
  * `detailText`, the first bus's lateness or that it is scheduled, and the
- * changes; `segments`, the bar's; and what the sorts read, `leaveMs` and
+ * changes; `straightLineText`, STRAIGHT_LINE_WALK_TEXT where the journey
+ * has a walk planned as a straight line (`hasStraightLineWalk`) and empty
+ * otherwise; `segments`, the bar's; and what the sorts read, `leaveMs` and
  * `arrivalMs`, both moved by a live lateness, `changes`, `walkS`, and
  * `order`.
  */
@@ -225,6 +241,8 @@ export function journeyCard({row, order, live, nowMs, serviceDayStartsMs, names,
     arriveText: `arrive ${clockText({ms: arrivalMs, timeZone})}`,
     isLive: live.kind === LiveKind.live,
     detailText: firstBusText({live, names}) + SEPARATOR + row.changesText,
+    hasStraightLineWalk: journey.hasStraightLineWalk === true,
+    straightLineText: straightLineTextOf(journey),
     segments: barSegments({journey, names}),
     leaveMs,
     arrivalMs,

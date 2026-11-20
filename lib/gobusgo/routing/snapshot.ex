@@ -29,6 +29,7 @@ defmodule Gobusgo.Routing.Snapshot do
   alias Gobusgo.Routing.SnapshotFormat
   alias Gobusgo.Routing.Timetable
   alias Gobusgo.Routing.Transfers
+  alias Gobusgo.Routing.WalkLinks
 
   @typedoc """
   A file to write: its destination, the content the writer is given, and the
@@ -117,7 +118,7 @@ defmodule Gobusgo.Routing.Snapshot do
       "stopCount" => length(timetable.stop_ids),
       "tripCount" => length(timetable.trips),
       "connectionCount" => timetable.connection_count,
-      "transferRules" => transfer_rules(),
+      "transferRules" => transfer_rules(input.walk_basis),
       "walkingLinkCount" => length(walking_links),
       "files" => %{
         "stops" => file_entry(stops),
@@ -158,14 +159,26 @@ defmodule Gobusgo.Routing.Snapshot do
 
   defp microdegrees(degrees), do: round(degrees * @microdegrees_per_degree)
 
-  defp transfer_rules do
+  # The rules a reader applies to a walk, and how this snapshot's links were
+  # measured: by the straight line, or along the streets of a graph build,
+  # with the longest street a link may have.
+  defp transfer_rules(%{kind: kind, build_id: build_id}) when kind in [:streets, :mixed] do
+    Map.merge(transfer_rules(%{kind: :straight}), %{
+      "walkBasis" => Atom.to_string(kind),
+      "walkStreetMetersMax" => WalkLinks.street_meters_max(),
+      "walkGraphBuildId" => build_id
+    })
+  end
+
+  defp transfer_rules(%{kind: :straight}) do
     rules = Transfers.rules()
 
     %{
       "minimumTransferS" => rules.minimum_transfer_s,
       "walkRadiusM" => rules.walk_radius_m,
       "walkSpeedMPerS" => rules.walk_speed_m_per_s,
-      "walkLinkCountPerStopMax" => rules.link_count_per_stop_max
+      "walkLinkCountPerStopMax" => rules.link_count_per_stop_max,
+      "walkBasis" => "straight"
     }
   end
 

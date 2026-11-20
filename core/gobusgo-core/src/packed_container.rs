@@ -59,7 +59,7 @@ pub struct Kind {
 }
 
 /// The kind table, in the order of the numbers.
-pub const KINDS: [Kind; 8] = [
+pub const KINDS: [Kind; 10] = [
     Kind {
         number: 0,
         key: "fixture",
@@ -107,6 +107,18 @@ pub const KINDS: [Kind; 8] = [
         key: "intersectionIndex",
         name: "intersection index",
         prefix: "intersections-index",
+    },
+    Kind {
+        number: 8,
+        key: "walkGraphShard",
+        name: "walk graph shard",
+        prefix: "walk-graph",
+    },
+    Kind {
+        number: 9,
+        key: "walkGraphIndex",
+        name: "walk graph index",
+        prefix: "walk-graph-index",
     },
 ];
 
