@@ -1,6 +1,6 @@
 // Checks when the page offers the reload into a new release and when it has
 // a waiting worker take over with no offer, by driving `registerServiceWorker`
-// of release_update.js against a stand-in for the browser's service worker
+// against a stand-in for the browser's service worker
 // container, registration, and workers, and reading the offer's `hidden` and
 // the messages each worker received after each lifecycle step. The steps
 // follow the Service Worker spec's Install and Activate algorithms
@@ -140,16 +140,30 @@ async function pageWith({controller, waiting, pageRelease}) {
   const offer = fakeOffer()
   const reloads = []
   const timers = []
+  const timerIdsCleared = new Set()
+  const windowListeners = []
 
   function setTimeoutRecorded(callback, delayMs) {
     timers.push({callback, delayMs})
     return timers.length
   }
 
+  function clearTimeoutRecorded(timerId) {
+    timerIdsCleared.add(timerId)
+  }
+
+  function addEventListenerRecorded(type, listener) {
+    windowListeners.push({type, listener})
+  }
+
   // Runs the timers set for `delayMs`, as if that long had passed.
   async function pass(delayMs) {
-    for (const timer of timers) {
-      if (timer.delayMs === delayMs) {
+    for (const [timerIndex, timer] of timers.entries()) {
+      const timerId = timerIndex + 1
+      const isDue = timer.delayMs === delayMs
+      const isDueUncleared = isDue && !timerIdsCleared.has(timerId)
+
+      if (isDueUncleared) {
         timer.callback()
       }
     }
@@ -162,8 +176,8 @@ async function pageWith({controller, waiting, pageRelease}) {
   globalThis.window = {
     setInterval: () => 0,
     setTimeout: setTimeoutRecorded,
-    clearTimeout: () => {},
-    addEventListener: () => {},
+    clearTimeout: clearTimeoutRecorded,
+    addEventListener: addEventListenerRecorded,
     location: {reload: () => reloads.push(true)}
   }
 
@@ -297,7 +311,7 @@ for (const testCase of cases) {
   try {
     deepStrictEqual(outcome, testCase.outcome, testCase.name)
     console.log(`pass: ${testCase.name}`)
-  } catch (error) {
+  } catch {
     failureCount = failureCount + 1
     console.log(`FAIL: ${testCase.name}: got ${JSON.stringify(outcome)}, expected ${JSON.stringify(testCase.outcome)}`)
   }
