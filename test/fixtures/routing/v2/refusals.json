@@ -1,0 +1,26 @@
+{
+  "edits": "Each case reads `file`, applies `edits` in order, and decodes the result with the decoder of `decoder`: `keep` keeps the first N bytes, `cut` drops the last N, `append` adds the bytes of its hexadecimal text, and `write` writes the bytes of `hex` at `offset`.",
+  "cases": [
+    {"name": "a file shorter than its header", "file": "stops", "decoder": "stops", "edits": [{"keep": 15}], "reason": "invalidHeader"},
+    {"name": "a bad magic", "file": "stops", "decoder": "stops", "edits": [{"write": {"offset": 0, "hex": "58"}}], "reason": "invalidHeader"},
+    {"name": "another format version", "file": "stops", "decoder": "stops", "edits": [{"write": {"offset": 4, "hex": "0300"}}], "reason": "unsupportedVersion"},
+    {"name": "a stops file read as positions", "file": "stops", "decoder": "positions", "edits": [], "reason": "invalidHeader"},
+    {"name": "a trips file read as stops", "file": "trips", "decoder": "stops", "edits": [], "reason": "invalidHeader"},
+    {"name": "a stops file cut in a string", "file": "stops", "decoder": "stops", "edits": [{"cut": 1}], "reason": "invalidLength"},
+    {"name": "a stops file cut in a string's length", "file": "stops", "decoder": "stops", "edits": [{"keep": 17}], "reason": "invalidLength"},
+    {"name": "bytes after the last stop", "file": "stops", "decoder": "stops", "edits": [{"append": "00"}], "reason": "invalidLength"},
+    {"name": "invalid UTF-8 in a stop", "file": "stops", "decoder": "stops", "edits": [{"write": {"offset": 18, "hex": "ff"}}], "reason": "invalidText"},
+    {"name": "a trips file cut before a service day offset", "file": "trips", "decoder": "trips", "edits": [{"cut": 1}], "reason": "invalidLength"},
+    {"name": "a trips file cut in a route", "file": "trips", "decoder": "trips", "edits": [{"cut": 3}], "reason": "invalidLength"},
+    {"name": "bytes after the last trip", "file": "trips", "decoder": "trips", "edits": [{"append": "00"}], "reason": "invalidLength"},
+    {"name": "a transfers file cut short", "file": "transfers", "decoder": "transfers", "edits": [{"cut": 1}], "reason": "invalidLength"},
+    {"name": "a transfer count past the records", "file": "transfers", "decoder": "transfers", "edits": [{"write": {"offset": 8, "hex": "03000000"}}], "reason": "invalidLength"},
+    {"name": "a connections file cut short", "file": "connections", "decoder": "connections", "edits": [{"cut": 1}], "reason": "invalidLength"},
+    {"name": "bytes after the last connection", "file": "connections", "decoder": "connections", "edits": [{"append": "00"}], "reason": "invalidLength"},
+    {"name": "a connection count whose records overflow a 32-bit length", "file": "connections", "decoder": "connections", "edits": [{"write": {"offset": 8, "hex": "ffffffff"}}], "reason": "invalidLength"},
+    {"name": "a positions file cut short", "file": "positions", "decoder": "positions", "edits": [{"cut": 1}], "reason": "invalidLength"},
+    {"name": "a position past the pole", "file": "positions", "decoder": "positions", "edits": [{"write": {"offset": 16, "hex": "814a5d05"}}], "reason": "invalidPosition"},
+    {"name": "a position past the antimeridian", "file": "positions", "decoder": "positions", "edits": [{"write": {"offset": 20, "hex": "0195ba0a"}}], "reason": "invalidPosition"},
+    {"name": "a position unknown on one axis", "file": "positions", "decoder": "positions", "edits": [{"write": {"offset": 28, "hex": "00000000"}}], "reason": "invalidPosition"}
+  ]
+}

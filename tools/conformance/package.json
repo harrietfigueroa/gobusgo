@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "parity": "vitest run --config vitest.parity.config.mjs"
+    "parity": "vitest run --config vitest.parity.config.mjs",
+    "measure": "vitest run --config vitest.measure.config.mjs"
   },
   "devDependencies": {
     "@vitest/browser-playwright": "5.1.0",

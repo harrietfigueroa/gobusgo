@@ -1,0 +1,18 @@
+{
+  "edits": "Each case decodes the event of encoded_loop.json with `field` changed, to `value` or with `append` added after its text, and must fail an assertion with `failure`.",
+  "cases": [
+    {"name": "a character below the format", "field": "points", "append": " ", "failure": "character 899 lies below the encoded format"},
+    {"name": "a character above the format", "field": "points", "append": "\u007f", "failure": "character 899 lies above the encoded format"},
+    {"name": "text that ends inside a number", "field": "stops", "append": "_", "failure": "the encoded text ends inside a number"},
+    {"name": "a number of more than seven chunks", "field": "points", "value": "~~~~~~~?", "failure": "a number holds at most 7 chunks"},
+    {"name": "a point of one number", "field": "points", "value": "?", "failure": "a point holds a latitude and a longitude"},
+    {"name": "a stop of two numbers", "field": "stops", "value": "??", "failure": "a stop holds three numbers"},
+    {"name": "no point", "field": "points", "value": "", "failure": "a path holds at least one point"},
+    {"name": "no stop", "field": "stops", "value": "", "failure": "a path holds at least one stop"},
+    {"name": "a stop before the stop before it", "field": "stops", "value": "???@??", "failure": "stop 1 lies before the stop before it"},
+    {"name": "points that are no text", "field": "points", "value": 7, "failure": "encoded numbers must be a string"},
+    {"name": "an empty trip identifier", "field": "trip_id", "value": "", "failure": "a trip identifier must not be empty"},
+    {"name": "a trip identifier that is no text", "field": "trip_id", "value": 7, "failure": "a trip identifier must be text"},
+    {"name": "a service date that is no integer", "field": "service_date_ms", "value": 1.5, "failure": "a service date must be an integer"}
+  ]
+}

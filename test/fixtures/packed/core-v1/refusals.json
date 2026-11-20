@@ -1,0 +1,45 @@
+{
+  "edits": "A container case decodes `bytes` with the fixture's options and `options` over them: `fixture` is the fixture's bytes with `edits` applied in order, as the routing snapshot refusals apply them, and `table` a container of the fixture's header whose one section is the string table that hexadecimal text spells, read with no section after it. A cursor case reads the bytes of `hex` as one section with `read`, `varint` or `path`, and a section case opens them as `count` positions or as a column of `columnType`. Each is refused with `reason`.",
+  "containers": [
+    {"name": "another kind", "bytes": {"fixture": []}, "options": {"kind": 1}, "reason": "kindMismatch"},
+    {"name": "an unknown kind version", "bytes": {"fixture": []}, "options": {"versions": [2, 3]}, "reason": "unsupportedVersion"},
+    {"name": "a bad magic", "bytes": {"fixture": [{"write": {"offset": 3, "hex": "58"}}]}, "options": {}, "reason": "badMagic"},
+    {"name": "a kind not in the table", "bytes": {"fixture": [{"write": {"offset": 6, "hex": "6300"}}]}, "options": {}, "reason": "unknownKind"},
+    {"name": "a reserved field that is not zero", "bytes": {"fixture": [{"write": {"offset": 12, "hex": "01"}}]}, "options": {}, "reason": "reservedNotZero"},
+    {"name": "a file shorter than its magic", "bytes": {"fixture": [{"keep": 3}]}, "options": {}, "reason": "truncated"},
+    {"name": "a file shorter than its header", "bytes": {"fixture": [{"keep": 10}]}, "options": {}, "reason": "truncated"},
+    {"name": "a file cut in a section", "bytes": {"fixture": [{"cut": 1}]}, "options": {}, "reason": "truncated"},
+    {"name": "bytes after the last section", "bytes": {"fixture": [{"append": "00"}]}, "options": {}, "reason": "trailingBytes"},
+    {"name": "a section length past the file", "bytes": {"fixture": [{"write": {"offset": 16, "hex": "ffffffff"}}]}, "options": {}, "reason": "truncated"},
+    {"name": "fewer sections than the kind", "bytes": {"fixture": []}, "options": {"sectionCount": 7}, "reason": "sectionCount"},
+    {"name": "more sections than the kind", "bytes": {"fixture": []}, "options": {"sectionCount": 5}, "reason": "sectionCount"},
+    {"name": "an over-long varint in the string table", "bytes": {"table": "01000000808080808001"}, "options": {"sectionCount": 0}, "reason": "badVarint"},
+    {"name": "invalid UTF-8 in the string table", "bytes": {"table": "0100000002c328"}, "options": {"sectionCount": 0}, "reason": "badUtf8"},
+    {"name": "bytes after the last string table entry", "bytes": {"table": "01000000016100"}, "options": {"sectionCount": 0}, "reason": "badStringTable"},
+    {"name": "more string table entries than bytes", "bytes": {"table": "030000000161"}, "options": {"sectionCount": 0}, "reason": "truncated"},
+    {"name": "a string table shorter than its count", "bytes": {"table": "0100"}, "options": {"sectionCount": 0}, "reason": "truncated"},
+    {"name": "a string table entry longer than the table", "bytes": {"table": "010000000561"}, "options": {"sectionCount": 0}, "reason": "truncated"},
+    {"name": "a varint cut by the string table's end", "bytes": {"table": "0100000080"}, "options": {"sectionCount": 0}, "reason": "truncated"}
+  ],
+  "cursors": [
+    {"name": "a varint past 32 bits", "hex": "ffffffff1f00", "read": "varint", "reason": "badVarint"},
+    {"name": "a varint of more than five bytes", "hex": "808080808000", "read": "varint", "reason": "badVarint"},
+    {"name": "a varint cut by the section's end", "hex": "8080", "read": "varint", "reason": "truncated"},
+    {"name": "a path of more points than its section holds", "hex": "0500", "read": "path", "reason": "truncated"},
+    {"name": "a path cut inside a point", "hex": "018080", "read": "path", "reason": "truncated"},
+    {"name": "a path with an over-long varint", "hex": "01ffffffff1f00", "read": "path", "reason": "badVarint"},
+    {"name": "a path point past the pole", "hex": "0182aaea5500", "read": "path", "reason": "badPosition"},
+    {"name": "a path point past the antimeridian", "hex": "010082d4d4ab01", "read": "path", "reason": "badPosition"}
+  ],
+  "sections": [
+    {"name": "a position unknown on one axis", "hex": "0000008000000000", "open": "positions", "count": 1, "reason": "badPosition"},
+    {"name": "a position past the pole", "hex": "814a5d0500000000", "open": "positions", "count": 1, "reason": "badPosition"},
+    {"name": "a position past the antimeridian", "hex": "000000000195ba0a", "open": "positions", "count": 1, "reason": "badPosition"},
+    {"name": "positions of fewer bytes than the count", "hex": "0000000000000000", "open": "positions", "count": 2, "reason": "badSectionSize"},
+    {"name": "positions of more bytes than the count", "hex": "000000000000000000", "open": "positions", "count": 1, "reason": "badSectionSize"},
+    {"name": "a u8 column of more bytes than the count", "hex": "0000", "open": "column", "columnType": "u8", "count": 1, "reason": "badSectionSize"},
+    {"name": "a u16 column of an odd byte length", "hex": "000000", "open": "column", "columnType": "u16", "count": 1, "reason": "badSectionSize"},
+    {"name": "a u32 column of fewer bytes than the count", "hex": "000000", "open": "column", "columnType": "u32", "count": 1, "reason": "badSectionSize"},
+    {"name": "an i32 column of more bytes than the count", "hex": "0000000000", "open": "column", "columnType": "i32", "count": 1, "reason": "badSectionSize"}
+  ]
+}
