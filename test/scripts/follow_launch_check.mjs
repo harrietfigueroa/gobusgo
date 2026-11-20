@@ -77,7 +77,11 @@ for (const {name, recentTrips, expected} of intentCases) {
   deepStrictEqual(tripLaunchIntent({recentTrips}), expected, name)
 }
 
-throws(() => tripLaunchIntent({recentTrips: null}), "a trip intent refuses recent trips that are not a list")
+throws(readIntentOfNoList, "a trip intent refuses recent trips that are not a list")
+
+function readIntentOfNoList() {
+  return tripLaunchIntent({recentTrips: null})
+}
 
 function state(fields) {
   return {...OFF, ...fields}
