@@ -104,6 +104,48 @@ deepStrictEqual(
 deepStrictEqual(context.legs[WALK_BETWEEN_STOPS], {kind: "walk", minutes: WALK_BETWEEN_STOPS_MINUTES, from: {id: "1_200", name: "Westlake Station"}, to: {id: "1_200", name: "Westlake Station"}}, "a walk between stops rounds its minutes up")
 deepStrictEqual(context.legs[WALK_TO_POINT], {kind: "walk", minutes: WALK_TO_POINT_MINUTES, from: {id: "1_300", name: "Ballard Locks"}, to: {name: "Ballard Locks"}}, "a walk to a point")
 
+// A walk of a position end planned as a straight line, where the streets
+// were planned for, says so in `straightLine`; the walk between two stops is
+// the snapshot's own and says nothing, and a journey with no such walk adds
+// no field.
+// Each leg says it by itself: a journey whose start fell back and whose end did not marks the start only.
+function legMarked({leg, isMarked}) {
+  if (isMarked) {
+    return {...leg, isStraightLine: true}
+  }
+
+  return leg
+}
+
+function journeyMarking({isStart, isEnd}) {
+  const legs = []
+
+  for (const leg of journey.legs) {
+    const isStartLeg = leg.kind === LegKind.walkFromPosition
+    const isEndLeg = leg.kind === LEG_KIND_TO_POINT
+    const isStartMarked = isStart && isStartLeg
+    const isEndMarked = isEnd && isEndLeg
+    const isMarked = isStartMarked || isEndMarked
+    legs.push(legMarked({leg, isMarked}))
+  }
+
+  return {...journey, legs, hasStraightLineWalk: isStart || isEnd}
+}
+
+const hedged = contextOf({journey: journeyMarking({isStart: true, isEnd: true})})
+deepStrictEqual(hedged.legs[WALK_FROM_START], {...context.legs[WALK_FROM_START], straightLine: true}, "a walk from the position, straight")
+deepStrictEqual(hedged.legs[WALK_TO_POINT], {...context.legs[WALK_TO_POINT], straightLine: true}, "a walk to the point, straight")
+deepStrictEqual(hedged.legs[WALK_BETWEEN_STOPS], context.legs[WALK_BETWEEN_STOPS], "a walk between stops says nothing")
+deepStrictEqual(journeyProblem(hedged), {kind: ProblemKind.valid}, "the hedged object is valid")
+const startOnly = contextOf({journey: journeyMarking({isStart: true, isEnd: false})})
+deepStrictEqual(startOnly.legs[WALK_FROM_START].straightLine, true, "a start that fell back says so")
+deepStrictEqual(startOnly.legs[WALK_TO_POINT], context.legs[WALK_TO_POINT], "an end that did not fall back says nothing")
+const endOnly = contextOf({journey: journeyMarking({isStart: false, isEnd: true})})
+deepStrictEqual(endOnly.legs[WALK_FROM_START], context.legs[WALK_FROM_START], "a start that did not fall back says nothing")
+deepStrictEqual(endOnly.legs[WALK_TO_POINT].straightLine, true, "an end that fell back says so")
+const offeredHedged = journeysContext({journeys: [journeyMarking({isStart: true, isEnd: false})], names, serviceDayStartsMs, timeZone: TIME_ZONE, from: "My location", to: "Ballard Locks", plannedAtMs: NOW_MS})
+deepStrictEqual(offeredHedged.journeys[0].legs[WALK_FROM_START].straightLine, true, "the offered journeys say it too")
+
 // A stop the names do not hold shows its identifier, as the Trip tab does.
 const unnamed = contextOf({names: {stops: {}, routes: {}}})
 deepStrictEqual(unnamed.legs[FIRST_RIDE].route, {id: "1_40", name: "1_40"}, "a route no names hold shows its identifier")

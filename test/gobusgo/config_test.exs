@@ -555,4 +555,23 @@ defmodule Gobusgo.ConfigTest do
       end
     end
   end
+
+  describe "fetch_walk_basis/1" do
+    test "defaults to the straight line" do
+      assert Config.fetch_walk_basis([]) == {:ok, :straight}
+    end
+
+    test "accepts each basis" do
+      assert Config.fetch_walk_basis(basis: :straight) == {:ok, :straight}
+      assert Config.fetch_walk_basis(basis: :streets) == {:ok, :streets}
+    end
+
+    test "refuses another value" do
+      assert Config.fetch_walk_basis(basis: "streets") == {:error, {:invalid, :walk_basis}}
+    end
+
+    test "is the streets in the configuration the application ships" do
+      assert Config.walk_basis() == {:ok, :streets}
+    end
+  end
 end

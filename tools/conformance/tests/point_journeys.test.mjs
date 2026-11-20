@@ -32,6 +32,9 @@ const LATER_S = 1100
 const LATEST_S = 1300
 const LATE_TODAY_S = 86000
 const EARLY_TOMORROW_S = 100
+// The walks of 90 m and 300 m along the streets at 1.2 m/s, rounded up.
+const STREET_NEAR_WALK_S = 75
+const STREET_FAR_WALK_S = 250
 // The haversine distances from the destination at 1.2 m/s, rounded up:
 // 30.0 m and 75.8 m.
 const NEARER_WALK_S = 25
@@ -61,6 +64,10 @@ function walkOf(target) {
   return target.walkS
 }
 
+function isStraightLine(leg) {
+  return leg.isStraightLine === true
+}
+
 function serviceDateOf(kept) {
   return kept.serviceDate
 }
@@ -81,7 +88,16 @@ describe.each(IMPLEMENTATIONS)("point journeys ($name)", ({AssertionError, point
   const {LegKind} = routingEngine
   const {FailureReason, JourneysKind, WINDOW_SECONDS} = routingJourneys
   const {POSITION_UNKNOWN_MICRODEGREES} = routingSnapshot
-  const {FrontierKind, LEG_KIND_TO_POINT, PointJourneysKind, TARGET_STOP_COUNT_MAX, journeysToPoint, targetStops} = pointJourneys
+  const {
+    FrontierKind,
+    LEG_KIND_TO_POINT,
+    PointJourneysKind,
+    TARGET_STOP_COUNT_MAX,
+    journeysToPoint,
+    markStraightLineWalks,
+    targetStops,
+    targetStopsOnStreets
+  } = pointJourneys
 
   function journey({stopId, arrivalS, changes, serviceDate = TODAY}) {
     const ride = {kind: LegKind.ride, routeId: "1_100", tripId: "t", fromStopId: "1_1", toStopId: stopId, departureS: arrivalS - RIDE_S, arrivalS, stopIds: ["1_1", stopId], serviceDayOffset: 0}
@@ -120,6 +136,60 @@ describe.each(IMPLEMENTATIONS)("point journeys ($name)", ({AssertionError, point
     expect(bounded.length).toBe(ONE_STOP)
     const twoPlaced = positionsOf([near, far])
     expect(() => targetStops({position: destination, stopIds: ["1_near"], positions: twoPlaced, transferRules, countMax: ONE_STOP})).toThrow(AssertionError)
+  })
+
+  // Over the streets, the stops are those the reach found, nearest by street
+  // first at the walk the street takes, whatever their straight-line order:
+  // "1_far" is 300 m by street and "1_near" 90 m, "1_nearer" is left out
+  // (none reached), and the bound keeps the first.
+  test("the stops the reach found over the streets, nearest by street first", () => {
+    const stops = [{stop: 1, streetM: 300}, {stop: 0, streetM: 90}]
+    const stopIds = ["1_near", "1_far", "1_nearer"]
+    const targets = targetStopsOnStreets({stopIds, stops, transferRules, countMax: TARGET_STOP_COUNT_MAX})
+    const streetIds = Array.from(targets, stopIdOf)
+    const streetWalks = Array.from(targets, walkOf)
+    expect(streetIds).toStrictEqual(["1_near", "1_far"])
+    expect(streetWalks).toStrictEqual([STREET_NEAR_WALK_S, STREET_FAR_WALK_S])
+    const bounded = targetStopsOnStreets({stopIds, stops, transferRules, countMax: ONE_STOP})
+    expect(bounded.length).toBe(ONE_STOP)
+    expect(() => targetStopsOnStreets({stopIds: ["1_near"], stops, transferRules, countMax: ONE_STOP})).toThrow(AssertionError)
+  })
+
+  // A journey says its walk is a straight line where a walk of a position end
+  // fell back to one: its start's walk from the rider's position, or its walk
+  // to the point, and only a journey that has that walk; each walk of an end
+  // is marked by its own end's fallback.
+  describe("a walk of a position end that fell back to a straight line", () => {
+    const fromPosition = {kind: LegKind.walkFromPosition, toStopId: "1_1", durationS: WALK_A_S}
+    const toPoint = {kind: LEG_KIND_TO_POINT, fromStopId: "1_b", durationS: WALK_B_S}
+    const rideOnly = journey({stopId: "1_b", arrivalS: TIME_S, changes: NO_CHANGE})
+    const walkedStart = {...rideOnly, legs: [fromPosition, ...rideOnly.legs]}
+    const walkedEnd = {...rideOnly, legs: [...rideOnly.legs, toPoint]}
+    const walkedBoth = {...rideOnly, legs: [fromPosition, ...rideOnly.legs, toPoint]}
+    const cases = [
+      {name: "start fell back, journey walks from the position", flags: {isStartStraight: true, isEndStraight: false}, journey: walkedStart, expected: true},
+      {name: "start fell back, journey starts at a stop", flags: {isStartStraight: true, isEndStraight: false}, journey: rideOnly, expected: false},
+      {name: "end fell back, journey walks to the point", flags: {isStartStraight: false, isEndStraight: true}, journey: walkedEnd, expected: true},
+      {name: "end fell back, the walk is the start's", flags: {isStartStraight: false, isEndStraight: true}, journey: walkedStart, expected: false},
+      {name: "neither fell back", flags: {isStartStraight: false, isEndStraight: false}, journey: walkedBoth, expected: false}
+    ]
+
+    test.each(cases)("$name", ({flags, journey: hedged, expected}) => {
+      const [marked] = markStraightLineWalks({journeys: [hedged], ...flags})
+      expect(marked.hasStraightLineWalk).toBe(expected)
+    })
+
+    test("only the start's walk is marked where the start fell back", () => {
+      const [startOnly] = markStraightLineWalks({journeys: [walkedBoth], isStartStraight: true, isEndStraight: false})
+      const startFlags = Array.from(startOnly.legs, isStraightLine)
+      expect(startFlags).toStrictEqual([true, false, false])
+    })
+
+    test("only the end's walk is marked where the end fell back", () => {
+      const [endOnly] = markStraightLineWalks({journeys: [walkedBoth], isStartStraight: false, isEndStraight: true})
+      const endFlags = Array.from(endOnly.legs, isStraightLine)
+      expect(endFlags).toStrictEqual([false, false, true])
+    })
   })
 
   // Each journey gains the walk from its stop, and the answers make one

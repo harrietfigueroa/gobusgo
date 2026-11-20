@@ -91,7 +91,7 @@ function moveFavorite({stopId, index}) {
 // `nowMs`: its first arrivals still to come.
 function writeEntryArrivals({entry, nowMs}) {
   const shown = shownAt({shown: entry.shown, nowMs, countMax: ARRIVAL_COUNT_MAX})
-  writeArrivals({element: entry.arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS})
+  writeArrivals({element: entry.arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS, canFollow: false})
 }
 
 function iconButton({text, label, className}) {
@@ -149,7 +149,7 @@ function entryOf({favorite, callbacks}) {
 
   const arrivalsElement = document.createElement("div")
   const shown = {status: "waiting"}
-  writeArrivals({element: arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS})
+  writeArrivals({element: arrivalsElement, shown, withKey: false, yourBus: NO_YOUR_BUS, canFollow: false})
   element.append(header, arrivalsElement, actions)
 
   return {element, arrivalsElement, shown, up, down}

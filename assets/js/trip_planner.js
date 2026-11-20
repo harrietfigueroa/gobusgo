@@ -21,6 +21,9 @@ import {FromKind, JourneysKind} from "./core/routing_journeys"
 import {AnswerKind, answerOutcome, fetchManifest, routeTo, serviceDayStartsOf, walkSpeedsOf} from "./trip_route"
 import {END_EVENT_NAME, isPicking, startPicking, stopPicking} from "./trip_ends"
 import {CenterKind, createTripMap} from "./trip_map"
+import {createTripPathReader} from "./trip_path_reader"
+import {createWalkPathReader} from "./walk_path_reader"
+import {createWalkTiles} from "./walk_tiles"
 import {
   DayChoice,
   EndKind,
@@ -35,6 +38,7 @@ import {
   failureState,
   isMarkedRow,
   journeyFeatures,
+  journeyWalkEnds,
   journeyRows,
   journeysAnnouncement,
   nameRequest,
@@ -42,6 +46,7 @@ import {
   plannedTime,
   pointEnd,
   queryOf,
+  rideTripsOf,
   stateMessage,
   stopEnd,
   swappedEnds,
@@ -371,6 +376,15 @@ export const TripPlanner = {
     this.shownByStop = {}
     this.push = (name, payload) => { this.events.push({name, payload}) }
     this.tripMap = createTripMap()
+    // The paths the chosen journey's rides are drawn along; a path that
+    // arrives draws the ride again.
+    this.tripPaths = createTripPathReader({fileOrigin: this.fileOrigin, manifestUrl: this.manifestUrl, onPaths: () => { this.onTripPaths() }})
+    // The lines the chosen journey's walks are drawn along, read from the
+    // walk graph; a line that arrives draws the walk again.
+    // The tiles are the page's, so a plan's walks from a position and the
+    // lines drawn along them read the same ones.
+    this.walkTiles = createWalkTiles({fileOrigin: this.fileOrigin})
+    this.walkPaths = createWalkPathReader({walkTiles: this.walkTiles, onWalks: () => { this.onTripPaths() }})
     this.searchFiles = createSearchFiles({origin: this.fileOrigin})
     this.events = pageEvents(this)
     this.build()
@@ -771,6 +785,9 @@ export const TripPlanner = {
   // typing replaces it, and the list offers what an empty text does.
   openSearch() {
     this.searchFiles.warm({routingManifestUrl: this.manifestUrl})
+    // The walk graph's manifest and index, 3 KB of files that name no
+    // position, are held before a plan asks for the tiles around one.
+    this.walkTiles.ensureSource().catch(reportError)
     this.input.select()
     this.searchText = ""
     this.listbox.hidden = false
@@ -1161,7 +1178,7 @@ export const TripPlanner = {
       return
     }
 
-    const answer = await routeTo({origin: this.fileOrigin, searchFiles: this.searchFiles, manifest, planned, from: start.from, to: query.to})
+    const answer = await routeTo({origin: this.fileOrigin, searchFiles: this.searchFiles, walkTiles: this.walkTiles, manifest, planned, from: start.from, to: query.to})
 
     if (queryNumber !== this.queryCount) {
       return
@@ -1435,9 +1452,23 @@ export const TripPlanner = {
   },
 
   draw(row) {
-    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin: this.shown.origin})
+    const {serviceDayStartsMs, origin} = this.shown
+    this.tripPaths.request(rideTripsOf({journey: row.journey, serviceDayStartsMs}))
+    this.walkPaths.request(journeyWalkEnds({journey: row.journey, origin}))
+    const drawn = journeyFeatures({journey: row.journey, names: this.names, origin, paths: this.tripPaths.paths(), walkLines: this.walkPaths.lines(), serviceDayStartsMs})
     this.tripMap.show(drawn.collection)
     return drawn
+  },
+
+  // Draws the selected journey again with the paths and walk lines that
+  // arrived, where the map is already fitted to it.
+  onTripPaths() {
+    if (this.shown === null) {
+      return
+    }
+
+    const rows = this.rows()
+    this.draw(rows[this.selectedIndex])
   },
 
   // The selected journey's routes as the map's filter, sent again on every
@@ -1464,6 +1495,8 @@ export const TripPlanner = {
     window.removeEventListener(END_EVENT_NAME, this.onEnd)
     window.removeEventListener(FAVORITE_CHANGE_EVENT_NAME, this.onFavoriteChange)
     this.tripMap.destroy()
+    this.tripPaths.destroy()
+    this.walkPaths.destroy()
     this.stopTicker()
     this.releaseLiveStops()
 
