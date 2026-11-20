@@ -5,7 +5,7 @@
 // latest departure, with the best marked and the window applied.
 
 import {describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const MICRODEGREES = 1_000_000
 const MINUTE_S = 60
@@ -84,7 +84,7 @@ function lastLeg(kept) {
   return kept.legs[kept.legs.length - 1]
 }
 
-describe.each(IMPLEMENTATIONS)("point journeys ($name)", ({AssertionError, pointJourneys, routingEngine, routingJourneys, routingSnapshot}) => {
+describe.each(implementationsWith("pointJourneys", "routingEngine", "routingJourneys", "routingSnapshot"))("point journeys ($name)", ({AssertionError, pointJourneys, routingEngine, routingJourneys, routingSnapshot}) => {
   const {LegKind} = routingEngine
   const {FailureReason, JourneysKind, WINDOW_SECONDS} = routingJourneys
   const {POSITION_UNKNOWN_MICRODEGREES} = routingSnapshot

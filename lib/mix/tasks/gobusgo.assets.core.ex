@@ -42,14 +42,18 @@ defmodule Mix.Tasks.Gobusgo.Assets.Core do
 
     # `--target web` writes an ES module a browser loads without a bundler,
     # whose default initialization fetches the WebAssembly from beside the
-    # module's own address.
+    # module's own address. The module drops its name and producers sections,
+    # which name its functions and its compilers for a debugger and run nothing.
     # https://rustwasm.github.io/docs/wasm-bindgen/reference/deployment.html — checked 2026-11-13
+    # Both flags are those `wasm-bindgen --help` of 0.2.130 lists — checked 2026-11-14
     run_command(
       "wasm-bindgen",
       [
         "--target",
         "web",
         "--no-typescript",
+        "--remove-name-section",
+        "--remove-producers-section",
         "--out-dir",
         @built_dir,
         "--out-name",

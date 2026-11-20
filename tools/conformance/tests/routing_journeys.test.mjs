@@ -14,7 +14,7 @@ import {unreachable} from "../../../assets/js/core/assert.js"
 import {FailureReason, FetchKind, FromKind, JourneysKind} from "../../../assets/js/core/routing_journeys.js"
 import {routeJourneys, routeJourneysArrivingBy} from "../../../assets/js/routing_driver.js"
 import {TRANSFER_RULES, clock, seconds, snapshotOf} from "../../../test/scripts/routing_timetable.js"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {IMPLEMENTATIONS, implementationsWith} from "../implementations.mjs"
 
 // The driver's own vocabulary is the JavaScript core's.
 const {LegKind} = IMPLEMENTATIONS[0].routingEngine
@@ -617,7 +617,7 @@ describe("routing driver", () => {
   })
 })
 
-describe.each(IMPLEMENTATIONS)("routing journeys ($name)", ({routingEngine, routingJourneys, routingSnapshot, routingWalk}) => {
+describe.each(implementationsWith("routingEngine", "routingJourneys", "routingSnapshot", "routingWalk"))("routing journeys ($name)", ({routingEngine, routingJourneys, routingSnapshot, routingWalk}) => {
   const {OriginKind} = routingEngine
   const {ROUND_COUNT_MAX, ServiceDateKind, StepKind, TimeKind, WINDOW_SECONDS, loadEngine, resumeQuery, serviceDateAt, startQuery} = routingJourneys
 

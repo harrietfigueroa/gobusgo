@@ -15,6 +15,8 @@ defmodule Mix.Tasks.Gobusgo.Assets.ServiceWorker do
   `priv/static/cache_manifest.json` gives, so the task runs after
   `mix phx.digest`; without it they are the names the build wrote. `mix
   assets.build` runs it without the option and `mix assets.deploy` with it.
+  The digested worker is the one a release ships, and its build drops
+  every `debugger` statement, as the deploy build of the bundles does.
   It does not start the application.
   """
 
@@ -39,9 +41,16 @@ defmodule Mix.Tasks.Gobusgo.Assets.ServiceWorker do
     build = ServiceWorker.build(%{release: release, precache_paths: paths})
     definition = JSON.encode!(build)
 
-    Mix.Task.run("esbuild", [@esbuild_profile, "--define:SERVICE_WORKER_BUILD=#{definition}"])
+    Mix.Task.run("esbuild", [
+      @esbuild_profile,
+      "--define:SERVICE_WORKER_BUILD=#{definition}" | release_args(digests)
+    ])
+
     Mix.shell().info("Service worker built for release #{release}")
   end
+
+  defp release_args(:undigested), do: []
+  defp release_args({:digested, _latest}), do: ["--drop:debugger"]
 
   defp digests([]), do: :undigested
 

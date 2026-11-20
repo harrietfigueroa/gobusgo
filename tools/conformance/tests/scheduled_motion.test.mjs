@@ -26,7 +26,7 @@ import {
 import {seconds} from "../../../test/scripts/routing_timetable.js"
 import {savedOf} from "../../../test/scripts/saved_timetable.js"
 import {fixtureBytes} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const SECOND_MS = 1000
 const SHARD_ROUTE_ID = "1_7994"
@@ -106,7 +106,7 @@ beforeAll(async () => {
   shardBytes = new Uint8Array(shardBuffer)
 })
 
-describe.each(IMPLEMENTATIONS)("scheduled motion ($name)", ({geodesy, polyline, scheduledService, tripPathShard}) => {
+describe.each(implementationsWith("geodesy", "polyline", "scheduledService", "tripPathShard"))("scheduled motion ($name)", ({geodesy, polyline, scheduledService, tripPathShard}) => {
   const {KeptKind, scheduledMarkers} = scheduledService
   const {TripPathLookup, decodeTripPathShard, tripPathFromShard} = tripPathShard
   const hopSeconds = SHARD_SECOND_ARRIVAL_SECONDS - SHARD_FIRST_DEPARTURE_SECONDS

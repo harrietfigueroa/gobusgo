@@ -6,7 +6,7 @@
 // its end, and the points of a line between two distances along it.
 
 import {describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 // An L-shaped line: 100 m east, then 100 m north.
 const LINE = {
@@ -56,7 +56,7 @@ const betweenCases = [
   {name: "outside the line, clamped to its ends", from: -40, to: 260, points: [{x: 0, y: 0}, {x: 100, y: 0}, {x: 100, y: 100}]}
 ]
 
-describe.each(IMPLEMENTATIONS)("polyline ($name)", ({AssertionError, polyline}) => {
+describe.each(implementationsWith("polyline"))("polyline ($name)", ({AssertionError, polyline}) => {
   test.each(nearestCases)("nearest: $name", ({x, y, alongMin, nearest}) => {
     expect(polyline.nearestAlong({...LINE, x, y, alongMin})).toStrictEqual(nearest)
   })

@@ -60,13 +60,15 @@ defmodule Gobusgo.MixProject do
         "gobusgo.assets.core",
         "tailwind default",
         "esbuild default",
+        "esbuild mcp_apps",
         "gobusgo.assets.map_library",
         "gobusgo.assets.service_worker"
       ],
       "assets.deploy": [
         "gobusgo.assets.core",
         "tailwind default --minify",
-        "esbuild default --minify",
+        "esbuild default --minify --drop:debugger",
+        "esbuild mcp_apps --minify --drop:debugger",
         "gobusgo.assets.map_library",
         "phx.digest",
         "gobusgo.assets.service_worker --digested"

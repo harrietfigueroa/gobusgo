@@ -1,14 +1,27 @@
 // Checks the vehicle page's trip path decoder and cache as pure functions:
 // the decoder reads the shared fixture the Elixir tests pin to the server's
 // builder, the stored loop trip 1_1137791 of route 1_7994, and must find
-// its points and each stop's distance and times; the cache is fed paths
-// written out by hand.
+// its points and each stop's distance and times, and must refuse each case of
+// the shared refusal table with its message; the cache is fed paths written
+// out by hand.
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const DISTANCE_TOLERANCE_M = 1
+
+// The cases name the tests, so they are read before the tests are collected.
+const {cases: refusalCases} = await fixtureJson("one_bus_away/trip_path/refusals.json")
+
+// The event with the one field a refusal case changes.
+function refusedEvent({field, value, append}, event) {
+  if (append === undefined) {
+    return {...event, [field]: value}
+  }
+
+  return {...event, [field]: event[field] + append}
+}
 
 function stopDistance(stop) {
   return stop.distanceMeters
@@ -31,8 +44,8 @@ beforeAll(async () => {
   expected = fixture.expected
 })
 
-describe.each(IMPLEMENTATIONS)("trip path ($name)", ({AssertionError, geodesy, tripPath}) => {
-  const {TRIP_PATH_COUNT_MAX, decodeTripPath, tripPathKey, withTripPaths} = tripPath
+describe.each(implementationsWith("geodesy", "tripPath"))("trip path ($name)", ({AssertionError, geodesy, tripPath}) => {
+  const {decodeTripPath, tripPathKey, tripPathOf} = tripPath
 
   test("the point count", () => {
     expect(decodeTripPath(event).points.length).toBe(expected.pointCount)
@@ -94,19 +107,33 @@ describe.each(IMPLEMENTATIONS)("trip path ($name)", ({AssertionError, geodesy, t
     expect(Object.isFrozen(decodeTripPath(event).stops[0])).toBe(true)
   })
 
-  const refusedCases = [
-    {name: "a character outside the format", path: () => ({...event, points: event.points + " "})},
-    {name: "text that ends inside a number", path: () => ({...event, stops: event.stops + "_"})},
-    {name: "a stop of two numbers", path: () => ({...event, stops: "??"})},
-    {name: "no point", path: () => ({...event, points: ""})},
-    // A second stop at -1 m: the number -1 is written as "@".
-    {name: "a stop before the stop before it", path: () => ({...event, stops: "???" + "@??"})}
-  ]
-
-  test.each(refusedCases)("refused: $name", ({path}) => {
-    const refusedPath = path()
-    expect(() => decodeTripPath(refusedPath)).toThrow(AssertionError)
+  test.each(refusalCases)("refused: $name", (refusal) => {
+    const refusedPath = refusedEvent(refusal, event)
+    const failing = () => decodeTripPath(refusedPath)
+    expect(failing).toThrow(AssertionError)
+    expect(failing).toThrow(new AssertionError(refusal.failure))
   })
+
+  // Distances written as text: JavaScript compares "10" before "9" as text,
+  // and the binding takes no value a caller hands as a number unless it is one.
+  test("a built path whose stop distances are text is refused", () => {
+    const textStops = [{distanceMeters: "9"}, {distanceMeters: "10"}]
+    const parts = {tripId: event.trip_id, routeId: event.route_id, serviceDateMs: event.service_date_ms, points: [[0, 0]], stops: textStops}
+    expect(() => tripPathOf(parts)).toThrow(AssertionError)
+  })
+})
+
+// The page's bounded cache holds the page's own objects, so the web keeps it
+// in JavaScript and the WebAssembly binding exports none; an entry runs these
+// cases where its trip path module holds the cache.
+function holdsTripPathCache({tripPath}) {
+  return "withTripPaths" in tripPath
+}
+
+const cacheImplementations = implementationsWith("tripPath").filter(holdsTripPathCache)
+
+describe.each(cacheImplementations)("trip path cache ($name)", ({tripPath}) => {
+  const {TRIP_PATH_COUNT_MAX, tripPathKey, withTripPaths} = tripPath
 
   function heldPath(name) {
     return {key: tripPathKey({tripId: "trip_" + name, serviceDateMs: event.service_date_ms})}

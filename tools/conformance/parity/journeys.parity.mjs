@@ -9,7 +9,7 @@
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {commands} from "vitest/browser"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 const QUERY_COUNT = 200
@@ -23,7 +23,7 @@ const LCG_MODULUS = 4294967296
 const TEXT_DECODER = new TextDecoder()
 
 // The reference every other implementation is compared with.
-const [reference] = IMPLEMENTATIONS
+const [reference, ...others] = implementationsWith("routingJourneys")
 const {FetchKind, FromKind, StepKind, TimeKind} = reference.routingJourneys
 
 // The benchmark's generator: the same draws in every run, as fractions of the
@@ -143,7 +143,7 @@ function journeysOfKind({kind}) {
     const request = requestOf({query, kind})
     const expected = await answerOf({routingJourneys: reference.routingJourneys, request})
 
-    for (const implementation of IMPLEMENTATIONS.slice(1)) {
+    for (const implementation of others) {
       const answer = await answerOf({routingJourneys: implementation.routingJourneys, request})
       expect(answer, implementation.name).toStrictEqual(expected)
     }

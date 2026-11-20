@@ -12,7 +12,7 @@
 
 import {beforeAll, describe, expect, test} from "vitest"
 import {fixtureBytes} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const FIXTURE_DIRECTORY = "routing/trip-paths-v1/"
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -77,7 +77,7 @@ function fetchSummary(fetch) {
   return [fetch.kind, fetch.path, fetch.serviceDateMs]
 }
 
-describe.each(IMPLEMENTATIONS)("trip path files ($name)", (implementation) => {
+describe.each(implementationsWith("scheduledPath", "tripPath", "tripPathFiles", "tripPathShard"))("trip path files ($name)", (implementation) => {
   const {AssertionError, scheduledPath, tripPath, tripPathFiles, tripPathShard} = implementation
   const {
     FILE_RETRY_MS,

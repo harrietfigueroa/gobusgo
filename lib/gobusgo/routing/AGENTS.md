@@ -16,7 +16,7 @@ A snapshot is built from the route schedule view, which holds each route's `sche
 
 ## Format, version 2
 
-`Gobusgo.Routing.SnapshotFormat` writes and reads the files; `assets/js/core/routing_snapshot.js` reads them in the browser. Every number is little-endian. Every file starts with a 16-byte header: the magic `GBRT`, the format version as a `u16`, the kind as a `u16` (1 stops, 2 trips, 3 transfers, 4 connections, 5 positions), the record count as a `u32`, and a `u32` of zero.
+`Gobusgo.Routing.SnapshotFormat` writes and reads the files; `assets/js/core/routing_snapshot.js` reads them in the browser, and `core/gobusgo-core/src/routing_snapshot.rs` reads them in the Rust core, beside it: the web callers stay on the JavaScript until GOB-440's facade loads the core in every bundle (GOB-426). Every number is little-endian. Every file starts with a 16-byte header: the magic `GBRT`, the format version as a `u16`, the kind as a `u16` (1 stops, 2 trips, 3 transfers, 4 connections, 5 positions), the record count as a `u32`, and a `u32` of zero.
 
 | Kind | Record |
 | --- | --- |
@@ -38,7 +38,7 @@ A position is held in microdegrees as an `i32` because that is a tenth of a mete
 
 Version 2 added the positions file and changed nothing in the other four kinds. Version 1 is not read anywhere: the JavaScript reader refuses it, and the offline bundles a browser saved under it are re-fetched from the manifest, whose paths all changed with the version.
 
-The shared fixtures are in `test/fixtures/routing/v2/`: one file of each kind and `expected.json`, written from `Gobusgo.Test.RoutingSnapshotFixture` by `test/scripts/routing_snapshot_fixtures.exs`. The Elixir tests check that the records encode to the files byte for byte; the conformance suite's `tools/conformance/tests/routing_snapshot.test.mjs` checks that each implementation of the reader decodes them to `expected.json`, and CI runs it. A change to the format raises the version, writes a directory for the new version, and keeps the old one while a reader of it exists.
+The shared fixtures are in `test/fixtures/routing/v2/`: one file of each kind and `expected.json`, written from `Gobusgo.Test.RoutingSnapshotFixture` by `test/scripts/routing_snapshot_fixtures.exs`. The Elixir tests check that the records encode to the files byte for byte; the conformance suite's `tools/conformance/tests/routing_snapshot.test.mjs` checks that each implementation of the reader decodes them to `expected.json` and refuses each file of `refusals.json`, a fixture with one rule of the format broken, for the reason it names, and CI runs it; `cargo test` runs the same cases against the Rust reader. A change to the format raises the version, writes a directory for the new version, and keeps the old one while a reader of it exists.
 
 ## Names file, version 1
 

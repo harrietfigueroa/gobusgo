@@ -1,16 +1,25 @@
 // Decodes the shared routing snapshot fixtures and compares each file's
 // records with the expected records the fixtures hold beside them, then
-// checks that a file cut short, a position past the pole, and a file of
-// another kind are refused.
+// checks that each file of the shared refusal table, a fixture with one rule
+// of the format broken, is refused for the reason the table names.
 
 import {beforeAll, describe, expect, test} from "vitest"
+import {editedBytes} from "../bytes.mjs"
 import {fixtureBytes, fixtureJson} from "../fixtures.mjs"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const DIRECTORY = "routing/v2/"
-const POSITION_BYTES = 8
-const LAT_MICRODEGREES_OUT_OF_RANGE = 90000001
 const BOOLEAN_COLUMNS = ["boarding", "alighting"]
+const DECODER_NAMES = Object.freeze({
+  stops: "decodeStops",
+  trips: "decodeTrips",
+  transfers: "decodeTransfers",
+  connections: "decodeConnections",
+  positions: "decodePositions"
+})
+
+// The cases name the tests, so they are read before the tests are collected.
+const {cases: refusalCases} = await fixtureJson(DIRECTORY + "refusals.json")
 
 function cell({columns, name, index}) {
   const value = columns[name][index]
@@ -52,7 +61,7 @@ beforeAll(async () => {
   }
 })
 
-describe.each(IMPLEMENTATIONS)("routing snapshot ($name)", ({routingSnapshot}) => {
+describe.each(implementationsWith("routingSnapshot"))("routing snapshot ($name)", ({routingSnapshot}) => {
   const {DecodeKind, RefusalReason} = routingSnapshot
 
   function records(result) {
@@ -88,24 +97,9 @@ describe.each(IMPLEMENTATIONS)("routing snapshot ($name)", ({routingSnapshot}) =
     expect(rows(columns)).toStrictEqual(expected.positions)
   })
 
-  test("a connections file cut short", () => {
-    const cutShort = files.connections.slice(0, files.connections.byteLength - 1)
-    const refusal = {kind: DecodeKind.refused, reason: RefusalReason.invalidLength}
-    expect(routingSnapshot.decodeConnections(cutShort)).toStrictEqual(refusal)
-  })
-
-  // The first position moved one microdegree past the north pole.
-  test("a position past the pole", () => {
-    const outOfRange = files.positions.slice(0)
-    const outOfRangeView = new DataView(outOfRange)
-    const firstPositionOffset = outOfRange.byteLength - POSITION_BYTES * expected.stops.length
-    outOfRangeView.setInt32(firstPositionOffset, LAT_MICRODEGREES_OUT_OF_RANGE, true)
-    const refusal = {kind: DecodeKind.refused, reason: RefusalReason.invalidPosition}
-    expect(routingSnapshot.decodePositions(outOfRange)).toStrictEqual(refusal)
-  })
-
-  test("a stops file read as positions", () => {
-    const refusal = {kind: DecodeKind.refused, reason: RefusalReason.invalidHeader}
-    expect(routingSnapshot.decodePositions(files.stops)).toStrictEqual(refusal)
+  test.each(refusalCases)("refused: $name", ({file, decoder, edits, reason}) => {
+    const bytes = editedBytes(new Uint8Array(files[file]), edits)
+    const refusal = {kind: DecodeKind.refused, reason: RefusalReason[reason]}
+    expect(routingSnapshot[DECODER_NAMES[decoder]](bytes.buffer)).toStrictEqual(refusal)
   })
 })

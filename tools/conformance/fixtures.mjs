@@ -5,6 +5,7 @@
 // https://vitest.dev/api/browser/commands — checked 2026-11-14
 
 import {server} from "vitest/browser"
+import {assertCondition} from "../../assets/js/core/assert.js"
 
 // The commands resolve a path against this package's directory.
 const FIXTURES_PATH = "../../test/fixtures/"
@@ -25,4 +26,24 @@ export async function fixtureJson(path) {
 
 function charCode(character) {
   return character.charCodeAt(0)
+}
+
+// The numbers JSON cannot write, by the strings a fixture writes them as.
+const NUMBERS_BY_NAME = Object.freeze({
+  NaN: Number.NaN,
+  Infinity: Number.POSITIVE_INFINITY,
+  "-Infinity": Number.NEGATIVE_INFINITY
+})
+
+/**
+ * The number a fixture's `value` writes: a JSON number, or one of the strings
+ * `NaN`, `Infinity`, and `-Infinity` for the numbers JSON cannot write.
+ */
+export function fixtureNumber(value) {
+  if (typeof value === "number") {
+    return value
+  }
+  const isNamedNumber = Object.hasOwn(NUMBERS_BY_NAME, value)
+  assertCondition(isNamedNumber, `fixtures: ${value} stands for no number`)
+  return NUMBERS_BY_NAME[value]
 }

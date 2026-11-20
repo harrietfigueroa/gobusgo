@@ -6,7 +6,7 @@
 // and the closes kept for the server.
 
 import {describe, expect, test} from "vitest"
-import {IMPLEMENTATIONS} from "../implementations.mjs"
+import {implementationsWith} from "../implementations.mjs"
 
 const NAME_COUNT_MAX = 3
 const ROUTE_COUNT_MAX = 2
@@ -52,7 +52,7 @@ function stopIdOf(_value, index) {
   return `stop_${index}`
 }
 
-describe.each(IMPLEMENTATIONS)("offline answers ($name)", ({AssertionError, offlineAnswers, tripPlan}) => {
+describe.each(implementationsWith("offlineAnswers", "tripPlan"))("offline answers ($name)", ({AssertionError, offlineAnswers, tripPlan}) => {
   const {ROUTE_COLOR_DEFAULT} = tripPlan
   const {
     DEFERRED_CLOSE_COUNT_MAX,
