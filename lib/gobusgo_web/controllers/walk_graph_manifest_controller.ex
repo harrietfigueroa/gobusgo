@@ -1,0 +1,85 @@
+defmodule GobusgoWeb.WalkGraphManifestController do
+  @retry_after_seconds 60
+
+  @moduledoc """
+  Serves the manifest of the published walk graph files, which a build stores
+  through `Gobusgo.Writer` under a name of its own per build. The controller
+  reads the newest of them through `Gobusgo.Reader`
+  (`Gobusgo.WalkGraph.Publication.manifest/1`) on every request, so it serves
+  whichever backend the application stores through.
+
+  The manifest names the index by a hash that never changes content, and the
+  shards by the build identifier it holds, so it is the one thing a reader
+  revalidates. The statuses, headers, and body are described in
+  `priv/openapi.json`; while no build is stored, or the stored manifest
+  cannot be read or is not the JSON object a build writes, the answer asks
+  the reader to retry after #{@retry_after_seconds} seconds.
+  """
+
+  use Phoenix.Controller, formats: [:json]
+
+  require Logger
+
+  alias Gobusgo.Schema
+  alias Gobusgo.WalkGraph.Publication
+  alias GobusgoWeb.Problem
+
+  @manifest_schema {:map,
+                    %{
+                      "buildId" => :string,
+                      "builtAt" => :string,
+                      "index" => {:map, %{"path" => :string}},
+                      "kindVersion" => :integer
+                    }}
+
+  @doc "Answers the manifest, that the client holds it already, or that there is none."
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def show(conn, _params) do
+    case read() do
+      {:ok, body} -> respond(conn, body)
+      {:error, reason} -> unavailable(conn, reason)
+    end
+  end
+
+  defp read do
+    with {:ok, body} <- Publication.manifest([]),
+         {:ok, decoded} <- decode(body),
+         nil <- Schema.mismatch(decoded, @manifest_schema) do
+      {:ok, body}
+    else
+      {:error, reason} -> {:error, reason}
+      _mismatch -> {:error, :malformed_manifest}
+    end
+  end
+
+  defp decode(body) do
+    case JSON.decode(body) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, _reason} -> {:error, :malformed_manifest}
+    end
+  end
+
+  defp respond(conn, body) do
+    etag = ~s(") <> Base.encode16(:crypto.hash(:sha256, body), case: :lower) <> ~s(")
+    conn = conn |> put_resp_header("cache-control", "no-cache") |> put_resp_header("etag", etag)
+
+    if etag in get_req_header(conn, "if-none-match") do
+      send_resp(conn, 304, "")
+    else
+      conn |> put_resp_content_type("application/json") |> send_resp(200, body)
+    end
+  end
+
+  defp unavailable(conn, :not_found), do: respond_unavailable(conn)
+
+  defp unavailable(conn, reason) do
+    Logger.error("Walk graph manifest not readable", reason: inspect(reason))
+    respond_unavailable(conn)
+  end
+
+  defp respond_unavailable(conn) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(@retry_after_seconds))
+    |> Problem.respond(%{status: 503, detail: "No walk graph build is available yet."})
+  end
+end

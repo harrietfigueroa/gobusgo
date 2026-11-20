@@ -10,6 +10,9 @@ import {assertPosition} from "./math/geodesy.js"
 import {LegKind} from "./routing_engine.js"
 import {FailureReason, JourneysKind, ServiceDateKind, WINDOW_SECONDS, serviceDateAt} from "./routing_journeys.js"
 import {LEG_KIND_TO_POINT} from "./point_journeys.js"
+import {RideLineKind, ridePathLine} from "./ride_path.js"
+import {PREVIOUS_DATE_OFFSET, previousDate} from "./routing_snapshot.js"
+import {tripPathKey} from "./trip_path.js"
 
 /** The two ends of a trip. */
 export const TripEnd = Object.freeze({from: "from", to: "to"})
@@ -753,15 +756,173 @@ export function legCoordinates({journey, leg, origin}) {
   }
 }
 
+const LegTripKind = Object.freeze({trip: "trip", none: "none"})
+
 /**
- * What the map draws of `journey`: a line per ride through the stops it
- * passes, in its route's color from `names`, a line per walk, and a point
- * at each end, as a GeoJSON feature collection, with the bounds of every
- * coordinate in it, a BoundsKind member. `origin` is the rider's position in degrees for a
- * journey from it, or null. A stop with no known position is left out of
- * its line, and a line with fewer than two points is not drawn.
+ * The trips `journey` rides, each `{tripId, routeId, serviceDateMs}` once,
+ * in riding order, the service day of each the start of its date in
+ * `serviceDayStartsMs`: a run of the previous date's schedule takes that
+ * date's start, and a ride whose date has no start is left out.
  */
-export function journeyFeatures({journey, names, origin}) {
+export function rideTripsOf({journey, serviceDayStartsMs}) {
+  const trips = []
+  const keys = new Set()
+
+  for (const leg of journey.legs) {
+    const found = legTripOf({journey, leg, serviceDayStartsMs})
+    const isNew = found.kind === LegTripKind.trip && keys.has(tripPathKey(found.trip)) === false
+
+    if (isNew) {
+      keys.add(tripPathKey(found.trip))
+      trips.push(found.trip)
+    }
+  }
+
+  return trips
+}
+
+// The trip a ride of `journey` runs, on the service day it starts on, or
+// none for a leg that is no ride and a ride whose date has no start.
+function legTripOf({journey, leg, serviceDayStartsMs}) {
+  if (leg.kind !== LegKind.ride) {
+    return {kind: LegTripKind.none}
+  }
+
+  let serviceDate = journey.serviceDate
+
+  if (leg.serviceDayOffset === PREVIOUS_DATE_OFFSET) {
+    serviceDate = previousDate(journey.serviceDate)
+  }
+
+  const serviceDateMs = serviceDayStartsMs[serviceDate]
+
+  if (!Number.isSafeInteger(serviceDateMs)) {
+    return {kind: LegTripKind.none}
+  }
+
+  return {kind: LegTripKind.trip, trip: {tripId: leg.tripId, routeId: leg.routeId, serviceDateMs}}
+}
+
+// The coordinates a ride is drawn along: its trip's path in `paths` where
+// the page holds it and it serves the ride, and `stopCoordinates`, the line
+// through the ride's stops, otherwise.
+function rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs}) {
+  const found = legTripOf({journey, leg, serviceDayStartsMs})
+
+  if (found.kind === LegTripKind.none) {
+    return stopCoordinates
+  }
+
+  const path = paths.get(tripPathKey(found.trip))
+
+  if (path === undefined) {
+    return stopCoordinates
+  }
+
+  const line = ridePathLine({path, leg, stopPositions: journey.stopPositions})
+
+  switch (line.kind) {
+    case RideLineKind.slice:
+      return line.coordinates
+    case RideLineKind.fallback:
+      return stopCoordinates
+    default:
+      return unreachable(line.kind, "trip plan: a ride line of unknown kind")
+  }
+}
+
+const WalkEndsKind = Object.freeze({ends: "ends", none: "none"})
+const WALK_END_COUNT = 2
+
+/**
+ * The two ends of `leg`, each `{lat, lon}` in degrees, when it is a walk
+ * whose ends both have a position: `{kind: "ends", from, to}`, and
+ * `{kind: "none"}` for a ride and for a walk with an end of no known
+ * position. `origin` is the rider's position, or null, as `journeyFeatures`
+ * takes it.
+ */
+export function walkEndsOf({journey, leg, origin}) {
+  if (leg.kind === LegKind.ride) {
+    return {kind: WalkEndsKind.none}
+  }
+
+  const originCoordinates = []
+
+  if (origin !== null) {
+    originCoordinates.push([origin.lon, origin.lat])
+  }
+
+  const coordinates = legCoordinates({journey, leg, origin: originCoordinates})
+
+  if (coordinates.length !== WALK_END_COUNT) {
+    return {kind: WalkEndsKind.none}
+  }
+
+  const [[fromLon, fromLat], [toLon, toLat]] = coordinates
+  return {kind: WalkEndsKind.ends, from: {lat: fromLat, lon: fromLon}, to: {lat: toLat, lon: toLon}}
+}
+
+/** The key a walk's line is held by: its two ends. */
+export function walkKey({from, to}) {
+  return `${from.lat},${from.lon}>${to.lat},${to.lon}`
+}
+
+/**
+ * The ends of every walk of `journey`, each `{from, to}` once, in riding
+ * order, so a caller can ask for the lines they are drawn along.
+ */
+export function journeyWalkEnds({journey, origin}) {
+  const walks = []
+  const keys = new Set()
+
+  for (const leg of journey.legs) {
+    const found = walkEndsOf({journey, leg, origin})
+    const isNew = found.kind === WalkEndsKind.ends && keys.has(walkKey(found)) === false
+
+    if (isNew) {
+      keys.add(walkKey(found))
+      walks.push({from: found.from, to: found.to})
+    }
+  }
+
+  return walks
+}
+
+// The coordinates a walk is drawn along: its line in `walkLines` where the
+// page holds one, and `stopCoordinates`, the straight line between its ends,
+// otherwise.
+function walkLineOf({journey, leg, origin, walkLines, stopCoordinates}) {
+  const ends = walkEndsOf({journey, leg, origin})
+
+  if (ends.kind === WalkEndsKind.none) {
+    return stopCoordinates
+  }
+
+  const line = walkLines.get(walkKey(ends))
+
+  if (line === undefined) {
+    return stopCoordinates
+  }
+
+  return line
+}
+
+/**
+ * What the map draws of `journey`: a line per ride in its route's color from
+ * `names`, a line per walk, and a point at each end, as a GeoJSON feature
+ * collection, with the bounds of every coordinate this call draws, a BoundsKind member.
+ * A ride follows its trip's path where `paths`, the decoded paths by
+ * `tripPathKey`, holds one that serves it, cut between its boarding and
+ * alighting stops, and otherwise runs through the stops it passes;
+ * `serviceDayStartsMs` names the service day each trip runs on. A walk
+ * follows its line in `walkLines`, the coordinates by `walkKey` of the ends
+ * `walkEndsOf` names, where the page holds one, and otherwise runs straight
+ * between its ends. `origin` is the rider's position in degrees for a
+ * journey from it, or null. A stop with no known position is left out of its
+ * line, a line with fewer than two points is not drawn, and the ends stand
+ * at the first and last stop.
+ */
+export function journeyFeatures({journey, names, origin, paths, walkLines, serviceDayStartsMs}) {
   const originCoordinates = []
 
   if (origin !== null) {
@@ -770,21 +931,30 @@ export function journeyFeatures({journey, names, origin}) {
 
   const lines = []
   const points = []
+  const drawn = []
 
   for (const leg of journey.legs) {
-    const coordinates = legCoordinates({journey, leg, origin: originCoordinates})
+    const stopCoordinates = legCoordinates({journey, leg, origin: originCoordinates})
+    let coordinates
     let properties = {kind: FeatureKind.walk}
 
     if (leg.kind === LegKind.ride) {
       properties = {kind: FeatureKind.ride, color: routeChip({names, routeId: leg.routeId}).color}
+      coordinates = rideLineOf({journey, leg, stopCoordinates, paths, serviceDayStartsMs})
+    } else {
+      coordinates = walkLineOf({journey, leg, origin, walkLines, stopCoordinates})
     }
 
     if (coordinates.length >= LINE_POINT_COUNT_MIN) {
       lines.push(lineFeature({coordinates, properties}))
     }
 
-    for (const coordinate of coordinates) {
+    for (const coordinate of stopCoordinates) {
       points.push(coordinate)
+    }
+
+    for (const coordinate of coordinates) {
+      drawn.push(coordinate)
     }
   }
 
@@ -796,7 +966,7 @@ export function journeyFeatures({journey, names, origin}) {
     features.push(pointFeature({coordinate: points[points.length - 1], kind: FeatureKind.destination}))
   }
 
-  return {collection: {type: "FeatureCollection", features}, bounds: boundsOf(points)}
+  return {collection: {type: "FeatureCollection", features}, bounds: boundsOf([...points, ...drawn])}
 }
 
 // The bounds of `points`, [[west, south], [east, north]], or none.

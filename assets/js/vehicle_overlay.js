@@ -182,9 +182,10 @@ class VehicleOverlay {
     // The label of the first bus of the chosen journey, a `yourBusLabel`
     // answer, which the canvas writes beside that vehicle while it draws it.
     this.yourBus = {kind: YourBusLabelKind.none}
-    // The route whose line is emphasized, or null; the markers of every
-    // other route are drawn dimmed, as the map's layers draw them.
-    this.emphasizedRouteId = null
+    // The routes whose lines are emphasized, none for an empty array; the
+    // markers of every other route are drawn dimmed, as the map's layers
+    // draw them.
+    this.emphasizedRouteIds = []
 
     this.onRender = () => {
       const isShowing = this.vehiclesAt !== null || this.tiesAt !== null
@@ -271,16 +272,17 @@ class VehicleOverlay {
     this.drawIfRunning()
   }
 
-  // Draws the markers of routes other than `routeId` dimmed while the canvas
-  // draws them, as the map's layers dim those in the source; null dims none.
-  markEmphasis(routeId) {
-    this.emphasizedRouteId = routeId
+  // Draws the markers of routes other than `routeIds` dimmed while the canvas
+  // draws them, as the map's layers dim those in the source; an empty array
+  // dims none.
+  markEmphasis(routeIds) {
+    this.emphasizedRouteIds = routeIds
     this.drawIfRunning()
   }
 
   // The share of its opacity a vehicle's marker is drawn at.
   alphaOf(properties) {
-    return markerAlpha({emphasizedRouteId: this.emphasizedRouteId, routeId: properties.routeId})
+    return markerAlpha({emphasizedRouteIds: this.emphasizedRouteIds, routeId: properties.routeId})
   }
 
   // Clears the ties' canvas and draws no tie until they are shown again.

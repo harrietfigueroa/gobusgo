@@ -1,0 +1,3953 @@
+{
+ "limits": {
+  "distanceMetersMax": 1500,
+  "snapMetersMax": 100,
+  "tileCountMax": 16,
+  "edgeCountMax": 250000,
+  "visitedNodeCountMax": 30000
+ },
+ "indexTileKeys": [
+  "-3_-4",
+  "-3_-5",
+  "4761_-8153",
+  "4761_-8155",
+  "4761_-8156"
+ ],
+ "shardTileKeys": [
+  "4761_-8156",
+  "4761_-8155"
+ ],
+ "extraShards": [
+  {
+   "tile": [
+    -3,
+    -5
+   ],
+   "pieces": [
+    {
+     "class": 4,
+     "points": [
+      [
+       -2482,
+       -7100
+      ],
+      [
+       -2482,
+       -7000
+      ],
+      [
+       -2382,
+       -7000
+      ],
+      [
+       -2382,
+       -6800
+      ],
+      [
+       -2482,
+       -6800
+      ],
+      [
+       -2482,
+       -6700
+      ]
+     ]
+    },
+    {
+     "class": 4,
+     "points": [
+      [
+       -2518,
+       -7100
+      ],
+      [
+       -2518,
+       -6700
+      ]
+     ]
+    },
+    {
+     "class": 4,
+     "points": [
+      [
+       -2560,
+       -6400
+      ],
+      [
+       -2560,
+       -6000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "tile": [
+    -3,
+    -4
+   ],
+   "pieces": [
+    {
+     "class": 4,
+     "points": [
+      [
+       -2560,
+       -6000
+      ],
+      [
+       -2560,
+       -5000
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "queries": [
+  {
+   "name": "north west to north middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 149.9166504540423
+  },
+  {
+   "name": "north west to north east",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 299.8333009091498
+  },
+  {
+   "name": "north west to south west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 166.7926203503057
+  },
+  {
+   "name": "north west to south middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 316.71142099106726
+  },
+  {
+   "name": "north west to south east",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 466.63022163289406
+  },
+  {
+   "name": "north west to sidewalk middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 77.83655616368668
+  },
+  {
+   "name": "north west to crossing middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 377.671863920168
+  },
+  {
+   "name": "north west to island west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north west to island middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north west to steps",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north west to east shard start",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1066.3054241970056
+  },
+  {
+   "name": "north west to east shard end",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1516.0618261203554
+  },
+  {
+   "name": "north west to north west off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 26.111158733924576
+  },
+  {
+   "name": "north west to south middle off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 341.2989255826976
+  },
+  {
+   "name": "north west to east shard off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1502.468597560461
+  },
+  {
+   "name": "north west to off the graph",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "north west to far north",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "north middle to north east",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 149.91665045510751
+  },
+  {
+   "name": "north middle to south west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 316.71142099106726
+  },
+  {
+   "name": "north middle to south middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 466.6302216318288
+  },
+  {
+   "name": "north middle to south east",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 316.7114209921325
+  },
+  {
+   "name": "north middle to sidewalk middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 227.75421004139474
+  },
+  {
+   "name": "north middle to crossing middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 227.75421004245996
+  },
+  {
+   "name": "north middle to island west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north middle to island middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north middle to steps",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north middle to east shard start",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 916.386623556244
+  },
+  {
+   "name": "north middle to east shard end",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1366.143025479594
+  },
+  {
+   "name": "north middle to north west off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 146.04436442086796
+  },
+  {
+   "name": "north middle to south middle off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 468.7300523404301
+  },
+  {
+   "name": "north middle to east shard off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1352.549911595676
+  },
+  {
+   "name": "north middle to off the graph",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "north middle to far north",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "north east to south west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 466.63022163289406
+  },
+  {
+   "name": "north east to south middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 316.7114209921325
+  },
+  {
+   "name": "north east to south east",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 166.7926203503057
+  },
+  {
+   "name": "north east to sidewalk middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 377.671863920168
+  },
+  {
+   "name": "north east to crossing middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 77.83655616368668
+  },
+  {
+   "name": "north east to island west",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north east to island middle",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north east to steps",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "north east to east shard start",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 766.4678229144172
+  },
+  {
+   "name": "north east to east shard end",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1216.224224837767
+  },
+  {
+   "name": "north east to north west off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 295.96087152928084
+  },
+  {
+   "name": "north east to south middle off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 318.81107968477556
+  },
+  {
+   "name": "north east to east shard off street",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1202.6312256298256
+  },
+  {
+   "name": "north east to off the graph",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "north east to far north",
+   "from": {
+    "lat": 47.6145,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "south west to south middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 149.9209508017926
+  },
+  {
+   "name": "south west to south east",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 299.84190160465045
+  },
+  {
+   "name": "south west to sidewalk middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 88.95606418661902
+  },
+  {
+   "name": "south west to crossing middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 388.7956722925632
+  },
+  {
+   "name": "south west to island west",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south west to island middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south west to steps",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south west to east shard start",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 899.5257048128861
+  },
+  {
+   "name": "south west to east shard end",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1349.2885572193293
+  },
+  {
+   "name": "south west to north west off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 192.90399410307347
+  },
+  {
+   "name": "south west to south middle off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 174.5086166532911
+  },
+  {
+   "name": "south west to east shard off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1335.695006147405
+  },
+  {
+   "name": "south west to off the graph",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "south west to far north",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "south middle to south east",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 149.92095080285785
+  },
+  {
+   "name": "south middle to sidewalk middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 238.8758682390585
+  },
+  {
+   "name": "south middle to crossing middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 238.87586824012374
+  },
+  {
+   "name": "south middle to island west",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south middle to island middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south middle to steps",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south middle to east shard start",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 749.6047540110935
+  },
+  {
+   "name": "south middle to east shard end",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1199.3676064175365
+  },
+  {
+   "name": "south middle to north west off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 342.82265139885294
+  },
+  {
+   "name": "south middle to south middle off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 24.58749383972576
+  },
+  {
+   "name": "south middle to east shard off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1185.7741700202187
+  },
+  {
+   "name": "south middle to off the graph",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "south middle to far north",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "south east to sidewalk middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 388.7956722925632
+  },
+  {
+   "name": "south east to crossing middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 88.95606418661902
+  },
+  {
+   "name": "south east to island west",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south east to island middle",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south east to steps",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "south east to east shard start",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 599.6838032082356
+  },
+  {
+   "name": "south east to east shard end",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1049.4466556146788
+  },
+  {
+   "name": "south east to north west off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 462.75757723760694
+  },
+  {
+   "name": "south east to south middle off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 152.0204482315226
+  },
+  {
+   "name": "south east to east shard off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1035.8533338919674
+  },
+  {
+   "name": "south east to off the graph",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "south east to far north",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "sidewalk middle to crossing middle",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 455.51042691999754
+  },
+  {
+   "name": "sidewalk middle to island west",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "sidewalk middle to island middle",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "sidewalk middle to steps",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "sidewalk middle to east shard start",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 988.4748885033864
+  },
+  {
+   "name": "sidewalk middle to east shard end",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1438.2343006617702
+  },
+  {
+   "name": "sidewalk middle to north west off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 103.94781524005775
+  },
+  {
+   "name": "sidewalk middle to south middle off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 263.4634480855338
+  },
+  {
+   "name": "sidewalk middle to east shard off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1424.6409215957822
+  },
+  {
+   "name": "sidewalk middle to off the graph",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "sidewalk middle to far north",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "crossing middle to island west",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "crossing middle to island middle",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "crossing middle to steps",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "crossing middle to east shard start",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 688.6352803974421
+  },
+  {
+   "name": "crossing middle to east shard end",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1138.3946925558257
+  },
+  {
+   "name": "crossing middle to north west off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 373.7993341994508
+  },
+  {
+   "name": "crossing middle to south middle off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 240.97545167600384
+  },
+  {
+   "name": "crossing middle to east shard off street",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1124.8015428405124
+  },
+  {
+   "name": "crossing middle to off the graph",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "crossing middle to far north",
+   "from": {
+    "lat": 47.6138,
+    "lon": -122.332
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "island west to island middle",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 149.90661590970853
+  },
+  {
+   "name": "island west to steps",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to east shard start",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to east shard end",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to north west off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to south middle off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to east shard off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island west to off the graph",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "island west to far north",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "island middle to steps",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to east shard start",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to east shard end",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to north west off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to south middle off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to east shard off street",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "island middle to off the graph",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "island middle to far north",
+   "from": {
+    "lat": 47.618,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "steps to east shard start",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "steps to east shard end",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "steps to north west off street",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "steps to south middle off street",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "steps to east shard off street",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "steps to off the graph",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "steps to far north",
+   "from": {
+    "lat": 47.6113,
+    "lon": -122.336
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "east shard start to east shard end",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 449.7628524064431
+  },
+  {
+   "name": "east shard start to north west off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1062.4322064217902
+  },
+  {
+   "name": "east shard start to south middle off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 751.7049394868493
+  },
+  {
+   "name": "east shard start to east shard off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 436.16998938215784
+  },
+  {
+   "name": "east shard start to off the graph",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "east shard start to far north",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.324
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "east shard end to north west off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "to": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1512.1881783101937
+  },
+  {
+   "name": "east shard end to south middle off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1201.4683079286106
+  },
+  {
+   "name": "east shard end to east shard off street",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 31.383731837157466
+  },
+  {
+   "name": "east shard end to off the graph",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "east shard end to far north",
+   "from": {
+    "lat": 47.613,
+    "lon": -122.318
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "north west off street to south middle off street",
+   "from": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "to": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 367.4101624411534
+  },
+  {
+   "name": "north west off street to east shard off street",
+   "from": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1498.5949827188451
+  },
+  {
+   "name": "north west off street to off the graph",
+   "from": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "north west off street to far north",
+   "from": {
+    "lat": 47.6146,
+    "lon": -122.3358
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "south middle off street to east shard off street",
+   "from": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "to": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "found",
+   "meters": 1187.8748543309746
+  },
+  {
+   "name": "south middle off street to off the graph",
+   "from": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "south middle off street to far north",
+   "from": {
+    "lat": 47.61288,
+    "lon": -122.33385
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "east shard off street to off the graph",
+   "from": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "to": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "east shard off street to far north",
+   "from": {
+    "lat": 47.61308,
+    "lon": -122.3183
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "off the graph to far north",
+   "from": {
+    "lat": 47.616,
+    "lon": -122.334
+   },
+   "to": {
+    "lat": 47.6345,
+    "lon": -122.336
+   },
+   "tiles": [
+    [
+     4761,
+     -8156
+    ],
+    [
+     4761,
+     -8155
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "tie first to tie second",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 262.4203681811642
+  },
+  {
+   "name": "tie first to long start",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie first to long stop",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "tie first to long near",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie first to long off the graph",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.07
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "tie second to long start",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie second to long stop",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "tooFar"
+  },
+  {
+   "name": "tie second to long near",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "disconnected"
+  },
+  {
+   "name": "tie second to long off the graph",
+   "from": {
+    "lat": -0.025,
+    "lon": -0.068
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long start to long stop",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 1334.3408296124376
+  },
+  {
+   "name": "long start to long near",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 133.43408526761954
+  },
+  {
+   "name": "long start to long off the graph",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.064
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long stop to long near",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "to": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "found",
+   "meters": 1245.384777476746
+  },
+  {
+   "name": "long stop to long off the graph",
+   "from": {
+    "lat": -0.0256,
+    "lon": -0.052
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  },
+  {
+   "name": "long near to long off the graph",
+   "from": {
+    "lat": -0.0254,
+    "lon": -0.063
+   },
+   "to": {
+    "lat": -0.023,
+    "lon": -0.063
+   },
+   "tiles": [
+    [
+     -3,
+     -5
+    ],
+    [
+     -3,
+     -4
+    ]
+   ],
+   "kind": "noPath",
+   "reason": "offGraph"
+  }
+ ]
+}
