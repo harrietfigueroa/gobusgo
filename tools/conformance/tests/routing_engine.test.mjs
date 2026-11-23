@@ -59,10 +59,10 @@ function isDirectCase(engineCase) {
 const directCase = cases.find(isDirectCase)
 assertCondition(directCase !== undefined, "routing engine conformance: no case named " + DIRECT_CASE_NAME)
 const {stopCount} = directCase.engine
-const STOP_A = directCase.stopIds.indexOf("A")
-const STOP_C = directCase.stopIds.indexOf("C")
-assertCondition(STOP_A >= 0, "routing engine conformance: the direct case has no stop A")
-assertCondition(STOP_C >= 0, "routing engine conformance: the direct case has no stop C")
+const stopA = directCase.stopIds.indexOf("A")
+const stopC = directCase.stopIds.indexOf("C")
+assertCondition(stopA >= 0, "routing engine conformance: the direct case has no stop A")
+assertCondition(stopC >= 0, "routing engine conformance: the direct case has no stop C")
 
 function typedColumns({columns, types}) {
   expect(Object.keys(columns)).toStrictEqual(Object.keys(types))
@@ -109,12 +109,12 @@ function isFlag(value) {
 }
 
 const origins = Object.freeze({
-  stopA: {kind: "stop", stop: STOP_A},
+  atStopA: {kind: "stop", stop: stopA},
   pastLastStop: {kind: "stop", stop: stopCount},
   noStarts: {kind: "starts", starts: []},
   startPastLastStop: {kind: "starts", starts: [{stop: stopCount, walkS: 0}]},
-  fractionalWalk: {kind: "starts", starts: [{stop: STOP_A, walkS: 0.5}]},
-  negativeWalk: {kind: "starts", starts: [{stop: STOP_A, walkS: -1}]},
+  fractionalWalk: {kind: "starts", starts: [{stop: stopA, walkS: 0.5}]},
+  negativeWalk: {kind: "starts", starts: [{stop: stopA, walkS: -1}]},
   unknownKind: {kind: "position", latitude: 0, longitude: 0}
 })
 
@@ -130,45 +130,45 @@ const failures = Object.freeze({
   startPastLastStop: "routing engine: the start stop " + stopCount + NOT_A_STOP,
   fractionalWalk: "routing engine: a start stop's walk is not whole seconds: 0.5",
   negativeWalk: "routing engine: a start stop's walk is negative: -1",
-  startNamedTwice: "routing engine: the start stop " + STOP_A + " is named twice",
+  startNamedTwice: "routing engine: the start stop " + stopA + " is named twice",
   unknownKind: "routing engine: an origin of unknown kind: position"
 })
 
 // Each query the engine refuses, by the rule it breaks, with the failure's message.
 const refusedQueries = [
-  {rule: "a target past the last stop", kind: QueryKind.leaving, query: {origin: origins.stopA, target: stopCount, departureS: 0}, failure: failures.targetPastLastStop},
-  {rule: "a negative target", kind: QueryKind.leaving, query: {origin: origins.stopA, target: -1, departureS: 0}, failure: failures.negativeTarget},
-  {rule: "a target that is no whole number", kind: QueryKind.leaving, query: {origin: origins.stopA, target: 0.5, departureS: 0}, failure: failures.fractionalTarget},
-  {rule: "a departure that is no whole number", kind: QueryKind.leaving, query: {origin: origins.stopA, target: STOP_C, departureS: 0.5}, failure: failures.fractionalDeparture},
-  {rule: "an origin stop past the last stop", kind: QueryKind.leaving, query: {origin: origins.pastLastStop, target: STOP_C, departureS: 0}, failure: failures.originPastLastStop},
-  {rule: "no start stop", kind: QueryKind.leaving, query: {origin: origins.noStarts, target: STOP_C, departureS: 0}, failure: failures.noStarts},
-  {rule: "a start stop past the last stop", kind: QueryKind.leaving, query: {origin: origins.startPastLastStop, target: STOP_C, departureS: 0}, failure: failures.startPastLastStop},
-  {rule: "a start's walk that is no whole number", kind: QueryKind.leaving, query: {origin: origins.fractionalWalk, target: STOP_C, departureS: 0}, failure: failures.fractionalWalk},
-  {rule: "a negative start walk", kind: QueryKind.leaving, query: {origin: origins.negativeWalk, target: STOP_C, departureS: 0}, failure: failures.negativeWalk},
-  {rule: "an origin of unknown kind", kind: QueryKind.leaving, query: {origin: origins.unknownKind, target: STOP_C, departureS: 0}, failure: failures.unknownKind},
-  {rule: "a target past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.stopA, target: stopCount, arrivalS: 0}, failure: failures.targetPastLastStop},
-  {rule: "a negative target", kind: QueryKind.arrivingBy, query: {origin: origins.stopA, target: -1, arrivalS: 0}, failure: failures.negativeTarget},
-  {rule: "a target that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.stopA, target: 0.5, arrivalS: 0}, failure: failures.fractionalTarget},
-  {rule: "an arrival that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.stopA, target: STOP_C, arrivalS: 0.5}, failure: failures.fractionalArrival},
-  {rule: "an origin stop past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.pastLastStop, target: STOP_C, arrivalS: 0}, failure: failures.originPastLastStop},
-  {rule: "no start stop", kind: QueryKind.arrivingBy, query: {origin: origins.noStarts, target: STOP_C, arrivalS: 0}, failure: failures.noStarts},
-  {rule: "a start stop past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.startPastLastStop, target: STOP_C, arrivalS: 0}, failure: failures.startPastLastStop},
-  {rule: "a start's walk that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.fractionalWalk, target: STOP_C, arrivalS: 0}, failure: failures.fractionalWalk},
-  {rule: "a negative start walk", kind: QueryKind.arrivingBy, query: {origin: origins.negativeWalk, target: STOP_C, arrivalS: 0}, failure: failures.negativeWalk},
+  {rule: "a target past the last stop", kind: QueryKind.leaving, query: {origin: origins.atStopA, target: stopCount, departureS: 0}, failure: failures.targetPastLastStop},
+  {rule: "a negative target", kind: QueryKind.leaving, query: {origin: origins.atStopA, target: -1, departureS: 0}, failure: failures.negativeTarget},
+  {rule: "a target that is no whole number", kind: QueryKind.leaving, query: {origin: origins.atStopA, target: 0.5, departureS: 0}, failure: failures.fractionalTarget},
+  {rule: "a departure that is no whole number", kind: QueryKind.leaving, query: {origin: origins.atStopA, target: stopC, departureS: 0.5}, failure: failures.fractionalDeparture},
+  {rule: "an origin stop past the last stop", kind: QueryKind.leaving, query: {origin: origins.pastLastStop, target: stopC, departureS: 0}, failure: failures.originPastLastStop},
+  {rule: "no start stop", kind: QueryKind.leaving, query: {origin: origins.noStarts, target: stopC, departureS: 0}, failure: failures.noStarts},
+  {rule: "a start stop past the last stop", kind: QueryKind.leaving, query: {origin: origins.startPastLastStop, target: stopC, departureS: 0}, failure: failures.startPastLastStop},
+  {rule: "a start's walk that is no whole number", kind: QueryKind.leaving, query: {origin: origins.fractionalWalk, target: stopC, departureS: 0}, failure: failures.fractionalWalk},
+  {rule: "a negative start walk", kind: QueryKind.leaving, query: {origin: origins.negativeWalk, target: stopC, departureS: 0}, failure: failures.negativeWalk},
+  {rule: "an origin of unknown kind", kind: QueryKind.leaving, query: {origin: origins.unknownKind, target: stopC, departureS: 0}, failure: failures.unknownKind},
+  {rule: "a target past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.atStopA, target: stopCount, arrivalS: 0}, failure: failures.targetPastLastStop},
+  {rule: "a negative target", kind: QueryKind.arrivingBy, query: {origin: origins.atStopA, target: -1, arrivalS: 0}, failure: failures.negativeTarget},
+  {rule: "a target that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.atStopA, target: 0.5, arrivalS: 0}, failure: failures.fractionalTarget},
+  {rule: "an arrival that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.atStopA, target: stopC, arrivalS: 0.5}, failure: failures.fractionalArrival},
+  {rule: "an origin stop past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.pastLastStop, target: stopC, arrivalS: 0}, failure: failures.originPastLastStop},
+  {rule: "no start stop", kind: QueryKind.arrivingBy, query: {origin: origins.noStarts, target: stopC, arrivalS: 0}, failure: failures.noStarts},
+  {rule: "a start stop past the last stop", kind: QueryKind.arrivingBy, query: {origin: origins.startPastLastStop, target: stopC, arrivalS: 0}, failure: failures.startPastLastStop},
+  {rule: "a start's walk that is no whole number", kind: QueryKind.arrivingBy, query: {origin: origins.fractionalWalk, target: stopC, arrivalS: 0}, failure: failures.fractionalWalk},
+  {rule: "a negative start walk", kind: QueryKind.arrivingBy, query: {origin: origins.negativeWalk, target: stopC, arrivalS: 0}, failure: failures.negativeWalk},
   {
     rule: "a start stop named twice",
     kind: QueryKind.arrivingBy,
     query: {
-      origin: {kind: "starts", starts: [{stop: STOP_A, walkS: LONGER_WALK_S}, {stop: STOP_A, walkS: SHORTER_WALK_S}]},
-      target: STOP_C,
+      origin: {kind: "starts", starts: [{stop: stopA, walkS: LONGER_WALK_S}, {stop: stopA, walkS: SHORTER_WALK_S}]},
+      target: stopC,
       arrivalS: 0
     },
     failure: failures.startNamedTwice
   },
-  {rule: "an origin of unknown kind", kind: QueryKind.arrivingBy, query: {origin: origins.unknownKind, target: STOP_C, arrivalS: 0}, failure: failures.unknownKind}
+  {rule: "an origin of unknown kind", kind: QueryKind.arrivingBy, query: {origin: origins.unknownKind, target: stopC, arrivalS: 0}, failure: failures.unknownKind}
 ]
 
-// The one connection of the direct case whose `column` holds `stop`.
+// The index of the one connection whose `column` holds `stop`.
 function onlyConnection({column, stop}) {
   const indices = []
 
@@ -182,14 +182,14 @@ function onlyConnection({column, stop}) {
   return indices[0]
 }
 
-const BOARD_AT_A = onlyConnection({column: directCase.engine.connections.departureStop, stop: STOP_A})
-const ALIGHT_AT_C = onlyConnection({column: directCase.engine.connections.arrivalStop, stop: STOP_C})
+const boardAtA = onlyConnection({column: directCase.engine.connections.departureStop, stop: stopA})
+const alightAtC = onlyConnection({column: directCase.engine.connections.arrivalStop, stop: stopC})
 
 // A start stop named twice, in both orders, so only keeping the shorter walk
 // passes whichever comes first.
 const twiceNamedStarts = [
-  {order: "the longer walk first", starts: [{stop: STOP_A, walkS: LONGER_WALK_S}, {stop: STOP_A, walkS: SHORTER_WALK_S}]},
-  {order: "the shorter walk first", starts: [{stop: STOP_A, walkS: SHORTER_WALK_S}, {stop: STOP_A, walkS: LONGER_WALK_S}]}
+  {order: "the longer walk first", starts: [{stop: stopA, walkS: LONGER_WALK_S}, {stop: stopA, walkS: SHORTER_WALK_S}]},
+  {order: "the shorter walk first", starts: [{stop: stopA, walkS: SHORTER_WALK_S}, {stop: stopA, walkS: LONGER_WALK_S}]}
 ]
 
 describe("routing engine fixture", () => {
@@ -246,12 +246,12 @@ describe.for(implementationsWith("routingEngine"))("routing engine ($name)", ({r
   // and keeps the shorter of its walks; the cases pin that difference.
   test.for(twiceNamedStarts)("leaving takes a start stop named twice, $order, and keeps its shorter walk", ({starts}) => {
     const engine = routingEngine.createEngine(engineArguments(directCase))
-    const boardS = directCase.engine.connections.departureS[BOARD_AT_A]
-    const query = {origin: {kind: "starts", starts}, target: STOP_C, departureS: boardS - LONGER_WALK_S}
+    const boardS = directCase.engine.connections.departureS[boardAtA]
+    const query = {origin: {kind: "starts", starts}, target: stopC, departureS: boardS - LONGER_WALK_S}
     const frontier = routingEngine.route(engine, query)
-    const walk = {kind: "walkFromPosition", toStop: STOP_A, durationS: SHORTER_WALK_S}
-    const ride = {kind: "ride", boardConnection: BOARD_AT_A, alightConnection: ALIGHT_AT_C}
-    const arrivalS = directCase.engine.connections.arrivalS[ALIGHT_AT_C]
+    const walk = {kind: "walkFromPosition", toStop: stopA, durationS: SHORTER_WALK_S}
+    const ride = {kind: "ride", boardConnection: boardAtA, alightConnection: alightAtC}
+    const arrivalS = directCase.engine.connections.arrivalS[alightAtC]
     expect(frontier).toStrictEqual([{arrivalS, changes: 0, legs: [walk, ride]}])
   })
 })
