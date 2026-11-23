@@ -4,8 +4,9 @@
 // TOLERANCE_METERS for every pair of its points, so the planned time of a
 // walk from a position is the length of the line drawn. Also the answers of
 // each other kind (an island, a position off the graph, tiles not loaded, a
-// cap reached, no stop in reach), the target bound as an assertion, and that
-// the seconds of the start stops a reach gives are those of the line drawn.
+// cap reached, no stop in reach), the target bound as an assertion, that the
+// street search's candidates fit that bound, and that the seconds of the start
+// stops a reach gives are those of the line drawn.
 // Run it with `node test/scripts/walk_reach_check.mjs`; it exits non-zero on
 // the first result that differs.
 

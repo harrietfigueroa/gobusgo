@@ -1,5 +1,5 @@
 {
- "formatNote": "Cases written by hand for the walk from a position. A position is in degrees; `positions` holds each stop's latitude and longitude in microdegrees, indexed by stop, -2147483648 in both for a stop with no known position. In `transferRules` a key left out is one the manifest entry names none of, and a number JSON cannot write is the string NaN, Infinity, or -Infinity. `bases` holds the basis `walkBasisOf` reads from each entry's rules, `streetWalks` whether `isStreetWalk` plans each basis on the streets, `streetBounds` the meters `streetMetersMaxOf` reads, `near` the starts `startsNear` and the candidates `walkCandidatesNear` give for a position, and `streets` the starts `startsFromStreets` gives for a reach's stops and their street meters.",
+ "formatNote": "Cases written by hand for the walk from a position. A position is in degrees; `positions` holds each stop's latitude and longitude in microdegrees, indexed by stop, -2147483648 in both for a stop with no known position. Stops at equal distances, in a straight line or by street, go to the lower stop index. In `transferRules` a key left out is one the manifest entry names none of, and a number JSON cannot write is the string NaN, Infinity, or -Infinity. `bases` holds the basis `walkBasisOf` reads from each entry's rules, `streetWalks` whether `isStreetWalk` plans each basis on the streets, `streetBounds` the meters `streetMetersMaxOf` reads, `near` the starts `startsNear` and the candidates `walkCandidatesNear` give for a position, and `streets` the starts `startsFromStreets` gives for a reach's stops and their street meters.",
  "bases": [
   {"name": "a streets table", "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600, "walkBasis": "streets"}, "basis": "streets"},
   {"name": "a mixed table", "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600, "walkBasis": "mixed"}, "basis": "mixed"},
@@ -62,6 +62,17 @@
   {
    "name": "no stop within the radius",
    "position": {"lat": 47.7, "lon": -122.3},
+   "positions": {
+    "latMicrodegrees": [47602697, -2147483648, 47600899, 47595503, 47600899, 47600000, 47600000],
+    "lonMicrodegrees": [-122300000, -2147483648, -122300000, -122300000, -122300000, -122300000, -122298000]
+   },
+   "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600},
+   "starts": [],
+   "candidates": []
+  },
+  {
+   "name": "a position where a stop with no known position would lie if its marker were read as microdegrees",
+   "position": {"lat": 12.516352, "lon": 12.516352},
    "positions": {
     "latMicrodegrees": [47602697, -2147483648, 47600899, 47595503, 47600899, 47600000, 47600000],
     "lonMicrodegrees": [-122300000, -2147483648, -122300000, -122300000, -122300000, -122300000, -122298000]
@@ -340,7 +351,7 @@
   }
  ],
  "streets": [
-  {"name": "four stops reached out of order, two at one street length", "stops": [{"stop": 5, "streetM": 121}, {"stop": 9, "streetM": 60}, {"stop": 2, "streetM": 60}, {"stop": 7, "streetM": 0}], "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600, "walkBasis": "streets"}, "starts": [{"stop": 7, "walkS": 0}, {"stop": 2, "walkS": 50}, {"stop": 9, "walkS": 50}, {"stop": 5, "walkS": 101}]},
+  {"name": "four stops reached out of order, two at one street length", "stops": [{"stop": 5, "streetM": 125}, {"stop": 9, "streetM": 60}, {"stop": 2, "streetM": 60}, {"stop": 7, "streetM": 0}], "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600, "walkBasis": "streets"}, "starts": [{"stop": 7, "walkS": 0}, {"stop": 2, "walkS": 50}, {"stop": 9, "walkS": 50}, {"stop": 5, "walkS": 105}]},
   {"name": "three stops reached, under a link bound of two", "stops": [{"stop": 5, "streetM": 121}, {"stop": 2, "streetM": 60}, {"stop": 9, "streetM": 60}], "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 2, "walkStreetMetersMax": 600, "walkBasis": "streets"}, "starts": [{"stop": 2, "walkS": 50}, {"stop": 9, "walkS": 50}]},
   {"name": "no stop reached", "stops": [], "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600, "walkBasis": "streets"}, "starts": []}
  ]

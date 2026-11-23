@@ -41,7 +41,6 @@ const TARGET_LAT_MICRODEGREES = 47700000
 const NORTH_100_M_MICRODEGREES = 899
 const NORTH_300_M_MICRODEGREES = 2697
 const NORTH_500_M_MICRODEGREES = 4497
-const N1_WALK_S = 84
 const N2_WALK_S = 250
 
 // The earliest journey changes twice and arrives at 09:30, so the cutoff is
@@ -617,7 +616,7 @@ describe("routing driver", () => {
   })
 })
 
-describe.each(implementationsWith("routingEngine", "routingJourneys", "routingSnapshot", "routingWalk"))("routing journeys ($name)", ({routingEngine, routingJourneys, routingSnapshot, routingWalk}) => {
+describe.for(implementationsWith("routingEngine", "routingJourneys"))("routing journeys ($name)", ({routingEngine, routingJourneys}) => {
   const {OriginKind} = routingEngine
   const {ROUND_COUNT_MAX, ServiceDateKind, StepKind, TimeKind, WINDOW_SECONDS, loadEngine, resumeQuery, serviceDateAt, startQuery} = routingJourneys
 
@@ -724,19 +723,6 @@ describe.each(implementationsWith("routingEngine", "routingJourneys", "routingSn
     const {arrivingBy, arriveBySnapshot} = shared
     const whole = wholeArrivingByCutoff({snapshot: arriveBySnapshot, from: "A", to: "C", arrivalS: arriveByQuery.arrivalS})
     expect(leavingReadable(arrivingBy.journeys)).toStrictEqual(whole)
-  })
-
-  // A start from a position walks to N1 and N2, the stops within 400 m, nearest
-  // first, each at 1.2 m/s rounded up to the second.
-  test("a start from a position walks to the stops within the radius", () => {
-    const {positionSnapshot} = shared
-    const positionsFile = positionSnapshot.filesByPath.get("/fixture/positions.bin")
-    const positionsResult = routingSnapshot.decodePositions(positionsFile)
-    const starts = routingWalk.startsNear({position: RIDER, positions: positionsResult.records, transferRules: TRANSFER_RULES})
-    expect(starts).toStrictEqual([
-      {stop: positionSnapshot.stopIndex.get("N1"), walkS: N1_WALK_S},
-      {stop: positionSnapshot.stopIndex.get("N2"), walkS: N2_WALK_S}
-    ])
   })
 
   // The service date of a departure is the latest one started by then: past

@@ -121,10 +121,14 @@ const refusedBounds = [
 ]
 
 describe("routing walk fixture", () => {
-  test("a case holds more stops than the street search keeps, and expects as many candidates as it keeps", () => {
+  test("a case holds more stops than the street search keeps", () => {
     const stopCount = boundCase.positions.latMicrodegrees.length
-    expect(boundCase.candidates.length).toBe(WALK_CANDIDATE_COUNT_MAX)
     expect(stopCount).toBeGreaterThan(WALK_CANDIDATE_COUNT_MAX)
+  })
+
+  test("that case expects as many candidates as the street search keeps", () => {
+    const candidateCount = boundCase.candidates.length
+    expect(candidateCount).toBe(WALK_CANDIDATE_COUNT_MAX)
   })
 })
 
