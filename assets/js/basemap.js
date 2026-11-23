@@ -178,9 +178,14 @@ export const Basemap = {
       style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
       ...this.firstView(padding),
       attributionControl: false,
+      // The map stays north-up, so a layer may place its icons in screen
+      // pixels by compass direction.
+      dragRotate: false,
       // `setStyle` takes this as its default, so a restyle follows it too.
       validateStyle: element.dataset.styleValidated !== undefined
     })
+    this.map.touchZoomRotate.disableRotation()
+    this.map.keyboard.disableRotation()
 
     // The attribution stays written out; the compact form hides it
     // behind a button on a narrow map.
