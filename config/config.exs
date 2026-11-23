@@ -10,11 +10,10 @@ bundle_options =
 config :esbuild,
   version: "0.25.5",
   # The vehicle page's script, an ES module. The metafile names every input
-  # and its bytes in the bundle. The specifier `#core/routing_snapshot.js`
-  # resolves to `./js/core.js`. esbuild matches an alias against the
-  # specifier as written, so an import of the module by a relative path
-  # resolves to the module itself. The path starts with `./`, since esbuild
-  # reads a bare one as a package.
+  # and its bytes in the bundle. esbuild substitutes an aliased import path
+  # before any other resolution, and resolves the replacement in the
+  # working directory, `assets/`, rather than beside the importing file.
+  # https://esbuild.github.io/api/#alias — checked 2026-11-23
   default: [
     args:
       ~w(js/app.js --format=esm --outdir=../priv/static/assets/js --metafile=../_build/assets/app.meta.json --alias:fflate=./vendor/fflate/esm/browser.js --alias:#core/routing_snapshot.js=./js/core.js) ++
