@@ -16,7 +16,7 @@ A snapshot is built from the route schedule view, which holds each route's `sche
 
 ## Format, version 2
 
-`Gobusgo.Routing.SnapshotFormat` writes and reads the files; `assets/js/core/routing_snapshot.js` reads them in the browser, and `core/gobusgo-core/src/routing_snapshot.rs` reads them in the Rust core, beside it: the web callers stay on the JavaScript until GOB-426's steps 3 and 4 move them to the facade, `assets/js/core.js` (GOB-440). Every number is little-endian. Every file starts with a 16-byte header: the magic `GBRT`, the format version as a `u16`, the kind as a `u16` (1 stops, 2 trips, 3 transfers, 4 connections, 5 positions), the record count as a `u32`, and a `u32` of zero.
+`Gobusgo.Routing.SnapshotFormat` writes and reads the files; `assets/js/core/routing_snapshot.js` reads them in the browser, and `core/gobusgo-core/src/routing_snapshot.rs` reads them in the Rust core, beside it: the vehicle page's `assets/js/saved_snapshots.js` and `assets/js/where_to_files.js` read them with the Rust one through the facade, `assets/js/core.js` (GOB-440, GOB-426), and the page's trip planning, which decodes them through `assets/js/core/routing_journeys.js`, and the MCP apps read them with the JavaScript one (`assets/AGENTS.md`, "The core's facade"). Every number is little-endian. Every file starts with a 16-byte header: the magic `GBRT`, the format version as a `u16`, the kind as a `u16` (1 stops, 2 trips, 3 transfers, 4 connections, 5 positions), the record count as a `u32`, and a `u32` of zero.
 
 | Kind | Record |
 | --- | --- |

@@ -8,10 +8,10 @@ defmodule Gobusgo.Test.CorePages.Builds do
   they differ only in the aliases of the core's specifiers, `#core/<module>.js`,
   which `assets/package.json` maps to `assets/js/core/`.
 
-  The WebAssembly build aliases each module of `webassembly_aliases/0` to
-  the file that calls the Rust core in its place. The JavaScript build
-  aliases none, and drops any alias of a core specifier the profile itself
-  carries, so it stays on the JavaScript core whatever production ships.
+  The WebAssembly build keeps each alias of a core specifier the profile
+  itself carries, to the file that calls the Rust core in its place, so it
+  bundles what production ships. The JavaScript build drops each of them,
+  so it stays on the JavaScript core whatever production ships.
 
   `install/2` copies one build over the bundles and the worker under
   `priv/static`, so the test server serves that build at the paths a page
@@ -43,18 +43,9 @@ defmodule Gobusgo.Test.CorePages.Builds do
   @static_dir Path.expand("../../../priv/static", __DIR__)
   @service_worker_name "sw.js"
 
-  # Each module of the core whose callers the WebAssembly build switches,
-  # by its specifier, to the module that stands in for it, a path from
-  # `assets/`. A port adds its module group here when it switches them.
-  @webassembly_aliases %{}
-
   @doc "The cores, in the order the check runs them."
   @spec cores() :: [core(), ...]
   def cores, do: @cores
-
-  @doc "The aliases of the WebAssembly build, by core specifier."
-  @spec webassembly_aliases() :: %{String.t() => String.t()}
-  def webassembly_aliases, do: @webassembly_aliases
 
   @doc """
   Builds both cores under `dir`, each in `<dir>/<core>`, with
@@ -63,8 +54,8 @@ defmodule Gobusgo.Test.CorePages.Builds do
   @spec build(String.t(), %{core() => %{String.t() => String.t()}}) :: String.t()
   def build(dir, extra_aliases \\ %{}) when is_binary(dir) and is_map(extra_aliases) do
     for core <- @cores do
-      aliases = Map.merge(aliases(core), Map.get(extra_aliases, core, %{}))
-      build_core(%{dir: Path.join(dir, Atom.to_string(core)), aliases: aliases})
+      aliases = Map.get(extra_aliases, core, %{})
+      build_core(%{dir: Path.join(dir, Atom.to_string(core)), core: core, aliases: aliases})
     end
 
     dir
@@ -140,10 +131,7 @@ defmodule Gobusgo.Test.CorePages.Builds do
     :ok
   end
 
-  defp aliases(:javascript), do: %{}
-  defp aliases(:webassembly), do: @webassembly_aliases
-
-  defp build_core(%{dir: dir, aliases: aliases}) do
+  defp build_core(%{dir: dir, core: core, aliases: aliases}) do
     js_dir = Path.join(dir, "js")
     File.mkdir_p!(js_dir)
 
@@ -158,7 +146,7 @@ defmodule Gobusgo.Test.CorePages.Builds do
       end
 
     for name <- @bundle_profiles do
-      build_profile(%{name: name, dir: dir, js_dir: js_dir, alias_args: alias_args})
+      build_profile(%{name: name, core: core, dir: dir, js_dir: js_dir, alias_args: alias_args})
     end
 
     built = js_dir |> File.ls!() |> Enum.sort()
@@ -171,14 +159,13 @@ defmodule Gobusgo.Test.CorePages.Builds do
     build_service_worker(dir)
   end
 
-  # A profile's own core aliases are dropped, and its metafile is written in
-  # the build's directory, so a build leaves the one `mix assets.build`
-  # wrote as it was.
-  defp build_profile(%{name: name, dir: dir, js_dir: js_dir, alias_args: alias_args}) do
+  # A profile's metafile is written in the build's directory, so a build
+  # leaves the one `mix assets.build` wrote as it was.
+  defp build_profile(%{name: name, core: core, dir: dir, js_dir: js_dir, alias_args: alias_args}) do
     profile = Application.fetch_env!(:esbuild, name)
 
     profile_args =
-      for arg <- profile[:args], not String.starts_with?(arg, @core_alias_prefix) do
+      for arg <- profile[:args], kept_arg?(arg, core) do
         metafile_in(arg, dir)
       end
 
@@ -195,6 +182,9 @@ defmodule Gobusgo.Test.CorePages.Builds do
     do: @metafile_prefix <> Path.join(dir, Path.basename(path))
 
   defp metafile_in(arg, _dir), do: arg
+
+  defp kept_arg?(@core_alias_prefix <> _alias, :javascript), do: false
+  defp kept_arg?(_arg, _core), do: true
 
   # The worker of a build is built over that build's script and the
   # stylesheet and map library `mix assets.build` wrote, so its release and
