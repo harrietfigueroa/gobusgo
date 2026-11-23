@@ -1,6 +1,6 @@
 # Routing engine experiment
 
-The correctness fixtures and the benchmark of the JavaScript connection scan engine over the routing snapshots the application publishes, and the comparison that chose it (GOB-232). The engine itself is the application's. Nothing here ships: the release image, CI, and the application leave this directory alone.
+The correctness check and the benchmark of the JavaScript connection scan engine over the routing snapshots the application publishes, and the comparison that chose it (GOB-232). The engine itself is the application's. Nothing here ships: the release image, CI, and the application leave this directory alone.
 
 ## Decision
 
@@ -8,7 +8,7 @@ JavaScript (decided 2026-11-08). A Rust engine compiled to WebAssembly applied t
 
 ## Layout
 
-- The engine moved into the application (GOB-248): `assets/js/core/routing_engine.js` is the engine, and `loadEngine` in `assets/js/core/routing_journeys.js` builds it from the stops file, the transfers file, and every connection chunk of one date. Both read the snapshot files of the format version `lib/gobusgo/routing/AGENTS.md` describes. The fixtures and the benchmark import them from there.
+- The engine moved into the application (GOB-248): `assets/js/core/routing_engine.js` is the engine, and `loadEngine` in `assets/js/core/routing_journeys.js` builds it from the stops file, the transfers file, and every connection chunk of one date. Both read the snapshot files of the format version `lib/gobusgo/routing/AGENTS.md` describes. The correctness check and the benchmark import them from there.
 - `test/fixtures/routing/engine-v1/journeys.json`, a shared fixture of the application's, holds the correctness cases, written by hand as timetables and readable expected frontiers, for queries that leave at a time and queries that arrive by one; the conformance suite runs them too (`lib/gobusgo/routing/AGENTS.md`). `experiments/routing/test/fixtures.mjs` checks the engine against them, writing each timetable as snapshot files with `test/scripts/routing_timetable.js`, and checks every query that arrives by a time against the forward scan: from its latest departure a journey arrives by the time, and from a second later none does.
 - `bench/` holds the benchmark: `measure.js` is shared, `run.mjs` and `node.mjs` run it in node, and `index.html`, `browser.mjs`, and `serve.mjs` run it in a browser on the same network.
 - `scripts/build_snapshot.exs` builds the benchmark data from stored responses through the application's own rebuild and build, and `scripts/browser_benchmark.exs` runs the browser page in a headless Chrome.

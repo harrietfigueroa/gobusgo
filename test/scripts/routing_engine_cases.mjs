@@ -4,8 +4,7 @@
 // query `route` or `routeArrivingBy` takes with the frontier written for it,
 // its stops and connections as indices. A frontier is translated from the
 // readable legs and never routed, so the expectation stays the one written
-// by hand. Everything here is pure, so the conformance suite runs it to check
-// that the written file is current.
+// by hand. Everything here is pure.
 
 import {assertCondition, unreachable} from "../../assets/js/core/assert.js"
 import {TRANSFER_RULES, seconds, snapshotOf} from "./routing_timetable.js"
