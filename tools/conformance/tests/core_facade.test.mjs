@@ -45,11 +45,11 @@ test("coreVersion crosses the facade as the workspace's version", async () => {
   expect(facade.coreVersion()).toBe(versionMatches[0][1])
 })
 
-test.each(SNAPSHOT_CONSTANTS)("%s crosses the facade as the JavaScript module's", (name) => {
+test.for(SNAPSHOT_CONSTANTS)("%s crosses the facade as the JavaScript module's", (name) => {
   expect(facade[name]).toStrictEqual(javascriptSnapshot[name])
 })
 
-test.each(SNAPSHOT_DECODERS)("$decoder through the facade decodes as the JavaScript module's", async ({decoder, file}) => {
+test.for(SNAPSHOT_DECODERS)("$decoder through the facade decodes as the JavaScript module's", async ({decoder, file}) => {
   const bytes = await fixtureBytes(SNAPSHOT_DIRECTORY + file + ".bin")
   const expected = javascriptSnapshot[decoder](bytes)
   const decoded = facade[decoder](bytes)

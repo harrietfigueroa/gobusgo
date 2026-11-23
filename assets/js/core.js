@@ -39,9 +39,9 @@ const signal = AbortSignal.timeout(MODULE_FETCH_TIMEOUT_MS)
 const response = fetch(preload.href, {mode: "no-cors", credentials: "include", signal})
 await initialize({module_or_path: response})
 
-// `routing_snapshot.js`'s constants. A constant crosses the binding as a
-// function, since wasm-bindgen exports functions, so each is read once here,
-// once the core is ready.
+// The routing snapshot reader's constants. A constant crosses the binding as
+// a function, since wasm-bindgen exports functions, so each is read once
+// here, once the core is ready.
 export const FORMAT_VERSION = routingSnapshotFormatVersion()
 export const POSITION_UNKNOWN_MICRODEGREES = positionUnknownMicrodegrees()
 export const DecodeKind = routingSnapshotDecodeKind()
