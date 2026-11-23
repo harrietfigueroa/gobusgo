@@ -1,0 +1,48 @@
+{
+  "formatNote": "Cases written by hand as journeys.json writes them, for a query from start stops: 'starts' names each start stop with the whole seconds of the walk to it from the rider's position, in place of 'from', and the leg 'walkFromPosition TO SECONDS' is that walk. A query with 'from' starts at that stop, as in journeys.json. Every case uses a minimum transfer of 120 seconds.",
+  "cases": [
+    {
+      "name": "a start from a position boards where its walk arrives in time",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:10"], ["C", "08:40"]]},
+        {"id": "T2", "stopTimes": [["B", "08:10"], ["C", "08:30"]]}
+      ],
+      "queries": [
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "depart": "08:00", "expected": [{"arrive": "08:30", "changes": 0, "legs": ["walkFromPosition B 300", "ride T2 B 08:10 C 08:30"]}]},
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "depart": "08:06", "expected": [{"arrive": "08:40", "changes": 0, "legs": ["walkFromPosition A 60", "ride T1 A 08:10 C 08:40"]}]},
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "arriveBy": "08:30", "expected": [{"depart": "08:05", "arrive": "08:30", "changes": 0, "legs": ["walkFromPosition B 300", "ride T2 B 08:10 C 08:30"]}]},
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "arriveBy": "08:40", "expected": [{"depart": "08:09", "arrive": "08:40", "changes": 0, "legs": ["walkFromPosition A 60", "ride T1 A 08:10 C 08:40"]}]},
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "arriveBy": "08:29", "expected": []}
+      ]
+    },
+    {
+      "name": "a target among the start stops is reached by its walk alone",
+      "trips": [{"id": "T1", "stopTimes": [["A", "08:10"], ["C", "08:20"]]}],
+      "queries": [
+        {"starts": [["A", 120]], "to": "A", "depart": "08:00", "expected": [{"arrive": "08:02", "changes": 0, "legs": ["walkFromPosition A 120"]}]},
+        {"starts": [["A", 120]], "to": "A", "arriveBy": "08:30", "expected": [{"depart": "08:28", "arrive": "08:30", "changes": 0, "legs": ["walkFromPosition A 120"]}]}
+      ]
+    },
+    {
+      "name": "a start stop takes no walking link, where an origin stop takes one",
+      "trips": [{"id": "T1", "stopTimes": [["B", "08:10"], ["C", "08:20"]]}],
+      "walks": [["A", "B", 120]],
+      "queries": [
+        {"starts": [["A", 60]], "to": "C", "depart": "08:00", "expected": []},
+        {"starts": [["A", 60]], "to": "C", "arriveBy": "08:30", "expected": []},
+        {"from": "A", "to": "C", "depart": "08:00", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["walk A B 120", "ride T1 B 08:10 C 08:20"]}]}
+      ]
+    },
+    {
+      "name": "a start's ride changes to a second ride after the minimum transfer",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:10"], ["B", "08:20"]]},
+        {"id": "T2", "stopTimes": [["B", "08:25"], ["C", "08:40"]]}
+      ],
+      "queries": [
+        {"starts": [["A", 180]], "to": "C", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 1, "legs": ["walkFromPosition A 180", "ride T1 A 08:10 B 08:20", "ride T2 B 08:25 C 08:40"]}]},
+        {"starts": [["A", 180]], "to": "C", "arriveBy": "08:40", "expected": [{"depart": "08:07", "arrive": "08:40", "changes": 1, "legs": ["walkFromPosition A 180", "ride T1 A 08:10 B 08:20", "ride T2 B 08:25 C 08:40"]}]}
+      ]
+    }
+  ]
+}
