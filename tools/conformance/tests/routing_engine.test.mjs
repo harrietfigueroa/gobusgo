@@ -28,8 +28,8 @@ const CONNECTION_COLUMNS = Object.freeze({
 })
 const TRANSFER_COLUMNS = Object.freeze({fromStop: Uint32Array, toStop: Uint32Array, durationS: Uint32Array})
 const FLAG_VALUES = Object.freeze([0, 1])
-const SHORTER_WALK_S = 60
-const LONGER_WALK_S = 120
+const WALK_S_SHORTER = 60
+const WALK_S_LONGER = 120
 const DIRECT_CASE_NAME = "a direct ride stays aboard through the stops between"
 
 // The cases name the tests, so they are read before the tests are collected.
@@ -159,7 +159,7 @@ const refusedQueries = [
     rule: "a start stop named twice",
     kind: QueryKind.arrivingBy,
     query: {
-      origin: {kind: "starts", starts: [{stop: stopA, walkS: LONGER_WALK_S}, {stop: stopA, walkS: SHORTER_WALK_S}]},
+      origin: {kind: "starts", starts: [{stop: stopA, walkS: WALK_S_LONGER}, {stop: stopA, walkS: WALK_S_SHORTER}]},
       target: stopC,
       arrivalS: 0
     },
@@ -188,8 +188,8 @@ const alightAtC = onlyConnection({column: directCase.engine.connections.arrivalS
 // A start stop named twice, in both orders, so only keeping the shorter walk
 // passes whichever comes first.
 const twiceNamedStarts = [
-  {order: "the longer walk first", starts: [{stop: stopA, walkS: LONGER_WALK_S}, {stop: stopA, walkS: SHORTER_WALK_S}]},
-  {order: "the shorter walk first", starts: [{stop: stopA, walkS: SHORTER_WALK_S}, {stop: stopA, walkS: LONGER_WALK_S}]}
+  {order: "the longer walk first", starts: [{stop: stopA, walkS: WALK_S_LONGER}, {stop: stopA, walkS: WALK_S_SHORTER}]},
+  {order: "the shorter walk first", starts: [{stop: stopA, walkS: WALK_S_SHORTER}, {stop: stopA, walkS: WALK_S_LONGER}]}
 ]
 
 describe("routing engine fixture", () => {
@@ -247,9 +247,9 @@ describe.for(implementationsWith("routingEngine"))("routing engine ($name)", ({r
   test.for(twiceNamedStarts)("leaving takes a start stop named twice, $order, and keeps its shorter walk", ({starts}) => {
     const engine = routingEngine.createEngine(engineArguments(directCase))
     const boardS = directCase.engine.connections.departureS[boardAtA]
-    const query = {origin: {kind: "starts", starts}, target: stopC, departureS: boardS - LONGER_WALK_S}
+    const query = {origin: {kind: "starts", starts}, target: stopC, departureS: boardS - WALK_S_LONGER}
     const frontier = routingEngine.route(engine, query)
-    const walk = {kind: "walkFromPosition", toStop: stopA, durationS: SHORTER_WALK_S}
+    const walk = {kind: "walkFromPosition", toStop: stopA, durationS: WALK_S_SHORTER}
     const ride = {kind: "ride", boardConnection: boardAtA, alightConnection: alightAtC}
     const arrivalS = directCase.engine.connections.arrivalS[alightAtC]
     expect(frontier).toStrictEqual([{arrivalS, changes: 0, legs: [walk, ride]}])
