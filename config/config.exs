@@ -10,11 +10,11 @@ bundle_options =
 config :esbuild,
   version: "0.25.5",
   # The vehicle page's script, an ES module. The metafile names every input
-  # and its bytes in the bundle. An import of the routing snapshot reader by
-  # its `#core/` specifier takes the Rust core's through the facade,
-  # `assets/js/core.js`; esbuild matches an alias against the specifier as
-  # written, so an import by a relative path keeps the JavaScript. The path
-  # starts with `./`, since esbuild reads a bare one as a package.
+  # and its bytes in the bundle. The specifier `#core/routing_snapshot.js`
+  # resolves to `./js/core.js`. esbuild matches an alias against the
+  # specifier as written, so an import of the module by a relative path
+  # resolves to the module itself. The path starts with `./`, since esbuild
+  # reads a bare one as a package.
   default: [
     args:
       ~w(js/app.js --format=esm --outdir=../priv/static/assets/js --metafile=../_build/assets/app.meta.json --alias:fflate=./vendor/fflate/esm/browser.js --alias:#core/routing_snapshot.js=./js/core.js) ++
