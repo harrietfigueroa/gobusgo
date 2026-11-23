@@ -46,6 +46,7 @@ test("coreVersion crosses the facade as the workspace's version", async () => {
 })
 
 test.for(SNAPSHOT_CONSTANTS)("%s crosses the facade as the JavaScript module's", (name) => {
+  expect(javascriptSnapshot).toHaveProperty(name)
   expect(facade[name]).toStrictEqual(javascriptSnapshot[name])
 })
 

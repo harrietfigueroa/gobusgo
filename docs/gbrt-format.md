@@ -1,6 +1,6 @@
 # The GBRT format
 
-GBRT is the binary format of Gobusgo's routing snapshots: the schedule of one service date, packed so a phone can fetch it in pieces and plan trips over it with no server. This page describes format version 2. The writer is `Gobusgo.Routing.SnapshotFormat`, and the browser's reader is `assets/js/core/routing_snapshot.js`.
+GBRT is the binary format of Gobusgo's routing snapshots: the schedule of one service date, packed so a phone can fetch it in pieces and plan trips over it with no server. This page describes format version 2. The writer is `Gobusgo.Routing.SnapshotFormat`, and the browser's readers are `assets/js/core/routing_snapshot.js` and its Rust port, `core/gobusgo-core/src/routing_snapshot.rs`, which the vehicle page's shell modules call through the facade (`assets/AGENTS.md`, "The core's facade").
 
 > *Why not just send JSON?*
 >
