@@ -9,10 +9,22 @@
 // module that fails to load, rejects this module and every module importing
 // it.
 
-import initialize from "../../priv/static/assets/core/gobusgo_core.js"
+import initialize, {
+  positionUnknownMicrodegrees,
+  routingSnapshotDecodeKind,
+  routingSnapshotFormatVersion,
+  routingSnapshotRefusalReason
+} from "../../priv/static/assets/core/gobusgo_core.js"
 import {assertCondition} from "#core/assert.js"
 
-export {coreVersion} from "../../priv/static/assets/core/gobusgo_core.js"
+export {
+  coreVersion,
+  decodeConnections,
+  decodePositions,
+  decodeStops,
+  decodeTransfers,
+  decodeTrips
+} from "../../priv/static/assets/core/gobusgo_core.js"
 
 const MODULE_PRELOAD_SELECTOR = "link[rel=preload][data-core-module]"
 const MODULE_FETCH_TIMEOUT_MS = 20 * 1000
@@ -26,3 +38,11 @@ const signal = AbortSignal.timeout(MODULE_FETCH_TIMEOUT_MS)
 // and streaming compilation takes it.
 const response = fetch(preload.href, {mode: "no-cors", credentials: "include", signal})
 await initialize({module_or_path: response})
+
+// `routing_snapshot.js`'s constants. A constant crosses the binding as a
+// function, since wasm-bindgen exports functions, so each is read once here,
+// once the core is ready.
+export const FORMAT_VERSION = routingSnapshotFormatVersion()
+export const POSITION_UNKNOWN_MICRODEGREES = positionUnknownMicrodegrees()
+export const DecodeKind = routingSnapshotDecodeKind()
+export const RefusalReason = routingSnapshotRefusalReason()
