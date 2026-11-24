@@ -51,8 +51,8 @@ const TAKEN_OVER_STATES = Object.freeze(["activating", "activated", "redundant"]
 // https://w3c.github.io/ServiceWorker/#installation-algorithm — checked 2026-11-20
 const REPLACED_STATE = "redundant"
 
-// The release GobusgoWeb.ServiceWorker names: 16 lowercase hexadecimal digits.
-const RELEASE_PATTERN = /^[0-9a-f]{16}$/
+const RELEASE_DIGIT_COUNT = 16
+const RELEASE_PATTERN = new RegExp(`^[0-9a-f]{${RELEASE_DIGIT_COUNT}}$`)
 
 function isRelease(value) {
   const isText = typeof value === "string"

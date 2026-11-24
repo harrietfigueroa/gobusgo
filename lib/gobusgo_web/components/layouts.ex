@@ -131,8 +131,6 @@ defmodule GobusgoWeb.Layouts do
     """
   end
 
-  # The release the page's assets belong to, which the browser compares with
-  # a waiting worker's before it offers a reload.
   defp page_release do
     case GobusgoWeb.ServiceWorkerRelease.read() do
       {:ok, release} -> release
