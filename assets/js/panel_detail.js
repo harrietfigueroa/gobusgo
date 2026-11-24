@@ -1,8 +1,13 @@
 // The details view of the panel sheet, which shows one stop, vehicle, or
-// shared vehicle in place of the sheet's tabs. This module is the one owner of what the
-// view shows: a hook writes its item into the view with `showDetail`, and
-// every listener of the change event learns when the view moves to another
-// item or closes, so the hook whose item it was lets go of it.
+// shared vehicle, or a list of the stops under a tap, in place of the
+// sheet's tabs. This module is the one owner of what the view shows: a hook
+// writes its item into the view with `showDetail`, and every listener of
+// the change event learns when the view moves to another item or closes, so
+// the hook whose item it was lets go of it. An item opened from another,
+// a stop chosen from a list, keeps that other as its parent, which the back
+// button shows again.
+
+import {assertCondition} from "#core/assert.js"
 
 const CONTENT_ID = "panel-detail-content"
 const TITLE_ID = "panel-detail-title"
@@ -12,7 +17,20 @@ const TITLE_CLASS_NAME = "panel-sheet-detail-title"
 // with the item shown before and the item shown now in its detail.
 export const CHANGE_EVENT_NAME = "gobusgo:panel-detail-change"
 
-export const DetailKind = Object.freeze({none: "none", stop: "stop", vehicle: "vehicle", sharedVehicle: "sharedVehicle"})
+export const DetailKind = Object.freeze({none: "none", stop: "stop", stopList: "stopList", vehicle: "vehicle", sharedVehicle: "sharedVehicle"})
+
+/** Whether the item the view shows was opened from another, which its back button returns to. */
+export const ParentKind = Object.freeze({none: "none", detail: "detail"})
+
+/** The parent of an item opened from no other. */
+export const NO_PARENT = Object.freeze({kind: ParentKind.none})
+
+/** The parent that shows the item of `kind` and `id` again, under `title`, with `content` below it. */
+export function detailParent({kind, id, title, content}) {
+  return Object.freeze({kind: ParentKind.detail, detail: {kind, id, title, content}})
+}
+
+let shownParent = NO_PARENT
 
 // The DOM event the window gets when a tap on the map has deselected the
 // item the view showed, so the sheet gives focus back where it was before
@@ -39,14 +57,28 @@ function announce(previous) {
 }
 
 // Shows the item of `kind` and `id` in the view, under `title`, with
-// `content` below it, in place of what it showed. `title` is text and is
+// `content` below it, in place of what it showed, and keeps `parent`, the
+// item it was opened from, for the back button. `title` is text and is
 // never parsed as HTML.
-export function showDetail({kind, id, title, content}) {
+export function showDetail({kind, id, title, content, parent = NO_PARENT}) {
   writeContent({title, content})
+  shownParent = parent
 
   const previous = shown
   shown = Object.freeze({kind, id})
   announce(previous)
+}
+
+// Whether the item the view shows was opened from another.
+export function hasParentDetail() {
+  return shownParent.kind === ParentKind.detail
+}
+
+// Shows again the item the view's item was opened from, in place of it.
+export function showParentDetail() {
+  assertCondition(hasParentDetail(), `the view's item has a parent, shown: ${shown.kind}`)
+  const {kind, id, title, content} = shownParent.detail
+  showDetail({kind, id, title, content, parent: NO_PARENT})
 }
 
 // Writes `title` and `content` in place of what the view shows while it
@@ -81,6 +113,7 @@ export function closeDetail() {
 
   const previous = shown
   shown = noDetail
+  shownParent = NO_PARENT
 
   const element = document.getElementById(CONTENT_ID)
 

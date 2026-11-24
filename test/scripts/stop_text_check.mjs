@@ -1,11 +1,12 @@
 // Checks the texts of the stop view in the glanceable style, as pure
 // functions of values written out by hand: the pills of a stop's code and
-// direction, and the key line under its arrivals with what a screen reader
-// reads in its place. Run it with `node test/scripts/stop_text_check.mjs`;
-// it exits non-zero on the first case that differs.
+// direction, the key line under its arrivals with what a screen reader
+// reads in its place, and the title of the list of stops under a tap. Run
+// it with `node test/scripts/stop_text_check.mjs`; it exits non-zero on the
+// first case that differs.
 
-import {deepStrictEqual} from "node:assert/strict"
-import {PillKind, arrivalsKey, codePill, directionPill} from "../../assets/js/stop_text.js"
+import {deepStrictEqual, throws} from "node:assert/strict"
+import {PillKind, arrivalsKey, codePill, directionPill, stopListTitle} from "../../assets/js/stop_text.js"
 
 const directionCases = [
   {direction: "N", pill: {kind: PillKind.shown, mark: "↑", text: "North"}},
@@ -66,4 +67,22 @@ for (const {case: caseName, given, key} of keyCases) {
   deepStrictEqual(arrivalsKey(given), key, caseName)
 }
 
-console.log(`stop texts: ${directionCases.length + codeCases.length + keyCases.length} cases hold`)
+const TWO_STOPS = 2
+const TWELVE_STOPS = 12
+const titleCases = [
+  {count: TWO_STOPS, title: "2 stops here"},
+  {count: TWELVE_STOPS, title: "12 stops here"}
+]
+
+for (const {count, title} of titleCases) {
+  deepStrictEqual(stopListTitle(count), title, `the list's title for ${count} stops`)
+}
+
+function titleOfOneStop() {
+  stopListTitle(1)
+}
+
+throws(titleOfOneStop, "a list of one stop has no title")
+
+const TITLE_REFUSAL_COUNT = 1
+console.log(`stop texts: ${directionCases.length + codeCases.length + keyCases.length + titleCases.length + TITLE_REFUSAL_COUNT} cases hold`)

@@ -1051,6 +1051,52 @@ a.inline-target {
   opacity: 0.7;
 }
 
+/* The list of the stops under a tap: one row of a finger's height per
+   stop, its route chips beside its name over the pills of its code and
+   direction. */
+.panel-detail-stop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-detail-stop-row {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  grid-template-areas: "chips name" "chips pills";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  width: 100%;
+  min-height: var(--close-button-hit-size);
+  padding: 8px 10px;
+  border: var(--surface-border-width) solid var(--surface-border-color);
+  border-radius: var(--surface-radius);
+  background-color: var(--panel-detail-action-fill);
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel-detail-stop-row-chips {
+  grid-area: chips;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--route-chip-gap);
+  font-weight: 700;
+}
+
+.panel-detail-stop-row-name {
+  grid-area: name;
+  font-weight: 600;
+}
+
+.panel-detail-stop-row .panel-detail-pills {
+  grid-area: pills;
+}
+
 /* The line at the top of a stop's view that says what the chosen journey
    does at the stop. It is a control of a finger's height that opens the
    Trip tab, outlined in the selected color as the first bus's row is. */

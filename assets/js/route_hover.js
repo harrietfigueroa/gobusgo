@@ -16,7 +16,7 @@ import {
   openedText
 } from "./route_keys"
 import {EmphasisOwner, listEmphasisClosed, ListEvent, listEmphasisStep} from "./route_emphasis"
-import {DeviceKind, TapAction, deviceKind, tapAction} from "./route_tap"
+import {DeviceKind, ENTRY_COUNT_MAX, TAP_TOLERANCE_PIXELS, TapAction, deviceKind, tapAction} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
 
@@ -24,11 +24,6 @@ import {HitKind, overlayHitAt} from "./vehicle_overlay"
 // the features under the pointer, which lets it be run apart from a map.
 
 const TOLERANCE_PIXELS = 4
-// Half of the 44 CSS pixel target a finger is given, so a tap within the
-// target's reach of a line reads as on it.
-// https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html — checked 2026-11-11
-const TAP_TOLERANCE_PIXELS = 22
-const ENTRY_COUNT_MAX = 12
 const POPUP_OFFSET_PIXELS = 12
 const POPUP_WIDTH_MAX = "22rem"
 const POPUP_CLASS_NAME = "route-hover"

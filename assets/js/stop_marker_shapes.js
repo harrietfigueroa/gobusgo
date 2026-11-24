@@ -140,6 +140,47 @@ export function chipsOffset({direction, gapUnits}) {
   return [x, roundedOffset(y + gapUnits)]
 }
 
+/** The zoom the stop signs are drawn from. */
+export const SIGN_ZOOM_MIN = 14
+
+/** The signs' icon size at `SIGN_ZOOM_MIN`, where a street's stops first stand apart. */
+export const ICON_SIZE_AT_ZOOM_MIN = 0.75
+
+/** The zoom from which the signs are drawn whole, at an icon size of 1. */
+export const ICON_WHOLE_ZOOM = 16
+
+/**
+ * The signs' icon size at `zoom`, as the layers' `icon-size` interpolates
+ * it: `ICON_SIZE_AT_ZOOM_MIN` up to `SIGN_ZOOM_MIN`, 1 from
+ * `ICON_WHOLE_ZOOM`, and linear between.
+ */
+export function iconSizeAt(zoom) {
+  if (zoom <= SIGN_ZOOM_MIN) {
+    return ICON_SIZE_AT_ZOOM_MIN
+  }
+
+  if (zoom >= ICON_WHOLE_ZOOM) {
+    return 1
+  }
+
+  const fraction = (zoom - SIGN_ZOOM_MIN) / (ICON_WHOLE_ZOOM - SIGN_ZOOM_MIN)
+  return ICON_SIZE_AT_ZOOM_MIN + fraction * (1 - ICON_SIZE_AT_ZOOM_MIN)
+}
+
+/**
+ * A stop's sign as the layers draw it at `zoom`, from `stopPoint`, the stop's
+ * point on the screen: the sign's center, moved by its curb offset at the
+ * zoom's icon size, and half the side of its square.
+ */
+export function signBox({stopPoint, direction, zoom}) {
+  const size = iconSizeAt(zoom)
+  const [x, y] = curbOffset(direction)
+  return {
+    center: {x: stopPoint.x + x * size, y: stopPoint.y + y * size},
+    halfSize: SIGN_SIZE_PIXELS * size / HALVING_DIVISOR
+  }
+}
+
 /** The compass directions and the sign's curb offset of each, as the pairs of a match expression. */
 export function curbOffsetCases() {
   const cases = []

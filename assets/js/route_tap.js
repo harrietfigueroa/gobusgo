@@ -2,6 +2,17 @@
 // a pure function of the device and of what lies under the tap. Nothing
 // here reads the map or the document.
 
+/**
+ * How far from a line or a marker a finger's tap still reads as on it: half
+ * of the 44 CSS pixel target WCAG 2.5.5 gives a pointer, so a tap within
+ * the target's reach of an item hits it.
+ */
+// https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html — checked 2026-11-23
+export const TAP_TOLERANCE_PIXELS = 22
+
+/** The most entries a list of what lies under a tap or the pointer shows. */
+export const ENTRY_COUNT_MAX = 12
+
 export const DeviceKind = Object.freeze({hover: "hover", touch: "touch"})
 export const TapAction = Object.freeze({close: "close", none: "none", open: "open"})
 

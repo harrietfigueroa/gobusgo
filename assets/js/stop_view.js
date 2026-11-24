@@ -1,12 +1,14 @@
 // The stop view of the panel sheet's details view, in the glanceable style:
 // pills of the stop's code and direction beside the favorite button, its
 // routes' chips over a muted caption of their agencies, its trip buttons,
-// the lines of its alerts, and its arrivals as rows. Its content is built
+// the lines of its alerts, and its arrivals as rows; and the list of the
+// stops under a tap, which opens one of them. Its content is built
 // as text nodes: a stop's texts come from outside the application and are
 // never parsed as HTML.
 
 import {alertLines} from "./service_alerts"
 import {chipElements} from "./route_chips"
+import {CHIP_COUNT_MAX} from "./stop_marker_shapes"
 import {writeArrivals} from "./stop_arrivals"
 import {PillKind, codePill, directionPill} from "./stop_text"
 import {
@@ -35,6 +37,10 @@ const ACTIONS_CLASS_NAME = "panel-detail-actions"
 const ACTION_CLASS_NAME = "panel-detail-action"
 const ALERTS_CLASS_NAME = "panel-detail-alerts"
 const ARRIVALS_CLASS_NAME = "panel-detail-arrivals"
+const STOP_LIST_CLASS_NAME = "panel-detail-stop-list"
+const STOP_ROW_CLASS_NAME = "panel-detail-stop-row"
+const STOP_ROW_CHIPS_CLASS_NAME = "panel-detail-stop-row-chips"
+const STOP_ROW_NAME_CLASS_NAME = "panel-detail-stop-row-name"
 const FAVORITE_MARK = "★"
 const NOT_FAVORITE_MARK = "☆"
 const FAVORITE_LABEL = "Your favorite stop"
@@ -174,6 +180,39 @@ export function writeTripLine({line, stopId}) {
   }
 
   writeTripLineText({line, text})
+}
+
+// The list of the stops under a tap, `stops`, nearest first: one button a
+// finger's height per stop, with the stop's route chips, its name, and the
+// pills of its code and direction, which calls `onChoose` with the stop.
+export function stopListElement({stops, onChoose}) {
+  const list = document.createElement("ul")
+  list.className = STOP_LIST_CLASS_NAME
+
+  for (const stop of stops) {
+    const chips = document.createElement("span")
+    chips.className = STOP_ROW_CHIPS_CLASS_NAME
+
+    for (const element of chipElements({chips: stop.routeChips, countMax: CHIP_COUNT_MAX, emptyText: ""})) {
+      chips.append(element)
+    }
+
+    const name = document.createElement("span")
+    name.className = STOP_ROW_NAME_CLASS_NAME
+    name.textContent = suppliedName(stop)
+
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = STOP_ROW_CLASS_NAME
+    button.append(chips, name, pillsElement(stop))
+    button.addEventListener("click", () => { onChoose(stop) })
+
+    const item = document.createElement("li")
+    item.append(button)
+    list.append(item)
+  }
+
+  return list
 }
 
 // The view of `stop`, with its favorite button, the note under its header,

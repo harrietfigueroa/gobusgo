@@ -9,7 +9,9 @@ import {
   CHANGE_EVENT_NAME as DETAIL_CHANGE_EVENT_NAME,
   closeDetail,
   DESELECT_EVENT_NAME,
-  DetailKind
+  DetailKind,
+  hasParentDetail,
+  showParentDetail
 } from "./panel_detail"
 import {keyboardInset} from "./keyboard_inset"
 import {revealOffset} from "./reveal_offset"
@@ -304,9 +306,16 @@ export const PanelSheet = {
     return this.tabs.find(isSelectedTab)
   },
 
-  // The tab the view returns to is still the open one, so closing the view
-  // shows it; focus that was in the view moves to that tab.
+  // An item opened from another, a stop chosen from a list, returns to that
+  // other, and focus stays on the back button. Any other item closes the
+  // view: the tab it returns to is still the open one, so closing the view
+  // shows it, and focus that was in the view moves to that tab.
   backCallback() {
+    if (hasParentDetail()) {
+      showParentDetail()
+      return
+    }
+
     const hasFocusInDetail = this.detail.contains(document.activeElement)
     this.focusOrigin = null
     closeDetail()
