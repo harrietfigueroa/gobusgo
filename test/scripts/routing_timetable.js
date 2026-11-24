@@ -326,8 +326,9 @@ function fileEntry({path, buffer}) {
 
 /**
  * The snapshot files of `fixture`, keyed by the path its manifest entry
- * names them at under `pathPrefix`, that entry, and the names the readable
- * legs need. `files` holds the same buffers as the engine loader takes
+ * names them at under `pathPrefix`, that entry, the names the readable
+ * legs need, and the connections and walking links the files hold, in the
+ * files' order. `files` holds the same buffers as the engine loader takes
  * them.
  */
 export function snapshotOf(fixture, pathPrefix = "/fixture") {
@@ -408,5 +409,6 @@ export function snapshotOf(fixture, pathPrefix = "/fixture") {
     stopIndex,
     tripIds: Array.from(fixture.trips, tripId),
     connections,
+    links,
   }
 }

@@ -212,7 +212,7 @@ jobs:
       core: ${{ steps.paths.outputs.core }}
     env:
       BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-      CONFORMANCE_PATHS: ^(assets/js/core/|core/|test/fixtures/(math|routing/v2|packed/core-v1|one_bus_away/trip_path)/|tools/conformance/|lib/mix/tasks/gobusgo\.assets\.core\.ex$|mix\.(exs|lock)$|\.tool-versions$|mise\.toml$|\.github/workflows/ci\.yml$)
+      CONFORMANCE_PATHS: ^(assets/js/core/|core/|test/fixtures/(math|routing|packed/core-v1|one_bus_away/trip_path)/|test/scripts/routing_(engine_cases\.mjs|timetable\.js)$|tools/conformance/|lib/mix/tasks/gobusgo\.assets\.core\.ex$|mix\.(exs|lock)$|\.tool-versions$|mise\.toml$|\.github/workflows/ci\.yml$)
       CORE_PAGES_PATHS: ^(assets/js/|assets/package\.json$|core/|test/gobusgo_web/core_pages|test/support/core_pages/|tools/conformance/|lib/mix/tasks/gobusgo\.assets\.|config/|mix\.(exs|lock)$|\.tool-versions$|mise\.toml$|\.github/workflows/ci\.yml$)
       CORE_PATHS: ^(core/|\.github/workflows/ci\.yml$)
     steps:

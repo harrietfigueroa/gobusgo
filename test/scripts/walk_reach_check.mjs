@@ -4,16 +4,18 @@
 // TOLERANCE_METERS for every pair of its points, so the planned time of a
 // walk from a position is the length of the line drawn. Also the answers of
 // each other kind (an island, a position off the graph, tiles not loaded, a
-// cap reached, no stop in reach), the start stops each walking basis gives,
-// and the bounds as assertions. Run it with `node test/scripts/walk_reach_check.mjs`;
-// it exits non-zero on the first result that differs.
+// cap reached, no stop in reach), the target bound as an assertion, that the
+// street search's candidates fit that bound, and that the seconds of the start
+// stops a reach gives are those of the line drawn.
+// Run it with `node test/scripts/walk_reach_check.mjs`; it exits non-zero on
+// the first result that differs.
 
 import {deepStrictEqual, ok, strictEqual, throws} from "node:assert/strict"
 import {AssertionError} from "../../assets/js/core/assert.js"
 import {tileKey} from "../../assets/js/core/walk_graph_file.js"
 import {WALK_LIMITS, WalkPathKind, planWalk} from "../../assets/js/core/walk_path.js"
 import {ReachKind, WALK_REACH_LIMITS, walkReach, walkReachLimits} from "../../assets/js/core/walk_reach.js"
-import {WALK_CANDIDATE_COUNT_MAX, WalkBasis, isStreetWalk, startsFromStreets, streetMetersMaxOf, walkBasisOf} from "../../assets/js/core/routing_walk.js"
+import {WALK_CANDIDATE_COUNT_MAX, startsFromStreets} from "../../assets/js/core/routing_walk.js"
 import {TOLERANCE_METERS, goldenGraph} from "./walk_links_queries.mjs"
 
 const STREET_METERS_MAX = 600
@@ -65,14 +67,6 @@ function targetAtStart(unused, stop) {
 
 function reachWithTooMany() {
   return reachFrom({start: pointNamed("north middle"), targets: Array.from({length: TARGET_OVER_COUNT}, targetAtStart)})
-}
-
-function isStreetWalkOfUnknown() {
-  return isStreetWalk("teleport")
-}
-
-function streetMetersMaxOfNone() {
-  return streetMetersMaxOf({})
 }
 
 // Every pair of the golden points: a street length at most the bound that the
@@ -157,36 +151,10 @@ throws(reachWithTooMany, AssertionError)
 // The bound is the manifest's, and a reader takes the shared limits otherwise.
 deepStrictEqual({...WALK_REACH_LIMITS, streetMetersMax: STREET_METERS_MAX}, limits)
 
-// The start stops of each basis. A manifest that names none, or one this
-// reader does not know, is a straight-line table; the streets and a mix both
-// plan a walk from a position over the streets.
-const rules = {walkRadiusM: 400, walkSpeedMPerS: WALK_SPEED_M_PER_S, walkLinkCountPerStopMax: LINK_COUNT_MAX, walkStreetMetersMax: STREET_METERS_MAX}
-const basisCases = [
-  {name: "a streets table", rules: {...rules, walkBasis: "streets"}, basis: WalkBasis.streets, isStreet: true},
-  {name: "a mixed table", rules: {...rules, walkBasis: "mixed"}, basis: WalkBasis.mixed, isStreet: true},
-  {name: "a straight table", rules: {...rules, walkBasis: "straight"}, basis: WalkBasis.straight, isStreet: false},
-  {name: "an older manifest with no basis", rules, basis: WalkBasis.straight, isStreet: false},
-  {name: "a streets table with no street bound", rules: {...rules, walkBasis: "streets", walkStreetMetersMax: undefined}, basis: WalkBasis.straight, isStreet: false},
-  {name: "a mixed table with a zero street bound", rules: {...rules, walkBasis: "mixed", walkStreetMetersMax: 0}, basis: WalkBasis.straight, isStreet: false},
-  {name: "a basis this reader does not know", rules: {...rules, walkBasis: "teleport"}, basis: WalkBasis.straight, isStreet: false}
-]
-
-for (const basisCase of basisCases) {
-  const basis = walkBasisOf(basisCase.rules)
-  strictEqual(basis, basisCase.basis, basisCase.name)
-  strictEqual(isStreetWalk(basis), basisCase.isStreet, basisCase.name)
-}
-
-throws(isStreetWalkOfUnknown, AssertionError)
-throws(streetMetersMaxOfNone, AssertionError)
-strictEqual(streetMetersMaxOf(rules), STREET_METERS_MAX)
 ok(WALK_CANDIDATE_COUNT_MAX <= WALK_REACH_LIMITS.targetCountMax, "the candidates fit the search's target bound")
 
-// Street meters give the starts' seconds, rounded up, nearest by street first,
-// kept to the links a stop keeps, and the seconds are those of the line drawn.
-const startsRules = {...rules, walkLinkCountPerStopMax: 2}
-const ordered = startsFromStreets({stops: [{stop: 5, streetM: 121}, {stop: 2, streetM: 60}, {stop: 9, streetM: 60}], transferRules: startsRules})
-deepStrictEqual(ordered, [{stop: 2, walkS: 50}, {stop: 9, walkS: 50}])
+// The seconds of the start stops a reach gives are those of the line drawn.
+const rules = {walkRadiusM: 400, walkSpeedMPerS: WALK_SPEED_M_PER_S, walkLinkCountPerStopMax: LINK_COUNT_MAX, walkStreetMetersMax: STREET_METERS_MAX}
 const north = pointNamed("north west")
 const targets = targetsExcluding(north)
 const reachedFromNorth = reachFrom({start: north, targets})
