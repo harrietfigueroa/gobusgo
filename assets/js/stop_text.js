@@ -1,6 +1,8 @@
 // The texts of the stop view in the glanceable style, as pure functions of a
 // stop's texts and its arrivals' age. Nothing here reads the document.
 
+import {assertCondition} from "#core/assert.js"
+
 /** Whether a pill is shown, with its mark and its text, or absent. */
 export const PillKind = Object.freeze({shown: "shown", absent: "absent"})
 
@@ -35,6 +37,15 @@ export function directionPill(direction) {
   }
 
   return {kind: PillKind.shown, mark: "", text: direction}
+}
+
+const LIST_COUNT_MIN = 2
+
+/** The title of the list of the `count` stops under a tap, "4 stops here"; a list holds two or more. */
+export function stopListTitle(count) {
+  assertCondition(Number.isSafeInteger(count), `a list's stop count is an integer, got: ${count}`)
+  assertCondition(count >= LIST_COUNT_MIN, `a list holds at least ${LIST_COUNT_MIN} stops, got: ${count}`)
+  return `${count} stops here`
 }
 
 /** The pill of a stop's `code`, "#" before it, and absent for none. */
