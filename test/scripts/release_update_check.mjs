@@ -17,15 +17,18 @@ import {MessageKind} from "../../assets/js/service_worker_strategy.js"
 
 const RELEASE_ONE = "0123456789abcdef"
 const RELEASE_TWO = "fedcba9876543210"
+const RELEASE_THREE = "00112233445566ff"
 // The macrotask turns a case waits for a port's answer to arrive.
 const SETTLE_TURN_COUNT = 5
 
 class FakeWorker extends EventTarget {
-  // `release` is what the worker answers with, or null for a worker that never answers.
-  constructor({state, release}) {
+  // `release` is what the worker answers with, or null for a worker that
+  // never answers; a worker with `isAnswerHeld` answers when `answer` is called.
+  constructor({state, release, isAnswerHeld = false}) {
     super()
     this.state = state
     this.release = release
+    this.isAnswerHeld = isAnswerHeld
     this.messages = []
     this.ports = []
   }
@@ -40,10 +43,18 @@ class FakeWorker extends EventTarget {
     }
 
     const isReleaseQuestion = message.kind === MessageKind.release
-    const isAnswering = isReleaseQuestion && this.release !== null
+    const isAnswerNow = isReleaseQuestion && !this.isAnswerHeld
+
+    if (isAnswerNow) {
+      this.answer()
+    }
+  }
+
+  answer() {
+    const isAnswering = this.release !== null
 
     if (isAnswering) {
-      transfer[0].postMessage({kind: MessageKind.release, release: this.release})
+      this.ports[0].postMessage({kind: MessageKind.release, release: this.release})
     }
   }
 
@@ -313,7 +324,7 @@ const cases = [
   {
     name: "a page withdraws its offer of an older release once a worker of its own release installs and takes over",
     async run() {
-      const older = new FakeWorker({state: "installed", release: RELEASE_ONE})
+      const older = new FakeWorker({state: "installed", release: RELEASE_THREE})
       const active = new FakeWorker({state: "activated", release: RELEASE_ONE})
       const page = await pageWith({controller: active, waiting: older, pageRelease: RELEASE_TWO})
       const own = new FakeWorker({state: "installing", release: RELEASE_TWO})
@@ -324,6 +335,27 @@ const cases = [
       return outcomeOf({page, worker: own})
     },
     outcome: takenOverQuietly
+  },
+  {
+    name: "an offer whose worker still waits stands when a worker of the page's own release answers late and takes over",
+    async run() {
+      const own = new FakeWorker({state: "installed", release: RELEASE_TWO, isAnswerHeld: true})
+      const active = new FakeWorker({state: "activated", release: RELEASE_ONE})
+      const page = await pageWith({controller: active, waiting: own, pageRelease: RELEASE_TWO})
+      // The third worker installs while the page's own one stays in
+      // "installed", which the Install algorithm never leaves it in, so the
+      // case reaches the page's withdrawal with an offered worker that waits.
+      const third = new FakeWorker({state: "installing", release: RELEASE_THREE})
+      page.registration.installing = third
+      page.registration.dispatchEvent(new Event("updatefound"))
+      third.moveTo("installed")
+      await settle()
+      own.answer()
+      await settle()
+      closePorts(own)
+      return outcomeOf({page, worker: third})
+    },
+    outcome: offered
   }
 ]
 

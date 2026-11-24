@@ -15,6 +15,7 @@ import {
   RELOAD_WAIT_MS,
   ReleaseAnswerKind,
   ReloadStepKind,
+  isOfferWithdrawn,
   offerStep,
   pageReleaseOf,
   releaseAnswerOf,
@@ -120,6 +121,44 @@ for (const testCase of offerCases) {
   deepStrictEqual(step, testCase.step, testCase.name)
 }
 
+const withdrawCases = [
+  {
+    name: "an offer whose worker still waits stands",
+    workerState: "installed",
+    isWithdrawn: false
+  },
+  {
+    name: "an offer whose worker another page asked to take over is withdrawn",
+    workerState: "activating",
+    isWithdrawn: true
+  },
+  {
+    name: "an offer whose worker controls the page is withdrawn",
+    workerState: "activated",
+    isWithdrawn: true
+  },
+  {
+    name: "an offer whose worker a newer install replaced is withdrawn",
+    workerState: "redundant",
+    isWithdrawn: true
+  }
+]
+
+for (const testCase of withdrawCases) {
+  deepStrictEqual(isOfferWithdrawn({workerState: testCase.workerState}), testCase.isWithdrawn, testCase.name)
+}
+
+for (const workerState of refusedStates) {
+  throws(() => isOfferWithdrawn({workerState}), AssertionError, `the state ${JSON.stringify(workerState)} is refused for a withdrawal`)
+}
+
 const caseCount =
-  stepCases.length + refusedStates.length + waitCases.length + pageReleaseCases.length + answerCases.length + offerCases.length
+  stepCases.length +
+  refusedStates.length +
+  waitCases.length +
+  pageReleaseCases.length +
+  answerCases.length +
+  offerCases.length +
+  withdrawCases.length +
+  refusedStates.length
 console.log(`release offer: ${caseCount} cases pass`)

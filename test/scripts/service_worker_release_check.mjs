@@ -14,7 +14,11 @@ import {runInThisContext} from "node:vm"
 import {PageReleaseKind, ReleaseAnswerKind, pageReleaseOf, releaseAnswerOf} from "../../assets/js/release_offer.js"
 import {MessageKind} from "../../assets/js/service_worker_strategy.js"
 
+// Each field of the source worker's build holds a value of its own, so an
+// answer that names another field than the release differs.
 const SOURCE_RELEASE = "0123456789abcdef"
+const SOURCE_BASEMAP_ASSETS_ID = "fedcba9876543210"
+const SOURCE_PRECACHE_PATH = "/assets/js/app.js"
 // How long a case waits for the worker's answer before it reads none.
 const ANSWER_WAIT_MS = 1000
 const NO_ANSWER = "no answer"
@@ -22,7 +26,9 @@ const BUILT_WORKER_URL = new URL("../../priv/static/sw.js", import.meta.url)
 const RELEASE_FILE_URL = new URL("../../priv/static/sw_release.json", import.meta.url)
 
 // The worker's global scope as its listeners and its activate message reach
-// it; `skipWaitingCount` counts the takeovers it asks for.
+// it; `skipWaitingCount` counts the takeovers it asks for. A message makes
+// it the global `self` again, since the worker reads `self` when a message
+// arrives as well as when it loads.
 function standInScope() {
   const listeners = new Map()
   const scope = {
@@ -36,17 +42,23 @@ function standInScope() {
     },
     message(data, ports) {
       const listener = listeners.get("message")
+      globalThis.self = scope
       listener({data, ports})
     }
   }
   return scope
 }
 
+let sourceLoadCount = 0
+
+// A source worker of its own: the query gives each load a module instance
+// of its own, which registers its listeners on this load's scope.
 async function sourceWorker() {
   const scope = standInScope()
+  sourceLoadCount += 1
   globalThis.self = scope
-  globalThis.SERVICE_WORKER_BUILD = {release: SOURCE_RELEASE, precachePaths: ["/assets/js/app.js"], basemapAssetsId: "0123456789abcdef"}
-  await import("../../assets/js/service_worker.js")
+  globalThis.SERVICE_WORKER_BUILD = {release: SOURCE_RELEASE, precachePaths: [SOURCE_PRECACHE_PATH], basemapAssetsId: SOURCE_BASEMAP_ASSETS_ID}
+  await import(`../../assets/js/service_worker.js?load=${sourceLoadCount}`)
   return scope
 }
 
@@ -83,12 +95,11 @@ async function releaseFileRelease() {
   return file.release
 }
 
-const source = await sourceWorker()
-
 const cases = [
   {
     name: "the worker answers a release question on the port it hands with its release",
     async check() {
+      const source = await sourceWorker()
       const answer = await answerOf(source)
       deepStrictEqual(answer, {kind: MessageKind.release, release: SOURCE_RELEASE})
     }
@@ -96,6 +107,7 @@ const cases = [
   {
     name: "the page reads the worker's answer as the worker's release",
     async check() {
+      const source = await sourceWorker()
       const answer = await answerOf(source)
       const read = releaseAnswerOf(answer)
       deepStrictEqual(read, {kind: ReleaseAnswerKind.release, release: SOURCE_RELEASE})
@@ -104,9 +116,9 @@ const cases = [
   {
     name: "the worker asks to take over on an activate message",
     async check() {
-      const before = source.skipWaitingCount
+      const source = await sourceWorker()
       source.message({kind: MessageKind.activate}, [])
-      deepStrictEqual(source.skipWaitingCount - before, 1)
+      deepStrictEqual(source.skipWaitingCount, 1)
     }
   },
   {

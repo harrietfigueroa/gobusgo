@@ -263,7 +263,7 @@ node test/scripts/css_accessibility_check.mjs
 node test/scripts/route_chip_color_check.mjs
 ```
 
-A change to a file under `assets/js/` runs that file's node check, or is checked in a browser, as `assets/AGENTS.md` ("Checks") lists; CI runs neither.
+A change to a file under `assets/js/` runs that file's node check, or is checked in a browser, as `assets/AGENTS.md` ("Checks") lists; CI runs neither, except the node checks its `assets` job runs after `mix assets.build`.
 
 When a change touches `assets/js/core/` or `tools/lint/rules/no_async_work.mjs`, also run the two commands CI's `core-lint` job runs (GOB-420), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which also lints code written out by hand to check that the rule still reports each kind of async work, and `npm run --prefix tools/lint lint:core`, which lints every module of the core with `tools/lint/eslint.core.config.mjs`.
 
@@ -296,7 +296,7 @@ npm run --prefix tools/lint lint
 node test/scripts/a11y_source_check.mjs
 ```
 
-When a change touches `assets/` or the classes in a template, also run `mix assets.build`; CI runs it as its own job. `assets/AGENTS.md` ("Build") holds `mix assets.setup`, the vendored packages' rules, and the build's steps. `mix format` formats HEEx templates through `Phoenix.LiveView.HTMLFormatter`.
+When a change touches `assets/` or the classes in a template, also run `mix assets.build`; CI runs it as its own job, `assets`, which then runs `node test/scripts/core_binding_check.mjs` and `node test/scripts/service_worker_release_check.mjs` against the build (GOB-496). `assets/AGENTS.md` ("Build") holds `mix assets.setup`, the vendored packages' rules, and the build's steps. `mix format` formats HEEx templates through `Phoenix.LiveView.HTMLFormatter`.
 
 When a change touches `priv/openapi.json`, `priv/openapi.private.json`, `tools/lint/eslint.openapi.config.mjs`, or `tools/lint/schemas/openapi-3.1.json`, also run the two commands CI's `openapi` job runs (GOB-400), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which lints a malformed document and one that breaks the schema, written out by hand, to check that the lint still reports each, and `npm run --prefix tools/lint lint:openapi`, which lints both documents as JSON and against the vendored OpenAPI 3.1 schema without a network request. The local rule `tools/lint/rules/openapi_schema.mjs` compiles the schema with Ajv's 2020-12 dialect, so it reports a missing or mistyped field, an unknown field, and an invalid Schema Object; `$dynamicRef` is pointed at JSON Schema 2020-12 itself, as the rule's comment explains.
 
