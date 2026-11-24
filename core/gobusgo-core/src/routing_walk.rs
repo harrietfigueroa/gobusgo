@@ -68,9 +68,17 @@ impl WalkBasis {
     #[track_caller]
     pub fn named(name: &str) -> Self {
         let Some(basis) = Self::known(name) else {
-            assert::unreachable(&name, "routing walk: a walking basis of unknown kind");
+            Self::refuse_unknown(name);
         };
         basis
+    }
+
+    /// Fails as the JavaScript's `isStreetWalk` fails for a value that is no
+    /// basis, a value other than text included; `written` is the value as
+    /// JavaScript's `String` writes it.
+    #[track_caller]
+    pub fn refuse_unknown(written: &str) -> ! {
+        assert::unreachable(&written, "routing walk: a walking basis of unknown kind");
     }
 
     fn known(name: &str) -> Option<Self> {
@@ -122,18 +130,20 @@ pub struct ReachedStop {
     pub street_m: f64,
 }
 
-// A stop with a known position within the walking radius, with its distance
-// in a straight line.
-struct NearStop {
+// A stop ranked by its meters, in a straight line or along the streets, with
+// the index of the record it was ranked from. Both rankings sort this one
+// type, so the module holds one instance of the sort.
+#[derive(Clone, Copy)]
+struct Ranked {
+    meters: f64,
     stop: f64,
-    distance_m: f64,
-    lat: f64,
-    lon: f64,
+    index: usize,
 }
 
 // The order of two numbers a JavaScript comparator that subtracts them gives,
-// the two zeros equal; NaN, which no caller hands, takes `total_cmp`'s place,
-// so the order stays total.
+// the two zeros equal; a NaN takes the place `total_cmp` gives it, after every
+// number where its sign is positive and before every number where it is
+// negative, so the order stays total.
 fn number_order(left: f64, right: f64) -> Ordering {
     match left.partial_cmp(&right) {
         Some(order) => order,
@@ -141,14 +151,10 @@ fn number_order(left: f64, right: f64) -> Ordering {
     }
 }
 
-fn by_distance(left: &NearStop, right: &NearStop) -> Ordering {
-    let by_meters = number_order(left.distance_m, right.distance_m);
-    by_meters.then_with(|| number_order(left.stop, right.stop))
-}
-
-fn by_street_meters(left: &ReachedStop, right: &ReachedStop) -> Ordering {
-    let by_meters = number_order(left.street_m, right.street_m);
-    by_meters.then_with(|| number_order(left.stop, right.stop))
+// Nearest first, equal meters going to the lower stop.
+fn by_meters(left: &Ranked, right: &Ranked) -> Ordering {
+    let meters_order = number_order(left.meters, right.meters);
+    meters_order.then_with(|| number_order(left.stop, right.stop))
 }
 
 #[track_caller]
@@ -232,10 +238,16 @@ fn kept_first<Item>(items: Vec<Item>, end: f64) -> Vec<Item> {
     kept
 }
 
+// The degrees of a stop's microdegrees on one axis.
+fn degrees(microdegrees: i32) -> f64 {
+    f64::from(microdegrees) / MICRODEGREES_PER_DEGREE
+}
+
 // The stops with a known position within the walking radius of the position
-// in a straight line, nearest first, equal distances going to the lower stop.
+// in a straight line, ranked by their distance, each indexed by its place in
+// the position columns.
 #[track_caller]
-fn stops_within(near: &Near<'_>) -> Vec<NearStop> {
+fn stops_within(near: &Near<'_>) -> Vec<Ranked> {
     assert_position(near.position);
     assert_rules(near.rules);
     let Positions {
@@ -254,25 +266,42 @@ fn stops_within(near: &Near<'_>) -> Vec<NearStop> {
             continue;
         }
 
-        let lat = f64::from(lat_value) / MICRODEGREES_PER_DEGREE;
-        let lon = f64::from(lon_value) / MICRODEGREES_PER_DEGREE;
         let distance_m = distance_meters(Between {
             source: near.position,
-            target: Position { lon, lat },
+            target: Position {
+                lon: degrees(lon_value),
+                lat: degrees(lat_value),
+            },
         });
 
         if distance_m <= near.rules.walk_radius_m {
-            within.push(NearStop {
+            within.push(Ranked {
+                meters: distance_m,
                 stop: number_of(index),
-                distance_m,
-                lat,
-                lon,
+                index,
             });
         }
     }
 
-    within.sort_by(by_distance);
+    within.sort_by(by_meters);
     within
+}
+
+// The start stops of `ranked`, ranked stops, each with the whole seconds of its
+// walk at the walking speed, at most the walking links a stop keeps.
+fn starts_of(ranked: Vec<Ranked>, rules: WalkRules) -> Vec<Start> {
+    let kept = kept_first(ranked, rules.walk_link_count_per_stop_max);
+    let mut starts = Vec::with_capacity(kept.len());
+
+    for start in kept {
+        let walk_s = (start.meters / rules.walk_speed_m_per_s).ceil();
+        starts.push(Start {
+            stop: start.stop,
+            walk_s,
+        });
+    }
+
+    starts
 }
 
 /// The basis of a manifest entry's `transferRules`.
@@ -361,18 +390,7 @@ pub fn street_meters_max_of(walk_street_meters_max: Option<f64>) -> f64 {
 #[track_caller]
 pub fn starts_near(near: &Near<'_>) -> Vec<Start> {
     let within = stops_within(near);
-    let kept = kept_first(within, near.rules.walk_link_count_per_stop_max);
-    let mut starts = Vec::with_capacity(kept.len());
-
-    for candidate in kept {
-        let walk_s = (candidate.distance_m / near.rules.walk_speed_m_per_s).ceil();
-        starts.push(Start {
-            stop: candidate.stop,
-            walk_s,
-        });
-    }
-
-    starts
+    starts_of(within, near.rules)
 }
 
 /// The stops a walk from the position over the streets searches among: those
@@ -385,11 +403,19 @@ pub fn walk_candidates_near(near: &Near<'_>) -> Vec<Candidate> {
     within.truncate(WALK_CANDIDATE_COUNT_MAX);
     let mut candidates = Vec::with_capacity(within.len());
 
-    for near_stop in within {
+    for ranked in within {
+        let lat_value = near.positions.lat_microdegrees.get(ranked.index);
+        let lon_value = near.positions.lon_microdegrees.get(ranked.index);
+        let (Some(&lat_value), Some(&lon_value)) = (lat_value, lon_value) else {
+            assert::unreachable(
+                &ranked.index,
+                "routing walk: a stop ranked from the position columns is in them",
+            );
+        };
         candidates.push(Candidate {
-            stop: near_stop.stop,
-            lat: near_stop.lat,
-            lon: near_stop.lon,
+            stop: ranked.stop,
+            lat: degrees(lat_value),
+            lon: degrees(lon_value),
         });
     }
 
@@ -401,24 +427,21 @@ pub fn walk_candidates_near(near: &Near<'_>) -> Vec<Candidate> {
 /// `stops` are the stops a reach found and their street meters, each given the
 /// whole seconds of its walk at the snapshot's walking speed, nearest by street
 /// first, equal lengths going to the lower stop, at most the walking links a
-/// stop keeps, as `starts_near`
-/// answers them.
+/// stop keeps, as `starts_near` answers them.
 #[must_use]
 #[track_caller]
 pub fn starts_from_streets(stops: &[ReachedStop], rules: WalkRules) -> Vec<Start> {
     assert_rules(rules);
-    let mut ordered = stops.to_vec();
-    ordered.sort_by(by_street_meters);
-    let kept = kept_first(ordered, rules.walk_link_count_per_stop_max);
-    let mut starts = Vec::with_capacity(kept.len());
+    let mut ranked = Vec::with_capacity(stops.len());
 
-    for reached in kept {
-        let walk_s = (reached.street_m / rules.walk_speed_m_per_s).ceil();
-        starts.push(Start {
+    for (index, reached) in stops.iter().enumerate() {
+        ranked.push(Ranked {
+            meters: reached.street_m,
             stop: reached.stop,
-            walk_s,
+            index,
         });
     }
 
-    starts
+    ranked.sort_by(by_meters);
+    starts_of(ranked, rules)
 }

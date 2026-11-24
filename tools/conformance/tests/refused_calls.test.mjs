@@ -13,6 +13,9 @@ import {FAILURE_BUDGET_MS} from "../repeated_failures.mjs"
 const REFUSED_CALL_COUNT = 1100
 const refusedCallTimeoutMs = REFUSED_CALL_COUNT * FAILURE_BUDGET_MS
 
+// Walking rules the walk takes, so a call fails on its stops alone.
+const WALK_RULES = Object.freeze({walkRadiusM: 400, walkSpeedMPerS: 1.2, walkLinkCountPerStopMax: 64})
+
 let stopsBuffer = null
 
 beforeAll(async () => {
@@ -54,7 +57,8 @@ const refusedCalls = [
   {name: "the stops of a detached buffer", call: ({routingSnapshot}) => routingSnapshot.decodeStops(detachedBuffer())},
   {name: "the stops of a revoked proxy", call: ({routingSnapshot}) => routingSnapshot.decodeStops(revokedProxy())},
   {name: "a path whose points throw an unwritable error", call: ({tripPath}) => tripPath.decodeTripPath(throwingPath())},
-  {name: "a built path with no stops to read", call: ({tripPath}) => tripPath.tripPathOf({tripId: "trip", routeId: "route", serviceDateMs: 0, points: [[0, 0]], stops: null})}
+  {name: "a built path with no stops to read", call: ({tripPath}) => tripPath.tripPathOf({tripId: "trip", routeId: "route", serviceDateMs: 0, points: [[0, 0]], stops: null})},
+  {name: "the street starts of a revoked proxy", call: ({routingWalk}) => routingWalk.startsFromStreets({stops: revokedProxy(), transferRules: WALK_RULES})}
 ]
 
 // Calls `call` and swallows what it throws, a refusal either way.
@@ -66,7 +70,7 @@ function refusedOnce({call, implementation}) {
   }
 }
 
-describe.each(implementationsWith("routingSnapshot", "tripPath"))("refused calls ($name)", (implementation) => {
+describe.for(implementationsWith("routingSnapshot", "tripPath", "routingWalk"))("refused calls ($name)", (implementation) => {
   const {routingSnapshot} = implementation
 
   test.each(refusedCalls)("$name, repeated, leaves the core working", ({call}) => {

@@ -60,6 +60,40 @@
    ]
   },
   {
+   "name": "the same stops under a negative link bound, which drops the two farthest",
+   "position": {"lat": 47.6, "lon": -122.3},
+   "positions": {
+    "latMicrodegrees": [47602697, -2147483648, 47600899, 47595503, 47600899, 47600000, 47600000],
+    "lonMicrodegrees": [-122300000, -2147483648, -122300000, -122300000, -122300000, -122300000, -122298000]
+   },
+   "transferRules": {"walkRadiusM": 400, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": -2, "walkStreetMetersMax": 600},
+   "starts": [{"stop": 5, "walkS": 0}, {"stop": 2, "walkS": 84}, {"stop": 4, "walkS": 84}],
+   "candidates": [
+    {"stop": 5, "lat": 47.6, "lon": -122.3},
+    {"stop": 2, "lat": 47.600899, "lon": -122.3},
+    {"stop": 4, "lat": 47.600899, "lon": -122.3},
+    {"stop": 6, "lat": 47.6, "lon": -122.298},
+    {"stop": 0, "lat": 47.602697, "lon": -122.3}
+   ]
+  },
+  {
+   "name": "the same stops under a radius equal to the farthest one's distance",
+   "position": {"lat": 47.6, "lon": -122.3},
+   "positions": {
+    "latMicrodegrees": [47602697, -2147483648, 47600899, 47595503, 47600899, 47600000, 47600000],
+    "lonMicrodegrees": [-122300000, -2147483648, -122300000, -122300000, -122300000, -122300000, -122298000]
+   },
+   "transferRules": {"walkRadiusM": 299.89313138958573, "walkSpeedMPerS": 1.2, "walkLinkCountPerStopMax": 64, "walkStreetMetersMax": 600},
+   "starts": [{"stop": 5, "walkS": 0}, {"stop": 2, "walkS": 84}, {"stop": 4, "walkS": 84}, {"stop": 6, "walkS": 125}, {"stop": 0, "walkS": 250}],
+   "candidates": [
+    {"stop": 5, "lat": 47.6, "lon": -122.3},
+    {"stop": 2, "lat": 47.600899, "lon": -122.3},
+    {"stop": 4, "lat": 47.600899, "lon": -122.3},
+    {"stop": 6, "lat": 47.6, "lon": -122.298},
+    {"stop": 0, "lat": 47.602697, "lon": -122.3}
+   ]
+  },
+  {
    "name": "no stop within the radius",
    "position": {"lat": 47.7, "lon": -122.3},
    "positions": {

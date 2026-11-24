@@ -139,6 +139,14 @@ fn the_260_stop_case_holds_more_stops_than_the_street_search_keeps() {
 }
 
 #[test]
+fn the_260_stop_case_expects_as_many_candidates_as_the_street_search_keeps() {
+    let cases = cases();
+    let case = case_named(&cases, "near", BOUND_CASE_NAME);
+    let candidate_count = case.get("candidates").items().len();
+    assert_eq!(candidate_count, CANDIDATE_COUNT_MAX);
+}
+
+#[test]
 fn bases() {
     for case in cases().get("bases").items() {
         let transfer_rules = case.get("transferRules");

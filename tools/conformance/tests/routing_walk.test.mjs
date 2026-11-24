@@ -111,6 +111,13 @@ const refusedNearCalls = refusedNearEntries()
 
 const unboundedRules = rulesOf(unboundedCase.transferRules)
 
+// Street bounds that are no number, which a manifest's JSON could carry, each
+// read as a straight-line table.
+const nonNumberBounds = [
+  {name: "null", bound: null},
+  {name: "text", bound: "600"}
+]
+
 // Each street bound the module refuses, by the rule it breaks, with the failure's message.
 const refusedBounds = [
   {rule: "no bound", transferRules: unboundedRules, failure: "routing walk: the street length bound is not a number: undefined"},
@@ -147,6 +154,11 @@ describe.for(implementationsWith("routingWalk"))("routing walk ($name)", ({routi
     expect(basis).toBe(basisCase.basis)
   })
 
+  test.for(nonNumberBounds)("walkBasisOf reads a street bound of $name as a straight-line table", ({bound}) => {
+    const basis = routingWalk.walkBasisOf({...streetRules, walkStreetMetersMax: bound})
+    expect(basis).toBe(routingWalk.WalkBasis.straight)
+  })
+
   test.for(streetWalks)("isStreetWalk of $basis is $isStreetWalk", ({basis, isStreetWalk}) => {
     const isStreet = routingWalk.isStreetWalk(basis)
     expect(isStreet).toBe(isStreetWalk)
@@ -156,6 +168,13 @@ describe.for(implementationsWith("routingWalk"))("routing walk ($name)", ({routi
     const failing = () => routingWalk.isStreetWalk("teleport")
     expect(failing).toThrow(AssertionError)
     expect(failing).toThrow(new AssertionError("routing walk: a walking basis of unknown kind: teleport"))
+  })
+
+  test("isStreetWalk refuses a basis that is a String object rather than text", () => {
+    // A String object is the input under test: it writes as a basis's name and is no member of WalkBasis.
+    const failing = () => routingWalk.isStreetWalk(new String("streets"))
+    expect(failing).toThrow(AssertionError)
+    expect(failing).toThrow(new AssertionError("routing walk: a walking basis of unknown kind: streets"))
   })
 
   test.for(streetBounds)("streetMetersMaxOf reads $name as $meters", (streetBoundCase) => {

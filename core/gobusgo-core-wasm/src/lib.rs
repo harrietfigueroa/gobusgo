@@ -658,17 +658,21 @@ pub fn walk_candidate_count_max() -> usize {
 #[must_use]
 pub fn walk_basis_of(transfer_rules: &JsValue) -> String {
     let walk_basis = property(transfer_rules, "walkBasis").as_string();
-    let bound = street_bound(transfer_rules);
+    // A bound that is no number is `None`, read as no bound, as the
+    // JavaScript's `Number.isFinite` reads it.
+    let bound = property(transfer_rules, "walkStreetMetersMax").as_f64();
     let basis = routing_walk::walk_basis_of(walk_basis.as_deref(), bound);
     basis.name().to_owned()
 }
 
 /// `routing_walk.js`'s `isStreetWalk`: whether a walk is planned along the
-/// streets under the basis `basis` names, read with `String`.
+/// streets under the basis `basis` names, which must be text.
 #[wasm_bindgen(js_name = isStreetWalk)]
 #[must_use]
 pub fn is_street_walk(basis: &JsValue) -> bool {
-    let name = text(basis);
+    let Some(name) = basis.as_string() else {
+        routing_walk::WalkBasis::refuse_unknown(&text(basis));
+    };
     routing_walk::is_street_walk(routing_walk::WalkBasis::named(&name))
 }
 
@@ -1026,8 +1030,14 @@ impl NearValues {
         let positions = property(options, "positions");
         Self {
             position: geodesy::Position {
-                lon: number_property(&position, "lon"),
-                lat: number_property(&position, "lat"),
+                lon: number(
+                    &property(&position, "lon"),
+                    "binding: routing walk: the position's lon",
+                ),
+                lat: number(
+                    &property(&position, "lat"),
+                    "binding: routing walk: the position's lat",
+                ),
             },
             positions: routing_snapshot::Positions {
                 lat_microdegrees: int32_column(&property(&positions, "latMicrodegrees")),
@@ -1049,19 +1059,29 @@ impl NearValues {
 // The walking rules of a manifest entry's `transferRules`, each a number.
 fn walk_rules(transfer_rules: &JsValue) -> routing_walk::WalkRules {
     routing_walk::WalkRules {
-        walk_radius_m: number_property(transfer_rules, "walkRadiusM"),
-        walk_speed_m_per_s: number_property(transfer_rules, "walkSpeedMPerS"),
-        walk_link_count_per_stop_max: number_property(transfer_rules, "walkLinkCountPerStopMax"),
+        walk_radius_m: number(
+            &property(transfer_rules, "walkRadiusM"),
+            "binding: routing walk: walkRadiusM",
+        ),
+        walk_speed_m_per_s: number(
+            &property(transfer_rules, "walkSpeedMPerS"),
+            "binding: routing walk: walkSpeedMPerS",
+        ),
+        walk_link_count_per_stop_max: number(
+            &property(transfer_rules, "walkLinkCountPerStopMax"),
+            "binding: routing walk: walkLinkCountPerStopMax",
+        ),
     }
 }
 
-// A manifest entry's `walkStreetMetersMax`, a number where the entry holds one.
+// A manifest entry's `walkStreetMetersMax`, which must be a number where the
+// entry holds one.
 fn street_bound(transfer_rules: &JsValue) -> Option<f64> {
     let bound = property(transfer_rules, "walkStreetMetersMax");
     if bound.is_undefined() {
         return None;
     }
-    Some(number(&bound, "walkStreetMetersMax"))
+    Some(number(&bound, "binding: routing walk: walkStreetMetersMax"))
 }
 
 // A column of a decoded positions file, which must be an `Int32Array`, copied
@@ -1083,21 +1103,13 @@ fn reached_stops(stops: &JsValue) -> Vec<routing_walk::ReachedStop> {
     let values = caught(try_reached_values(stops), "reading the reached stops");
     let (pairs, _) = values.as_chunks::<2>();
     let mut reached = Vec::with_capacity(pairs.len());
-    for (index, [stop, street_m]) in pairs.iter().enumerate() {
+    for [stop, street_m] in pairs {
         reached.push(routing_walk::ReachedStop {
-            stop: reached_number(stop, &format!("reached stop {index}'s stop")),
-            street_m: reached_number(street_m, &format!("reached stop {index}'s streetM")),
+            stop: number(stop, "binding: routing walk: a reached stop's stop"),
+            street_m: number(street_m, "binding: routing walk: a reached stop's streetM"),
         });
     }
     reached
-}
-
-fn reached_number(value: &JsValue, name: &str) -> f64 {
-    let number = value.as_f64();
-    assert::condition(number.is_some(), || {
-        format!("binding: {name} {} is not a number", text(value))
-    });
-    number.unwrap_or_default()
 }
 
 fn starts_value(found: &[routing_walk::Start]) -> JsValue {
