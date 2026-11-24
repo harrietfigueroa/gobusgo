@@ -5,9 +5,9 @@
 // does next, what it shows, whether the map moves, and what a page load does
 // with the rider's location are functions of them alone.
 
-import {assertCondition, unreachable} from "./core/assert.js"
-import {radians} from "./core/math/angles.js"
-import {EndKind} from "./core/trip_plan.js"
+import {assertCondition, unreachable} from "#core/assert.js"
+import {radians} from "#core/math/angles.js"
+import {EndKind} from "#core/trip_plan.js"
 import {PermissionKind} from "./position_watch.js"
 
 /**

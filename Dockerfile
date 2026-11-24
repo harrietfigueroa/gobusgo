@@ -13,6 +13,15 @@ ARG OTP_VERSION=29.1.1
 ARG DEBIAN_VERSION=trixie-20260918-slim
 ARG BUILD_IMAGE_DIGEST=sha256:27dc95204c20b774f5c73f050d13ce7735d251a2e349c3ddcd2c3acf6ea873c1
 ARG RUN_IMAGE_DIGEST=sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+# The Rust image supplies rustup and cargo to the build stage. Its version is
+# the one core/rust-toolchain.toml pins, its Debian release the build stage's,
+# and wasm-bindgen's version the one mise.toml pins; each changes together with
+# its file.
+ARG RUST_VERSION=1.100.0
+ARG RUST_IMAGE_DIGEST=sha256:e9d95b74296f7126a83ae3d041aeaba1ff4c478f13abc5cc034fcf7c131c3d4a
+ARG WASM_BINDGEN_VERSION=0.2.130
+
+FROM rust:${RUST_VERSION}-slim-trixie@${RUST_IMAGE_DIGEST} AS rust
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}@${BUILD_IMAGE_DIGEST} AS build
 
@@ -20,6 +29,25 @@ ENV MIX_ENV=prod
 WORKDIR /app
 
 RUN mix local.hex --force && mix local.rebar --force
+
+# rustup installs the components and target core/rust-toolchain.toml names,
+# and cargo builds wasm-bindgen's command from crates.io, whose index checks
+# each crate's checksum. cargo links build scripts and procedural macros for
+# the build machine with its C compiler, which the WebAssembly build needs as
+# well. All of it comes before the sources, so a source change reuses these
+# layers.
+ARG WASM_BINDGEN_VERSION
+ENV RUSTUP_HOME=/usr/local/rustup \
+  CARGO_HOME=/usr/local/cargo \
+  PATH=/usr/local/cargo/bin:$PATH
+COPY --from=rust /usr/local/rustup /usr/local/rustup
+COPY --from=rust /usr/local/cargo /usr/local/cargo
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends gcc libc6-dev \
+  && rm -rf /var/lib/apt/lists/*
+COPY core/rust-toolchain.toml core/rust-toolchain.toml
+RUN cd core && rustup toolchain install \
+  && cargo install --locked --version ${WASM_BINDGEN_VERSION} wasm-bindgen-cli
 
 # Dependencies are fetched and compiled before the sources are copied, so a
 # source change reuses these layers.
@@ -32,6 +60,7 @@ RUN mix deps.compile
 RUN mix assets.tools
 
 COPY assets assets
+COPY core core
 COPY lib lib
 # The web app manifest and its icons are checked in where the endpoint
 # serves them; the rest of priv/static is built here.

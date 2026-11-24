@@ -94,13 +94,21 @@ defmodule GobusgoWeb.Layouts do
           <%= Phoenix.HTML.raw(@theme_script) %>
         </script>
         <link phx-track-static rel="stylesheet" href={Endpoint.static_path("/assets/css/app.css")} />
-        <script
-          defer
-          phx-track-static
-          type="text/javascript"
-          src={Endpoint.static_path("/assets/js/app.js")}
-        >
+        <script phx-track-static type="module" src={Endpoint.static_path("/assets/js/app.js")}>
         </script>
+        <%!-- The script's `core.js` fetches the module from this link's address as the
+          request this link makes without `crossorigin`, `no-cors` with credentials
+          included, so it compiles the response the preload started: a browser hands a
+          preload's response only to a fetch of the same mode and credentials, and
+          WebKit only to a `no-cors` one.
+          https://html.spec.whatwg.org/multipage/links.html#link-type-preload — checked 2026-11-20 --%>
+        <link
+          rel="preload"
+          href={Endpoint.static_path("/assets/core/gobusgo_core_bg.wasm")}
+          as="fetch"
+          type="application/wasm"
+          data-core-module
+        />
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>

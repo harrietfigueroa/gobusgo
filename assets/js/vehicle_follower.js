@@ -8,7 +8,7 @@ import {showNotice} from "./map_live_region"
 import {isReducedMotion, isResizeMove} from "./map_move"
 import {sheetInsets} from "./panel_sheet"
 import {endsFollowing, keepOffset, moveDurationMs} from "./follow_state"
-import {unreachable} from "./core/assert"
+import {unreachable} from "#core/assert.js"
 import {createStopControl} from "./vehicle_follow_control"
 import {
   LOCATION_FOLLOW_START_EVENT_NAME,

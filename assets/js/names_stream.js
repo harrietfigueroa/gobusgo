@@ -2,8 +2,8 @@
 // browser's DecompressionStream, under the bound the file's reader names, so
 // its JSON is read once expanded.
 
-import {NAMES_EXPANDED_BYTES_MAX, NamesRefusalReason} from "./core/routing_names.js"
-import {DecodeKind} from "./core/routing_snapshot.js"
+import {NAMES_EXPANDED_BYTES_MAX, NamesRefusalReason} from "#core/routing_names.js"
+import {DecodeKind} from "#core/routing_snapshot.js"
 
 const COMPRESSION_FORMAT = "gzip"
 

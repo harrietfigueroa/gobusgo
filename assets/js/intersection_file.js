@@ -8,7 +8,7 @@
 // file was refused; a bad file is never a throw. Everything here is pure but
 // the expansion.
 
-import {assertCondition} from "./core/assert.js"
+import {assertCondition} from "#core/assert.js"
 import {
   ColumnType,
   PackedKind,
@@ -19,7 +19,7 @@ import {
   decodeContainer,
   openColumn,
   packedFileName,
-} from "./core/packed_container.js"
+} from "#core/packed_container.js"
 import {expandStream} from "./packed_stream.js"
 
 const INTERSECTION_FILE_VERSION = 1

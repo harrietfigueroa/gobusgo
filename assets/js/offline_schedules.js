@@ -35,13 +35,13 @@ import {
   stalePaths,
   statusMessage,
   tripPathShardPlan
-} from "./core/offline_bundle"
+} from "#core/offline_bundle.js"
 import {writeMessage} from "./message"
-import {PackedOutcome} from "./core/packed_container"
+import {PackedOutcome} from "#core/packed_container.js"
 import {expandStream} from "./packed_stream.js"
 import {requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
-import {decodeTripPathIndex, indexEntries} from "./core/trip_path_shard"
+import {decodeTripPathIndex, indexEntries} from "#core/trip_path_shard.js"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 const PLACES_MANIFEST_PATH = "/places/manifest.json"

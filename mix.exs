@@ -36,6 +36,8 @@ defmodule Gobusgo.MixProject do
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:lazy_html, "~> 0.1", only: :test},
+      {:phoenix_test, "0.14.0", only: :test, runtime: false},
+      {:phoenix_test_playwright, "0.19.0", only: :test, runtime: false},
       {:quokka, "~> 2.13", only: [:dev, :test], runtime: false}
     ]
   end
@@ -55,14 +57,18 @@ defmodule Gobusgo.MixProject do
       "assets.tools": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.setup": ["assets.tools", "compile", "gobusgo.vendor.fetch"],
       "assets.build": [
+        "gobusgo.assets.core",
         "tailwind default",
         "esbuild default",
+        "esbuild mcp_apps",
         "gobusgo.assets.map_library",
         "gobusgo.assets.service_worker"
       ],
       "assets.deploy": [
+        "gobusgo.assets.core",
         "tailwind default --minify",
-        "esbuild default --minify",
+        "esbuild default --minify --drop:debugger",
+        "esbuild mcp_apps --minify --drop:debugger",
         "gobusgo.assets.map_library",
         "phx.digest",
         "gobusgo.assets.service_worker --digested"

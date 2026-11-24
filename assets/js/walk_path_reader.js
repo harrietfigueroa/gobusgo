@@ -9,10 +9,10 @@
 // Rider positions are only ever arguments of the pure plan, so a fetch
 // carries a tile's name and never a position.
 
-import {assertCondition, unreachable} from "./core/assert.js"
-import {tileKey} from "./core/walk_graph_file.js"
-import {WALK_LIMITS, WalkPathKind, planWalk, walkTilesNeeded} from "./core/walk_path.js"
-import {walkKey} from "./core/trip_plan.js"
+import {assertCondition, unreachable} from "#core/assert.js"
+import {tileKey} from "#core/walk_graph_file.js"
+import {WALK_LIMITS, WalkPathKind, planWalk, walkTilesNeeded} from "#core/walk_path.js"
+import {walkKey} from "#core/trip_plan.js"
 import {HELD_TILE_COUNT_MAX, REQUEST_WALK_COUNT_MAX, SourceKind} from "./walk_tiles.js"
 
 // Keeps an error that no fetch outcome maps, a programmer error, a visible

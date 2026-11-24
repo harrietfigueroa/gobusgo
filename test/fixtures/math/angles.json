@@ -1,0 +1,33 @@
+{
+  "constants": {"DEGREES_PER_TURN": 360, "DEGREES_PER_HALF_TURN": 180},
+  "conversionTolerance": 1e-12,
+  "conversions": [
+    {"name": "no angle", "degrees": 0, "radians": 0},
+    {"name": "a quarter turn", "degrees": 90, "radians": 1.5707963267948966},
+    {"name": "a half turn", "degrees": 180, "radians": 3.141592653589793},
+    {"name": "a quarter turn back", "degrees": -90, "radians": -1.5707963267948966}
+  ],
+  "exactRadians": [
+    {"name": "Seattle's latitude, multiplied by pi before it is divided by 180", "degrees": 47.6062, "radians": 0.8308849343629245}
+  ],
+  "normalized": [
+    {"name": "north", "degrees": 0, "normalized": 0},
+    {"name": "a whole turn", "degrees": 360, "normalized": 0},
+    {"name": "a quarter turn back", "degrees": -90, "normalized": 270},
+    {"name": "two turns and a bit", "degrees": 725, "normalized": 5},
+    {"name": "a whole turn back", "degrees": -360, "normalized": 0}
+  ],
+  "turns": [
+    {"name": "no turn", "from": 10, "to": 10, "turn": 0},
+    {"name": "across north clockwise", "from": 350, "to": 10, "turn": 20},
+    {"name": "across north counterclockwise", "from": 10, "to": 350, "turn": 20},
+    {"name": "a half turn", "from": 0, "to": 180, "turn": 180},
+    {"name": "from below zero", "from": -30, "to": 30, "turn": 60}
+  ],
+  "refusedRadians": [
+    {"name": "radians of no number", "degrees": "NaN"}
+  ],
+  "refusedNormalized": [
+    {"name": "an endless angle", "degrees": "Infinity"}
+  ]
+}

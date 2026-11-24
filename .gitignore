@@ -38,3 +38,7 @@ gobusgo-*.tar
 # The accessibility lint tool's packages, and the pages it lints
 /tools/lint/node_modules/
 /tools/lint/rendered/
+
+# The conformance suite's packages, and the screenshots vitest takes of a failure
+/tools/conformance/node_modules/
+/tools/conformance/.vitest/

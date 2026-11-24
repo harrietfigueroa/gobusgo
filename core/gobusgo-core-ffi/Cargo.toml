@@ -1,0 +1,22 @@
+[package]
+name = "gobusgo-core-ffi"
+description = "The core's uniffi binding for Swift and Kotlin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The cdylib is the library Android loads and uniffi's bindgen reads, the
+# staticlib the one an iOS app links, and the rlib lets cargo test the binding's
+# functions natively.
+# https://mozilla.github.io/uniffi-rs/0.32/tutorial/foreign_language_bindings.html — checked 2026-11-13
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+gobusgo-core.workspace = true
+uniffi.workspace = true
+
+[lints]
+workspace = true

@@ -3,7 +3,7 @@
 // functions of a stop's texts, and each drawing function draws onto the
 // canvas it is handed. Nothing here reads the document.
 
-import {assertCondition} from "./core/assert.js"
+import {assertCondition} from "#core/assert.js"
 import {chipTextColor} from "./route_chip_color.js"
 
 /** The side of the square of the sign's image, in CSS pixels. */
@@ -84,6 +84,82 @@ export function chipsSide(direction) {
 /** The directions whose chips stand above the sign. */
 export function southwardDirections() {
   return [...southward]
+}
+
+/**
+ * How far a stop's sign stands from its stop, in the icon units MapLibre
+ * multiplies by `icon-size`: 12 CSS pixels at zoom 14's size of 0.75, where
+ * it separates most of the stops that overlap, and 16 from zoom 16.
+ */
+export const CURB_OFFSET_UNITS = 16
+
+const DEGREES_PER_HALF_TURN = 180
+const OFFSET_PRECISION = 100
+
+// A value rounded to hundredths, with no negative zero, so a north-up
+// offset reads [16, 0] rather than [16, -0].
+function roundedOffset(value) {
+  const rounded = Math.round(value * OFFSET_PRECISION) / OFFSET_PRECISION
+
+  if (rounded === 0) {
+    return 0
+  }
+
+  return rounded
+}
+
+/**
+ * The offset of a stop's sign from its stop on a north-up map, `[x, y]` in
+ * icon units with y downward: `CURB_OFFSET_UNITS` to the right of the
+ * stop's direction of travel, the curb its buses stop at in right-hand
+ * traffic, and none for a stop with no compass direction.
+ */
+export function curbOffset(direction) {
+  const angle = directionAngle(direction)
+
+  if (angle.kind === AngleKind.missing) {
+    return [0, 0]
+  }
+
+  const radians = angle.degrees * Math.PI / DEGREES_PER_HALF_TURN
+  return [roundedOffset(Math.cos(radians) * CURB_OFFSET_UNITS), roundedOffset(Math.sin(radians) * CURB_OFFSET_UNITS)]
+}
+
+/**
+ * The offset of a stop's chips, `[x, y]` in icon units: the sign's curb
+ * offset, then `gapUnits` above the sign or below it, on the side
+ * `chipsSide` gives.
+ */
+export function chipsOffset({direction, gapUnits}) {
+  const [x, y] = curbOffset(direction)
+
+  if (chipsSide(direction) === ChipsSide.above) {
+    return [x, roundedOffset(y - gapUnits)]
+  }
+
+  return [x, roundedOffset(y + gapUnits)]
+}
+
+/** The compass directions and the sign's curb offset of each, as the pairs of a match expression. */
+export function curbOffsetCases() {
+  const cases = []
+
+  for (const direction of Object.keys(degreesByDirection)) {
+    cases.push(direction, ["literal", curbOffset(direction)])
+  }
+
+  return cases
+}
+
+/** The compass directions and the chips' offset of each, as the pairs of a match expression. */
+export function chipsOffsetCases(gapUnits) {
+  const cases = []
+
+  for (const direction of Object.keys(degreesByDirection)) {
+    cases.push(direction, ["literal", chipsOffset({direction, gapUnits})])
+  }
+
+  return cases
 }
 
 /**

@@ -5,6 +5,7 @@ import {Basemap} from "./basemap"
 import {ColorTheme, followSystemTheme} from "./color_theme"
 import {ConnectionSignal} from "./connection_signal.js"
 import {ConnectionState, watchConnection} from "./connection_state.js"
+import {coreVersion} from "./core.js"
 import {FavoriteStop} from "./favorite_stop"
 import {FilterBar} from "./filter_bar"
 import {FollowLocation} from "./follow_location"
@@ -82,6 +83,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 followSystemTheme()
+document.documentElement.dataset.coreVersion = coreVersion()
 // The state is read before the socket connects, so every hook reads it.
 watchConnection()
 // Taps on each map are answered before any hook announces one.

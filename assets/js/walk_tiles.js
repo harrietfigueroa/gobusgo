@@ -4,9 +4,9 @@
 // shard once, whoever asks. A fetch names a tile and never a position: what a
 // request reveals is decided by which tiles a caller names.
 
-import {assertCondition} from "./core/assert.js"
-import {tileKey, walkGraphShardName} from "./core/walk_graph_file.js"
-import {WALK_LIMITS, walkWindowTiles} from "./core/walk_path.js"
+import {assertCondition} from "#core/assert.js"
+import {tileKey, walkGraphShardName} from "#core/walk_graph_file.js"
+import {WALK_LIMITS, walkWindowTiles} from "#core/walk_path.js"
 import {FetchKind, fetchWalkIndex, fetchWalkManifest, fetchWalkShard} from "./walk_graph_fetch.js"
 
 /** The most walks one request of the drawn lines names: a journey has a handful. */

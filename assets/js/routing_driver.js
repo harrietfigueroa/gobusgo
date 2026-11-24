@@ -4,7 +4,7 @@
 // every held file until it answers. The fetch function sees nothing but
 // paths the manifest names.
 
-import {assertCondition} from "./core/assert.js"
+import {assertCondition} from "#core/assert.js"
 import {
   FETCH_TIMEOUT_MS,
   FailureReason,
@@ -15,7 +15,7 @@ import {
   checkedOutcome,
   resumeQuery,
   startQuery,
-} from "./core/routing_journeys.js"
+} from "#core/routing_journeys.js"
 
 // Resolves on the outcome a timed-out fetch gets once `signal` aborts.
 function timeoutOf(signal) {
