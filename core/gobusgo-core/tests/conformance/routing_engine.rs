@@ -35,6 +35,11 @@ const MEETING_ARRIVAL_S: i32 = 29_400;
 const MEETING_LAST_ARRIVAL_S: i32 = 30_000;
 // 2^31, one past the largest `i32`.
 const INT32_PAST_MAX: f64 = 2_147_483_648.0;
+const LINK_S_PAST_INT32: u32 = 2_147_483_648;
+// A departure two seconds before a walk of 2^31 seconds ends at the largest
+// time a label holds below the unreached one.
+const DEPARTURE_BEFORE_WRAP_S: f64 = -2.0;
+const ARRIVAL_BEFORE_WRAP_S: f64 = 2_147_483_646.0;
 
 fn cases() -> Value {
     fixture(include_str!(
@@ -486,10 +491,6 @@ fn refused_engine_inputs() {
             "routing engine: 3 in the arrival_stop column is not a stop of the snapshot",
         ),
         (
-            edited(|input| input.transfers.duration_s.truncate(1)),
-            "routing engine: the duration_s column holds 1 values, not 2",
-        ),
-        (
             edited(|input| input.transfers.from_stop.reverse()),
             "routing engine: the walking links are not ordered by the stop they leave",
         ),
@@ -513,7 +514,6 @@ fn refused_engine_inputs() {
 fn refused_views() {
     let engine = Engine::new(linked_input());
     let view = engine.view();
-    let connections = view.connections;
     let links = view.links;
     let refused = [
         (
@@ -528,30 +528,10 @@ fn refused_views() {
         ),
         (
             EngineView {
-                connections: ConnectionColumns {
-                    trip_slot: &connections.trip_slot[..1],
-                    ..connections
-                },
-                ..view
-            },
-            "routing engine: the trip_slot column holds 1 values, not 2",
-        ),
-        (
-            EngineView {
                 trip_count: 3,
                 ..view
             },
             "routing engine: the trip count 3 exceeds the 2 connections",
-        ),
-        (
-            EngineView {
-                links: LinkColumns {
-                    duration_s: &links.duration_s[..1],
-                    ..links
-                },
-                ..view
-            },
-            "routing engine: the duration_s column holds 1 values, not 2",
         ),
         (
             EngineView {
@@ -578,5 +558,185 @@ fn refused_views() {
     for (refused_view, message) in refused {
         let failure = failure_of(|| route(&refused_view, &held.query()));
         assert_eq!(failure.message(), message);
+    }
+}
+
+// A walk from the position of 2^31 seconds reads back wrapped, as the
+// JavaScript's Int32Array column of durations holds it; the answer is the
+// JavaScript's over the same inputs.
+#[test]
+fn a_start_walk_past_an_int32_reads_back_wrapped() {
+    let engine = Engine::new(meeting_input(MINIMUM_TRANSFER_S));
+    let held = HeldQuery {
+        origin: HeldOrigin::Starts(vec![Start {
+            stop: 1.0,
+            walk_s: INT32_PAST_MAX,
+        }]),
+        target: 1.0,
+        departure_s: DEPARTURE_BEFORE_WRAP_S,
+    };
+    let frontier = route(&engine.view(), &held.query());
+    let expected = vec![Journey {
+        arrival_s: ARRIVAL_BEFORE_WRAP_S,
+        changes: 0,
+        legs: vec![Leg::WalkFromPosition {
+            to_stop: 1,
+            duration_s: f64::from(i32::MIN),
+        }],
+    }];
+    assert_eq!(frontier, expected);
+}
+
+// A walking link of 2^31 seconds reads back wrapped on its leg, while the time
+// it reaches counts the whole link; the answer is the JavaScript's over the
+// same inputs.
+#[test]
+fn a_link_past_an_int32_reads_back_wrapped() {
+    let engine = Engine::new(EngineInput {
+        transfers: Transfers {
+            from_stop: vec![0],
+            to_stop: vec![1],
+            duration_s: vec![LINK_S_PAST_INT32],
+        },
+        ..meeting_input(MINIMUM_TRANSFER_S)
+    });
+    let frontier = route(
+        &engine.view(),
+        &from_stop_0(1.0, DEPARTURE_BEFORE_WRAP_S).query(),
+    );
+    let expected = vec![
+        Journey {
+            arrival_s: ARRIVAL_BEFORE_WRAP_S,
+            changes: 0,
+            legs: vec![Leg::Walk {
+                from_stop: 0,
+                to_stop: 1,
+                duration_s: f64::from(i32::MIN),
+            }],
+        },
+        Journey {
+            arrival_s: f64::from(MEETING_ARRIVAL_S),
+            changes: 0,
+            legs: vec![Leg::Ride {
+                board_connection: 0,
+                alight_connection: 0,
+            }],
+        },
+    ];
+    assert_eq!(frontier, expected);
+}
+
+// An edit that shortens one column of an engine's input, and that column's name.
+type Shortening = (fn(&mut EngineInput), &'static str);
+
+// Each column `Engine::new` reads, shortened in turn, refused by its name.
+#[test]
+fn refused_engine_input_lengths() {
+    let shortened: [Shortening; 9] = [
+        (|input| input.connections.arrival_s.truncate(1), "arrival_s"),
+        (
+            |input| input.connections.departure_stop.truncate(1),
+            "departure_stop",
+        ),
+        (
+            |input| input.connections.arrival_stop.truncate(1),
+            "arrival_stop",
+        ),
+        (|input| input.connections.trip.truncate(1), "trip"),
+        (|input| input.connections.sequence.truncate(1), "sequence"),
+        (|input| input.connections.boarding.truncate(1), "boarding"),
+        (|input| input.connections.alighting.truncate(1), "alighting"),
+        (|input| input.transfers.to_stop.truncate(1), "to_stop"),
+        (|input| input.transfers.duration_s.truncate(1), "duration_s"),
+    ];
+    for (shorten, name) in shortened {
+        let mut input = linked_input();
+        shorten(&mut input);
+        let failure = failure_of(|| Engine::new(input));
+        assert_eq!(
+            failure.message(),
+            format!("routing engine: the {name} column holds 1 values, not 2")
+        );
+    }
+}
+
+// Each column of a view `route` reads, shortened in turn, refused by its name.
+#[test]
+fn refused_view_lengths() {
+    let engine = Engine::new(linked_input());
+    let view = engine.view();
+    let columns = view.connections;
+    let shortened = [
+        (
+            ConnectionColumns {
+                arrival_s: &columns.arrival_s[..1],
+                ..columns
+            },
+            "arrival_s",
+        ),
+        (
+            ConnectionColumns {
+                departure_stop: &columns.departure_stop[..1],
+                ..columns
+            },
+            "departure_stop",
+        ),
+        (
+            ConnectionColumns {
+                arrival_stop: &columns.arrival_stop[..1],
+                ..columns
+            },
+            "arrival_stop",
+        ),
+        (
+            ConnectionColumns {
+                trip_slot: &columns.trip_slot[..1],
+                ..columns
+            },
+            "trip_slot",
+        ),
+        (
+            ConnectionColumns {
+                boarding: &columns.boarding[..1],
+                ..columns
+            },
+            "boarding",
+        ),
+        (
+            ConnectionColumns {
+                alighting: &columns.alighting[..1],
+                ..columns
+            },
+            "alighting",
+        ),
+    ];
+    let mut refused: Vec<(EngineView<'_>, &str)> = Vec::new();
+    for (connections, name) in shortened {
+        refused.push((
+            EngineView {
+                connections,
+                ..view
+            },
+            name,
+        ));
+    }
+    let short_links = LinkColumns {
+        duration_s: &view.links.duration_s[..1],
+        ..view.links
+    };
+    refused.push((
+        EngineView {
+            links: short_links,
+            ..view
+        },
+        "duration_s",
+    ));
+    let held = from_stop_0(2.0, f64::from(MEETING_FIRST_DEPARTURE_S));
+    for (refused_view, name) in refused {
+        let failure = failure_of(|| route(&refused_view, &held.query()));
+        assert_eq!(
+            failure.message(),
+            format!("routing engine: the {name} column holds 1 values, not 2")
+        );
     }
 }

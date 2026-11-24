@@ -34,10 +34,11 @@
 //!
 //! A query's stops, times, and walks are doubles, as the JavaScript compares
 //! and writes them, so a refusal's message reads the same from both cores. A
-//! label stores each time as the JavaScript's `Int32Array` stores it, its
-//! `ToInt32`, and compares a new time with the stored one as a double, so a
-//! fractional minimum transfer or a time past `i32::MAX` is answered as the
-//! JavaScript answers it.
+//! label stores each time and each leg's duration as the JavaScript's
+//! `Int32Array` stores it, its `ToInt32`, and compares a new time with the
+//! stored one as a double, so a fractional minimum transfer, a time past
+//! `i32::MAX`, or a walk longer than that is answered as the JavaScript
+//! answers it.
 
 use std::collections::BTreeMap;
 
@@ -387,6 +388,11 @@ fn wrapped_int32(truncated: f64) -> f64 {
     }
 
     0.0
+}
+
+// A leg's duration as the JavaScript's `Int32Array` column of durations holds it.
+fn stored_duration_s(duration_s: f64) -> f64 {
+    f64::from(int32_of(duration_s))
 }
 
 impl Engine {
@@ -835,7 +841,7 @@ fn first_leg(parent: Parent, stop: usize, search: Search<'_>) -> Option<Leg> {
             Some(Leg::Walk {
                 from_stop: origin,
                 to_stop: stop,
-                duration_s: f64::from(duration_s),
+                duration_s: stored_duration_s(f64::from(duration_s)),
             })
         }
         Parent::WalkFromPosition { start } => {
@@ -847,7 +853,7 @@ fn first_leg(parent: Parent, stop: usize, search: Search<'_>) -> Option<Leg> {
             };
             Some(Leg::WalkFromPosition {
                 to_stop: stop,
-                duration_s: at(starts, start).walk_s,
+                duration_s: stored_duration_s(at(starts, start).walk_s),
             })
         }
         Parent::None | Parent::Ride { .. } | Parent::WalkAfterRide { .. } => None,
@@ -890,7 +896,7 @@ fn legs(reading: Reading<'_>) -> Vec<Leg> {
             reversed.push(Leg::Walk {
                 from_stop: index_of(at(columns.arrival_stop, alight)),
                 to_stop: stop,
-                duration_s: f64::from(duration_s),
+                duration_s: stored_duration_s(f64::from(duration_s)),
             });
         }
 
