@@ -1,13 +1,10 @@
 // Saves the schedules of the region for offline use in the browser's Cache
-// API, and keeps the rider's setting for it through the stored settings
-// module, on unless the rider turns it off.
+// API, reads what the store holds, and deletes it.
 //
-// A save never competes with the page: it starts once the page has loaded
-// and the browser is idle, fetches one file at a time at low priority, and
-// runs again while the page stays open. A date's trip path shards are
-// named by its trip path index, so the index is stored and read before its
-// shards are. Every file of a bundle is stored
-// before the index that names them, so a save that stops part way leaves the
+// A save fetches one file at a time at low priority. A date's trip path
+// shards are named by its trip path index, so the index is stored and read
+// before its shards are. Every file of a bundle is stored before the index
+// that names them, so a save that stops part way leaves the
 // previous complete bundle in use, and the files the new index no longer
 // names are deleted only after it is written. The bundle's own manifest is
 // written just before the index, so the service worker's offline answer for
@@ -22,7 +19,6 @@ import {
   NO_PLACES_FILE,
   OFFLINE_SCHEDULES_CACHE_NAME,
   PlanKind,
-  SettingKind,
   ShardPlanKind,
   ShardRefusal,
   TRIP_PATH_INDEX_EXPANDED_BYTES_MAX,
@@ -33,20 +29,16 @@ import {
   planBundle,
   savedIndex,
   stalePaths,
+  SettingKind,
   statusMessage,
   tripPathShardPlan
 } from "#core/offline_bundle.js"
-import {writeMessage} from "./message"
 import {PackedOutcome} from "#core/packed_container.js"
 import {expandStream} from "./packed_stream.js"
-import {requestPersistence} from "./storage_persistence"
-import {storedSettings} from "./stored_settings"
 import {decodeTripPathIndex, indexEntries} from "#core/trip_path_shard.js"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 const PLACES_MANIFEST_PATH = "/places/manifest.json"
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000
-const IDLE_TIMEOUT_MS = 10 * 1000
 const MEBIBYTE_BYTES = 1024 * 1024
 
 /** The outcomes of one save. */
@@ -57,14 +49,6 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {month: "short", day: "num
 
 function isSupported() {
   return "caches" in window
-}
-
-function isEnabled() {
-  return storedSettings.readOfflineSchedulesEnabled()
-}
-
-function storeEnabled(enabled) {
-  storedSettings.writeOfflineSchedulesEnabled(enabled)
 }
 
 function tileArchivePath() {
@@ -344,7 +328,35 @@ function newestBuild(dates) {
   return timeFormat.format(new Date(newest))
 }
 
-async function describe(persistence) {
+/**
+ * Saves the region's schedules in the store, logging a save that fails; a
+ * save `signal` aborts ends quietly and leaves the previous bundle in use.
+ */
+export async function saveSchedules(signal) {
+  try {
+    const outcome = await save(signal)
+
+    if (outcome.kind === SaveKind.failed) {
+      console.warn("Offline schedules not saved", outcome.reason)
+    }
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.warn("Offline schedules not saved", error)
+    }
+  }
+}
+
+/** Deletes the store of the saved schedules and every file in it. */
+export async function deleteSavedSchedules() {
+  await caches.delete(OFFLINE_SCHEDULES_CACHE_NAME)
+}
+
+/**
+ * The status line of the saved schedules while the setting is on: the
+ * dates the store holds, its size, and `persistence`, the browser's answer
+ * to keeping the page's storage.
+ */
+export async function describeSchedules(persistence) {
   const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
   const savedIndex = await readIndex(cache)
   const present = await storedPaths(cache)
@@ -365,128 +377,4 @@ async function describe(persistence) {
   }
 
   return statusMessage({kind: SettingKind.on, status, persistence, datesText: datesShown, updatedText, sizeText})
-}
-
-// Keeps the region's schedules saved while the setting is on, and shows
-// what is saved. The checkbox is the setting, and the status element says
-// what the store holds.
-export const OfflineSchedules = {
-  mounted() {
-    this.checkbox = this.el.querySelector("input[type=checkbox]")
-    this.status = this.el.querySelector("[data-offline-status]")
-    this.controller = null
-    this.timer = null
-    this.persistence = null
-
-    if (!isSupported()) {
-      this.checkbox.checked = false
-      this.checkbox.disabled = true
-      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.unsupported})})
-      return
-    }
-
-    this.checkbox.checked = isEnabled()
-    this.onChange = () => this.changed()
-    this.onOnline = () => this.start()
-    this.checkbox.addEventListener("change", this.onChange)
-    window.addEventListener("online", this.onOnline)
-    this.timer = window.setInterval(this.onOnline, REFRESH_INTERVAL_MS)
-    this.show()
-    this.whenIdle()
-  },
-
-  destroyed() {
-    window.clearInterval(this.timer)
-    window.removeEventListener("online", this.onOnline)
-    this.stop()
-  },
-
-  // Starts the first save once the page has loaded and the browser is idle.
-  whenIdle() {
-    const idle = () => {
-      if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(() => this.start(), {timeout: IDLE_TIMEOUT_MS})
-      } else {
-        window.setTimeout(() => this.start(), 0)
-      }
-    }
-
-    if (document.readyState === "complete") {
-      idle()
-    } else {
-      window.addEventListener("load", idle, {once: true})
-    }
-  },
-
-  changed() {
-    const enabled = this.checkbox.checked
-    storeEnabled(enabled)
-
-    if (enabled) {
-      this.start()
-    } else {
-      this.clear()
-    }
-  },
-
-  async start() {
-    const isRunning = this.controller !== null
-    const isOff = !isEnabled()
-
-    const isBusyOrOff = isRunning || isOff
-
-    if (isBusyOrOff) {
-      return
-    }
-
-    this.controller = new AbortController()
-
-    try {
-      const outcome = await save(this.controller.signal)
-
-      if (outcome.kind === SaveKind.failed) {
-        console.warn("Offline schedules not saved", outcome.reason)
-      }
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        console.warn("Offline schedules not saved", error)
-      }
-    } finally {
-      this.controller = null
-    }
-
-    await this.show()
-  },
-
-  stop() {
-    if (this.controller !== null) {
-      this.controller.abort()
-    }
-  },
-
-  async clear() {
-    this.stop()
-    await caches.delete(OFFLINE_SCHEDULES_CACHE_NAME)
-    writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
-  },
-
-  async show() {
-    if (!isEnabled()) {
-      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
-      return
-    }
-
-    try {
-      // Asked once per page, while the setting is on.
-      if (this.persistence === null) {
-        this.persistence = requestPersistence()
-      }
-
-      const persistence = await this.persistence
-      const message = await describe(persistence)
-      writeMessage({element: this.status, message})
-    } catch (error) {
-      console.warn("Offline schedules status not read", error)
-    }
-  },
 }

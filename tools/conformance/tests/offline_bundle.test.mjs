@@ -255,12 +255,12 @@ describe.each(implementationsWith("offlineBundle"))("offline bundle ($name)", ({
     {
       name: "off",
       setting: () => ({kind: SettingKind.off}),
-      expected: {headline: "Schedules not saved", caption: "Turn this on to plan trips offline."}
+      expected: {headline: "Nothing saved for offline use", caption: "Turn this on to plan trips and see schedules offline."}
     },
     {
       name: "a browser that cannot save",
       setting: () => ({kind: SettingKind.unsupported}),
-      expected: {headline: "Can't save schedules", caption: "This browser can't save them for offline use."}
+      expected: {headline: "Can't save for offline use", caption: "This browser can't save anything for offline use."}
     },
     {
       name: "saved",

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "keys": {
     "schemaVersion": "gobusgo:stored-settings-version",
     "theme": "gobusgo:theme",
@@ -7,11 +7,14 @@
     "recentTrips": "gobusgo:recent-trips",
     "vehicleFilter": "gobusgo:vehicle-filter",
     "locationFollow": "gobusgo:snap-to-location",
-    "offlineSchedules": "gobusgo:offline-schedules",
-    "offlineBasemap": "gobusgo:offline-basemap",
+    "offlineUse": "gobusgo:offline-use",
     "sharedVehicles": "gobusgo:shared-vehicles",
     "showDirection": "gobusgo:show-direction",
     "motionPermission": "gobusgo:motion-permission"
+  },
+  "retiredKeys": {
+    "offlineSchedules": "gobusgo:offline-schedules",
+    "offlineBasemap": "gobusgo:offline-basemap"
   },
   "storedThemes": ["light", "dark"]
 }

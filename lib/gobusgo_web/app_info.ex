@@ -91,11 +91,8 @@ defmodule GobusgoWeb.AppInfo do
     },
     offline: %{
       headline: "Offline",
-      caption: "The map, saved schedules, favorites, and trip planning keep working"
-    },
-    offline_schedules: %{
-      headline: "Save schedules offline",
-      caption: "Plan trips and see scheduled times without signal"
+      caption:
+        "Favorites stay, and with Save for offline use on, the map, schedules, and trip planning keep working"
     },
     show_direction: %{
       headline: "Show my direction",
@@ -346,11 +343,10 @@ defmodule GobusgoWeb.AppInfo do
                    "Gobusgo's server learns each stop only to fetch its arrivals, as for " <>
                    "any stop you open, and no usage record holds them."
 
-  @offline_schedules "While a page is open, your browser saves the schedules of the region " <>
-                       "for today and tomorrow, with the map's stops and routes, so they stay " <>
-                       "on your device for offline use. It saves them after the page has " <>
-                       "loaded and updates them while you are online, and turning this off " <>
-                       "removes them."
+  @offline_use_headline "Save for offline use"
+
+  @offline_use_refresh "It saves them after the page has loaded and updates them while you " <>
+                         "are online, and turning this off removes them."
 
   @megabyte_bytes 1_000_000
 
@@ -371,8 +367,9 @@ defmodule GobusgoWeb.AppInfo do
     "The map keeps its route lines and stops, and shows the vehicles where the saved " <>
       "schedules place them, in gray, with delays, cancellations, and detours unknown. " <>
       "A stop's arrivals are its scheduled times.",
-    "With Save the map offline on, the map draws its streets and places from " <>
-      "the saved map. With it off, the route lines and stops stand on an empty background.",
+    "With Save for offline use on, the map draws its streets and places from the saved " <>
+      "map where the page offers one, and otherwise the route lines and stops stand on an " <>
+      "empty background. With it off, nothing is saved for the map to draw.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
       "stays as it is until you are back online.",
     "From the saved schedules you can still plan a trip and center the map on a favorite " <>
@@ -424,7 +421,6 @@ defmodule GobusgoWeb.AppInfo do
   @spec summary(
           :theme
           | :offline
-          | :offline_schedules
           | :show_direction
           | :disclaimer
           | :donation
@@ -514,14 +510,25 @@ defmodule GobusgoWeb.AppInfo do
   end
 
   @doc """
-  The headline and the caption of the offline map setting, with the size of
-  the saved copy, `bytes`, in whole megabytes.
+  The headline and the caption of the offline use setting: for `nil`, a
+  basemap without an offline extract, the schedules alone, and for an
+  extract, the map too, with the size of the saved copy, `bytes`, in whole
+  megabytes.
   """
-  @spec offline_basemap_summary(%{bytes: non_neg_integer()}) :: message()
-  def offline_basemap_summary(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+  @spec offline_use_summary(%{bytes: non_neg_integer()} | nil) :: message()
+  def offline_use_summary(nil) do
     %{
-      headline: "Save the map offline",
-      caption: "Keeps streets and places when you lose signal · #{megabytes(bytes)} MB"
+      headline: @offline_use_headline,
+      caption: "Plan trips and see scheduled times without signal"
+    }
+  end
+
+  def offline_use_summary(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+    %{
+      headline: @offline_use_headline,
+      caption:
+        "Plan trips, see scheduled times, and keep streets and places without signal · " <>
+          "Map #{megabytes(bytes)} MB"
     }
   end
 
@@ -688,20 +695,25 @@ defmodule GobusgoWeb.AppInfo do
   @spec favorite_stop() :: String.t()
   def favorite_stop, do: @favorite_stop
 
-  @doc "The statement of how a map page saves schedules for offline use."
-  @spec offline_schedules() :: String.t()
-  def offline_schedules, do: @offline_schedules
-
   @doc """
-  The statement of how a map page saves the map for offline use, with the
-  size of the saved copy, `bytes`, in whole megabytes.
+  The statement of what a map page saves for offline use: for `nil`, a
+  basemap without an offline extract, the schedules alone, and for an
+  extract, the map too, with the size of the saved copy, `bytes`, in whole
+  megabytes.
   """
-  @spec offline_basemap(%{bytes: non_neg_integer()}) :: String.t()
-  def offline_basemap(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
-    "With this on, your browser saves a copy of the map of the region, about " <>
-      "#{megabytes(bytes)} MB, so the map draws its streets and places while you are offline, " <>
-      "with less detail close in. It saves the copy after the page has loaded, and " <>
-      "turning this off removes it."
+  @spec offline_use(%{bytes: non_neg_integer()} | nil) :: String.t()
+  def offline_use(nil) do
+    "With this on, while a page is open, your browser saves the schedules of the region " <>
+      "for today and tomorrow, with the map's stops and routes, so they stay on your device " <>
+      "for offline use. " <> @offline_use_refresh
+  end
+
+  def offline_use(%{bytes: bytes}) when is_integer(bytes) and bytes >= 0 do
+    "With this on, while a page is open, your browser saves the schedules of the region " <>
+      "for today and tomorrow, with the map's stops and routes, and a copy of the map of the " <>
+      "region, about #{megabytes(bytes)} MB, so they stay on your device for offline use. " <>
+      "The saved map draws its streets and places with less detail close in. " <>
+      @offline_use_refresh
   end
 
   @doc """

@@ -415,8 +415,8 @@ export function persistenceText(kind) {
  */
 export const SettingKind = Object.freeze({off: "off", on: "on", unsupported: "unsupported"})
 
-const OFF_MESSAGE = Object.freeze({headline: "Schedules not saved", caption: "Turn this on to plan trips offline."})
-const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save schedules", caption: "This browser can't save them for offline use."})
+const OFF_MESSAGE = Object.freeze({headline: "Nothing saved for offline use", caption: "Turn this on to plan trips and see schedules offline."})
+const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save for offline use", caption: "This browser can't save anything for offline use."})
 
 function fileCountText(count) {
   if (count === 1) {

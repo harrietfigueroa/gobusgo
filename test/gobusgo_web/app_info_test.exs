@@ -31,9 +31,7 @@ defmodule GobusgoWeb.AppInfoTest do
     for {topic, headline, caption} <- [
           {:theme, "Theme", "Match system follows your device's light or dark setting"},
           {:offline, "Offline",
-           "The map, saved schedules, favorites, and trip planning keep working"},
-          {:offline_schedules, "Save schedules offline",
-           "Plan trips and see scheduled times without signal"},
+           "Favorites stay, and with Save for offline use on, the map, schedules, and trip planning keep working"},
           {:show_direction, "Show my direction",
            "Your location dot points the way you face or travel"},
           {:disclaimer, "An independent project",
@@ -136,11 +134,19 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
-  describe "offline_basemap_summary/1" do
-    test "states the size in whole megabytes in its caption" do
-      assert AppInfo.offline_basemap_summary(%{bytes: 34_355_445}) == %{
-               headline: "Save the map offline",
-               caption: "Keeps streets and places when you lose signal · 34 MB"
+  describe "offline_use_summary/1" do
+    test "names the schedules alone for a basemap without an offline extract" do
+      assert AppInfo.offline_use_summary(nil) == %{
+               headline: "Save for offline use",
+               caption: "Plan trips and see scheduled times without signal"
+             }
+    end
+
+    test "names the map and its size in whole megabytes for a basemap with an offline extract" do
+      assert AppInfo.offline_use_summary(%{bytes: 34_355_445}) == %{
+               headline: "Save for offline use",
+               caption:
+                 "Plan trips, see scheduled times, and keep streets and places without signal · Map 34 MB"
              }
     end
   end
@@ -409,41 +415,40 @@ defmodule GobusgoWeb.AppInfoTest do
     end
   end
 
-  describe "offline_schedules/0" do
-    test "says the browser saves the region's schedules for today and tomorrow" do
-      assert AppInfo.offline_schedules() =~
-               "saves the schedules of the region for today and tomorrow"
+  describe "offline_use/1" do
+    for offline_archive <- [nil, %{bytes: 1}] do
+      test "says the browser saves the region's schedules for today and tomorrow, for #{inspect(offline_archive)}" do
+        assert AppInfo.offline_use(unquote(Macro.escape(offline_archive))) =~
+                 "saves the schedules of the region for today and tomorrow"
+      end
+
+      test "says the saving waits for the page to load, for #{inspect(offline_archive)}" do
+        assert AppInfo.offline_use(unquote(Macro.escape(offline_archive))) =~
+                 "after the page has loaded"
+      end
+
+      test "says turning the setting off removes what it saved, for #{inspect(offline_archive)}" do
+        assert AppInfo.offline_use(unquote(Macro.escape(offline_archive))) =~
+                 "turning this off removes them"
+      end
     end
 
-    test "says the saving waits for the page to load" do
-      assert AppInfo.offline_schedules() =~ "after the page has loaded"
+    test "names no map for a basemap without an offline extract" do
+      refute AppInfo.offline_use(nil) =~ "map of the region"
     end
 
-    test "says turning the setting off removes them" do
-      assert AppInfo.offline_schedules() =~ "turning this off removes them"
-    end
-  end
-
-  describe "offline_basemap/1" do
     for {bytes, size} <- [
           {34_355_445, "about 34 MB"},
           {33_500_000, "about 34 MB"},
           {1_499_999, "about 1 MB"}
         ] do
-      test "states the size of #{bytes} bytes as #{size}" do
-        assert AppInfo.offline_basemap(%{bytes: unquote(bytes)}) =~ unquote(size)
+      test "states the map's size of #{bytes} bytes as #{size}" do
+        assert AppInfo.offline_use(%{bytes: unquote(bytes)}) =~ unquote(size)
       end
     end
 
     test "says the saved map has less detail close in" do
-      assert AppInfo.offline_basemap(%{bytes: 1}) =~ "with less detail close in"
-    end
-
-    test "says the saving waits for the page to load and turning it off removes the copy" do
-      text = AppInfo.offline_basemap(%{bytes: 1})
-
-      assert text =~ "after the page has loaded"
-      assert text =~ "turning this off removes it"
+      assert AppInfo.offline_use(%{bytes: 1}) =~ "with less detail close in"
     end
   end
 
@@ -451,7 +456,7 @@ defmodule GobusgoWeb.AppInfoTest do
     test "says the map draws its background offline only from a saved map" do
       %{works: works} = AppInfo.offline()
 
-      assert Enum.any?(works, &(&1 =~ "With Save the map offline on"))
+      assert Enum.any?(works, &(&1 =~ "With Save for offline use on"))
     end
 
     test "says the vehicles and the arrivals come from the saved schedules" do

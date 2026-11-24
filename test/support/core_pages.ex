@@ -30,6 +30,16 @@ defmodule Gobusgo.Test.CorePages do
   @map_sources File.read!(@map_sources_path)
   @mcp_host File.read!(@mcp_host_path)
 
+  # The probe stores the stored settings' current version, which
+  # assets/js/stored_settings.js reads from the same file, so the page runs
+  # no migration over what the probe stores.
+  @stored_settings_path Path.expand("../../assets/js/stored_settings.json", __DIR__)
+  @external_resource @stored_settings_path
+  %{"schemaVersion" => schema_version} =
+    @stored_settings_path |> File.read!() |> JSON.decode!()
+
+  @schema_version_text Integer.to_string(schema_version)
+
   @timeout_ms 10_000
   # A region a scenario names and a page lacks is read as missing after
   # this long, since the reads repeat until they settle.
@@ -51,8 +61,8 @@ defmodule Gobusgo.Test.CorePages do
 
   @doc """
   Opens a session of the test's browser whose clock reads `pinned_at` from
-  its first script, with `favorites` stored before the page reads them,
-  and starts its trace.
+  its first script, with the offline use setting on and `favorites` stored
+  before the page reads them, and starts its trace.
   """
   @spec open_session(map(), %{pinned_at: DateTime.t(), favorites: [map()]}) :: Playwright.t()
   def open_session(context, %{pinned_at: %DateTime{} = pinned_at, favorites: favorites})
@@ -63,7 +73,11 @@ defmodule Gobusgo.Test.CorePages do
       |> Playwright.Config.validate!()
 
     conn = PhoenixTest.Playwright.Case.new_session(config, context)
-    probe = String.replace(@page_probe, "FAVORITES", JSON.encode!(favorites))
+
+    probe =
+      @page_probe
+      |> String.replace("FAVORITES", JSON.encode!(favorites))
+      |> String.replace("SCHEMA_VERSION", JSON.encode!(@schema_version_text))
 
     {:ok, _result} =
       BrowserContext.add_init_script(conn.context_id, source: probe, timeout: @timeout_ms)
