@@ -4,7 +4,8 @@
 // writes its item into the view with `showDetail`, and every listener of
 // the change event learns when the view moves to another item or closes, so
 // the hook whose item it was lets go of it. Each item is shown with a
-// parent or none, which `showParentDetail` shows again in its place.
+// parent, the item it was opened from, or with none; `showParentDetail`
+// shows the parent in the item's place.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 
