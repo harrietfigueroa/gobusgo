@@ -13,7 +13,7 @@
 
 use gobusgo_core::assert::{self, AssertionError as CoreAssertionError, number_text};
 use gobusgo_core::math::{angles, checks, geodesy, interpolation};
-use gobusgo_core::{packed_container, routing_snapshot, trip_path};
+use gobusgo_core::{packed_container, routing_snapshot, routing_walk, trip_path};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 // The length of an array that holds a position's two coordinates.
@@ -87,6 +87,28 @@ export function checkedTripPath(tripId, routeId, serviceDateMs, key, points, sto
 }
 function distanceOf(stop) { return stop.distanceMeters }
 export function stopDistances(stops) { return Array.from(stops, distanceOf) }
+export function int32s(column) { return column }
+export function starts(stops, walkSeconds) {
+  const list = new Array(stops.length)
+  for (let index = 0; index < stops.length; index += 1) {
+    list[index] = {stop: stops[index], walkS: walkSeconds[index]}
+  }
+  return list
+}
+export function candidates(stops, lats, lons) {
+  const list = new Array(stops.length)
+  for (let index = 0; index < stops.length; index += 1) {
+    list[index] = {stop: stops[index], lat: lats[index], lon: lons[index]}
+  }
+  return list
+}
+export function reachedValues(stops) {
+  const values = []
+  for (const reached of stops) {
+    values.push(reached.stop, reached.streetM)
+  }
+  return values
+}
 ")]
 extern "C" {
     #[wasm_bindgen(thread_local_v2, js_name = AssertionError)]
@@ -182,6 +204,18 @@ extern "C" {
 
     #[wasm_bindgen(catch, js_name = stopDistances)]
     fn try_stop_distances(stops: &JsValue) -> Result<Vec<JsValue>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = int32s)]
+    fn try_int32s(column: &JsValue) -> Result<Vec<i32>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = starts)]
+    fn try_starts(stops: Vec<f64>, walk_seconds: Vec<f64>) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = candidates)]
+    fn try_candidates(stops: Vec<f64>, lats: Vec<f64>, lons: Vec<f64>) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = reachedValues)]
+    fn try_reached_values(stops: &JsValue) -> Result<Vec<JsValue>, JsValue>;
 }
 
 // JavaScript's `String(value)`, which throws for a value whose conversion to
@@ -598,6 +632,93 @@ pub fn packed_refusal() -> JsValue {
     )
 }
 
+/// `routing_walk.js`'s `WalkBasis`, a frozen object of the bases' names.
+#[wasm_bindgen(js_name = routingWalkBasis)]
+#[must_use]
+pub fn routing_walk_basis() -> JsValue {
+    names(
+        routing_walk::WalkBasis::ALL
+            .map(|basis| basis.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `routing_walk.js`'s `WALK_CANDIDATE_COUNT_MAX`.
+#[wasm_bindgen(js_name = walkCandidateCountMax)]
+#[must_use]
+// wasm-bindgen exports no const fn.
+#[expect(clippy::missing_const_for_fn)]
+pub fn walk_candidate_count_max() -> usize {
+    routing_walk::WALK_CANDIDATE_COUNT_MAX
+}
+
+/// `routing_walk.js`'s `walkBasisOf`: the name of the basis of a manifest
+/// entry's `transferRules`.
+#[wasm_bindgen(js_name = walkBasisOf)]
+#[must_use]
+pub fn walk_basis_of(transfer_rules: &JsValue) -> String {
+    let walk_basis = property(transfer_rules, "walkBasis").as_string();
+    let bound = street_bound(transfer_rules);
+    let basis = routing_walk::walk_basis_of(walk_basis.as_deref(), bound);
+    basis.name().to_owned()
+}
+
+/// `routing_walk.js`'s `isStreetWalk`: whether a walk is planned along the
+/// streets under the basis `basis` names, read with `String`.
+#[wasm_bindgen(js_name = isStreetWalk)]
+#[must_use]
+pub fn is_street_walk(basis: &JsValue) -> bool {
+    let name = text(basis);
+    routing_walk::is_street_walk(routing_walk::WalkBasis::named(&name))
+}
+
+/// `routing_walk.js`'s `streetMetersMaxOf`: the street length a walk over the
+/// streets may have under a manifest entry's `transferRules`.
+#[wasm_bindgen(js_name = streetMetersMaxOf)]
+#[must_use]
+pub fn street_meters_max_of(transfer_rules: &JsValue) -> f64 {
+    routing_walk::street_meters_max_of(street_bound(transfer_rules))
+}
+
+/// `routing_walk.js`'s `startsNear`: the start stops within walking distance
+/// of a position, each `{stop, walkS}`.
+#[wasm_bindgen(js_name = startsNear)]
+#[must_use]
+pub fn starts_near(options: &JsValue) -> JsValue {
+    let near = NearValues::of(options);
+    let found = routing_walk::starts_near(&near.query());
+    starts_value(&found)
+}
+
+/// `routing_walk.js`'s `walkCandidatesNear`: the stops a walk over the streets
+/// searches among, each `{stop, lat, lon}`.
+#[wasm_bindgen(js_name = walkCandidatesNear)]
+#[must_use]
+pub fn walk_candidates_near(options: &JsValue) -> JsValue {
+    let near = NearValues::of(options);
+    let found = routing_walk::walk_candidates_near(&near.query());
+    let mut stops = Vec::with_capacity(found.len());
+    let mut lats = Vec::with_capacity(found.len());
+    let mut lons = Vec::with_capacity(found.len());
+    for candidate in &found {
+        stops.push(candidate.stop);
+        lats.push(candidate.lat);
+        lons.push(candidate.lon);
+    }
+    caught(try_candidates(stops, lats, lons), "building candidates")
+}
+
+/// `routing_walk.js`'s `startsFromStreets`: the start stops of a walk over the
+/// streets, each `{stop, walkS}`.
+#[wasm_bindgen(js_name = startsFromStreets)]
+#[must_use]
+pub fn starts_from_streets(options: &JsValue) -> JsValue {
+    let reached = reached_stops(&property(options, "stops"));
+    let rules = walk_rules(&property(options, "transferRules"));
+    let found = routing_walk::starts_from_streets(&reached, rules);
+    starts_value(&found)
+}
+
 /// `trip_path.js`'s `TRIP_PATH_COUNT_MAX`.
 #[wasm_bindgen(js_name = tripPathCountMax)]
 #[must_use]
@@ -890,6 +1011,103 @@ fn checked_trip_path(parts: &DecodedParts<'_>, points: &JsValue, stops: &JsValue
         ),
         "building a path",
     )
+}
+
+// The arguments of a walk near a position, read from the options object.
+struct NearValues {
+    position: geodesy::Position,
+    positions: routing_snapshot::Positions,
+    rules: routing_walk::WalkRules,
+}
+
+impl NearValues {
+    fn of(options: &JsValue) -> Self {
+        let position = property(options, "position");
+        let positions = property(options, "positions");
+        Self {
+            position: geodesy::Position {
+                lon: number_property(&position, "lon"),
+                lat: number_property(&position, "lat"),
+            },
+            positions: routing_snapshot::Positions {
+                lat_microdegrees: int32_column(&property(&positions, "latMicrodegrees")),
+                lon_microdegrees: int32_column(&property(&positions, "lonMicrodegrees")),
+            },
+            rules: walk_rules(&property(options, "transferRules")),
+        }
+    }
+
+    const fn query(&self) -> routing_walk::Near<'_> {
+        routing_walk::Near {
+            position: self.position,
+            positions: &self.positions,
+            rules: self.rules,
+        }
+    }
+}
+
+// The walking rules of a manifest entry's `transferRules`, each a number.
+fn walk_rules(transfer_rules: &JsValue) -> routing_walk::WalkRules {
+    routing_walk::WalkRules {
+        walk_radius_m: number_property(transfer_rules, "walkRadiusM"),
+        walk_speed_m_per_s: number_property(transfer_rules, "walkSpeedMPerS"),
+        walk_link_count_per_stop_max: number_property(transfer_rules, "walkLinkCountPerStopMax"),
+    }
+}
+
+// A manifest entry's `walkStreetMetersMax`, a number where the entry holds one.
+fn street_bound(transfer_rules: &JsValue) -> Option<f64> {
+    let bound = property(transfer_rules, "walkStreetMetersMax");
+    if bound.is_undefined() {
+        return None;
+    }
+    Some(number(&bound, "walkStreetMetersMax"))
+}
+
+// A column of a decoded positions file, which must be an `Int32Array`, copied
+// into the module's memory.
+fn int32_column(column: &JsValue) -> Vec<i32> {
+    let type_name = caught(try_type_name(column), "naming the column's type");
+    assert::condition(type_name == INT32_ARRAY_TYPE_NAME, || {
+        format!("binding: a position column is an {type_name}, not an Int32Array")
+    });
+    caught(try_int32s(column), "reading a position column")
+}
+
+// The name `Object.prototype.toString` gives an `Int32Array`.
+const INT32_ARRAY_TYPE_NAME: &str = "[object Int32Array]";
+
+// The stops of a reach, each `{stop, streetM}` of two numbers, as no coercion
+// of a value a caller hands is made.
+fn reached_stops(stops: &JsValue) -> Vec<routing_walk::ReachedStop> {
+    let values = caught(try_reached_values(stops), "reading the reached stops");
+    let (pairs, _) = values.as_chunks::<2>();
+    let mut reached = Vec::with_capacity(pairs.len());
+    for (index, [stop, street_m]) in pairs.iter().enumerate() {
+        reached.push(routing_walk::ReachedStop {
+            stop: reached_number(stop, &format!("reached stop {index}'s stop")),
+            street_m: reached_number(street_m, &format!("reached stop {index}'s streetM")),
+        });
+    }
+    reached
+}
+
+fn reached_number(value: &JsValue, name: &str) -> f64 {
+    let number = value.as_f64();
+    assert::condition(number.is_some(), || {
+        format!("binding: {name} {} is not a number", text(value))
+    });
+    number.unwrap_or_default()
+}
+
+fn starts_value(found: &[routing_walk::Start]) -> JsValue {
+    let mut stops = Vec::with_capacity(found.len());
+    let mut walk_seconds = Vec::with_capacity(found.len());
+    for start in found {
+        stops.push(start.stop);
+        walk_seconds.push(start.walk_s);
+    }
+    caught(try_starts(stops, walk_seconds), "building starts")
 }
 
 // The pair of positions `[lon, lat]` the JavaScript module destructures.

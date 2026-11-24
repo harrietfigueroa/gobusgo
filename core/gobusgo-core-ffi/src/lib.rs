@@ -14,6 +14,7 @@ use gobusgo_core::math::checks;
 use gobusgo_core::math::geodesy::{self, Between, PlaneCoverage, Position, TangentPlane};
 use gobusgo_core::math::interpolation::{self, Clamp, Lerp};
 use gobusgo_core::routing_snapshot::{self, Connections, Transfers, Trip};
+use gobusgo_core::routing_walk::{self, ReachedStop, WalkBasis, WalkRules};
 use gobusgo_core::trip_path;
 
 // The names Swift and Kotlin know these types by, where the core's own name is
@@ -22,6 +23,8 @@ type SnapshotRefusal = routing_snapshot::RefusalReason;
 type SnapshotPositions = routing_snapshot::Positions;
 type PathPoint = trip_path::Point;
 type PathStop = trip_path::Stop;
+type WalkStart = routing_walk::Start;
+type WalkCandidate = routing_walk::Candidate;
 
 uniffi::setup_scaffolding!();
 
@@ -462,6 +465,123 @@ pub fn with_trip_paths(cache: Vec<TripPath>, paths: Vec<TripPath>) -> Vec<TripPa
     let put = paths.into_iter().map(keyed).collect();
     let next = trip_path::with_trip_paths(held, put);
     next.into_iter().map(|(_, path)| path).collect()
+}
+
+/// How a snapshot's walking links are measured.
+#[uniffi::remote(Enum)]
+pub enum WalkBasis {
+    Straight,
+    Streets,
+    Mixed,
+}
+
+/// The walking rules of a manifest entry's `transferRules`.
+#[uniffi::remote(Record)]
+pub struct WalkRules {
+    pub walk_radius_m: f64,
+    pub walk_speed_m_per_s: f64,
+    pub walk_link_count_per_stop_max: f64,
+}
+
+/// A start stop and the whole seconds of the walk to it.
+#[uniffi::remote(Record)]
+pub struct WalkStart {
+    pub stop: f64,
+    pub walk_s: f64,
+}
+
+/// A stop a walk over the streets searches for, and its position in degrees.
+#[uniffi::remote(Record)]
+pub struct WalkCandidate {
+    pub stop: f64,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// A stop a walk over the streets reached, and the meters of street to it.
+#[uniffi::remote(Record)]
+pub struct ReachedStop {
+    pub stop: f64,
+    pub street_m: f64,
+}
+
+/// A rider's position, the stop positions of a positions file, and the walking
+/// rules a walk from the position follows.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Near {
+    pub position: Position,
+    pub positions: SnapshotPositions,
+    pub rules: WalkRules,
+}
+
+impl Near {
+    const fn query(&self) -> routing_walk::Near<'_> {
+        routing_walk::Near {
+            position: self.position,
+            positions: &self.positions,
+            rules: self.rules,
+        }
+    }
+}
+
+/// The most candidates a walk from a position over the streets searches for.
+#[uniffi::export]
+#[must_use]
+pub fn walk_candidate_count_max() -> u64 {
+    let Ok(count_max) = u64::try_from(routing_walk::WALK_CANDIDATE_COUNT_MAX) else {
+        gobusgo_core::assert::unreachable(
+            &routing_walk::WALK_CANDIDATE_COUNT_MAX,
+            "binding: the candidates' bound fits a u64",
+        );
+    };
+    count_max
+}
+
+/// The basis of a manifest entry's `transferRules`, from its `walkBasis`
+/// where that is text and its `walkStreetMetersMax` where it holds one.
+#[uniffi::export]
+#[must_use]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "uniffi lifts an optional text only as an owned String"
+)]
+pub fn walk_basis_of(walk_basis: Option<String>, walk_street_meters_max: Option<f64>) -> WalkBasis {
+    routing_walk::walk_basis_of(walk_basis.as_deref(), walk_street_meters_max)
+}
+
+/// Whether a walk from a position or to a point is planned along the streets.
+#[uniffi::export]
+#[must_use]
+pub const fn is_street_walk(basis: WalkBasis) -> bool {
+    routing_walk::is_street_walk(basis)
+}
+
+/// The street length, in meters, that a walk over the streets may have.
+#[uniffi::export]
+#[must_use]
+pub fn street_meters_max_of(walk_street_meters_max: Option<f64>) -> f64 {
+    routing_walk::street_meters_max_of(walk_street_meters_max)
+}
+
+/// The start stops within walking distance of a position, nearest first.
+#[uniffi::export]
+#[must_use]
+pub fn starts_near(near: &Near) -> Vec<WalkStart> {
+    routing_walk::starts_near(&near.query())
+}
+
+/// The stops a walk from a position over the streets searches among.
+#[uniffi::export]
+#[must_use]
+pub fn walk_candidates_near(near: &Near) -> Vec<WalkCandidate> {
+    routing_walk::walk_candidates_near(&near.query())
+}
+
+/// The start stops of a walk over the streets, nearest by street first.
+#[uniffi::export]
+#[must_use]
+pub fn starts_from_streets(stops: &[ReachedStop], rules: WalkRules) -> Vec<WalkStart> {
+    routing_walk::starts_from_streets(stops, rules)
 }
 
 #[cfg(test)]

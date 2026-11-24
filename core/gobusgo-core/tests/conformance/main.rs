@@ -13,6 +13,7 @@ mod interpolation;
 mod json;
 mod packed_container;
 mod routing_snapshot;
+mod routing_walk;
 mod trip_path;
 
 use std::panic::{self, UnwindSafe};

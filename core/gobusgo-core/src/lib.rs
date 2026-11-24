@@ -7,6 +7,7 @@ mod bytes;
 pub mod math;
 pub mod packed_container;
 pub mod routing_snapshot;
+pub mod routing_walk;
 pub mod trip_path;
 
 /// The version of the core, which a binding reports so a page or an app can name

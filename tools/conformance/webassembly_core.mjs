@@ -59,6 +59,16 @@ export const WEBASSEMBLY_CORE = Object.freeze({
     decodeConnections: binding.decodeConnections,
     decodePositions: binding.decodePositions
   }),
+  routingWalk: Object.freeze({
+    WalkBasis: binding.routingWalkBasis(),
+    WALK_CANDIDATE_COUNT_MAX: binding.walkCandidateCountMax(),
+    walkBasisOf: binding.walkBasisOf,
+    isStreetWalk: binding.isStreetWalk,
+    streetMetersMaxOf: binding.streetMetersMaxOf,
+    startsNear: binding.startsNear,
+    walkCandidatesNear: binding.walkCandidatesNear,
+    startsFromStreets: binding.startsFromStreets
+  }),
   tripPath: Object.freeze({
     TRIP_PATH_COUNT_MAX: binding.tripPathCountMax(),
     decodeTripPath: binding.decodeTripPath,
