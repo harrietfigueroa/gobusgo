@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The nightly run checks main with every job, the core's included, which the changes job otherwise runs only for their own paths.
+  schedule:
+    - cron: "0 11 * * *"
 
 permissions:
   contents: read
@@ -11,11 +14,12 @@ permissions:
 # A run on main that has started is never canceled, because it publishes the image of its commit.
 # A group holds one waiting run, and a newer waiting run replaces it, so of the commits merged while a run is in progress only the newest gets an image.
 # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency — checked 2026-11-08
+# The event is in the group, so the nightly run neither waits behind a push to main nor replaces one waiting for its turn.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The six mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
+# The eight mix jobs share setup steps; separate jobs keep each required check name stable and independently reportable.
 jobs:
   compile:
     name: compile
@@ -98,6 +102,11 @@ jobs:
         with:
           version-file: .tool-versions
           version-type: strict
+      # Installs the wasm-bindgen command mise.toml pins, which `mix assets.build` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
       - uses: actions/cache@v6.1.0
         with:
           path: |
@@ -109,6 +118,7 @@ jobs:
       - run: mix deps.get
       - run: mix assets.setup
       - run: mix assets.build
+      - run: node test/scripts/core_binding_check.mjs
 
   # The accessibility checks: the ExUnit rules of Gobusgo.Test.Accessibility over the rendered pages, html-eslint over the files that test writes, the node scan of the front end's JavaScript, and the visual checks of the stylesheet and the route chip rule.
   accessibility:
@@ -189,6 +199,185 @@ jobs:
       - run: npm ci --prefix tools/lint
       - run: npm run --prefix tools/lint check
       - run: npm run --prefix tools/lint lint:core
+
+  # Decides which of the core's jobs a change needs, from the paths AGENTS.md lists for each, against the pull request's base or the commit a push to main moved from.
+  # Any change to this file runs every job, and so does a run with no base to compare against: the nightly run, and a push whose previous commit cannot be fetched.
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      conformance: ${{ steps.paths.outputs.conformance }}
+      core-pages: ${{ steps.paths.outputs.core-pages }}
+      core: ${{ steps.paths.outputs.core }}
+    env:
+      BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      CONFORMANCE_PATHS: ^(assets/js/core/|core/|test/fixtures/(math|routing|packed/core-v1|one_bus_away/trip_path)/|test/scripts/routing_(engine_cases\.mjs|timetable\.js)$|tools/conformance/|lib/mix/tasks/gobusgo\.assets\.core\.ex$|mix\.(exs|lock)$|\.tool-versions$|mise\.toml$|\.github/workflows/ci\.yml$)
+      CORE_PAGES_PATHS: ^(assets/js/|assets/package\.json$|core/|test/gobusgo_web/core_pages|test/support/core_pages/|tools/conformance/|lib/mix/tasks/gobusgo\.assets\.|config/|mix\.(exs|lock)$|\.tool-versions$|mise\.toml$|\.github/workflows/ci\.yml$)
+      CORE_PATHS: ^(core/|\.github/workflows/ci\.yml$)
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - id: paths
+        run: |
+          if [[ ! "$BASE" =~ ^[0-9a-f]{40}$ || "$BASE" =~ ^0+$ ]] || ! git fetch --depth=1 --no-tags origin "$BASE"; then
+            echo "No base to compare against, so every job runs." >> "$GITHUB_STEP_SUMMARY"
+            echo "conformance=true" >> "$GITHUB_OUTPUT"
+            echo "core-pages=true" >> "$GITHUB_OUTPUT"
+            echo "core=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE" HEAD > changed.txt
+          decide() {
+            if grep --quiet --extended-regexp "$2" changed.txt; then
+              echo "$1=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$1=false" >> "$GITHUB_OUTPUT"
+              echo "\`$1\` is skipped: no changed path matches its paths." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          decide conformance "$CONFORMANCE_PATHS"
+          decide core-pages "$CORE_PAGES_PATHS"
+          decide core "$CORE_PATHS"
+
+  # Runs the core's conformance cases in Chromium, Firefox, and WebKit, once per implementation of the core: the JavaScript modules, and the Rust core through the WebAssembly binding `mix gobusgo.assets.core` builds.
+  # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
+  conformance:
+    name: conformance
+    needs: changes
+    if: needs.changes.outputs.conformance == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      # Installs the wasm-bindgen command mise.toml pins, which `mix gobusgo.assets.core` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            core/target
+          key: cargo-conformance-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-${{ hashFiles('core/Cargo.lock') }}
+          restore-keys: |
+            cargo-conformance-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-
+      - run: mix gobusgo.assets.core
+      - run: npm ci --prefix tools/conformance
+      # The browsers are keyed by the lock file that pins Playwright, since each Playwright release names its own browser builds; the system libraries `--with-deps` installs are not cached.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tools/conformance/package-lock.json') }}
+      # Installs the three browsers at the builds the pinned Playwright names, with the system libraries they link.
+      - run: npx --prefix tools/conformance playwright install --with-deps chromium firefox webkit
+      - run: npm test --prefix tools/conformance
+
+  # Loads the same scenarios on the vehicle page and the MCP apps with a build of the bundles on each core, in Chromium and WebKit, and fails on any difference in what the rider sees.
+  # PlaywrightEx runs the conformance suite's Playwright, so its browsers are installed with that copy, and a failure keeps both sessions' traces.
+  core-pages:
+    name: core-pages
+    needs: changes
+    if: needs.changes.outputs.core-pages == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: tools/lint/.node-version
+      # Installs the wasm-bindgen command mise.toml pins, which `mix assets.build` runs; mise 2026.10.17 verifies the release's attestation.
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          version: 2026.10.17
+          install_args: github:wasm-bindgen/wasm-bindgen
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
+      - run: mix deps.get
+      - run: mix assets.setup
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            core/target
+          key: cargo-core-pages-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-${{ hashFiles('core/Cargo.lock') }}
+          restore-keys: |
+            cargo-core-pages-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-
+      - run: mix assets.build
+      - run: npm ci --prefix tools/conformance
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-core-pages-${{ runner.os }}-${{ hashFiles('tools/conformance/package-lock.json') }}
+      - run: npx --prefix tools/conformance playwright install --with-deps chromium webkit
+      - run: mix test --only core_pages
+      - if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: core-pages-traces
+          path: tmp/core_pages/traces
+          if-no-files-found: ignore
+
+  # The Rust half of the gate over the core's workspace: the formatter, clippy with every warning an error, the tests, and the release build of the WebAssembly binding.
+  # rustup on the runner installs the toolchain core/rust-toolchain.toml pins the first time cargo runs under core/.
+  core:
+    name: core
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      # Each job keeps its own key, since each builds a different set of the workspace's targets into core/target.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            core/target
+          key: cargo-core-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-${{ hashFiles('core/Cargo.lock') }}
+          restore-keys: |
+            cargo-core-${{ runner.os }}-${{ hashFiles('core/rust-toolchain.toml') }}-
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked --release --package gobusgo-core-wasm --target wasm32-unknown-unknown
 
   image:
     name: image
@@ -293,8 +482,10 @@ jobs:
 
   publish:
     name: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, image, start-memory]
+    # A condition with no status function carries an implicit success(), which a job skipped by its paths fails; failure() is true when any ancestor job failed, so publish runs past a skipped job and not past a failed one.
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/expressions — checked 2026-11-15
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled() && !failure()
+    needs: [compile, format, test, assets, accessibility, agents-md, openapi, core-lint, conformance, core-pages, core, image, start-memory]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     permissions:

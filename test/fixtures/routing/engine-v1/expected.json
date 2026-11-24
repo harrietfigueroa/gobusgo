@@ -1,0 +1,2140 @@
+{
+ "formatNote": "Written by test/scripts/routing_engine_fixtures.mjs from journeys.json and starts.json, whose frontiers are written by hand. Each case holds the arguments of createEngine: the stop count, the connection columns in departure order with the boarding and alighting flags as 1 or 0, the walking link columns in the order of the stop they leave, and the minimum transfer. Each query is as route ('leaving') or routeArrivingBy ('arrivingBy') takes it, with its expected frontier, stops and connections as indices into the case's columns.",
+ "cases": [
+  {
+   "name": "a direct ride stays aboard through the stops between",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29400],
+     "arrivalS": [29400, 30000],
+     "departureStop": [0, 1],
+     "arrivalStop": [1, 2],
+     "trip": [0, 0],
+     "sequence": [0, 1],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 07:55",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28500
+     },
+     "expected": [
+      {
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:25",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 30300
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B to C arriving by 08:20",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 2,
+      "arrivalS": 30000
+     },
+     "expected": [
+      {
+       "departureS": 29400,
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:19",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 29940
+     },
+     "expected": []
+    }
+   ]
+  },
+  {
+   "name": "a transfer with time to spare",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29700],
+     "arrivalS": [29400, 30600],
+     "departureStop": [0, 1],
+     "arrivalStop": [1, 2],
+     "trip": [0, 1],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30600,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:30",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 30600
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 30600,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a transfer shorter than the minimum waits for the next trip",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29460, 30000],
+     "arrivalS": [29400, 30300, 30900],
+     "departureStop": [0, 1, 1],
+     "arrivalStop": [1, 2, 2],
+     "trip": [0, 1, 2],
+     "sequence": [0, 0, 0],
+     "boarding": [1, 1, 1],
+     "alighting": [1, 1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30900,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 2,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:40",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 31200
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 30900,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 2,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:30",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 30600
+     },
+     "expected": []
+    }
+   ]
+  },
+  {
+   "name": "a destination no trip reaches",
+   "stopIds": [
+    "A",
+    "B",
+    "D"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800],
+     "arrivalS": [29400],
+     "departureStop": [0],
+     "arrivalStop": [1],
+     "trip": [0],
+     "sequence": [0],
+     "boarding": [1],
+     "alighting": [1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to D leaving at 07:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 25200
+     },
+     "expected": []
+    },
+    {
+     "name": "B to A leaving at 07:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 0,
+      "departureS": 25200
+     },
+     "expected": []
+    },
+    {
+     "name": "A to D arriving by 23:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 82800
+     },
+     "expected": []
+    },
+    {
+     "name": "B to A arriving by 23:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 0,
+      "arrivalS": 82800
+     },
+     "expected": []
+    }
+   ]
+  },
+  {
+   "name": "a trip that left before the query is not taken",
+   "stopIds": [
+    "A",
+    "B"
+   ],
+   "engine": {
+    "stopCount": 2,
+    "connections": {
+     "departureS": [28800, 30600],
+     "arrivalS": [29400, 31200],
+     "departureStop": [0, 0],
+     "arrivalStop": [1, 1],
+     "trip": [0, 1],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to B leaving at 08:01",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "departureS": 28860
+     },
+     "expected": [
+      {
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B arriving by 08:39",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 31140
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B arriving by 08:45",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 31500
+     },
+     "expected": [
+      {
+       "departureS": 30600,
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "fewer changes against an earlier arrival keeps both",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29100, 30000],
+     "arrivalS": [32400, 29700, 31200],
+     "departureStop": [0, 0, 1],
+     "arrivalStop": [2, 1, 2],
+     "trip": [0, 1, 2],
+     "sequence": [0, 0, 0],
+     "boarding": [1, 1, 1],
+     "alighting": [1, 1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 32400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      },
+      {
+       "arrivalS": 31200,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 2,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a journey with more changes and no earlier arrival is dominated",
+   "stopIds": [
+    "A",
+    "B",
+    "C",
+    "E",
+    "F"
+   ],
+   "engine": {
+    "stopCount": 5,
+    "connections": {
+     "departureS": [28800, 28800, 28860, 29400, 29700, 30000],
+     "arrivalS": [29100, 29400, 31200, 29700, 31200, 31200],
+     "departureStop": [0, 0, 0, 3, 1, 4],
+     "arrivalStop": [3, 1, 2, 4, 2, 2],
+     "trip": [2, 0, 5, 3, 1, 4],
+     "sequence": [0, 0, 0, 0, 0, 0],
+     "boarding": [1, 1, 1, 1, 1, 1],
+     "alighting": [1, 1, 1, 1, 1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 2,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:40",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 31200
+     },
+     "expected": [
+      {
+       "departureS": 28860,
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 2,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a trip past midnight and a trip of the previous service date",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [1200, 85800],
+     "arrivalS": [2400, 87000],
+     "departureStop": [1, 0],
+     "arrivalStop": [2, 1],
+     "trip": [1, 0],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 23:45",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 85500
+     },
+     "expected": []
+    },
+    {
+     "name": "B to C leaving at 00:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 2,
+      "departureS": 0
+     },
+     "expected": [
+      {
+       "arrivalS": 2400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B leaving at 23:45",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "departureS": 85500
+     },
+     "expected": [
+      {
+       "arrivalS": 87000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 25:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 90000
+     },
+     "expected": []
+    },
+    {
+     "name": "B to C arriving by 00:45",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 2,
+      "arrivalS": 2700
+     },
+     "expected": [
+      {
+       "departureS": 1200,
+       "arrivalS": 2400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B arriving by 24:15",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 87300
+     },
+     "expected": [
+      {
+       "departureS": 85800,
+       "arrivalS": 87000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a walk from the origin and a walk after a ride",
+   "stopIds": [
+    "A",
+    "B",
+    "C",
+    "E",
+    "F"
+   ],
+   "engine": {
+    "stopCount": 5,
+    "connections": {
+     "departureS": [29400, 30480],
+     "arrivalS": [30000, 31200],
+     "departureStop": [1, 3],
+     "arrivalStop": [2, 4],
+     "trip": [0, 1],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [0, 2],
+     "toStop": [1, 3],
+     "durationS": [300, 240]
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 300
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B to F leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 4,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 31200,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 2,
+         "toStop": 3,
+         "durationS": 240
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29100,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 300
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to C arriving by 08:20",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 30000
+     },
+     "expected": [
+      {
+       "departureS": 29100,
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 300
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B to F arriving by 08:40",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 4,
+      "arrivalS": 31200
+     },
+     "expected": [
+      {
+       "departureS": 29400,
+       "arrivalS": 31200,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 2,
+         "toStop": 3,
+         "durationS": 240
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B arriving by 08:10",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 29400
+     },
+     "expected": [
+      {
+       "departureS": 29100,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 300
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "no boarding and no alighting where a stop forbids them",
+   "stopIds": [
+    "A",
+    "B",
+    "C",
+    "D"
+   ],
+   "engine": {
+    "stopCount": 4,
+    "connections": {
+     "departureS": [28800, 29400, 30000],
+     "arrivalS": [29400, 30000, 30600],
+     "departureStop": [0, 1, 2],
+     "arrivalStop": [1, 2, 3],
+     "trip": [0, 0, 0],
+     "sequence": [0, 1, 2],
+     "boarding": [1, 0, 1],
+     "alighting": [1, 0, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "B to D leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 3,
+      "departureS": 28800
+     },
+     "expected": []
+    },
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": []
+    },
+    {
+     "name": "A to D leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 3,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30600,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B to D arriving by 09:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 3,
+      "arrivalS": 32400
+     },
+     "expected": []
+    },
+    {
+     "name": "A to C arriving by 09:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 32400
+     },
+     "expected": []
+    },
+    {
+     "name": "A to D arriving by 09:00",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 3,
+      "arrivalS": 32400
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 30600,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 2
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a walk keeps the ride it follows when a later walk reaches its starting stop earlier",
+   "stopIds": [
+    "A",
+    "X",
+    "Y",
+    "Z"
+   ],
+   "engine": {
+    "stopCount": 4,
+    "connections": {
+     "departureS": [28800, 28860],
+     "arrivalS": [29400, 29040],
+     "departureStop": [0, 0],
+     "arrivalStop": [1, 3],
+     "trip": [0, 1],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [1, 3],
+     "toStop": [2, 1],
+     "durationS": [180, 240]
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to Y leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29580,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 1,
+         "toStop": 2,
+         "durationS": 180
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to X leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29280,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        },
+        {
+         "kind": "walk",
+         "fromStop": 3,
+         "toStop": 1,
+         "durationS": 240
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to Y arriving by 08:13",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 29580
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29580,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 1,
+         "toStop": 2,
+         "durationS": 180
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to X arriving by 08:10",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 29400
+     },
+     "expected": [
+      {
+       "departureS": 28860,
+       "arrivalS": 29280,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        },
+        {
+         "kind": "walk",
+         "fromStop": 3,
+         "toStop": 1,
+         "durationS": 240
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a stop dwell boards at its departure and alights at its arrival",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29700],
+     "arrivalS": [29400, 30300],
+     "departureStop": [0, 1],
+     "arrivalStop": [1, 2],
+     "trip": [0, 0],
+     "sequence": [0, 1],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "B to C leaving at 08:12",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 2,
+      "departureS": 29520
+     },
+     "expected": [
+      {
+       "arrivalS": 30300,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "B to C arriving by 08:25",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 1
+      },
+      "target": 2,
+      "arrivalS": 30300
+     },
+     "expected": [
+      {
+       "departureS": 29700,
+       "arrivalS": 30300,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "A to B arriving by 08:12",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 1,
+      "arrivalS": 29520
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a ride's walk is taken where a walk from the origin reached its stop sooner",
+   "stopIds": [
+    "O",
+    "S",
+    "T"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800],
+     "arrivalS": [29280],
+     "departureStop": [0],
+     "arrivalStop": [1],
+     "trip": [0],
+     "sequence": [0],
+     "boarding": [1],
+     "alighting": [1]
+    },
+    "transfers": {
+     "fromStop": [0, 1],
+     "toStop": [1, 2],
+     "durationS": [300, 120]
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "O to T leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 1,
+         "toStop": 2,
+         "durationS": 120
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "O to T arriving by 08:10",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 29400
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "walk",
+         "fromStop": 1,
+         "toStop": 2,
+         "durationS": 120
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a ride's walk is taken where a walk to the target leaves its stop later",
+   "stopIds": [
+    "O",
+    "S",
+    "T"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28920],
+     "arrivalS": [29400],
+     "departureStop": [1],
+     "arrivalStop": [2],
+     "trip": [0],
+     "sequence": [0],
+     "boarding": [1],
+     "alighting": [1]
+    },
+    "transfers": {
+     "fromStop": [0, 1],
+     "toStop": [1, 2],
+     "durationS": [120, 300]
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "O to T arriving by 08:10",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 29400
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 120
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "O to T leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 120
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a start from a position boards where its walk arrives in time",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [29400, 29400],
+     "arrivalS": [30600, 31200],
+     "departureStop": [1, 0],
+     "arrivalStop": [2, 2],
+     "trip": [1, 0],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "a position to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        },
+        {
+         "stop": 1,
+         "walkS": 300
+        }
+       ]
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30600,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 1,
+         "durationS": 300
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to C leaving at 08:06",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        },
+        {
+         "stop": 1,
+         "walkS": 300
+        }
+       ]
+      },
+      "target": 2,
+      "departureS": 29160
+     },
+     "expected": [
+      {
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 60
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to C arriving by 08:30",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        },
+        {
+         "stop": 1,
+         "walkS": 300
+        }
+       ]
+      },
+      "target": 2,
+      "arrivalS": 30600
+     },
+     "expected": [
+      {
+       "departureS": 29100,
+       "arrivalS": 30600,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 1,
+         "durationS": 300
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to C arriving by 08:40",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        },
+        {
+         "stop": 1,
+         "walkS": 300
+        }
+       ]
+      },
+      "target": 2,
+      "arrivalS": 31200
+     },
+     "expected": [
+      {
+       "departureS": 29340,
+       "arrivalS": 31200,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 60
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to C arriving by 08:29",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        },
+        {
+         "stop": 1,
+         "walkS": 300
+        }
+       ]
+      },
+      "target": 2,
+      "arrivalS": 30540
+     },
+     "expected": []
+    }
+   ]
+  },
+  {
+   "name": "a target among the start stops is reached by its walk alone",
+   "stopIds": [
+    "A",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 2,
+    "connections": {
+     "departureS": [29400],
+     "arrivalS": [30000],
+     "departureStop": [0],
+     "arrivalStop": [1],
+     "trip": [0],
+     "sequence": [0],
+     "boarding": [1],
+     "alighting": [1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "a position to A leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 120
+        }
+       ]
+      },
+      "target": 0,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 28920,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 120
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to A arriving by 08:30",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 120
+        }
+       ]
+      },
+      "target": 0,
+      "arrivalS": 30600
+     },
+     "expected": [
+      {
+       "departureS": 30480,
+       "arrivalS": 30600,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 120
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a start stop takes no walking link, where an origin stop takes one",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [29400],
+     "arrivalS": [30000],
+     "departureStop": [1],
+     "arrivalStop": [2],
+     "trip": [0],
+     "sequence": [0],
+     "boarding": [1],
+     "alighting": [1]
+    },
+    "transfers": {
+     "fromStop": [0],
+     "toStop": [1],
+     "durationS": [120]
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "a position to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        }
+       ]
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": []
+    },
+    {
+     "name": "a position to C arriving by 08:30",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 60
+        }
+       ]
+      },
+      "target": 2,
+      "arrivalS": 30600
+     },
+     "expected": []
+    },
+    {
+     "name": "A to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 30000,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "walk",
+         "fromStop": 0,
+         "toStop": 1,
+         "durationS": 120
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a start's ride changes to a second ride after the minimum transfer",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [29400, 30300],
+     "arrivalS": [30000, 31200],
+     "departureStop": [0, 1],
+     "arrivalStop": [1, 2],
+     "trip": [0, 1],
+     "sequence": [0, 0],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "a position to C leaving at 08:00",
+     "kind": "leaving",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 180
+        }
+       ]
+      },
+      "target": 2,
+      "departureS": 28800
+     },
+     "expected": [
+      {
+       "arrivalS": 31200,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 180
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "a position to C arriving by 08:40",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "starts",
+       "starts": [
+        {
+         "stop": 0,
+         "walkS": 180
+        }
+       ]
+      },
+      "target": 2,
+      "arrivalS": 31200
+     },
+     "expected": [
+      {
+       "departureS": 29220,
+       "arrivalS": 31200,
+       "changes": 1,
+       "legs": [
+        {
+         "kind": "walkFromPosition",
+         "toStop": 0,
+         "durationS": 180
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 0
+        },
+        {
+         "kind": "ride",
+         "boardConnection": 1,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

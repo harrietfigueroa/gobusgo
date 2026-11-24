@@ -121,6 +121,21 @@ defmodule GobusgoWeb.LayoutsTest do
     assert script =~ "storedThemes.indexOf(setting) !== -1"
   end
 
+  test "loads the page's script as an ES module" do
+    script = head(~s(script[src="/assets/js/app.js"]))
+
+    assert LazyHTML.attribute(script, "type") == ["module"]
+  end
+
+  test "preloads the core's WebAssembly module for the fetch that compiles it" do
+    preload = head(~s(link[rel="preload"][data-core-module]))
+
+    assert LazyHTML.attribute(preload, "href") == ["/assets/core/gobusgo_core_bg.wasm"]
+    assert LazyHTML.attribute(preload, "as") == ["fetch"]
+    assert LazyHTML.attribute(preload, "type") == ["application/wasm"]
+    assert LazyHTML.attribute(preload, "crossorigin") == []
+  end
+
   test "links the web app manifest" do
     assert head(~s(link[rel="manifest"])) |> LazyHTML.attribute("href") == [
              "/manifest.webmanifest"

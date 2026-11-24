@@ -16,11 +16,11 @@ import {
   chunksAt,
   scheduledArrivals,
   scheduledMarkers
-} from "./core/scheduled_service"
-import {TableKind} from "./core/offline_answers"
+} from "#core/scheduled_service.js"
+import {TableKind} from "#core/offline_answers.js"
 import {CHANGE_EVENT_NAME as ROUTES_CHANGE_EVENT_NAME, keptRoutes} from "./route_stop_tiles"
 import {savedConnections, savedSnapshots} from "./saved_snapshots"
-import {assertCondition} from "./core/assert"
+import {assertCondition} from "#core/assert.js"
 
 /** The event the vehicle markers take the scheduled markers by, which only the page itself sends. */
 export const SCHEDULED_MARKERS_EVENT_NAME = "vehicle-markers:scheduled"

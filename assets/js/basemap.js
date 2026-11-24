@@ -1,6 +1,6 @@
 import {Protocol} from "../vendor/pmtiles/dist/esm/index.js"
 import {layers, namedFlavor} from "../vendor/@protomaps/basemaps/dist/esm/index.js"
-import {assertCondition} from "./core/assert"
+import {assertCondition} from "#core/assert.js"
 import {sheetInsets} from "./panel_sheet"
 import {CHANGE_EVENT_NAME as THEME_CHANGE_EVENT_NAME, currentTheme} from "./color_theme"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state"
@@ -178,9 +178,14 @@ export const Basemap = {
       style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
       ...this.firstView(padding),
       attributionControl: false,
+      // The map stays north-up, so a layer may place its icons in screen
+      // pixels by compass direction.
+      dragRotate: false,
       // `setStyle` takes this as its default, so a restyle follows it too.
       validateStyle: element.dataset.styleValidated !== undefined
     })
+    this.map.touchZoomRotate.disableRotation()
+    this.map.keyboard.disableRotation()
 
     // The attribution stays written out; the compact form hides it
     // behind a button on a narrow map.

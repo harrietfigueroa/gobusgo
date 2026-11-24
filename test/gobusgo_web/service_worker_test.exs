@@ -11,7 +11,9 @@ defmodule GobusgoWeb.ServiceWorkerTest do
 
   @digests %{
     "assets/css/app.css" => "assets/css/app-0123456789abcdef0123456789abcdef.css",
-    "assets/js/app.js" => "assets/js/app-fedcba9876543210fedcba9876543210.js"
+    "assets/js/app.js" => "assets/js/app-fedcba9876543210fedcba9876543210.js",
+    "assets/core/gobusgo_core_bg.wasm" =>
+      "assets/core/gobusgo_core_bg-00112233445566778899aabbccddeeff.wasm"
   }
 
   describe "precache_paths/1" do
@@ -27,6 +29,26 @@ defmodule GobusgoWeb.ServiceWorkerTest do
 
       assert "/assets/css/app.css" in paths
       assert "/assets/js/app.js" in paths
+    end
+
+    test "names the digested core module of a digested build" do
+      paths = ServiceWorker.precache_paths({:digested, @digests})
+
+      assert "/assets/core/gobusgo_core_bg-00112233445566778899aabbccddeeff.wasm" in paths
+    end
+
+    test "names the core module as built when the build has no digest" do
+      paths = ServiceWorker.precache_paths(:undigested)
+
+      assert "/assets/core/gobusgo_core_bg.wasm" in paths
+    end
+
+    test "raises for a digest that leaves out the core module" do
+      digests = Map.delete(@digests, "assets/core/gobusgo_core_bg.wasm")
+
+      assert_raise Gobusgo.Assert.AssertionError, fn ->
+        ServiceWorker.precache_paths({:digested, digests})
+      end
     end
 
     test "names the map library's module files at the addresses a page loads them from" do

@@ -1,6 +1,6 @@
 # The GBRT format
 
-GBRT is the binary format of Gobusgo's routing snapshots: the schedule of one service date, packed so a phone can fetch it in pieces and plan trips over it with no server. This page describes format version 2. The writer is `Gobusgo.Routing.SnapshotFormat`, and the browser's reader is `assets/js/core/routing_snapshot.js`.
+GBRT is the binary format of Gobusgo's routing snapshots: the schedule of one service date, packed so a phone can fetch it in pieces and plan trips over it with no server. This page describes format version 2. The writer is `Gobusgo.Routing.SnapshotFormat`, and the browser's readers are `assets/js/core/routing_snapshot.js` and its Rust port, `core/gobusgo-core/src/routing_snapshot.rs`, which the vehicle page's shell modules call through the facade (`assets/AGENTS.md`, "The core's facade").
 
 > *Why not just send JSON?*
 >
@@ -124,4 +124,4 @@ The planner also refuses a file whose size differs from the manifest's `byteSize
 
 A change to any kind's layout raises the format version for every kind, writes new shared fixtures in a directory beside `test/fixtures/routing/v2/` named for the new version, and keeps the old ones while a reader of the old version exists. Version 2 added the positions file and changed nothing else; version 1 is no longer read anywhere, and the paths of every file changed with the version, so an offline bundle saved under version 1 is fetched again.
 
-The Elixir tests check that the fixture records encode to the fixture files byte for byte, and `node test/scripts/routing_snapshot_reader.mjs` checks that the JavaScript reader decodes the same files to `expected.json`.
+The Elixir tests check that the fixture records encode to the fixture files byte for byte, and the conformance suite's `tools/conformance/tests/routing_snapshot.test.mjs` checks that each implementation of the reader decodes the same files to `expected.json`.

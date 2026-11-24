@@ -36,10 +36,14 @@ import {registerImageResolver} from "./style_images"
 import {
   ARROW_SIZE_PIXELS,
   CHIPS_IMAGE_PREFIX,
+  CURB_OFFSET_UNITS,
   ChipsImageKind,
   SIGN_SIZE_PIXELS,
   chipFont,
   chipsImageSize,
+  chipsOffsetCases,
+  curbOffset,
+  curbOffsetCases,
   directionAngleCases,
   drawChips,
   drawStopArrow,
@@ -66,13 +70,20 @@ const themes = ["light", "dark"]
 const ICON_SIZE_AT_ZOOM_MIN = 0.75
 const ICON_WHOLE_ZOOM = 16
 const iconSize = ["interpolate", ["linear"], ["zoom"], ZOOM_MIN, ICON_SIZE_AT_ZOOM_MIN, ICON_WHOLE_ZOOM, 1]
-// The arrow's center stands this far from the sign's, before it turns.
+// The arrow's center stands this far ahead of the sign's, before it turns.
 const ARROW_OFFSET_PIXELS = 17
-const arrowOffsetPixels = [0, -ARROW_OFFSET_PIXELS]
+// MapLibre turns an icon's offset with its `icon-rotate`, so the arrow's x
+// is to the right of the stop's direction, where its sign stands.
+const arrowOffsetPixels = [CURB_OFFSET_UNITS, -ARROW_OFFSET_PIXELS]
 // The chips stand clear of the sign, and of an arrow on the same side.
 const CHIPS_OFFSET_PIXELS = 13
 const chipsBelowOffsetPixels = [0, CHIPS_OFFSET_PIXELS]
-const chipsAboveOffsetPixels = [0, -CHIPS_OFFSET_PIXELS]
+const signOffset = ["match", ["get", "direction"], ...curbOffsetCases(), ["literal", [0, 0]]]
+const chipsOffset = ["match", ["get", "direction"], ...chipsOffsetCases(CHIPS_OFFSET_PIXELS), ["literal", chipsBelowOffsetPixels]]
+// The selected stop's mark stands around the stop itself below zoom 14,
+// where no sign is drawn, and around its sign from zoom 14.
+const SIGN_ZOOM_STEP = 0.01
+const ZOOM_BEFORE_SIGNS = ZOOM_MIN - SIGN_ZOOM_STEP
 const hasChips = ["all", ["has", "routeChips"], ["!=", ["get", "routeChips"], "[]"]]
 const hasCompassDirection = ["match", ["get", "direction"], ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], true, false]
 // The stop the details view shows is marked on the map at every zoom, from
@@ -226,6 +237,26 @@ function selectedCollection(stop) {
   }
 
   return {type: "FeatureCollection", features}
+}
+
+// The selected stop's mark moved onto its sign: the sign's curb offset at
+// the icon size of each zoom, since the offset is in icon units and the
+// mark's translation in pixels.
+function selectedTranslate(stop) {
+  let offset = [0, 0]
+
+  if (stop !== null) {
+    offset = curbOffset(stop.direction)
+  }
+
+  const [x, y] = offset
+  const offsetAtZoomMin = [x * ICON_SIZE_AT_ZOOM_MIN, y * ICON_SIZE_AT_ZOOM_MIN]
+  return [
+    "interpolate", ["linear"], ["zoom"],
+    ZOOM_BEFORE_SIGNS, ["literal", [0, 0]],
+    ZOOM_MIN, ["literal", offsetAtZoomMin],
+    ICON_WHOLE_ZOOM, ["literal", offset]
+  ]
 }
 
 // The hook of the element beside the map. It draws the stops layer of the
@@ -421,6 +452,9 @@ export const StopMarkers = {
 
     if (hasSource) {
       this.map.getSource(SELECTED_SOURCE_NAME).setData(selectedCollection(selected))
+      const translate = selectedTranslate(selected)
+      this.map.setPaintProperty(SELECTED_HALO_LAYER_NAME, "circle-translate", translate)
+      this.map.setPaintProperty(SELECTED_RING_LAYER_NAME, "circle-translate", translate)
     }
   },
 
@@ -436,7 +470,8 @@ export const StopMarkers = {
     const theme = currentTheme()
     registerImageResolver({map, key: IMAGE_RESOLVER_KEY, resolve: (id) => { addStopImage({map, id}) }})
 
-    // Every sign is drawn, however crowded the street.
+    // Every sign is drawn, however crowded the street, toward the curb its
+    // buses stop at.
     map.addLayer({
       id: MARKER_LAYER_NAME,
       type: "symbol",
@@ -447,6 +482,7 @@ export const StopMarkers = {
       layout: {
         "icon-image": SIGN_IMAGE_PREFIX + theme,
         "icon-size": iconSize,
+        "icon-offset": signOffset,
         "icon-allow-overlap": true,
         "icon-ignore-placement": true
       }
@@ -485,7 +521,7 @@ export const StopMarkers = {
         "icon-image": ["concat", CHIPS_IMAGE_PREFIX, theme, ":", ["get", "routeChips"]],
         "icon-size": iconSize,
         "icon-anchor": ["match", ["get", "direction"], southwardDirections(), "bottom", "top"],
-        "icon-offset": ["match", ["get", "direction"], southwardDirections(), ["literal", chipsAboveOffsetPixels], ["literal", chipsBelowOffsetPixels]],
+        "icon-offset": chipsOffset,
         "icon-allow-overlap": false
       }
     }, firstVehicleLayerName(map))
@@ -538,18 +574,20 @@ export const StopMarkers = {
 
     map.addSource(SELECTED_SOURCE_NAME, {type: "geojson", data: selectedCollection(selected)})
 
+    const translate = selectedTranslate(selected)
+
     map.addLayer({
       id: SELECTED_HALO_LAYER_NAME,
       type: "circle",
       source: SELECTED_SOURCE_NAME,
-      paint: selectionHaloPaint(SIGN_RADIUS_PIXELS)
+      paint: {...selectionHaloPaint(SIGN_RADIUS_PIXELS), "circle-translate": translate}
     }, MARKER_LAYER_NAME)
 
     map.addLayer({
       id: SELECTED_RING_LAYER_NAME,
       type: "circle",
       source: SELECTED_SOURCE_NAME,
-      paint: selectionRingPaint(SIGN_RADIUS_PIXELS)
+      paint: {...selectionRingPaint(SIGN_RADIUS_PIXELS), "circle-translate": translate}
     }, firstVehicleLayerName(map))
   },
 

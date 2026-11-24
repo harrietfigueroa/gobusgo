@@ -4,7 +4,7 @@
 // is pure and reads no map or document, so each decision is checked against
 // values written out by hand.
 
-import {assertCondition, unreachable} from "./core/assert.js"
+import {assertCondition, unreachable} from "#core/assert.js"
 
 /**
  * The DOM event the window gets when the emphasized routes change, whose

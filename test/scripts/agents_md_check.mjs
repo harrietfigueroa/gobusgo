@@ -22,6 +22,7 @@ const GIT_OUTPUT_BYTES_MAX = 16 * 1024 * 1024
 // ignores, so a checkout holds none of them. A named path inside one of
 // these is accepted too.
 const GENERATED_PATHS = Object.freeze({
+  "_build/assets/app.meta.json": "the vehicle page's esbuild build writes its metafile here",
   "assets/vendor/": "mix gobusgo.vendor.fetch downloads the vendored npm packages here",
   "priv/vendor/": "mix gobusgo.vendor.fetch downloads the vendored archives here",
   "priv/static/assets/": "mix assets.build writes the built stylesheet, script, and MapLibre's files here",

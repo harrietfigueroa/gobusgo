@@ -12,7 +12,7 @@
 // in one page has that worker take over every page, so another page can
 // hold an offer whose worker is already active: its click reloads.
 
-import {assertCondition} from "./core/assert.js"
+import {assertCondition} from "#core/assert.js"
 import {MessageKind} from "./service_worker_strategy.js"
 
 /** What a click on the offer does: ask the offered worker to take over, or reload the page. */

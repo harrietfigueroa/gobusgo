@@ -1,5 +1,5 @@
 // Checks the application's engine against the hand-written journeys of the
-// fixture file: each case's timetable is written as snapshot files and
+// shared fixture file: each case's timetable is written as snapshot files and
 // loaded into the engine, and every query's frontier, read back as readable
 // legs, must equal the expected one. A query that arrives by a time is also
 // checked against the forward scan: leaving at its latest departure arrives
@@ -14,8 +14,8 @@ import {loadEngine} from "../../../assets/js/core/routing_journeys.js"
 import {clock, seconds, snapshotOf} from "../../../test/scripts/routing_timetable.js"
 
 const TRANSFER_S_MIN = 120
-const root = new URL("../", import.meta.url)
-const fixturesText = readFileSync(new URL("fixtures/journeys.json", root), "utf-8")
+const fixturesUrl = new URL("../../../test/fixtures/routing/engine-v1/journeys.json", import.meta.url)
+const fixturesText = readFileSync(fixturesUrl, "utf-8")
 const fixtures = JSON.parse(fixturesText)
 
 function readableLeg({leg, snapshot}) {

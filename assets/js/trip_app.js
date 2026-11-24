@@ -11,7 +11,7 @@
 // rider's position. Every text is a text node: names come from outside the
 // application and are never parsed as HTML.
 
-import {assertCondition, unreachable} from "./core/assert"
+import {assertCondition, unreachable} from "#core/assert.js"
 import {button, element} from "./dom_element"
 import {cardElement} from "./journey_card_view"
 import {firstRideLive, journeyCard} from "./journey_cards"
@@ -26,7 +26,7 @@ import {unmatchedContext} from "./mcp_trip_unmatched"
 import {PositionKind, SEARCH_CENTER_DEFAULT, searchPoints} from "./where_to"
 import {createSearchFiles} from "./where_to_files"
 import {createWalkTiles} from "./walk_tiles"
-import {EndKind, LOCATION_END, QueryKind, StateKind, TimeMode, TripEnd, journeyRows, journeysAnnouncement, queryOf, stateMessage} from "./core/trip_plan"
+import {EndKind, LOCATION_END, QueryKind, StateKind, TimeMode, TripEnd, journeyRows, journeysAnnouncement, queryOf, stateMessage} from "#core/trip_plan.js"
 
 const APP_INFO = Object.freeze({name: "gobusgo-trip-planner", version: "1"})
 const ROUTING_MANIFEST_PATH = "/api/routing/manifest"

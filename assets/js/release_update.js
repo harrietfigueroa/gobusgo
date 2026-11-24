@@ -19,7 +19,7 @@
 // The browser checks for a new worker on every page load; a page left open
 // checks again every UPDATE_CHECK_INTERVAL_MS.
 
-import {unreachable} from "./core/assert.js"
+import {unreachable} from "#core/assert.js"
 import {writeMessage} from "./message.js"
 import {
   NO_RELEASE_ANSWER,

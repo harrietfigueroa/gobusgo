@@ -1,8 +1,8 @@
 // Expands a stored packed container, one gzip stream, under a bound, with
 // the browser's DecompressionStream, so its sections are read once expanded.
 
-import {assertCondition} from "./core/assert.js"
-import {PackedOutcome, PackedRefusal} from "./core/packed_container.js"
+import {assertCondition} from "#core/assert.js"
+import {PackedOutcome, PackedRefusal} from "#core/packed_container.js"
 
 const COMPRESSION_FORMAT = "gzip"
 

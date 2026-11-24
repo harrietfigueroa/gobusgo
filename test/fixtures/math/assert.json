@@ -1,0 +1,12 @@
+{
+  "heldConditions": [
+    {"name": "true", "message": "never shown"}
+  ],
+  "failedConditions": [
+    {"name": "false", "message": "a stop index 5 is past the stop count 3"}
+  ],
+  "unreachables": [
+    {"name": "a name", "value": "bus", "message": "no arm for a vehicle kind", "failure": "no arm for a vehicle kind: bus"},
+    {"name": "a number", "value": 3, "message": "no arm for a count", "failure": "no arm for a count: 3"}
+  ]
+}

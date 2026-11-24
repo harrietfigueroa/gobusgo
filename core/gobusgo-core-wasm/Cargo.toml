@@ -1,0 +1,20 @@
+[package]
+name = "gobusgo-core-wasm"
+description = "The core's wasm-bindgen binding for the web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The cdylib is the WebAssembly module; the rlib lets cargo test the binding's
+# functions natively.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gobusgo-core.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true
