@@ -28,6 +28,14 @@ let held = null
 // chunk's path names its content, so a held chunk never goes stale.
 const heldChunks = new Map()
 
+// The saved schedules' store as the reads take it: a match with the store's
+// name opens no cache, so a read never makes a store a deletion removed.
+const savedStore = Object.freeze({match: matchSaved})
+
+function matchSaved(path) {
+  return caches.match(path, {cacheName: OFFLINE_SCHEDULES_CACHE_NAME})
+}
+
 async function readBuffer({cache, path}) {
   const response = await cache.match(path)
 
@@ -127,8 +135,7 @@ async function readSnapshot({cache, entry}) {
 }
 
 async function readBundle(index) {
-  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-  const response = await cache.match(index.manifestPath)
+  const response = await savedStore.match(index.manifestPath)
 
   if (response === undefined) {
     return []
@@ -138,7 +145,7 @@ async function readBundle(index) {
   const snapshots = []
 
   for (const entry of snapshotOrder({manifest, nowMs: Date.now()})) {
-    const read = await readSnapshot({cache, entry})
+    const read = await readSnapshot({cache: savedStore, entry})
 
     if (read.kind === TableKind.found) {
       snapshots.push(read.table)
@@ -178,8 +185,7 @@ export async function savedSnapshots() {
 }
 
 async function readChunk(path) {
-  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-  return await readTable({cache, path, decode: decodeConnections})
+  return await readTable({cache: savedStore, path, decode: decodeConnections})
 }
 
 /**

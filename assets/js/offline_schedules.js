@@ -241,6 +241,9 @@ async function save(signal) {
   }
 
   const manifest = await manifestResponse.json()
+  // Opening the store makes it, so a save stopped meanwhile, as by a
+  // turn-off that deleted the store, opens none.
+  signal.throwIfAborted()
   const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
   const placesFile = await currentPlacesFile({cache, signal})
   const plan = planBundle({manifest, nowMs: Date.now(), tileArchivePath: tileArchivePath(), placesFile})
@@ -354,8 +357,10 @@ export async function deleteSavedSchedules() {
 /**
  * The status line of the saved schedules while the setting is on: the
  * dates the store holds, its size, and `persistence`, the browser's answer
- * to keeping the page's storage. A missing store reads as an empty one and
- * is not made, so a read never makes the store the setting deleted.
+ * to keeping the page's storage. A store `caches.has` does not find reads
+ * as an empty one and is not opened, so a read that follows a deletion
+ * does not make the store again; a deletion between that check and the
+ * open is followed by a store made anew and empty.
  */
 export async function describeSchedules(persistence) {
   const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)

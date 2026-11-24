@@ -18,7 +18,7 @@ Every bus, train, ferry, bike, and scooter in the Puget Sound, moving on one map
 
 > *What about the tunnel? My map always dies in the tunnel.*
 >
-> Ah, the tunnel. While you browse, Gobusgo quietly saves the schedules of today and tomorrow, the route lines, and a directory of places. Lose the signal and the page keeps going: scheduled vehicles keep moving along their paths, stops keep showing their next arrivals, and the trip planner keeps planning. Turn on one setting and it saves the map itself, too.
+> Ah, the tunnel. Turn on Save for offline use, one setting that is off until you choose it, and Gobusgo quietly saves the schedules of today and tomorrow, the route lines, a directory of places, and the map itself. Lose the signal and the page keeps going: scheduled vehicles keep moving along their paths, stops keep showing their next arrivals, and the trip planner keeps planning.
 
 > *Wow. Can I search for "4th & Pike" or my friend's address?*
 >

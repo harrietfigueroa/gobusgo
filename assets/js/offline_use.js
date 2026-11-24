@@ -50,6 +50,16 @@ function warnUnlessAborted({description, error}) {
   }
 }
 
+// Deletes both stores, and never rejects, since a save waits for it.
+async function deleteStores() {
+  try {
+    await deleteSavedSchedules()
+    await deleteSavedBasemap()
+  } catch (error) {
+    console.warn("Offline use stores not deleted", error)
+  }
+}
+
 function archiveUrlOf(element) {
   const url = element.dataset.archiveUrl
 
@@ -69,6 +79,15 @@ export const OfflineUse = {
     this.timer = null
     this.persistence = null
     this.onConnectionChange = null
+    // A start the idle callback, the load event, or a turn-on asks for after
+    // the hook is destroyed saves nothing, since no clear could stop it.
+    this.isDestroyed = false
+    // A start asked for while an aborted save is still ending runs once it
+    // has ended.
+    this.isRestartDue = false
+    // The deletion of the stores a turn-off started, which a save waits for
+    // so it never writes into a store about to be deleted.
+    this.deletion = Promise.resolve()
 
     if (!isSupported()) {
       this.checkbox.checked = false
@@ -94,6 +113,8 @@ export const OfflineUse = {
   },
 
   destroyed() {
+    this.isDestroyed = true
+
     if (this.onOnline !== undefined) {
       window.clearInterval(this.timer)
       window.removeEventListener("online", this.onOnline)
@@ -177,9 +198,19 @@ export const OfflineUse = {
   async start() {
     const isRunning = this.controller !== null
     const isOff = !isEnabled()
-    const isBusyOrOff = isRunning || isOff
 
-    if (isBusyOrOff) {
+    if (this.isDestroyed) {
+      return
+    }
+
+    if (isRunning) {
+      // A save a turn-off aborted is still ending, so a turn-on since then
+      // starts its own save once it has.
+      this.isRestartDue = this.isRestartDue || this.controller.signal.aborted
+      return
+    }
+
+    if (isOff) {
       return
     }
 
@@ -187,6 +218,7 @@ export const OfflineUse = {
     const signal = this.controller.signal
 
     try {
+      await this.deletion
       await saveSchedules(signal)
       const isMapDue = this.hasArchive() && !signal.aborted
 
@@ -197,6 +229,18 @@ export const OfflineUse = {
       warnUnlessAborted({description: "Offline use not saved", error})
     } finally {
       this.controller = null
+    }
+
+    const isRestartDue = this.isRestartDue
+    this.isRestartDue = false
+
+    if (isRestartDue) {
+      await this.start()
+      return
+    }
+
+    if (this.isDestroyed) {
+      return
     }
 
     try {
@@ -219,14 +263,8 @@ export const OfflineUse = {
 
   async clear() {
     this.stop()
-
-    try {
-      await deleteSavedSchedules()
-      await deleteSavedBasemap()
-    } catch (error) {
-      console.warn("Offline use stores not deleted", error)
-    }
-
+    this.deletion = deleteStores()
+    await this.deletion
     const saved = savedBasemapOf({url: this.archiveUrl, isStored: false})
     announceSavedBasemap(saved)
     await this.show()

@@ -88,7 +88,7 @@ Trip paths, addresses, places, and intersections share one binary format: a 16-b
 >
 > In the tunnel, the schedule is the best information anyone has. So we run the schedule.
 
-Once a page has loaded and the browser is idle, it saves the snapshots of the service dates that have not ended (at most two), their names and trip paths, the route and stop map tiles, and the places file, and refreshes them every 30 minutes. On 2026-11-10 that bundle was about 41 MB. An optional setting also saves an offline copy of the basemap, about 34 MB.
+One setting, Save for offline use, off by default, saves what the page answers from offline. While it is on, once a page has loaded and the browser is idle, the page saves the snapshots of the service dates that have not ended (at most two), their names and trip paths, the route and stop map tiles, and the places file, and, where the basemap has one, the basemap's offline copy, and refreshes them every 30 minutes. On 2026-11-10 the schedules bundle was about 41 MB and the basemap's offline copy about 34 MB.
 
 While offline, the page answers from the saved files:
 

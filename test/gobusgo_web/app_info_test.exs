@@ -456,7 +456,7 @@ defmodule GobusgoWeb.AppInfoTest do
     test "says the map draws its background offline only from a saved map" do
       %{works: works} = AppInfo.offline()
 
-      assert Enum.any?(works, &(&1 =~ "With Save for offline use on"))
+      assert Enum.any?(works, &(&1 =~ "draws its streets and places from the saved map"))
     end
 
     test "names the setting in every sentence that relies on what it saves" do
