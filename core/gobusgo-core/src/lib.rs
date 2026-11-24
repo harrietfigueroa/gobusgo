@@ -6,6 +6,7 @@ pub mod assert;
 mod bytes;
 pub mod math;
 pub mod packed_container;
+pub mod routing_engine;
 pub mod routing_snapshot;
 pub mod routing_walk;
 pub mod trip_path;

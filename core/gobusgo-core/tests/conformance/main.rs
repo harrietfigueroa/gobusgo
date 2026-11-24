@@ -12,6 +12,7 @@ mod geodesy;
 mod interpolation;
 mod json;
 mod packed_container;
+mod routing_engine;
 mod routing_snapshot;
 mod routing_walk;
 mod trip_path;

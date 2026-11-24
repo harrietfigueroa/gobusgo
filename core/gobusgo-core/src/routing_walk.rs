@@ -208,7 +208,7 @@ fn assert_rules(rules: WalkRules) {
 }
 
 // JavaScript's `Number.isInteger`.
-fn is_whole(value: f64) -> bool {
+pub(crate) fn is_whole(value: f64) -> bool {
     let is_finite = value.is_finite();
     let is_unchanged = value.trunc().total_cmp(&value).is_eq();
     is_finite && is_unchanged
