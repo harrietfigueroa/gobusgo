@@ -220,6 +220,7 @@ for (const listenCase of listenCases) {
 const askBase = {previousKind: FollowKind.off, nextKind: FollowKind.following, isShown: true, isDenied: false, canRequest: true}
 const askCases = [
   {name: "a click from Off to Following", fields: {}, asks: true},
+  {name: "a click from resume to Following", fields: {previousKind: FollowKind.resume}, asks: true},
   {name: "a click from Located to Following", fields: {previousKind: FollowKind.located}, asks: false},
   {name: "a click from Following to Off", fields: {previousKind: FollowKind.following, nextKind: FollowKind.off}, asks: false},
   {name: "the setting off", fields: {isShown: false}, asks: false},
