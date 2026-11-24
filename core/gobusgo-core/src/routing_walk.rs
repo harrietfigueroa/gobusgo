@@ -238,7 +238,6 @@ fn kept_first<Item>(items: Vec<Item>, end: f64) -> Vec<Item> {
     kept
 }
 
-// The degrees of a stop's microdegrees on one axis.
 fn degrees(microdegrees: i32) -> f64 {
     f64::from(microdegrees) / MICRODEGREES_PER_DEGREE
 }
@@ -287,8 +286,6 @@ fn stops_within(near: &Near<'_>) -> Vec<Ranked> {
     within
 }
 
-// The start stops of `ranked`, ranked stops, each with the whole seconds of its
-// walk at the walking speed, at most the walking links a stop keeps.
 fn starts_of(ranked: Vec<Ranked>, rules: WalkRules) -> Vec<Start> {
     let kept = kept_first(ranked, rules.walk_link_count_per_stop_max);
     let mut starts = Vec::with_capacity(kept.len());

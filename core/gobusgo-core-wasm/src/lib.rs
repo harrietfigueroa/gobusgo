@@ -1103,10 +1103,16 @@ fn reached_stops(stops: &JsValue) -> Vec<routing_walk::ReachedStop> {
     let values = caught(try_reached_values(stops), "reading the reached stops");
     let (pairs, _) = values.as_chunks::<2>();
     let mut reached = Vec::with_capacity(pairs.len());
-    for [stop, street_m] in pairs {
+    for (index, [stop, street_m]) in pairs.iter().enumerate() {
         reached.push(routing_walk::ReachedStop {
-            stop: number(stop, "binding: routing walk: a reached stop's stop"),
-            street_m: number(street_m, "binding: routing walk: a reached stop's streetM"),
+            stop: number(
+                stop,
+                &format!("binding: routing walk: reached stop {index}'s stop"),
+            ),
+            street_m: number(
+                street_m,
+                &format!("binding: routing walk: reached stop {index}'s streetM"),
+            ),
         });
     }
     reached
