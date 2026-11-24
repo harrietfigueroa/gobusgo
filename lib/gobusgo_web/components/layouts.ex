@@ -2,7 +2,8 @@ defmodule GobusgoWeb.Layouts do
   @moduledoc """
   The layouts browser pages render inside. `root/1` is the HTML document:
   the head with the CSRF token, the page's title, the commit the application was built from
-  where the build names one, the time the page was rendered, which tells
+  where the build names one, the release the service worker was built for
+  where one has been built, the time the page was rendered, which tells
   the browser a copy from a cache, the web app manifest, the icon a home screen
   draws, the theme color, the script that draws the page and sets that
   color in the rider's theme, and the built assets, and the page as the body
@@ -69,6 +70,7 @@ defmodule GobusgoWeb.Layouts do
     assigns =
       assign(assigns,
         revision: revision,
+        release: page_release(),
         rendered_at:
           DateTime.utc_now() |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601(),
         theme_script: @theme_script,
@@ -87,6 +89,7 @@ defmodule GobusgoWeb.Layouts do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <meta :if={@revision} name="revision" content={@revision} />
+        <meta :if={@release} name="gobusgo:release" content={@release} />
         <meta name="gobusgo:rendered-at" content={@rendered_at} />
         <.live_title default="Gobusgo" suffix={@title_suffix}>{assigns[:page_title]}</.live_title>
         <meta name="theme-color" content={@theme_color_light} />
@@ -126,6 +129,15 @@ defmodule GobusgoWeb.Layouts do
       </body>
     </html>
     """
+  end
+
+  # The release the page's assets belong to, which the browser compares with
+  # a waiting worker's before it offers a reload.
+  defp page_release do
+    case GobusgoWeb.ServiceWorkerRelease.read() do
+      {:ok, release} -> release
+      :none -> nil
+    end
   end
 
   # A page that names itself in `page_title` is titled "<name> · Gobusgo";

@@ -2,6 +2,7 @@ defmodule GobusgoWeb.ServiceWorker do
   @archive_name "basemaps-assets"
   @basemap_assets_id_length 16
   @release_length 16
+  @release_file_name "sw_release.json"
 
   @moduledoc """
   What the service worker is built with: the release it names its cache
@@ -13,6 +14,10 @@ defmodule GobusgoWeb.ServiceWorker do
   A release is a hash of the files the worker stores when it installs, so a
   build whose stylesheet, script, core module, and map library are unchanged
   is the same release, and any other build is another.
+
+  The release file, `#{@release_file_name}` beside the worker, names the
+  release the worker was built for, so a page can name the release it
+  belongs to.
   """
 
   alias Gobusgo.Assert
@@ -21,6 +26,8 @@ defmodule GobusgoWeb.ServiceWorker do
 
   @lock_path Path.expand("../../assets/vendor.lock.json", __DIR__)
   @external_resource @lock_path
+
+  @release_pattern ~r/\A[0-9a-f]{16}\z/
 
   {:ok, lock} = @lock_path |> File.read!() |> Lock.decode()
   {:ok, %{content_sha256: content_sha256}} = Lock.fetch_archive(lock, @archive_name)
@@ -84,6 +91,45 @@ defmodule GobusgoWeb.ServiceWorker do
   end
 
   defp length_prefixed(value), do: <<byte_size(value)::64>> <> value
+
+  @doc "Returns the name of the release file, which the build writes beside the worker."
+  @spec release_file_name() :: String.t()
+  def release_file_name, do: @release_file_name
+
+  @doc """
+  Returns the content of the release file for `release`, #{@release_length}
+  lowercase hexadecimal digits; any other release raises.
+  """
+  @spec release_file(String.t()) :: String.t()
+  def release_file(release) do
+    Assert.condition(is_binary(release), "release must be a string, got: #{inspect(release)}")
+
+    Assert.condition(
+      Regex.match?(@release_pattern, release),
+      "release must be #{@release_length} lowercase hexadecimal digits, got: #{inspect(release)}"
+    )
+
+    JSON.encode!(%{"release" => release})
+  end
+
+  @doc """
+  Returns the release a release file's `content` names, or `{:error,
+  :malformed}` for content that names none.
+  """
+  @spec release_of_file(String.t()) :: {:ok, String.t()} | {:error, :malformed}
+  def release_of_file(content) when is_binary(content) do
+    case JSON.decode(content) do
+      {:ok, %{"release" => release}} when is_binary(release) -> release_matched(release)
+      _other -> {:error, :malformed}
+    end
+  end
+
+  defp release_matched(release) do
+    case Regex.match?(@release_pattern, release) do
+      true -> {:ok, release}
+      false -> {:error, :malformed}
+    end
+  end
 
   @doc "Returns the content identifier of the basemap's fonts and sprites the lock file pins."
   @spec basemap_assets_id() :: String.t()

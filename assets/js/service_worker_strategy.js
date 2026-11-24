@@ -48,8 +48,13 @@ export const StrategyKind = Object.freeze({
   untouched: "untouched"
 })
 
-/** The messages a page sends the worker: take over from the worker in use. */
-export const MessageKind = Object.freeze({activate: "activate"})
+/**
+ * The messages between a page and the worker: the page's request to take
+ * over from the worker in use, and the page's question of the release the
+ * worker was built for, with the worker's answer, on the port the question
+ * hands it.
+ */
+export const MessageKind = Object.freeze({activate: "activate", release: "release"})
 
 /** The caches a stored copy is read from: the release's, the offline schedules', or the saved map's. */
 export const CacheRole = Object.freeze({release: "release", offlineSchedules: "offlineSchedules", offlineBasemap: "offlineBasemap"})

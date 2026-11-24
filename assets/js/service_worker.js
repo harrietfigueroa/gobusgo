@@ -8,8 +8,10 @@
 //
 // A new worker waits after it installs, so a page keeps the release it
 // started with; it takes over when a page asks it to, which the page does
-// when the rider takes the offer to reload. When it activates it deletes
-// the caches of earlier releases.
+// when the rider takes the offer to reload or when the page already belongs
+// to the worker's release. It names its release to a page that asks, on the
+// port the question hands it. When it activates it deletes the caches of
+// earlier releases.
 //
 // SERVICE_WORKER_BUILD is defined by the build: the release, the paths
 // stored when the worker installs, and the content identifier of the
@@ -260,10 +262,22 @@ function messaged(event) {
   const data = event.data
   const isObject = typeof data === "object" && data !== null
   const isActivate = isObject && data.kind === MessageKind.activate
+  const isReleaseQuestion = isObject && data.kind === MessageKind.release
 
   if (isActivate) {
     self.skipWaiting()
+    return
   }
+
+  if (isReleaseQuestion) {
+    answerRelease(event.ports)
+  }
+}
+
+function answerRelease(ports) {
+  assertCondition(ports.length === 1, "a release question hands one port, got: " + String(ports.length))
+  const port = ports[0]
+  port.postMessage({kind: MessageKind.release, release: build.release})
 }
 
 function installed(event) {
