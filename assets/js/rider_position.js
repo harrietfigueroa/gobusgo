@@ -173,16 +173,6 @@ export function latestFix() {
 }
 
 /**
- * Whether the browser gives a position with no prompt, which is what lets a
- * page load start the watch. A browser without the Permissions API, and one
- * that refuses the query, reads as one that prompts.
- */
-export async function permissionGranted() {
-  const permission = await currentPermission()
-  return permission === PermissionKind.granted
-}
-
-/**
  * The location permission as the Permissions API reads it, a
  * `PermissionKind`. A browser without the API, and one that refuses the
  * query, read as one that prompts.

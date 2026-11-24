@@ -1,8 +1,8 @@
 defmodule GobusgoWeb.LayoutsTest do
   # Requests a page through the endpoint with Phoenix.ConnTest and reads the
   # document's head, which the root layout renders around every page. The
-  # commit is application configuration, global state, hence the non-async
-  # case.
+  # commit and the service worker's release file are application
+  # configuration, global state, hence the non-async case.
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -12,8 +12,13 @@ defmodule GobusgoWeb.LayoutsTest do
 
   setup do
     configured = Application.get_env(:gobusgo, :revision)
+    release_file = Application.get_env(:gobusgo, :service_worker_release_file)
     on_exit(fn -> Application.put_env(:gobusgo, :revision, configured) end)
+    on_exit(fn -> restore_env(:service_worker_release_file, release_file) end)
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:gobusgo, key)
+  defp restore_env(key, value), do: Application.put_env(:gobusgo, key, value)
 
   defp head(selector) do
     build_conn()
@@ -35,6 +40,49 @@ defmodule GobusgoWeb.LayoutsTest do
     Application.put_env(:gobusgo, :revision, revision: nil)
 
     assert Enum.empty?(revision_meta())
+  end
+
+  defp release_meta, do: head(~s(meta[name="gobusgo:release"]))
+
+  @tag :tmp_dir
+  test "names the release the service worker was built for in a release meta element", %{
+    tmp_dir: tmp_dir
+  } do
+    path = Path.join(tmp_dir, "sw_release.json")
+    File.write!(path, GobusgoWeb.ServiceWorker.release_file("0123456789abcdef"))
+    Application.put_env(:gobusgo, :service_worker_release_file, path)
+
+    assert release_meta() |> LazyHTML.attribute("content") == ["0123456789abcdef"]
+  end
+
+  @tag :tmp_dir
+  test "keeps naming the release it read first after the release file changes", %{
+    tmp_dir: tmp_dir
+  } do
+    path = Path.join(tmp_dir, "sw_release.json")
+    File.write!(path, GobusgoWeb.ServiceWorker.release_file("0123456789abcdef"))
+    Application.put_env(:gobusgo, :service_worker_release_file, path)
+    first = release_meta() |> LazyHTML.attribute("content")
+    File.write!(path, GobusgoWeb.ServiceWorker.release_file("fedcba9876543210"))
+
+    assert first == ["0123456789abcdef"]
+    assert release_meta() |> LazyHTML.attribute("content") == ["0123456789abcdef"]
+  end
+
+  @tag :tmp_dir
+  test "has no release meta element where no service worker has been built", %{tmp_dir: tmp_dir} do
+    Application.put_env(:gobusgo, :service_worker_release_file, Path.join(tmp_dir, "absent.json"))
+
+    assert Enum.empty?(release_meta())
+  end
+
+  @tag :tmp_dir
+  test "has no release meta element for a malformed release file", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "sw_release.json")
+    File.write!(path, "release")
+    Application.put_env(:gobusgo, :service_worker_release_file, path)
+
+    assert Enum.empty?(release_meta())
   end
 
   test "names the time the page was rendered in a rendered-at meta element" do

@@ -1,10 +1,22 @@
-// The rules of the location button. Everything here is pure: the state, the
-// event, the map's size, the sheet's insets, and the dot's place on screen
-// are given as values, so what the button does next, what it shows, and
-// whether the map moves are functions of them alone.
+// The rules of the location button, and the launch decision the button and
+// the trip panel share. Everything here is pure: the state, the event, the
+// map's size, the sheet's insets, the dot's place on screen, the rider's
+// stated intent, and the permission are given as values, so what the button
+// does next, what it shows, whether the map moves, and what a page load does
+// with the rider's location are functions of them alone.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 import {radians} from "#core/math/angles.js"
+import {EndKind} from "#core/trip_plan.js"
+import {PermissionKind} from "./position_watch.js"
+
+/**
+ * How long a restore at launch waits for the browser's first answer, a fix
+ * or why there is none, before the button falls back to resume. A browser
+ * that shows no prompt outside a press answers nothing, and the rider then
+ * presses the button to be asked.
+ */
+export const LAUNCH_WAIT_MS_MAX = 15 * 1000
 
 /** A fix moves the map only when the dot stands farther than this from where the map keeps it. */
 export const FOLLOW_DISTANCE_PIXELS_MAX = 24
@@ -23,8 +35,12 @@ const EARTH_CIRCUMFERENCE_METERS = 40_075_016.686
 const DIAMETER_PER_RADIUS = 2
 const HALF = 2
 
-/** Off holds no watch; Following keeps the map on the dot; Located draws the dot alone; blocked follows a denial. */
-export const FollowKind = Object.freeze({off: "off", following: "following", located: "located", blocked: "blocked"})
+/**
+ * Off holds no watch; Following keeps the map on the dot; Located draws the
+ * dot alone; resume holds no watch and keeps the flag after a restore the
+ * browser did not answer in time; blocked follows a denial.
+ */
+export const FollowKind = Object.freeze({off: "off", following: "following", located: "located", resume: "resume", blocked: "blocked"})
 
 /** Where the latest fix lies against the bounds of the whole archive. */
 export const FixPlace = Object.freeze({none: "none", inside: "inside", outside: "outside"})
@@ -33,6 +49,7 @@ export const FixPlace = Object.freeze({none: "none", inside: "inside", outside: 
 export const FollowEventKind = Object.freeze({
   click: "click",
   restore: "restore",
+  launchTimeout: "launchTimeout",
   fix: "fix",
   failed: "failed",
   denied: "denied",
@@ -56,7 +73,8 @@ export const NoticeMessage = Object.freeze({
   stopped: Object.freeze({headline: "Stopped following your location", caption: "Press the location button to follow again."}),
   denied: Object.freeze({headline: "Location is off", caption: "Allow location in your browser's settings. The map stays where it is."}),
   unavailable: Object.freeze({headline: "Can't find your location", caption: "The map stays where it is."}),
-  outside: Object.freeze({headline: "You're outside this map", caption: "The map stays where it is."})
+  outside: Object.freeze({headline: "You're outside this map", caption: "The map stays where it is."}),
+  resume: Object.freeze({headline: "Your location is paused", caption: "Press the location button to follow it again."})
 })
 
 /** MapLibre's classes of its geolocate button, whose icons the button shows. */
@@ -81,24 +99,48 @@ export const BUTTON_CLASS_NAMES = Object.freeze([
 const Label = Object.freeze({
   follow: "Follow my location",
   stop: "Stop following my location",
-  center: "Center on my location"
+  center: "Center on my location",
+  resume: "Resume following my location"
 })
 
 /**
  * The state of a page before any press. `place` is where the latest fix
  * lies, `isCentered` whether a follow has centered the map on a fix yet,
- * `isStale` whether the latest outcome was a failure, and `isNoticeOwed`
+ * `isStale` whether the latest outcome was a failure, `isNoticeOwed`
  * whether the rider pressed the button and has not yet been told the
- * outcome.
+ * outcome, and `isLaunchWaiting` whether a restore at launch still waits
+ * for the browser's first answer.
  */
-export const OFF = Object.freeze({kind: FollowKind.off, place: FixPlace.none, isCentered: false, isStale: false, isNoticeOwed: false})
+export const OFF = Object.freeze({
+  kind: FollowKind.off,
+  place: FixPlace.none,
+  isCentered: false,
+  isStale: false,
+  isNoticeOwed: false,
+  isLaunchWaiting: false
+})
+
+/** What a page load does: start from the rider's location, block the button, or leave it off. */
+export const LaunchKind = Object.freeze({restore: "restore", blocked: "blocked", off: "off"})
+
+/**
+ * What the rider stored about using their location: on, off, or nothing
+ * either way, which defers to a permission the browser reports as granted.
+ */
+export const LaunchIntent = Object.freeze({on: "on", off: "off", unstated: "unstated"})
 
 const BLOCKED = Object.freeze({...OFF, kind: FollowKind.blocked})
+const RESUME = Object.freeze({...OFF, kind: FollowKind.resume})
 const STAY = Object.freeze({kind: MoveKind.stay})
 const NO_EFFECTS = Object.freeze([])
 const FOLLOW_EFFECT = Object.freeze({kind: EffectKind.follow})
 const followKinds = Object.values(FollowKind)
 const fixPlaces = Object.values(FixPlace)
+const launchIntents = Object.values(LaunchIntent)
+const permissionKinds = Object.values(PermissionKind)
+const RESTORE_LAUNCH = Object.freeze({kind: LaunchKind.restore})
+const BLOCKED_LAUNCH = Object.freeze({kind: LaunchKind.blocked})
+const OFF_LAUNCH = Object.freeze({kind: LaunchKind.off})
 
 function notice(message) {
   return {kind: EffectKind.notice, message}
@@ -108,11 +150,74 @@ function unchanged(state) {
   return {state, effects: NO_EFFECTS}
 }
 
-/** Whether the button holds the watch, draws the dot, and keeps the flag stored. */
+/** Whether the button holds the watch and draws the dot. */
 export function isActive(state) {
   const isFollowing = state.kind === FollowKind.following
   const isOn = isFollowing || state.kind === FollowKind.located
   return isOn
+}
+
+/** Whether the flag that the rider left the button on stays stored: while the button is on, and in resume. */
+export function keepsFlag(state) {
+  const isResume = state.kind === FollowKind.resume
+  const isKept = isActive(state) || isResume
+  return isKept
+}
+
+/**
+ * What a page load does with the rider's location, from the rider's stored
+ * `intent`, the `permission` as the Permissions API reports it at load, and
+ * whether this page already offered the restore. A denial blocks whenever
+ * it is read. A stated intent restores unless the permission reads denied,
+ * since WebKit reports a permission granted at a prompt as a prompt until
+ * the page asks; an unstated one restores only on a granted permission, so
+ * it never raises a prompt. A restore is offered once a page.
+ */
+export function launchDecision({intent, permission, isRestoreOffered}) {
+  assertCondition(launchIntents.includes(intent), `follow state: a launch intent of ${String(intent)}`)
+  assertCondition(permissionKinds.includes(permission), `follow state: a launch permission of ${String(permission)}`)
+  assertCondition(typeof isRestoreOffered === "boolean", `follow state: a restore offered of ${String(isRestoreOffered)}`)
+
+  if (permission === PermissionKind.denied) {
+    return BLOCKED_LAUNCH
+  }
+
+  if (isRestoreOffered) {
+    return OFF_LAUNCH
+  }
+
+  if (intent === LaunchIntent.on) {
+    return RESTORE_LAUNCH
+  }
+
+  const isGrantedDefault = intent === LaunchIntent.unstated && permission === PermissionKind.granted
+
+  if (isGrantedDefault) {
+    return RESTORE_LAUNCH
+  }
+
+  return OFF_LAUNCH
+}
+
+/**
+ * The trip panel's intent from the rider's recent trips, the most recent
+ * first: a last trip that started from My location states it, and anything
+ * else leaves it unstated.
+ */
+export function tripLaunchIntent({recentTrips}) {
+  assertCondition(Array.isArray(recentTrips), `follow state: recent trips of ${String(recentTrips)}`)
+
+  if (recentTrips.length === 0) {
+    return LaunchIntent.unstated
+  }
+
+  const [latest] = recentTrips
+
+  if (latest.from.kind === EndKind.location) {
+    return LaunchIntent.on
+  }
+
+  return LaunchIntent.unstated
 }
 
 function onClick(state) {
@@ -123,6 +228,8 @@ function onClick(state) {
       return {state: OFF, effects: [notice(NoticeMessage.stopped)]}
     case FollowKind.located:
       return onClickLocated(state)
+    case FollowKind.resume:
+      return {state: {...OFF, kind: FollowKind.following, isNoticeOwed: true}, effects: [notice(NoticeMessage.following)]}
     case FollowKind.blocked:
       return unchanged(state)
     default:
@@ -160,7 +267,7 @@ function onFix({state, place}) {
     return unchanged(state)
   }
 
-  const fixed = {...state, place, isStale: false, isNoticeOwed: false}
+  const fixed = {...state, place, isStale: false, isNoticeOwed: false, isLaunchWaiting: false}
 
   if (state.kind === FollowKind.located) {
     return {state: fixed, effects: NO_EFFECTS}
@@ -190,7 +297,7 @@ function onFailed(state) {
     return unchanged(state)
   }
 
-  const failed = {...state, isStale: true, isNoticeOwed: false}
+  const failed = {...state, isStale: true, isNoticeOwed: false, isLaunchWaiting: false}
 
   if (state.isNoticeOwed) {
     return {state: failed, effects: [notice(NoticeMessage.unavailable)]}
@@ -229,7 +336,21 @@ function onVehicleFollow(state) {
   const isFollowing = state.kind === FollowKind.following
 
   if (isFollowing) {
-    return {state: {...state, kind: FollowKind.located, isCentered: false, isNoticeOwed: false}, effects: NO_EFFECTS}
+    return {state: {...state, kind: FollowKind.located, isCentered: false, isNoticeOwed: false, isLaunchWaiting: false}, effects: NO_EFFECTS}
+  }
+
+  return unchanged(state)
+}
+
+// A restore the browser has not answered by the launch wait falls back to
+// resume, which keeps the flag and asks on the next press. A follow the
+// rider pressed, and one already answered, wait on.
+function onLaunchTimeout(state) {
+  const isFollowing = state.kind === FollowKind.following
+  const isUnanswered = isFollowing && state.isLaunchWaiting
+
+  if (isUnanswered) {
+    return {state: RESUME, effects: [notice(NoticeMessage.resume)]}
   }
 
   return unchanged(state)
@@ -248,10 +369,12 @@ export function transition({state, event}) {
       return onClick(state)
     case FollowEventKind.restore:
       if (state.kind === FollowKind.off) {
-        return {state: {...OFF, kind: FollowKind.following}, effects: NO_EFFECTS}
+        return {state: {...OFF, kind: FollowKind.following, isLaunchWaiting: true}, effects: NO_EFFECTS}
       }
 
       return unchanged(state)
+    case FollowEventKind.launchTimeout:
+      return onLaunchTimeout(state)
     case FollowEventKind.fix:
       return onFix({state, place: event.place})
     case FollowEventKind.failed:
@@ -284,6 +407,8 @@ export function buttonOf(state) {
       return {label: Label.center, pressed: false, disabled: false, className: ButtonClass.background}
     case FollowKind.blocked:
       return {label: Label.follow, pressed: false, disabled: true, className: ButtonClass.none}
+    case FollowKind.resume:
+      return {label: Label.resume, pressed: false, disabled: false, className: ButtonClass.none}
     default:
       return unreachable(state.kind, "follow state: a button for a state of unknown kind")
   }
