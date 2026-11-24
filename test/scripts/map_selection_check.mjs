@@ -4,7 +4,8 @@
 // stop signs near a tap open nothing unless the map draws one under the
 // tap, and then one stop or a list of every sign within reach, nearest
 // first by the distance from the tap to each sign's box, a sign drawn under
-// the tap at the tap, with the count of all reached. Run it with
+// the tap at the tap and before another as near, with the count of all
+// reached. Run it with
 // `node test/scripts/map_selection_check.mjs`; it exits non-zero on the
 // first case that differs.
 
@@ -24,8 +25,7 @@ for (const {name, given, outcome} of cases) {
 
 // Every sign is a square of half side 8 around its center; the tap is at
 // (100, 100). A sign's distance is from the tap to the nearest point of its
-// square, 0 inside it, and 0 for a sign the map draws under the tap, which
-// a tilted map draws where its square says it is not.
+// square, 0 inside it, and 0 for a sign the map draws under the tap.
 const TAP = {x: 100, y: 100}
 const HALF_SIZE = 8
 const TOUCH_RADIUS = 22
@@ -99,6 +99,12 @@ const stopCases = [
     candidates: [sign({id: "far", x: AT_EDGE_X, isUnderTap: false}), sign({id: "near", x: NEAR_X, isUnderTap: false})],
     radiusPixels: TOUCH_RADIUS,
     outcome: {kind: StopTapKind.none}
+  },
+  {
+    name: "a sign drawn under the tap before another whose box holds the tap",
+    candidates: [sign({id: "a", x: TAP.x, isUnderTap: false}), sign({id: "b", x: OVERLAPPING_X, isUnderTap: true})],
+    radiusPixels: TOUCH_RADIUS,
+    outcome: {kind: StopTapKind.list, items: ["b", "a"], count: 2}
   },
   {
     name: "a tap on one sign with another within the radius",

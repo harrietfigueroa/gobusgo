@@ -178,9 +178,15 @@ export const Basemap = {
       style: basemapStyle({archiveUrl: this.drawnUrl, sources: element.dataset, theme: this.theme}),
       ...this.firstView(padding),
       attributionControl: false,
-      // The map stays north-up, so a layer may place its icons in screen
-      // pixels by compass direction.
+      // The map stays north-up and flat, so a layer may place its icons in
+      // screen pixels by compass direction. `maxPitch` of 0 holds every
+      // camera flat, a handed-over one included, since MapLibre clamps the
+      // pitch to it; the keyboard's `disableRotation` below also stops its
+      // Shift and arrow tilt (maplibre-gl 6.17.0, KeyboardHandler).
       dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
+      maxPitch: 0,
       // `setStyle` takes this as its default, so a restyle follows it too.
       validateStyle: element.dataset.styleValidated !== undefined
     })

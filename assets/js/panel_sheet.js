@@ -310,16 +310,15 @@ export const PanelSheet = {
     return this.tabs.find(isSelectedTab)
   },
 
-  // Names the back button for what it returns to: the parent's title, such
-  // as "Back to 4 stops here", for an item opened from another, and the
-  // open tab's name for any other.
+  // Names the back button for what it returns to: the parent's title for
+  // an item with a parent, and the open tab's name for any other.
   writeBackLabel() {
     const tabTitle = this.openTab().querySelector("[data-tab-label]").textContent
     this.back.setAttribute("aria-label", BACK_LABEL_PREFIX + backTitle(tabTitle))
   },
 
-  // An item opened from another, a stop chosen from a list, returns to that
-  // other, and focus moves to its title, which a screen reader reads,
+  // An item with a parent returns to that parent, and focus moves to its
+  // title, which a screen reader reads,
   // wherever focus was, since Safari leaves a clicked back button unfocused.
   // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#clicking_and_focus — checked 2026-11-24
   // Any other item closes the view: the tab it returns to is still the open

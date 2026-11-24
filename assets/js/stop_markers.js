@@ -222,7 +222,7 @@ function reachedFeatures({map, point, radiusPixels, underTap}) {
 
 // What a tap at `point` of `map` opens among the stop signs the map draws,
 // by `stopTapOutcome`: none where the map draws no sign under the point, as
-// `queryRenderedFeatures` reports it on a tilted map too, and otherwise one
+// `queryRenderedFeatures` reports it at the point, and otherwise one
 // stop's feature, or a list of every sign within `radiusPixels` of it,
 // nearest first.
 function stopTapAt({map, point, radiusPixels}) {

@@ -40,6 +40,10 @@ function byNearness(left, right) {
     return left.distanceSquared - right.distanceSquared
   }
 
+  if (left.isUnderTap !== right.isUnderTap) {
+    return Number(right.isUnderTap) - Number(left.isUnderTap)
+  }
+
   return left.id.localeCompare(right.id, "en", {sensitivity: "variant", numeric: false})
 }
 
@@ -52,8 +56,8 @@ function byNearness(left, right) {
  * `radiusPixels` of it, measured to each sign's box, counted once per `id`,
  * since a stop near a tile's edge comes back from each tile: one opens its
  * `item`, and two or more open a list of their `items`, nearest first, a
- * sign drawn under the tap at the tap, then by `id`, at most `countMax`,
- * with `count`, every stop reached.
+ * sign drawn under the tap at the tap and before another as near, then by
+ * `id`, at most `countMax`, with `count`, every stop reached.
  */
 export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
   assertCondition(radiusPixels >= 0, `a tap's radius is not negative, got: ${radiusPixels}`)
@@ -65,8 +69,6 @@ export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
   for (const candidate of candidates) {
     let distanceSquared = signDistanceSquared({point, center: candidate.center, halfSize: candidate.halfSize})
 
-    // A tilted map draws a distant sign smaller and a near one larger than
-    // its box, so a sign drawn under the tap is at the tap.
     if (candidate.isUnderTap) {
       distanceSquared = 0
       isAnyUnderTap = true
@@ -77,7 +79,7 @@ export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
     }
 
     const held = nearestById.get(candidate.id)
-    const near = {id: candidate.id, item: candidate.item, distanceSquared}
+    const near = {id: candidate.id, item: candidate.item, distanceSquared, isUnderTap: candidate.isUnderTap}
     const isFirstOrNearer = held === undefined || distanceSquared < held.distanceSquared
 
     if (isFirstOrNearer) {

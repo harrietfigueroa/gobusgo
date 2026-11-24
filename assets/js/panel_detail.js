@@ -3,9 +3,8 @@
 // sheet's tabs. This module is the one owner of what the view shows: a hook
 // writes its item into the view with `showDetail`, and every listener of
 // the change event learns when the view moves to another item or closes, so
-// the hook whose item it was lets go of it. An item opened from another,
-// a stop chosen from a list, keeps that other as its parent, which the back
-// button shows again.
+// the hook whose item it was lets go of it. An item shown with a parent
+// keeps it until `showParentDetail` shows it again or the view closes.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 
@@ -90,8 +89,8 @@ export function backTitle(tabTitle) {
   }
 }
 
-// Drops the parent of the item the view shows, which then returns to the
-// tab, and announces it where it had one.
+// Drops the parent of the item the view shows, and announces it where it
+// had one.
 export function clearParentDetail() {
   if (hasParentDetail()) {
     shownParent = NO_PARENT
