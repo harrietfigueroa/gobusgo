@@ -1,17 +1,19 @@
 // Routes each query of the engine's shared fixture that leaves at a time with
 // the core and compares the frontier with the one written by hand, each case
-// and query found by its name. It then checks that each query the engine
+// and query labeled by its name. It then checks that each query the engine
 // refuses fails with the message the JavaScript's refusal carries, the leaving
 // half of the table of `tools/conformance/tests/routing_engine.test.mjs`
 // restated, that a start stop named twice keeps its shorter walk in either
-// order, and, over a chain of one-hop trips built here, that a journey takes
-// at most six rides.
+// order, that a label stores a time as the JavaScript's Int32Array does, with
+// the JavaScript's answers restated, and that the core refuses the engine
+// inputs and views it cannot scan.
 
 use std::fmt::Debug;
 use std::str::FromStr;
 
 use gobusgo_core::routing_engine::{
-    Engine, EngineInput, Journey, Leg, LegKind, Origin, OriginKind, Query, ROUNDS_MAX, route,
+    ConnectionColumns, Engine, EngineInput, EngineView, Journey, Leg, LegKind, LinkColumns, Origin,
+    OriginKind, Query, ROUNDS_MAX, route,
 };
 use gobusgo_core::routing_snapshot::{Connections, Transfers};
 use gobusgo_core::routing_walk::Start;
@@ -26,11 +28,13 @@ const WALK_S_SHORTER: f64 = 60.0;
 const WALK_S_LONGER: f64 = 120.0;
 const NOT_A_STOP: &str = " is not a stop of the snapshot";
 
-// A chain of one-hop trips, each leaving the stop the one before reaches, one
-// more than a journey may ride.
-const CHAIN_TRIP_COUNT: u32 = 7;
-const CHAIN_HEADWAY_S: i32 = 600;
-const CHAIN_RIDE_S: i32 = 300;
+const MINIMUM_TRANSFER_S: f64 = 120.0;
+const LINK_S: u32 = 60;
+const MEETING_FIRST_DEPARTURE_S: i32 = 28_800;
+const MEETING_ARRIVAL_S: i32 = 29_400;
+const MEETING_LAST_ARRIVAL_S: i32 = 30_000;
+// 2^31, one past the largest `i32`.
+const INT32_PAST_MAX: f64 = 2_147_483_648.0;
 
 fn cases() -> Value {
     fixture(include_str!(
@@ -368,78 +372,211 @@ fn a_start_stop_named_twice_keeps_its_shorter_walk() {
     }
 }
 
-// Trip `t` rides from stop `t` to stop `t + 1`, leaving after the one before
-// arrives, so reaching stop `n` from stop 0 takes `n` rides.
-fn chain_engine() -> Engine {
-    let trips: Vec<u32> = (0..CHAIN_TRIP_COUNT).collect();
-    let departure_s: Vec<i32> = trips
-        .iter()
-        .map(|&trip| {
-            i32::try_from(trip)
-                .unwrap()
-                .checked_mul(CHAIN_HEADWAY_S)
-                .unwrap()
-        })
-        .collect();
-    let trip_count = trips.len();
-    Engine::new(EngineInput {
-        stop_count: trip_count.checked_add(1).unwrap(),
+// Two trips meeting at stop 1, the second leaving the second the first
+// arrives, with no walking link, the inputs of the JavaScript run whose
+// answers the Int32 cases restate.
+fn meeting_input(minimum_transfer_s: f64) -> EngineInput {
+    EngineInput {
+        stop_count: 3,
         connections: Connections {
-            arrival_s: departure_s
-                .iter()
-                .map(|&s| s.checked_add(CHAIN_RIDE_S).unwrap())
-                .collect(),
-            departure_s,
-            departure_stop: trips.clone(),
-            arrival_stop: trips
-                .iter()
-                .map(|&trip| trip.checked_add(1).unwrap())
-                .collect(),
-            trip: trips,
-            sequence: vec![0; trip_count],
-            boarding: vec![1; trip_count],
-            alighting: vec![1; trip_count],
+            departure_s: vec![MEETING_FIRST_DEPARTURE_S, MEETING_ARRIVAL_S],
+            arrival_s: vec![MEETING_ARRIVAL_S, MEETING_LAST_ARRIVAL_S],
+            departure_stop: vec![0, 1],
+            arrival_stop: vec![1, 2],
+            trip: vec![0, 1],
+            sequence: vec![0, 0],
+            boarding: vec![1, 1],
+            alighting: vec![1, 1],
         },
         transfers: Transfers {
             from_stop: Vec::new(),
             to_stop: Vec::new(),
             duration_s: Vec::new(),
         },
-        minimum_transfer_s: 0.0,
-    })
-}
-
-fn chain_query(target: usize) -> HeldQuery {
-    HeldQuery {
-        origin: HeldOrigin::Stop(0.0),
-        target: format!("{target}").parse().unwrap(),
-        departure_s: 0.0,
+        minimum_transfer_s,
     }
 }
 
+// The meeting trips with a walking link out of each of the first two stops.
+fn linked_input() -> EngineInput {
+    EngineInput {
+        transfers: Transfers {
+            from_stop: vec![0, 1],
+            to_stop: vec![1, 2],
+            duration_s: vec![LINK_S, LINK_S],
+        },
+        ..meeting_input(MINIMUM_TRANSFER_S)
+    }
+}
+
+fn from_stop_0(target: f64, departure_s: f64) -> HeldQuery {
+    HeldQuery {
+        origin: HeldOrigin::Stop(0.0),
+        target,
+        departure_s,
+    }
+}
+
+// A label stores the arrival plus a half-second transfer as the JavaScript's
+// Int32Array does, truncated to the arrival, so the second trip boards.
 #[test]
-fn six_rides_reach_the_sixth_stop_of_a_chain() {
-    let engine = chain_engine();
-    let frontier = route(&engine.view(), &chain_query(ROUND_COUNT_MAX).query());
-    let rides: Vec<Leg> = (0..ROUND_COUNT_MAX)
-        .map(|connection| Leg::Ride {
-            board_connection: connection,
-            alight_connection: connection,
-        })
-        .collect();
-    let last_trip = i32::try_from(ROUND_COUNT_MAX - 1).unwrap();
-    let arrival_s = f64::from(last_trip * CHAIN_HEADWAY_S + CHAIN_RIDE_S);
+fn a_fractional_minimum_transfer_is_stored_truncated() {
+    let engine = Engine::new(meeting_input(0.5));
+    let frontier = route(&engine.view(), &from_stop_0(2.0, 28_800.0).query());
     let expected = vec![Journey {
-        arrival_s,
-        changes: ROUND_COUNT_MAX - 1,
-        legs: rides,
+        arrival_s: f64::from(MEETING_LAST_ARRIVAL_S),
+        changes: 1,
+        legs: vec![
+            Leg::Ride {
+                board_connection: 0,
+                alight_connection: 0,
+            },
+            Leg::Ride {
+                board_connection: 1,
+                alight_connection: 1,
+            },
+        ],
     }];
     assert_eq!(frontier, expected);
 }
 
+// A label stores a departure of 2^31 wrapped, as the JavaScript's Int32Array
+// does, so a query whose origin is its target arrives at -2^31.
 #[test]
-fn no_journey_takes_a_seventh_ride() {
-    let engine = chain_engine();
-    let frontier = route(&engine.view(), &chain_query(ROUND_COUNT_MAX + 1).query());
-    assert_eq!(frontier, Vec::new());
+fn a_departure_past_an_int32_is_stored_wrapped() {
+    let engine = Engine::new(meeting_input(MINIMUM_TRANSFER_S));
+    let frontier = route(&engine.view(), &from_stop_0(0.0, INT32_PAST_MAX).query());
+    let expected = vec![Journey {
+        arrival_s: f64::from(i32::MIN),
+        changes: 0,
+        legs: Vec::new(),
+    }];
+    assert_eq!(frontier, expected);
+}
+
+// Each input `Engine::new` refuses, by the rule it breaks, with the failure's
+// message; these are the core's own refusals, which the JavaScript has none of.
+#[test]
+fn refused_engine_inputs() {
+    let base = linked_input;
+    let edited = |edit: fn(&mut EngineInput)| {
+        let mut input = base();
+        edit(&mut input);
+        input
+    };
+    let refused = [
+        (
+            edited(|input| input.stop_count = usize::try_from(u64::from(u32::MAX) + 1).unwrap()),
+            "routing engine: the stop count 4294967296 exceeds a u32",
+        ),
+        (
+            edited(|input| input.connections.arrival_s.truncate(1)),
+            "routing engine: the arrival_s column holds 1 values, not 2",
+        ),
+        (
+            edited(|input| input.connections.departure_s.reverse()),
+            "routing engine: the connections are not ordered by departure",
+        ),
+        (
+            edited(|input| input.connections.departure_stop[0] = 3),
+            "routing engine: 3 in the departure_stop column is not a stop of the snapshot",
+        ),
+        (
+            edited(|input| input.connections.arrival_stop[1] = 3),
+            "routing engine: 3 in the arrival_stop column is not a stop of the snapshot",
+        ),
+        (
+            edited(|input| input.transfers.duration_s.truncate(1)),
+            "routing engine: the duration_s column holds 1 values, not 2",
+        ),
+        (
+            edited(|input| input.transfers.from_stop.reverse()),
+            "routing engine: the walking links are not ordered by the stop they leave",
+        ),
+        (
+            edited(|input| input.transfers.from_stop[1] = 3),
+            "routing engine: 3 in the from_stop column is not a stop of the snapshot",
+        ),
+        (
+            edited(|input| input.transfers.to_stop[1] = 3),
+            "routing engine: 3 in the to_stop column is not a stop of the snapshot",
+        ),
+    ];
+    for (input, message) in refused {
+        let failure = failure_of(|| Engine::new(input));
+        assert_eq!(failure.message(), message);
+    }
+}
+
+// Each view `route` refuses, by the rule it breaks, with the failure's message.
+#[test]
+fn refused_views() {
+    let engine = Engine::new(linked_input());
+    let view = engine.view();
+    let connections = view.connections;
+    let links = view.links;
+    let refused = [
+        (
+            EngineView {
+                links: LinkColumns {
+                    offsets: &[],
+                    ..links
+                },
+                ..view
+            },
+            "routing engine: the view holds no link offsets",
+        ),
+        (
+            EngineView {
+                connections: ConnectionColumns {
+                    trip_slot: &connections.trip_slot[..1],
+                    ..connections
+                },
+                ..view
+            },
+            "routing engine: the trip_slot column holds 1 values, not 2",
+        ),
+        (
+            EngineView {
+                trip_count: 3,
+                ..view
+            },
+            "routing engine: the trip count 3 exceeds the 2 connections",
+        ),
+        (
+            EngineView {
+                links: LinkColumns {
+                    duration_s: &links.duration_s[..1],
+                    ..links
+                },
+                ..view
+            },
+            "routing engine: the duration_s column holds 1 values, not 2",
+        ),
+        (
+            EngineView {
+                links: LinkColumns {
+                    offsets: &[0, 2, 1, 2],
+                    ..links
+                },
+                ..view
+            },
+            "routing engine: the link offsets decrease",
+        ),
+        (
+            EngineView {
+                links: LinkColumns {
+                    offsets: &[0, 1, 1, 1],
+                    ..links
+                },
+                ..view
+            },
+            "routing engine: the last link offset 1 is not the link count 2",
+        ),
+    ];
+    let held = from_stop_0(2.0, f64::from(MEETING_FIRST_DEPARTURE_S));
+    for (refused_view, message) in refused {
+        let failure = failure_of(|| route(&refused_view, &held.query()));
+        assert_eq!(failure.message(), message);
+    }
 }

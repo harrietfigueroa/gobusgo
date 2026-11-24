@@ -180,6 +180,43 @@
         {"from": "O", "to": "T", "arriveBy": "08:10", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["walk O S 120", "ride R S 08:02 T 08:10"]}]},
         {"from": "O", "to": "T", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["walk O S 120", "ride R S 08:02 T 08:10"]}]}
       ]
+    },
+    {
+      "name": "a trip that passes the target before the origin is not ridden back to it",
+      "trips": [{"id": "T1", "stopTimes": [["X", "08:00"], ["T", "08:10"], ["O", "08:20"], ["P", "08:30"]]}],
+      "queries": [
+        {"from": "O", "to": "T", "depart": "07:55", "expected": []},
+        {"from": "O", "to": "T", "arriveBy": "09:00", "expected": []}
+      ]
+    },
+    {
+      "name": "two rides whose walks reach the target at one second keep the first scanned",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["P", "08:10"]]},
+        {"id": "T2", "stopTimes": [["A", "08:01"], ["Q", "08:12"]]}
+      ],
+      "walks": [["P", "T", 300], ["Q", "T", 180]],
+      "queries": [
+        {"from": "A", "to": "T", "depart": "08:00", "expected": [{"arrive": "08:15", "changes": 0, "legs": ["ride T1 A 08:00 P 08:10", "walk P T 300"]}]}
+      ]
+    },
+    {
+      "name": "a journey takes at most six rides",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:05"]]},
+        {"id": "T2", "stopTimes": [["B", "08:10"], ["C", "08:15"]]},
+        {"id": "T3", "stopTimes": [["C", "08:20"], ["D", "08:25"]]},
+        {"id": "T4", "stopTimes": [["D", "08:30"], ["E", "08:35"]]},
+        {"id": "T5", "stopTimes": [["E", "08:40"], ["F", "08:45"]]},
+        {"id": "T6", "stopTimes": [["F", "08:50"], ["G", "08:55"]]},
+        {"id": "T7", "stopTimes": [["G", "09:00"], ["H", "09:05"]]}
+      ],
+      "queries": [
+        {"from": "A", "to": "G", "depart": "08:00", "expected": [{"arrive": "08:55", "changes": 5, "legs": ["ride T1 A 08:00 B 08:05", "ride T2 B 08:10 C 08:15", "ride T3 C 08:20 D 08:25", "ride T4 D 08:30 E 08:35", "ride T5 E 08:40 F 08:45", "ride T6 F 08:50 G 08:55"]}]},
+        {"from": "A", "to": "H", "depart": "08:00", "expected": []},
+        {"from": "A", "to": "G", "arriveBy": "08:55", "expected": [{"depart": "08:00", "arrive": "08:55", "changes": 5, "legs": ["ride T1 A 08:00 B 08:05", "ride T2 B 08:10 C 08:15", "ride T3 C 08:20 D 08:25", "ride T4 D 08:30 E 08:35", "ride T5 E 08:40 F 08:45", "ride T6 F 08:50 G 08:55"]}]},
+        {"from": "A", "to": "H", "arriveBy": "09:05", "expected": []}
+      ]
     }
   ]
 }

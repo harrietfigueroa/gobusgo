@@ -33,8 +33,11 @@
 //! borrowed, which a binding can also make from arrays it holds.
 //!
 //! A query's stops, times, and walks are doubles, as the JavaScript compares
-//! and writes them, so a refusal's message reads the same from both cores, and
-//! a label's times are doubles for the same arithmetic.
+//! and writes them, so a refusal's message reads the same from both cores. A
+//! label stores each time as the JavaScript's `Int32Array` stores it, its
+//! `ToInt32`, and compares a new time with the stored one as a double, so a
+//! fractional minimum transfer or a time past `i32::MAX` is answered as the
+//! JavaScript answers it.
 
 use std::collections::BTreeMap;
 
@@ -50,9 +53,13 @@ pub const ROUNDS_MAX: usize = 6;
 // walk from the origin.
 const LEG_COUNT_MAX: usize = ROUNDS_MAX + ROUNDS_MAX + 1;
 
-// The time of a stop a query has not reached, the largest a label of the
-// JavaScript holds, `0x7fffffff`.
-const UNREACHED_S: f64 = 2_147_483_647.0;
+// The time of a stop a query has not reached, the largest a label holds.
+const UNREACHED_S: i32 = i32::MAX;
+
+// The count of values a 32-bit integer takes, and half of it, the first value
+// ToInt32 wraps below zero.
+const INT32_VALUE_COUNT: f64 = 4_294_967_296.0;
+const INT32_VALUE_COUNT_HALF: f64 = 2_147_483_648.0;
 
 const FLAG_SET: u8 = 1;
 
@@ -114,7 +121,6 @@ pub struct EngineInput {
 /// An engine over a snapshot, owning its columns and the links built from them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Engine {
-    stop_count: usize,
     connections: Connections,
     trip_slot: Vec<u32>,
     trip_count: usize,
@@ -140,7 +146,7 @@ pub struct ConnectionColumns<'columns> {
 
 /// The walking links a query follows: stop `s` leaves by the links from
 /// `offsets[s]` up to `offsets[s + 1]`, so `offsets` holds one more than the
-/// stop count.
+/// stop count, never decreases, and ends at the link count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinkColumns<'columns> {
     pub offsets: &'columns [u32],
@@ -148,10 +154,10 @@ pub struct LinkColumns<'columns> {
     pub duration_s: &'columns [u32],
 }
 
-/// An engine's columns, borrowed, which a query runs over.
+/// An engine's columns, borrowed, which a query runs over; its stop count is
+/// one less than its link offsets.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EngineView<'columns> {
-    pub stop_count: usize,
     pub connections: ConnectionColumns<'columns>,
     pub links: LinkColumns<'columns>,
     pub trip_count: usize,
@@ -246,7 +252,7 @@ struct Step {
 // changes only through `improve` and `start_at`.
 #[derive(Debug, Clone)]
 struct Label {
-    time_s: Vec<f64>,
+    time_s: Vec<i32>,
     parent: Vec<Parent>,
 }
 
@@ -255,7 +261,7 @@ struct Label {
 struct Round {
     arrival: Label,
     ready: Label,
-    ride_arrival_s: Vec<f64>,
+    ride_arrival_s: Vec<i32>,
 }
 
 // A query's origin, its stops checked and read as indices.
@@ -305,7 +311,7 @@ struct Reading<'reading> {
     round_index: usize,
 }
 
-// A column of stops and the name a refusal gives its stops.
+// A column of stops and the name a refusal gives it.
 #[derive(Debug, Clone, Copy)]
 struct StopColumn<'column> {
     stops: &'column [u32],
@@ -345,6 +351,44 @@ fn round_number(index: usize) -> u8 {
     number
 }
 
+// JavaScript's `ToInt32`, which an `Int32Array` applies to each time it stores:
+// the time truncated toward zero and wrapped modulo 2^32 into the signed range,
+// and 0 for NaN and the infinities.
+// https://tc39.es/ecma262/#sec-toint32 — checked 2026-11-24
+fn int32_of(value: f64) -> i32 {
+    let truncated = value.trunc();
+    let is_in_range = (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&truncated);
+    let signed = if is_in_range {
+        truncated
+    } else {
+        wrapped_int32(truncated)
+    };
+    // `signed` is a whole number within the range of an `i32`, so the cast is
+    // exact, and the standard library converts a double to an integer by no
+    // other safe means.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "a whole number within an i32's range converts exactly"
+    )]
+    let stored = signed as i32;
+    stored
+}
+
+// A whole number outside an `i32`'s range wrapped modulo 2^32 into it, and 0
+// for NaN and the infinities.
+fn wrapped_int32(truncated: f64) -> f64 {
+    if truncated.is_finite() {
+        let modulo = truncated.rem_euclid(INT32_VALUE_COUNT);
+        if modulo >= INT32_VALUE_COUNT_HALF {
+            return modulo - INT32_VALUE_COUNT;
+        }
+        return modulo;
+    }
+
+    0.0
+}
+
 impl Engine {
     /// The engine over `input`, whose connections are ordered by departure and
     /// whose walking links are ordered by the stop they leave, every stop below
@@ -364,7 +408,6 @@ impl Engine {
         let link_offsets = adjacency(&transfers.from_stop, stop_count);
         let (trip_slot, trip_count) = trip_slots(&connections.trip);
         Self {
-            stop_count,
             connections,
             trip_slot,
             trip_count,
@@ -378,7 +421,6 @@ impl Engine {
     #[must_use]
     pub fn view(&self) -> EngineView<'_> {
         EngineView {
-            stop_count: self.stop_count,
             connections: ConnectionColumns {
                 departure_s: &self.connections.departure_s,
                 arrival_s: &self.connections.arrival_s,
@@ -413,18 +455,19 @@ fn assert_stops(column: StopColumn<'_>, stop_count: usize) {
     for &stop in column.stops {
         assert::condition(index_of(stop) < stop_count, || {
             format!(
-                "routing engine: the {} {stop} is not a stop of the snapshot",
+                "routing engine: {stop} in the {} column is not a stop of the snapshot",
                 column.name
             )
         });
     }
 }
 
+// Each column, by its name, holds `count` values.
 #[track_caller]
-fn assert_lengths(lengths: &[usize], count: usize) {
-    for &length in lengths {
+fn assert_lengths(columns: &[(&str, usize)], count: usize) {
+    for &(name, length) in columns {
         assert::condition(length == count, || {
-            format!("routing engine: a column holds {length} values of {count}")
+            format!("routing engine: the {name} column holds {length} values, not {count}")
         });
     }
 }
@@ -433,13 +476,13 @@ fn assert_lengths(lengths: &[usize], count: usize) {
 fn assert_connections(connections: &Connections, stop_count: usize) {
     let count = connections.departure_s.len();
     let lengths = [
-        connections.arrival_s.len(),
-        connections.departure_stop.len(),
-        connections.arrival_stop.len(),
-        connections.trip.len(),
-        connections.sequence.len(),
-        connections.boarding.len(),
-        connections.alighting.len(),
+        ("arrival_s", connections.arrival_s.len()),
+        ("departure_stop", connections.departure_stop.len()),
+        ("arrival_stop", connections.arrival_stop.len()),
+        ("trip", connections.trip.len()),
+        ("sequence", connections.sequence.len()),
+        ("boarding", connections.boarding.len()),
+        ("alighting", connections.alighting.len()),
     ];
     assert_lengths(&lengths, count);
     assert::condition(u32::try_from(count).is_ok(), || {
@@ -451,12 +494,12 @@ fn assert_connections(connections: &Connections, stop_count: usize) {
     });
     let departure_stops = StopColumn {
         stops: &connections.departure_stop,
-        name: "departure stop",
+        name: "departure_stop",
     };
     assert_stops(departure_stops, stop_count);
     let arrival_stops = StopColumn {
         stops: &connections.arrival_stop,
-        name: "arrival stop",
+        name: "arrival_stop",
     };
     assert_stops(arrival_stops, stop_count);
 }
@@ -464,7 +507,10 @@ fn assert_connections(connections: &Connections, stop_count: usize) {
 #[track_caller]
 fn assert_transfers(transfers: &Transfers, stop_count: usize) {
     let count = transfers.from_stop.len();
-    let lengths = [transfers.to_stop.len(), transfers.duration_s.len()];
+    let lengths = [
+        ("to_stop", transfers.to_stop.len()),
+        ("duration_s", transfers.duration_s.len()),
+    ];
     assert_lengths(&lengths, count);
     assert::condition(u32::try_from(count).is_ok(), || {
         format!("routing engine: the walking link count {count} exceeds a u32")
@@ -475,12 +521,12 @@ fn assert_transfers(transfers: &Transfers, stop_count: usize) {
     });
     let from_stops = StopColumn {
         stops: &transfers.from_stop,
-        name: "walking link's stop",
+        name: "from_stop",
     };
     assert_stops(from_stops, stop_count);
     let to_stops = StopColumn {
         stops: &transfers.to_stop,
-        name: "walking link's stop",
+        name: "to_stop",
     };
     assert_stops(to_stops, stop_count);
 }
@@ -535,11 +581,16 @@ fn trip_slots(trips: &[u32]) -> (Vec<u32>, usize) {
 }
 
 // The shape a view's columns must hold for a query to index them: column
-// lengths that agree, one link offset more than the stop count, and a trip
-// count bounded by the connections, since a query allocates by it.
+// lengths that agree, link offsets that never decrease and end at the link
+// count, and a trip count bounded by the connections, since a query allocates
+// by it.
 #[track_caller]
 fn assert_view(engine: &EngineView<'_>) {
-    assert_stop_count(engine.stop_count);
+    let offsets = engine.links.offsets;
+    assert::condition(!offsets.is_empty(), || {
+        "routing engine: the view holds no link offsets".to_owned()
+    });
+    assert_stop_count(engine.stop_count());
     let ConnectionColumns {
         departure_s,
         arrival_s,
@@ -551,12 +602,12 @@ fn assert_view(engine: &EngineView<'_>) {
     } = engine.connections;
     let count = departure_s.len();
     let lengths = [
-        arrival_s.len(),
-        departure_stop.len(),
-        arrival_stop.len(),
-        trip_slot.len(),
-        boarding.len(),
-        alighting.len(),
+        ("arrival_s", arrival_s.len()),
+        ("departure_stop", departure_stop.len()),
+        ("arrival_stop", arrival_stop.len()),
+        ("trip_slot", trip_slot.len()),
+        ("boarding", boarding.len()),
+        ("alighting", alighting.len()),
     ];
     assert_lengths(&lengths, count);
     assert::condition(u32::try_from(count).is_ok(), || {
@@ -568,15 +619,23 @@ fn assert_view(engine: &EngineView<'_>) {
             engine.trip_count
         )
     });
-    let offset_count = engine.links.offsets.len();
-    assert::condition(offset_count == sum(engine.stop_count, 1), || {
-        format!(
-            "routing engine: {offset_count} link offsets for {} stops",
-            engine.stop_count
-        )
-    });
     let link_count = engine.links.to_stop.len();
-    assert_lengths(&[engine.links.duration_s.len()], link_count);
+    assert_lengths(&[("duration_s", engine.links.duration_s.len())], link_count);
+    assert::condition(offsets.is_sorted(), || {
+        "routing engine: the link offsets decrease".to_owned()
+    });
+    let last = offsets.last().copied().map_or(0, index_of);
+    assert::condition(last == link_count, || {
+        format!("routing engine: the last link offset {last} is not the link count {link_count}")
+    });
+}
+
+impl EngineView<'_> {
+    /// The count of stops, one less than the link offsets.
+    #[must_use]
+    pub const fn stop_count(&self) -> usize {
+        self.links.offsets.len().saturating_sub(1)
+    }
 }
 
 impl Label {
@@ -589,7 +648,7 @@ impl Label {
 
     #[track_caller]
     fn time_s(&self, stop: usize) -> f64 {
-        at(&self.time_s, stop)
+        f64::from(at(&self.time_s, stop))
     }
 
     #[track_caller]
@@ -610,8 +669,8 @@ impl Label {
             );
         };
 
-        if step.time_s < *time {
-            *time = step.time_s;
+        if step.time_s < f64::from(*time) {
+            *time = int32_of(step.time_s);
             *parent = step.parent;
         }
     }
@@ -622,7 +681,7 @@ impl Label {
         let Some(time) = self.time_s.get_mut(stop) else {
             assert::unreachable(&stop, "routing engine: an origin stop is in a label");
         };
-        *time = time_s;
+        *time = int32_of(time_s);
     }
 }
 
@@ -722,10 +781,10 @@ fn scan_round(scan: Scan<'_>) {
             let Some(ride_arrival_s) = state.ride_arrival_s.get_mut(arrival_stop) else {
                 assert::unreachable(&arrival_stop, "routing engine: an arrival stop is a stop");
             };
-            let is_earlier_ride = arrival_s < *ride_arrival_s;
+            let is_earlier_ride = arrival_s < f64::from(*ride_arrival_s);
 
             if is_earlier_ride {
-                *ride_arrival_s = arrival_s;
+                *ride_arrival_s = int32_of(arrival_s);
                 let ride = RideBy {
                     board: connection_number(board),
                     alight: connection_number(index),
@@ -882,7 +941,7 @@ fn ride_count(journey_legs: &[Leg]) -> usize {
 // JavaScript's test of a stop: a whole number from 0 up to the stop count.
 fn is_stop(engine: &EngineView<'_>, stop: f64) -> bool {
     let is_index = is_whole(stop) && stop >= 0.0;
-    is_index && stop < number_of(engine.stop_count)
+    is_index && stop < number_of(engine.stop_count())
 }
 
 // The index of `stop`, a whole number `is_stop` admitted, which its decimal
@@ -906,7 +965,7 @@ fn stop_origin_state(engine: &EngineView<'_>, departure: Departure<f64>) -> (Rou
         )
     });
     let origin = stop_index(stop);
-    let mut state = Round::unreached(engine.stop_count);
+    let mut state = Round::unreached(engine.stop_count());
     state.arrival.start_at(origin, departure.departure_s);
     state.ready.start_at(origin, departure.departure_s);
     walk_from(WalkFrom {
@@ -947,7 +1006,7 @@ fn starts_origin_state(engine: &EngineView<'_>, departure: Departure<&[Start]>) 
     assert::condition(!starts.is_empty(), || {
         "routing engine: a query from start stops names none".to_owned()
     });
-    let mut state = Round::unreached(engine.stop_count);
+    let mut state = Round::unreached(engine.stop_count());
 
     for (index, &start) in starts.iter().enumerate() {
         assert_start(engine, start);
@@ -1027,7 +1086,7 @@ pub fn route(engine: &EngineView<'_>, query: &Query<'_>) -> Vec<Journey> {
     let mut frontier = Vec::with_capacity(sum(ROUNDS_MAX, 1));
     let mut boarded_at = vec![None; engine.trip_count];
 
-    if best_s < UNREACHED_S {
+    if best_s < f64::from(UNREACHED_S) {
         let reading = Reading {
             engine,
             rounds: &rounds,
