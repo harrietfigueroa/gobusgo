@@ -11,8 +11,7 @@
 //
 // A page that opens with the setting off deletes both stores once its
 // connection is live, so a page opened offline keeps drawing from what is
-// saved. Every deletion announces the map as not saved, so the map stops
-// drawing a deleted extract.
+// saved. Every deletion announces the map as not saved.
 
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
@@ -42,6 +41,13 @@ function isSupported() {
 
 function isEnabled() {
   return storedSettings.readOfflineUseEnabled()
+}
+
+// A save the hook stopped ends in an AbortError, which is no failure.
+function warnUnlessAborted({description, error}) {
+  if (error.name !== "AbortError") {
+    console.warn(description, error)
+  }
 }
 
 function archiveUrlOf(element) {
@@ -187,16 +193,22 @@ export const OfflineUse = {
       if (isMapDue) {
         await saveBasemap({url: this.archiveUrl, signal})
       }
+    } catch (error) {
+      warnUnlessAborted({description: "Offline use not saved", error})
     } finally {
       this.controller = null
     }
 
-    if (this.hasArchive()) {
-      const saved = await readSavedBasemap(this.archiveUrl)
-      announceSavedBasemap(saved)
-    }
+    try {
+      if (this.hasArchive()) {
+        const saved = await readSavedBasemap(this.archiveUrl)
+        announceSavedBasemap(saved)
+      }
 
-    await this.show()
+      await this.show()
+    } catch (error) {
+      warnUnlessAborted({description: "Offline use status not read", error})
+    }
   },
 
   stop() {
@@ -231,9 +243,11 @@ export const OfflineUse = {
     return await readPersistence()
   },
 
+  // The setting is read again after the reads, since the rider can turn it
+  // off while they run, and the off message then stands.
   async show() {
     if (!isEnabled()) {
-      writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
+      this.showOff()
       return
     }
 
@@ -246,6 +260,11 @@ export const OfflineUse = {
         mapMessage = await describeBasemap({url: this.archiveUrl, persistence})
       }
 
+      if (!isEnabled()) {
+        this.showOff()
+        return
+      }
+
       writeMessage({element: this.status, message: schedulesMessage})
 
       if (mapMessage !== null) {
@@ -254,5 +273,9 @@ export const OfflineUse = {
     } catch (error) {
       console.warn("Offline use status not read", error)
     }
+  },
+
+  showOff() {
+    writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
   }
 }

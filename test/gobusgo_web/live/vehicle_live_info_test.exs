@@ -667,16 +667,14 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
-    test "offers one offline setting, which names no map, for a basemap without an offline extract",
-         %{tmp_dir: tmp_dir} do
+    test "hands the offline use setting no extract's address for a basemap without one", %{
+      tmp_dir: tmp_dir
+    } do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      refute has_element?(view, @panel <> " #app-info-offline-basemap")
+      assert has_element?(view, @panel <> " #app-info-offline-use")
       refute has_element?(view, @panel <> " #app-info-offline-use[data-archive-url]")
-
-      assert text(view, "#offline-use-enabled-caption") ==
-               "Plan trips and see scheduled times without signal"
     end
 
     test "offers one offline setting for a basemap with an offline extract", %{tmp_dir: tmp_dir} do

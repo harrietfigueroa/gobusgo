@@ -354,14 +354,23 @@ export async function deleteSavedSchedules() {
 /**
  * The status line of the saved schedules while the setting is on: the
  * dates the store holds, its size, and `persistence`, the browser's answer
- * to keeping the page's storage.
+ * to keeping the page's storage. A missing store reads as an empty one and
+ * is not made, so a read never makes the store the setting deleted.
  */
 export async function describeSchedules(persistence) {
-  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-  const savedIndex = await readIndex(cache)
-  const present = await storedPaths(cache)
+  const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)
+  let savedIndex = {kind: IndexKind.none}
+  let present = []
+  let bytes = 0
+
+  if (hasStore) {
+    const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
+    savedIndex = await readIndex(cache)
+    present = await storedPaths(cache)
+    bytes = await storedBytes(cache)
+  }
+
   const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
-  const bytes = await storedBytes(cache)
   let dates = []
 
   if (Object.hasOwn(status, "dates")) {

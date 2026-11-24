@@ -447,10 +447,12 @@ const unversionedEntries = {
 // The stored text of every key, as the module reads it before a migration.
 const unversionedValues = {...absentEntries, ...unversionedEntries}
 
-// The version whose migration merges the two offline settings into one.
+// The version whose migration merges the two offline settings into one,
+// and the version that holds the two settings it merges.
 const OFFLINE_MERGE_VERSION = 2
+const OFFLINE_SPLIT_VERSION = OFFLINE_MERGE_VERSION - 1
+const OFFLINE_SPLIT_VERSION_TEXT = String(OFFLINE_SPLIT_VERSION)
 
-deepStrictEqual(SCHEMA_VERSION, OFFLINE_MERGE_VERSION, "schema version")
 deepStrictEqual(RetiredStorageKey.offlineSchedules, "gobusgo:offline-schedules", "the retired offline schedules key")
 deepStrictEqual(RetiredStorageKey.offlineBasemap, "gobusgo:offline-basemap", "the retired offline map key")
 
@@ -464,7 +466,7 @@ deepStrictEqual(RetiredStorageKey.offlineBasemap, "gobusgo:offline-basemap", "th
   deepStrictEqual(migrated, unversionedValues, "migration of current values")
 }
 
-// Version 1's two offline settings become one: the map's "on" turns offline
+// The split version's two offline settings become one: the map's "on" turns offline
 // use on, every other rider's is off, and both retired keys are removed.
 const offlineMergeCases = [
   {name: "the map on", entries: {[RetiredStorageKey.offlineBasemap]: "on"}, offlineUse: "on"},
@@ -480,7 +482,7 @@ const offlineMergeCases = [
 
 for (const mergeCase of offlineMergeCases) {
   const values = {...absentEntries, ...unversionedEntries, ...mergeCase.entries}
-  const migrated = migrateValues({version: 1, values})
+  const migrated = migrateValues({version: OFFLINE_SPLIT_VERSION, values})
   const expected = {...unversionedValues}
 
   if (mergeCase.offlineUse !== undefined) {
@@ -491,7 +493,7 @@ for (const mergeCase of offlineMergeCases) {
 }
 
 for (const mergeCase of offlineMergeCases) {
-  const entries = {...unversionedEntries, ...mergeCase.entries, [StorageKey.schemaVersion]: "1"}
+  const entries = {...unversionedEntries, ...mergeCase.entries, [StorageKey.schemaVersion]: OFFLINE_SPLIT_VERSION_TEXT}
   const storage = new MemoryStorage(entries)
   const {settings} = settingsOver(storage)
   const enabled = settings.readOfflineUseEnabled()

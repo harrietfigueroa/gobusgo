@@ -146,8 +146,7 @@ function migrateUnversioned(values) {
 }
 
 // Version 1 to 2: the rider who saved the map keeps offline use on, and
-// every other rider has it off, so schedules on by default are no longer
-// saved.
+// every other rider, the schedules setting's default included, has it off.
 function mergeOfflineSettings(values) {
   const merged = {...values, [RetiredStorageKey.offlineSchedules]: null, [RetiredStorageKey.offlineBasemap]: null}
   const isMapSaved = values[RetiredStorageKey.offlineBasemap] === OFFLINE_BASEMAP_ON

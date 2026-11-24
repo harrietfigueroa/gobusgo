@@ -364,16 +364,16 @@ defmodule GobusgoWeb.AppInfo do
   @needs_connection_order [:arrivals, :alerts, :suggestions, :shared_vehicles]
 
   @offline_works [
-    "The map keeps its route lines and stops, and shows the vehicles where the saved " <>
-      "schedules place them, in gray, with delays, cancellations, and detours unknown. " <>
-      "A stop's arrivals are its scheduled times.",
+    "With Save for offline use on, the map keeps its route lines and stops, and shows the " <>
+      "vehicles where the saved schedules place them, in gray, with delays, cancellations, " <>
+      "and detours unknown. A stop's arrivals are its scheduled times.",
     "With Save for offline use on, the map draws its streets and places from the saved " <>
       "map where the page offers one, and otherwise the route lines and stops stand on an " <>
       "empty background. With it off, nothing is saved for the map to draw.",
     "Your browser keeps your favorite stops, your filter, and your settings. The filter " <>
       "stays as it is until you are back online.",
-    "From the saved schedules you can still plan a trip and center the map on a favorite " <>
-      "stop, and a trip's routes are shown on the map."
+    "With Save for offline use on, you can still plan a trip and center the map on a " <>
+      "favorite stop from the saved schedules, and a trip's routes are shown on the map."
   ]
 
   @theme "Your browser remembers the theme you choose, and Match system follows the light " <>

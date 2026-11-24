@@ -459,6 +459,15 @@ defmodule GobusgoWeb.AppInfoTest do
       assert Enum.any?(works, &(&1 =~ "With Save for offline use on"))
     end
 
+    test "names the setting in every sentence that relies on what it saves" do
+      %{works: works} = AppInfo.offline()
+
+      saved = Enum.filter(works, &(&1 =~ "saved"))
+
+      assert length(saved) == 3
+      assert Enum.all?(saved, &String.starts_with?(&1, "With Save for offline use on, "))
+    end
+
     test "says the vehicles and the arrivals come from the saved schedules" do
       %{works: works} = AppInfo.offline()
 
