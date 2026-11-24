@@ -447,7 +447,10 @@ const unversionedEntries = {
 // The stored text of every key, as the module reads it before a migration.
 const unversionedValues = {...absentEntries, ...unversionedEntries}
 
-deepStrictEqual(SCHEMA_VERSION, 2, "schema version")
+// The version whose migration merges the two offline settings into one.
+const OFFLINE_MERGE_VERSION = 2
+
+deepStrictEqual(SCHEMA_VERSION, OFFLINE_MERGE_VERSION, "schema version")
 deepStrictEqual(RetiredStorageKey.offlineSchedules, "gobusgo:offline-schedules", "the retired offline schedules key")
 deepStrictEqual(RetiredStorageKey.offlineBasemap, "gobusgo:offline-basemap", "the retired offline map key")
 
