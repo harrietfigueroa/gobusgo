@@ -318,8 +318,8 @@ export const PanelSheet = {
   },
 
   // An item with a parent returns to that parent, and focus moves to its
-  // title, which a screen reader reads,
-  // wherever focus was, since Safari leaves a clicked back button unfocused.
+  // title, which a screen reader reads, wherever focus was, since Safari
+  // leaves a clicked back button unfocused.
   // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#clicking_and_focus — checked 2026-11-24
   // Any other item closes the view: the tab it returns to is still the open
   // one, so closing the view shows it, and focus that was in the view moves

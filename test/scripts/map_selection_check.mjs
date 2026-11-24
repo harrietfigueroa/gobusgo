@@ -5,9 +5,8 @@
 // tap, and then one stop or a list of every sign within reach, nearest
 // first by the distance from the tap to each sign's box, a sign drawn under
 // the tap at the tap and before another as near, with the count of all
-// reached. Run it with
-// `node test/scripts/map_selection_check.mjs`; it exits non-zero on the
-// first case that differs.
+// reached. Run it with `node test/scripts/map_selection_check.mjs`; it
+// exits non-zero on the first case that differs.
 
 import {deepStrictEqual, throws} from "node:assert/strict"
 import {StopTapKind, TapOutcome, stopTapOutcome, tapOutcome} from "../../assets/js/map_selection.js"

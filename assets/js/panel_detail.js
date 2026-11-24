@@ -3,8 +3,8 @@
 // sheet's tabs. This module is the one owner of what the view shows: a hook
 // writes its item into the view with `showDetail`, and every listener of
 // the change event learns when the view moves to another item or closes, so
-// the hook whose item it was lets go of it. An item shown with a parent
-// keeps it until `showParentDetail` shows it again or the view closes.
+// the hook whose item it was lets go of it. Each item is shown with a
+// parent or none, which `showParentDetail` shows again in its place.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 
