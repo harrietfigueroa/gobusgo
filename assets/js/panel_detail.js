@@ -17,8 +17,8 @@ const TITLE_CLASS_NAME = "panel-sheet-detail-title"
 // with the item shown before and the item shown now in its detail.
 export const CHANGE_EVENT_NAME = "gobusgo:panel-detail-change"
 
-// The DOM event the window gets when the item the view shows loses the
-// parent it was opened from, so its back button returns to the tab.
+// The DOM event the window gets when `clearParentDetail` drops the parent
+// of the item the view shows.
 export const PARENT_CLEAR_EVENT_NAME = "gobusgo:panel-detail-parent-clear"
 
 export const DetailKind = Object.freeze({none: "none", stop: "stop", stopList: "stopList", vehicle: "vehicle", sharedVehicle: "sharedVehicle"})

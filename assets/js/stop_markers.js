@@ -1,4 +1,4 @@
-import {unreachable} from "#core/assert.js"
+import {assertCondition, unreachable} from "#core/assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {writeArrivals} from "./stop_arrivals"
@@ -195,26 +195,34 @@ function tapRadiusPixels(kind) {
 }
 
 // A stop's feature as a candidate of `stopTapOutcome`, with its sign's box
-// as `map` draws it at `zoom`.
-function tapCandidate({map, feature, zoom}) {
+// at `zoom` and whether its stop is one of `underTapIds`, the stops the map
+// draws a sign of under the tap.
+function tapCandidate({map, feature, zoom, underTapIds}) {
   const stopPoint = map.project(feature.geometry.coordinates)
   const box = signBox({stopPoint, direction: feature.properties.direction, zoom})
-  return {id: feature.properties.stopId, item: feature, center: box.center, halfSize: box.halfSize}
+  const id = feature.properties.stopId
+  return {id, item: feature, center: box.center, halfSize: box.halfSize, isUnderTap: underTapIds.has(id)}
 }
 
-// What `queryRenderedFeatures` searches for the signs a tap reaches: the
-// point itself for a radius of 0, and the square that holds every point
-// within `radiusPixels` of it otherwise.
-function tapQueryGeometry({point, radiusPixels}) {
+function featureStopId(feature) {
+  return feature.properties.stopId
+}
+
+// The signs drawn within reach of a tap at `point`: those under it for a
+// radius of 0, and those in the square that holds every point within
+// `radiusPixels` of it otherwise, which holds the point too.
+function reachedFeatures({map, point, radiusPixels, underTap}) {
   if (radiusPixels === 0) {
-    return point
+    return underTap
   }
 
-  return [[point.x - radiusPixels, point.y - radiusPixels], [point.x + radiusPixels, point.y + radiusPixels]]
+  const square = [[point.x - radiusPixels, point.y - radiusPixels], [point.x + radiusPixels, point.y + radiusPixels]]
+  return map.queryRenderedFeatures(square, {layers: [MARKER_LAYER_NAME]})
 }
 
 // What a tap at `point` of `map` opens among the stop signs the map draws,
-// by `stopTapOutcome`: none where no sign lies under it, and otherwise one
+// by `stopTapOutcome`: none where the map draws no sign under the point, as
+// `queryRenderedFeatures` reports it on a tilted map too, and otherwise one
 // stop's feature, or a list of every sign within `radiusPixels` of it,
 // nearest first.
 function stopTapAt({map, point, radiusPixels}) {
@@ -222,14 +230,16 @@ function stopTapAt({map, point, radiusPixels}) {
     return {kind: StopTapKind.none}
   }
 
-  const geometry = tapQueryGeometry({point, radiusPixels})
-  const features = map.queryRenderedFeatures(geometry, {layers: [MARKER_LAYER_NAME]})
+  const underTap = map.queryRenderedFeatures(point, {layers: [MARKER_LAYER_NAME]})
+  const underTapIdList = Array.from(underTap, featureStopId)
+  const underTapIds = new Set(underTapIdList)
+  const features = reachedFeatures({map, point, radiusPixels, underTap})
   const zoom = map.getZoom()
-  const candidates = Array.from(features, (feature) => tapCandidate({map, feature, zoom}))
+  const candidates = Array.from(features, (feature) => tapCandidate({map, feature, zoom, underTapIds}))
   return stopTapOutcome({candidates, point, radiusPixels, countMax: ENTRY_COUNT_MAX})
 }
 
-/** Whether a stop's sign, where `map` draws it, lies under `point`, which a tap there opens. */
+/** Whether `map` draws a stop's sign under `point`. */
 export function isStopAt({map, point}) {
   const outcome = stopTapAt({map, point, radiusPixels: 0})
   return outcome.kind !== StopTapKind.none
@@ -240,10 +250,9 @@ function stopIdOf(stop) {
 }
 
 // A pan or zoom of the rider's own, a move whose event carries the input
-// event that started it, closes a shown list of stops as a tap on the
-// empty map closes the view, and drops a list kept as the shown stop's
-// parent, so the back button closes the view rather than restoring stops
-// the move took off screen.
+// event that started it, deselects a shown list of stops, and drops a list
+// kept as the shown stop's parent, since the move can take its stops off
+// screen.
 function closeListOnRiderMove(event) {
   const isRiderMove = event.originalEvent !== undefined
   const isListMoved = isRiderMove && shownDetail().kind === DetailKind.stopList
@@ -674,6 +683,7 @@ export const StopMarkers = {
   // with the list as its parent. The list marks nothing on the map and
   // holds no stop open.
   openStopList({stops, count}) {
+    assertCondition(count >= stops.length, `a list's count holds its stops, count: ${count}, stops: ${stops.length}`)
     const id = Array.from(stops, stopIdOf).join(",")
     const title = stopListTitle(count)
     const restCount = count - stops.length
