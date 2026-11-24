@@ -1,3 +1,4 @@
+import {unreachable} from "#core/assert.js"
 import {READY_EVENT_NAME, RESTYLED_EVENT_NAME} from "./basemap"
 import {currentTheme} from "./color_theme"
 import {writeArrivals} from "./stop_arrivals"
@@ -10,6 +11,7 @@ import {
   DESELECT_EVENT_NAME,
   DetailKind,
   NO_PARENT,
+  clearParentDetail,
   detailParent,
   showDetail,
   showsDetail,
@@ -18,8 +20,7 @@ import {
 import {chosenStopMark, stopListElement, stopViewElements, suppliedName, writeFavoriteButton, writeTripLine} from "./stop_view"
 import {stopListTitle} from "./stop_text"
 import {StopTapKind, stopTapOutcome} from "./map_selection"
-import {DeviceKind, ENTRY_COUNT_MAX, TAP_TOLERANCE_PIXELS, deviceKind} from "./route_tap"
-import {SHARED_VEHICLE_LAYER_NAME} from "./shared_vehicles"
+import {DeviceKind, ENTRY_COUNT_MAX, HOVER_NONE_MEDIA_QUERY, TAP_TOLERANCE_PIXELS, deviceKind} from "./route_tap"
 import {CHANGE_EVENT_NAME as CHOSEN_CHANGE_EVENT_NAME} from "./chosen_journey"
 import {yourBusRow} from "./journey_stop_marks"
 import {isPicking, pickStop} from "./trip_ends"
@@ -181,24 +182,11 @@ function isVehicleAt({map, point}) {
   return map.queryRenderedFeatures(point, {layers}).length > 0
 }
 
-// Whether a shared vehicle stands at `point`, which answers its own tap
-// where no stop's sign covers it.
-function isSharedVehicleAt({map, point}) {
-  if (map.getLayer(SHARED_VEHICLE_LAYER_NAME) === undefined) {
-    return false
-  }
-
-  return map.queryRenderedFeatures(point, {layers: [SHARED_VEHICLE_LAYER_NAME]}).length > 0
-}
-
-const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
-
-// How far from a stop's sign a tap still reaches it: a finger's reach on a
-// device whose primary pointer cannot hover, and the sign itself under a
-// pointer that hovers, which lands where it is aimed.
-function tapRadiusPixels() {
-  const kind = deviceKind({isHoverNone: window.matchMedia(HOVER_NONE_MEDIA_QUERY).matches})
-
+// How far from a stop's sign a tap on a sign still reaches it on a device
+// of `kind`: a finger's reach on a device whose primary pointer cannot
+// hover, and the sign itself under a pointer that hovers, which lands where
+// it is aimed.
+function tapRadiusPixels(kind) {
   if (kind === DeviceKind.touch) {
     return TAP_TOLERANCE_PIXELS
   }
@@ -225,18 +213,15 @@ function tapQueryGeometry({point, radiusPixels}) {
   return [[point.x - radiusPixels, point.y - radiusPixels], [point.x + radiusPixels, point.y + radiusPixels]]
 }
 
-/**
- * What a tap at `point` of `map` opens among the stop signs the map draws:
- * none, one stop's feature, or a list of them, nearest first, by
- * `stopTapOutcome`. A finger reaches every sign within
- * `TAP_TOLERANCE_PIXELS` of it, and a pointer that hovers the signs under it.
- */
-export function stopTapAt({map, point}) {
+// What a tap at `point` of `map` opens among the stop signs the map draws,
+// by `stopTapOutcome`: none where no sign lies under it, and otherwise one
+// stop's feature, or a list of every sign within `radiusPixels` of it,
+// nearest first.
+function stopTapAt({map, point, radiusPixels}) {
   if (map.getLayer(MARKER_LAYER_NAME) === undefined) {
     return {kind: StopTapKind.none}
   }
 
-  const radiusPixels = tapRadiusPixels()
   const geometry = tapQueryGeometry({point, radiusPixels})
   const features = map.queryRenderedFeatures(geometry, {layers: [MARKER_LAYER_NAME]})
   const zoom = map.getZoom()
@@ -244,19 +229,29 @@ export function stopTapAt({map, point}) {
   return stopTapOutcome({candidates, point, radiusPixels, countMax: ENTRY_COUNT_MAX})
 }
 
+/** Whether a stop's sign, where `map` draws it, lies under `point`, which a tap there opens. */
+export function isStopAt({map, point}) {
+  const outcome = stopTapAt({map, point, radiusPixels: 0})
+  return outcome.kind !== StopTapKind.none
+}
+
 function stopIdOf(stop) {
   return stop.id
 }
 
-// Closes a shown list of stops at the start of a pan or zoom of the
-// rider's own, as a tap on the empty map closes the view; the page's own
-// camera moves carry no original event.
+// A pan or zoom of the rider's own, a move whose event carries the input
+// event that started it, closes a shown list of stops as a tap on the
+// empty map closes the view, and drops a list kept as the shown stop's
+// parent, so the back button closes the view rather than restoring stops
+// the move took off screen.
 function closeListOnRiderMove(event) {
   const isRiderMove = event.originalEvent !== undefined
   const isListMoved = isRiderMove && shownDetail().kind === DetailKind.stopList
 
   if (isListMoved) {
     window.dispatchEvent(new CustomEvent(DESELECT_EVENT_NAME))
+  } else if (isRiderMove) {
+    clearParentDetail()
   }
 }
 
@@ -627,20 +622,23 @@ export const StopMarkers = {
   },
 
   // A map keeps the listeners of a layer while the layer is added again.
+  // The device kind, and with it how far a tap reaches, is read once here.
   attachClicks() {
     const map = this.map
+    const kind = deviceKind({isHoverNone: window.matchMedia(HOVER_NONE_MEDIA_QUERY).matches})
+    const radiusPixels = tapRadiusPixels(kind)
 
-    map.on("click", (event) => { this.answerTap(event.point) })
+    map.on("click", (event) => { this.answerTap({point: event.point, radiusPixels}) })
     map.on("movestart", closeListOnRiderMove)
 
     map.on("mouseenter", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "pointer" })
     map.on("mouseleave", MARKER_LAYER_NAME, () => { map.getCanvas().style.cursor = "" })
   },
 
-  // Opens what a tap at `point` reaches among the stop signs: one stop, or
-  // the list of them. A vehicle stands above the stops, and a shared
-  // vehicle no sign covers too; each answers its own tap.
-  answerTap(point) {
+  // Opens what a tap at `point` reaches among the stop signs within
+  // `radiusPixels` once one lies under it: one stop, or the list of them. A
+  // vehicle stands above the stops, so a tap on one opens no stop.
+  answerTap({point, radiusPixels}) {
     const map = this.map
 
     if (map.getLayer(MARKER_LAYER_NAME) === undefined) {
@@ -651,33 +649,38 @@ export const StopMarkers = {
       return
     }
 
-    const isSignAtPoint = map.queryRenderedFeatures(point, {layers: [MARKER_LAYER_NAME]}).length > 0
-    const isSharedVehicleUncovered = !isSignAtPoint && isSharedVehicleAt({map, point})
+    const outcome = stopTapAt({map, point, radiusPixels})
 
-    if (isSharedVehicleUncovered) {
-      return
-    }
-
-    const outcome = stopTapAt({map, point})
-
-    if (outcome.kind === StopTapKind.one) {
-      this.openStop(stopFromFeature(outcome.item))
-    } else if (outcome.kind === StopTapKind.list) {
-      const stops = Array.from(outcome.items, stopFromFeature)
-      this.openStopList(stops)
+    switch (outcome.kind) {
+      case StopTapKind.none:
+        return
+      case StopTapKind.one: {
+        const stop = stopFromFeature(outcome.item)
+        this.openStop(stop)
+        return
+      }
+      case StopTapKind.list: {
+        const stops = Array.from(outcome.items, stopFromFeature)
+        this.openStopList({stops, count: outcome.count})
+        return
+      }
+      default:
+        unreachable(outcome.kind, "stop markers: a stop tap of unknown kind")
     }
   },
 
-  // Shows `stops`, the stops under a tap, as a list in the details view; a
-  // stop chosen from it opens with the list as its parent. The list marks
-  // nothing on the map and holds no stop open.
-  openStopList(stops) {
+  // Shows `stops`, the nearest of the `count` stops under a tap, as a list
+  // in the details view titled with `count`; a stop chosen from it opens
+  // with the list as its parent. The list marks nothing on the map and
+  // holds no stop open.
+  openStopList({stops, count}) {
     const id = Array.from(stops, stopIdOf).join(",")
-    const title = stopListTitle(stops.length)
+    const title = stopListTitle(count)
+    const restCount = count - stops.length
     const chooseCallback = (stop) => {
       this.chooseListedStop({stop, parent: detailParent({kind: DetailKind.stopList, id, title, content})})
     }
-    const content = stopListElement({stops, onChoose: chooseCallback})
+    const content = stopListElement({stops, restCount, onChoose: chooseCallback})
     showDetail({kind: DetailKind.stopList, id, title, content, parent: NO_PARENT})
   },
 

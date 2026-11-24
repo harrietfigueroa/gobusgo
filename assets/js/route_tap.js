@@ -14,6 +14,10 @@ export const TAP_TOLERANCE_PIXELS = 22
 export const ENTRY_COUNT_MAX = 12
 
 export const DeviceKind = Object.freeze({hover: "hover", touch: "touch"})
+
+/** The media query that matches a device whose primary pointer cannot hover, which `deviceKind` reads. */
+export const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
+
 export const TapAction = Object.freeze({close: "close", none: "none", open: "open"})
 
 /** `touch` for a device whose primary pointer cannot hover, `hover` for any other. */

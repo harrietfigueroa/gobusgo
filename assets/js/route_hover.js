@@ -16,7 +16,15 @@ import {
   openedText
 } from "./route_keys"
 import {EmphasisOwner, listEmphasisClosed, ListEvent, listEmphasisStep} from "./route_emphasis"
-import {DeviceKind, ENTRY_COUNT_MAX, TAP_TOLERANCE_PIXELS, TapAction, deviceKind, tapAction} from "./route_tap"
+import {
+  DeviceKind,
+  ENTRY_COUNT_MAX,
+  HOVER_NONE_MEDIA_QUERY,
+  TAP_TOLERANCE_PIXELS,
+  TapAction,
+  deviceKind,
+  tapAction
+} from "./route_tap"
 import {markerLayerNames as vehicleMarkerLayerNames} from "./vehicle_markers"
 import {HitKind, overlayHitAt} from "./vehicle_overlay"
 
@@ -29,7 +37,6 @@ const POPUP_WIDTH_MAX = "22rem"
 const POPUP_CLASS_NAME = "route-hover"
 const HOLD_MS = 300
 const HOVER_MEDIA_QUERY = "(hover: hover)"
-const HOVER_NONE_MEDIA_QUERY = "(hover: none)"
 const KEYBOARD_LIST_LABEL = "Routes at the middle of the map"
 const nameCollator = new Intl.Collator("en", {numeric: true, sensitivity: "base"})
 

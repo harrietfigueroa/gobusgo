@@ -5,8 +5,7 @@
 import {viewBox} from "./map_view_text"
 import {sheetInsets} from "./panel_sheet"
 import {SHARED_VEHICLE_LAYER_NAME} from "./shared_vehicles"
-import {MARKER_LAYER_NAME as STOP_LAYER_NAME, ZOOM_MIN as STOP_ZOOM_MIN, stopTapAt} from "./stop_markers"
-import {StopTapKind} from "./map_selection"
+import {MARKER_LAYER_NAME as STOP_LAYER_NAME, ZOOM_MIN as STOP_ZOOM_MIN, isStopAt} from "./stop_markers"
 import {markerLayerNames as vehicleLayerNames} from "./vehicle_markers"
 import {HitKind, overlayFeaturesIn, overlayHitAt} from "./vehicle_overlay"
 
@@ -90,12 +89,11 @@ export function isItemAt({map, point}) {
     return true
   }
 
-  // A finger's tap reaches the stop signs near it as well as those under it.
-  if (stopTapAt({map, point}).kind !== StopTapKind.none) {
+  if (isStopAt({map, point})) {
     return true
   }
 
-  const layerNames = [...vehicleLayerNames, STOP_LAYER_NAME, SHARED_VEHICLE_LAYER_NAME]
+  const layerNames = [...vehicleLayerNames, SHARED_VEHICLE_LAYER_NAME]
   const layers = presentLayers({map, layerNames})
 
   if (layers.length === 0) {
