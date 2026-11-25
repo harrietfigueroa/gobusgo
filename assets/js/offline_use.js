@@ -4,7 +4,8 @@
 // carries the address of the basemap's offline extract, the extract too,
 // each in its own Cache API store; turning it off deletes both stores. The
 // status element says what each store holds, and the breakdown list the size
-// of each part of what they hold, hidden while they hold nothing.
+// of each part of what they hold, hidden while they hold nothing. Each
+// change of the checkbox is announced on the window.
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, and runs again every 30 minutes and when the
@@ -34,6 +35,9 @@ import {deleteSavedSchedules, describeSchedules, readSavedIndex, saveSchedules} 
 import {FILE_SAVE_MS_MAX, saveDeadlineOf} from "./save_deadline.js"
 import {readPersistence, requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
+
+/** The window event that announces a change of the setting, its detail `{isEnabled}`. */
+export const CHANGE_EVENT_NAME = "gobusgo:offline-use-change"
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const IDLE_TIMEOUT_MS = 10 * 1000
@@ -279,6 +283,8 @@ export const OfflineUse = {
       storedSettings.writeOfflineUseEnabled(enabled)
       this.clear()
     }
+
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {isEnabled: enabled}}))
   },
 
   hasArchive() {

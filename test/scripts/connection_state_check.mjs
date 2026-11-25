@@ -1,8 +1,9 @@
 // Checks the rules of the page's connection state and of the offline
 // signal against cases written out by hand: the state a page starts in for
 // each browser and render stamp, each state's answer to each event, the
-// three thresholds, the signal's lines for each saved index, the age texts,
-// and which transitions are announced. Run it with
+// three thresholds, the signal's lines and accessible name with the offline
+// use setting off and, for each saved index, on, the age texts, and which
+// transitions are announced. Run it with
 // `node test/scripts/connection_state_check.mjs`; it exits non-zero on the
 // first case that differs.
 
@@ -27,6 +28,7 @@ import {
   AGE_REFRESH_MS,
   AnnouncementKind,
   AnnouncementText,
+  OfflineUseKind,
   SIGNAL_HEADLINE,
   ageText,
   announcementOf,
@@ -192,12 +194,17 @@ function date({serviceDate, builtAgoMs, validForMs}) {
   }
 }
 
-// The signal's headline and caption for each saved index.
+// The signal's headline, caption, and accessible name with the setting on,
+// for each saved index.
 const signalCases = [
   {
     name: "no saved index",
     savedIndex: {kind: IndexKind.none},
-    expected: {headline: "Offline", caption: "No saved schedules"}
+    expected: {
+      headline: "Offline",
+      caption: "No saved schedules",
+      label: "Offline. No saved schedules. Open offline use in Settings."
+    }
   },
   {
     name: "a saved index whose every date has ended",
@@ -205,7 +212,11 @@ const signalCases = [
       savedAgoMs: TWO_DAYS_MS,
       dates: [date({serviceDate: "2026-11-06", builtAgoMs: TWO_DAYS_MS, validForMs: -DAY_MS})]
     }),
-    expected: {headline: "Offline", caption: "Saved schedules ended · saved 2 d ago"}
+    expected: {
+      headline: "Offline",
+      caption: "Saved schedules ended · saved 2 d ago",
+      label: "Offline. Saved schedules ended · saved 2 d ago. Open offline use in Settings."
+    }
   },
   {
     name: "a saved index with a current date, aged by its newest build",
@@ -216,7 +227,11 @@ const signalCases = [
         date({serviceDate: "2026-11-09", builtAgoMs: FIVE_HOURS_MS, validForMs: DAY_MS})
       ]
     }),
-    expected: {headline: "Offline", caption: "Showing scheduled positions · updated 3 h ago"}
+    expected: {
+      headline: "Offline",
+      caption: "Showing scheduled positions · updated 3 h ago",
+      label: "Offline. Showing scheduled positions · updated 3 h ago. Open offline use in Settings."
+    }
   },
   {
     name: "a saved index whose ended date is the newest build",
@@ -227,13 +242,26 @@ const signalCases = [
         date({serviceDate: "2026-11-08", builtAgoMs: SIX_HOURS_MS, validForMs: HOUR_MS})
       ]
     }),
-    expected: {headline: "Offline", caption: "Showing scheduled positions · updated 6 h ago"}
+    expected: {
+      headline: "Offline",
+      caption: "Showing scheduled positions · updated 6 h ago",
+      label: "Offline. Showing scheduled positions · updated 6 h ago. Open offline use in Settings."
+    }
   }
 ]
 
 for (const {name, savedIndex: index, expected} of signalCases) {
-  deepStrictEqual(signalMessage({savedIndex: index, nowMs: NOW_MS}), expected, `the signal's message for ${name}`)
+  const offlineUse = {kind: OfflineUseKind.on, savedIndex: index}
+  deepStrictEqual(signalMessage({offlineUse, nowMs: NOW_MS}), expected, `the signal's message for ${name}`)
 }
+
+// With the setting off the caption points to the setting, whatever the
+// browser still holds, and the name says where the signal goes.
+deepStrictEqual(
+  signalMessage({offlineUse: {kind: OfflineUseKind.off}, nowMs: NOW_MS}),
+  {headline: "Offline", caption: "Turn on offline use in Settings", label: "Offline. Turn on offline use in Settings."},
+  "the signal's message with the offline use setting off"
+)
 
 // The server renders the headline the hook's message names, and the hook
 // writes only the caption.

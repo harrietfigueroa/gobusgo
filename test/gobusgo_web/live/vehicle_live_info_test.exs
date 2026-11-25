@@ -16,6 +16,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
   alias Gobusgo.OneBusAway.Sources
   alias GobusgoWeb.AppInfo
   alias GobusgoWeb.AppInfoPanel
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.VehicleMarkers
 
   @moduletag :tmp_dir
@@ -632,10 +633,14 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert items.("#app-info-offline-needs-connection") == needs_connection
     end
 
-    test "lets the offline signal move focus to the offline section" do
+    test "gives the offline use checkbox the identifier the offline signal opens" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
+      setting_id = ConnectionSignal.setting_id()
 
-      assert has_element?(view, @panel <> ~s( #app-info-offline[tabindex="-1"]))
+      assert has_element?(
+               view,
+               @panel <> " #app-info-offline-use input##{setting_id}[type=checkbox]"
+             )
     end
 
     test "says what is saved for offline use, in a section of its own" do

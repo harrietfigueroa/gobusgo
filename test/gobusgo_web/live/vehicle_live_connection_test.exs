@@ -73,20 +73,37 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
              )
     end
 
-    test "opens the Settings tab's offline section", %{tmp_dir: tmp_dir} do
+    test "opens the Settings tab at the offline use setting", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @signal <> ~s([data-section-id="app-info-offline"]))
-      assert has_element?(view, "#panel-settings #app-info-offline")
+      assert has_element?(view, @signal <> ~s([data-setting-id="offline-use-enabled"]))
+
+      assert has_element?(
+               view,
+               "#panel-settings #app-info-offline-use input#offline-use-enabled[type=checkbox]"
+             )
     end
 
     test "draws an icon hidden from assistive technology beside its text", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @signal <> " svg[aria-hidden=true]")
+      assert has_element?(view, @signal <> " svg.connection-signal-icon[aria-hidden=true]")
       assert text(view, @signal <> " [data-signal-headline]") == "Offline"
+    end
+
+    test "ends in a chevron hidden from assistive technology, after its text", %{
+      tmp_dir: tmp_dir
+    } do
+      write_manifest(tmp_dir)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(
+               view,
+               @signal <>
+                 " .connection-signal-text + svg.connection-signal-chevron[aria-hidden=true]"
+             )
     end
 
     test "holds a caption that starts hidden", %{tmp_dir: tmp_dir} do

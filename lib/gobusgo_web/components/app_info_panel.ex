@@ -123,14 +123,11 @@ defmodule GobusgoWeb.AppInfoPanel do
     """
   end
 
-  # The offline signal opens the Settings tab here and moves focus to the
-  # section, which takes focus from a script alone.
   defp offline(assigns) do
-    assigns =
-      assign(assigns, offline: AppInfo.offline(), section_id: ConnectionSignal.section_id())
+    assigns = assign(assigns, offline: AppInfo.offline())
 
     ~H"""
-    <section id={@section_id} class="flex flex-col gap-2" tabindex="-1">
+    <section id="app-info-offline" class="flex flex-col gap-2">
       <.heading message={AppInfo.summary(:offline)} />
       <.more id="app-info-offline-more" summary="What works and what needs a connection">
         <p>Without a connection, the page shows what it already has.</p>
@@ -149,11 +146,16 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   # The browser checks the stored setting, so the server renders the
   # default, off, unchecked. The extract's address is left out where the
-  # basemap has none, so the hook saves the schedules alone.
+  # basemap has none, so the hook saves the schedules alone. The offline
+  # signal opens the Settings tab at the checkbox and moves focus to it.
   attr :offline_archive, :map, required: true
 
   defp offline_use(assigns) do
-    assigns = assign(assigns, archive_url: archive_url(assigns.offline_archive))
+    assigns =
+      assign(assigns,
+        archive_url: archive_url(assigns.offline_archive),
+        setting_id: ConnectionSignal.setting_id()
+      )
 
     ~H"""
     <section
@@ -164,7 +166,7 @@ defmodule GobusgoWeb.AppInfoPanel do
       data-archive-url={@archive_url}
     >
       <.setting
-        input_id="offline-use-enabled"
+        input_id={@setting_id}
         message={AppInfo.offline_use_summary(@offline_archive)}
         checked={false}
       />
