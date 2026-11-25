@@ -39,7 +39,6 @@ export function saveDeadlineOf({controller, timers, fileMsMax}) {
 
     const aborted = new Promise(abortedExecutor)
     const timer = timers.setTimeout(abortForTimeout, fileMsMax)
-    const pending = operation()
     let isRaceSettled = false
 
     // An operation the abort outran settles after the save has moved on: a
@@ -51,9 +50,9 @@ export function saveDeadlineOf({controller, timers, fileMsMax}) {
       }
     }
 
-    pending.catch(lateFailureCallback)
-
     try {
+      const pending = operation()
+      pending.catch(lateFailureCallback)
       return await Promise.race([pending, aborted])
     } finally {
       isRaceSettled = true

@@ -218,6 +218,12 @@ async function currentPlacesFile({cache, deadline}) {
   try {
     return await deadline.withinBound(() => fetchPlacesFile(deadline.signal))
   } catch (error) {
+    // A save the bound or a turn-off stopped ends here, and its caller logs
+    // or passes the abort.
+    if (deadline.signal.aborted) {
+      throw error
+    }
+
     console.warn("Places manifest not fetched; the saved places file is kept", error)
     const saved = await readIndex(cache)
     const isFound = saved.kind === IndexKind.found
@@ -355,9 +361,8 @@ function newestBuild(dates) {
 
 /**
  * Saves the region's schedules in the store, each file within the bound of
- * `deadline`, logging a save that fails or passes the
- * bound; a save its controller aborts ends quietly and leaves the previous
- * bundle in use.
+ * `deadline`, logging a save that fails or passes the bound; a save its
+ * controller aborts ends quietly and leaves the previous bundle in use.
  */
 export async function saveSchedules(deadline) {
   try {
