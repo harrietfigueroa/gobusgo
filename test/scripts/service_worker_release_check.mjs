@@ -1,10 +1,11 @@
 // Checks the service worker's answer to a page's question of its release, by
 // running the worker against a stand-in for its global scope, handing its
 // message handler a `release` question with a port, and reading the answer
-// on the port's other end. It runs the worker's source with a release of its
-// own, and the worker `mix assets.build` wrote to `priv/static/sw.js`, whose
-// answer must name the release of the release file the build wrote beside
-// it, in the format the page reads. Run it after `mix assets.build` with
+// on the port's other end. Each case that asks a worker loads one of its
+// own: the worker's source with a build of the check's own, or the worker
+// `mix assets.build` wrote to `priv/static/sw.js`, whose answer must name the
+// release of the release file the build wrote beside it; the page must read
+// that file's release as a release. Run it after `mix assets.build` with
 // `node test/scripts/service_worker_release_check.mjs`; it prints each case
 // and exits non-zero when any case differs.
 

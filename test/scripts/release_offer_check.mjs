@@ -1,8 +1,10 @@
 // Checks the rules of the offer to reload into a new release against cases
 // written out by hand: what a click does for each state the offered worker
-// can be in, with a state the offer is never shown in refused; how the
-// page's release and the waiting worker's answer are read; and whether a
-// waiting worker is offered or activated with no offer. Run it with
+// can be in, with a state the offer is never shown in refused; the bounds of
+// the two waits; how the page's release and the waiting worker's answer are
+// read; whether a waiting worker is offered or activated with no offer; and
+// whether a shown offer is withdrawn for each state of its worker, with the
+// same states refused. Run it with
 // `node test/scripts/release_offer_check.mjs`; it exits non-zero on the
 // first case that differs.
 

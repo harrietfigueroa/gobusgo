@@ -263,7 +263,7 @@ node test/scripts/css_accessibility_check.mjs
 node test/scripts/route_chip_color_check.mjs
 ```
 
-A change to a file under `assets/js/` runs that file's node check, or is checked in a browser, as `assets/AGENTS.md` ("Checks") lists; CI runs neither, except the node checks its `assets` job runs after `mix assets.build`.
+A change to a file under `assets/js/` runs that file's node check, or is checked in a browser, as `assets/AGENTS.md` ("Checks") lists; of the node checks under `test/scripts/` CI runs only those its `accessibility`, `agents-md`, and `assets` jobs name, it runs the conformance suite in its `conformance` job and the core page check in its `core-pages` job, and the checks in a browser of a hook or of a module that touches the DOM, the map, storage, or the network are made by hand.
 
 When a change touches `assets/js/core/` or `tools/lint/rules/no_async_work.mjs`, also run the two commands CI's `core-lint` job runs (GOB-420), after `npm ci --prefix tools/lint`: `npm run --prefix tools/lint check`, which also lints code written out by hand to check that the rule still reports each kind of async work, and `npm run --prefix tools/lint lint:core`, which lints every module of the core with `tools/lint/eslint.core.config.mjs`.
 

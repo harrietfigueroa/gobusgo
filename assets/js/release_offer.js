@@ -9,9 +9,10 @@
 // under the worker before it, so a waiting worker of the page's own release
 // takes over with no offer and no reload.
 //
-// Every open page shows the offer while a new worker waits, and taking it
-// in one page has that worker take over every page, so another page can
-// hold an offer whose worker is already active: its click reloads.
+// Every open page of another release shows the offer while a new worker
+// waits, and taking it in one page has that worker take over every page, so
+// another page can hold an offer whose worker is already active: its click
+// reloads.
 
 import {assertCondition} from "#core/assert.js"
 import {MessageKind} from "./service_worker_strategy.js"
@@ -134,18 +135,12 @@ export function reloadStep({workerState}) {
 
 /**
  * Whether the page withdraws an offer whose worker is in `workerState` once
- * a worker of the page's own release takes over: an offer whose worker still
- * waits stands, and any other is withdrawn. A worker that has not installed
- * is refused.
+ * a worker of the page's own release takes over: an offer whose click would
+ * only reload, its worker no longer waiting, is withdrawn, and one whose
+ * worker still waits stands. A worker that has not installed is refused, as
+ * `reloadStep` refuses it.
  */
 export function isOfferWithdrawn({workerState}) {
-  const isWaiting = workerState === WAITING_STATE
-
-  if (isWaiting) {
-    return false
-  }
-
-  const isTakenOver = TAKEN_OVER_STATES.includes(workerState)
-  assertCondition(isTakenOver, "the offer names a worker that has installed, got the state: " + String(workerState))
-  return true
+  const step = reloadStep({workerState})
+  return step === ReloadStepKind.reload
 }

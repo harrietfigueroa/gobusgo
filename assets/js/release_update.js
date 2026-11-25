@@ -8,14 +8,15 @@
 // compares it with the one the page's release element names (`offerStep`).
 // A worker of the page's own release, the case of a page loaded from the
 // network after a release, takes over with no offer and no reload, and the
-// page withdraws any offer it shows; a worker that gives no release within
+// page withdraws the offer it shows unless the offered worker still waits
+// (`isOfferWithdrawn`); a worker that gives no release within
 // RELEASE_ANSWER_WAIT_MS is offered.
 //
-// Every open page shows the offer, and the worker one page has take over
-// controls them all, so the offer of another page can name a worker that
-// has already taken over: its click reloads at once (`reloadStep`). A
-// takeover that has not come after RELOAD_WAIT_MS lets the rider take the
-// offer again, with a message that says so.
+// Every open page of another release shows the offer, and the worker one
+// page has take over controls them all, so the offer of another page can
+// name a worker that has already taken over: its click reloads at once
+// (`reloadStep`). A takeover that has not come after RELOAD_WAIT_MS lets the
+// rider take the offer again, with a message that says so.
 //
 // The browser checks for a new worker on every page load; a page left open
 // checks again every UPDATE_CHECK_INTERVAL_MS.
@@ -151,10 +152,11 @@ function askRelease(worker) {
   return new Promise(askReleaseExecutor)
 }
 
-// Offers a waiting worker of another release, and has one of the page's own
-// release take over with no offer, withdrawing the shown offer unless its
-// worker still waits. The worker's state is read after the answer, since a
-// newer install can replace it meanwhile.
+// Takes the step `offerStep` gives a waiting worker: offers one of another
+// release or of none named, and has one of the page's own release take over
+// with no offer, withdrawing the shown offer unless its worker still waits.
+// The worker's state is read after the answer, since a newer install can
+// replace it, or another page have it take over, meanwhile.
 async function settleWaiting({worker, pageRelease, offer}) {
   const answer = await askRelease(worker)
   const step = offerStep({pageRelease, answer, workerState: worker.state})
