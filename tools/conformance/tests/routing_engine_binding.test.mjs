@@ -122,13 +122,16 @@ function withLinkOffsetsDecreasing(engine) {
   return broken
 }
 
-// Routes `engine` and swallows the refusal it throws.
 function refusedOnce({engine, kind, query}) {
   try {
     routed({engine, kind, query})
-  } catch {
-    return
+  } catch (error) {
+    if (error instanceof AssertionError) {
+      return
+    }
+    throw error
   }
+  throw new Error("routing engine binding: a broken engine was answered")
 }
 
 // Each break of an engine object, with the message the core refuses it with.
