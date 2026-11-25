@@ -168,9 +168,9 @@ export function iconSizeAt(zoom) {
 }
 
 /**
- * A stop's sign as the layers draw it at `zoom`, from `stopPoint`, the stop's
- * point on the screen: the sign's center, moved by its curb offset at the
- * zoom's icon size, and half the side of its square.
+ * A stop's sign box at `zoom`, from `stopPoint`, the stop's point on the
+ * screen: the sign's center, `stopPoint` moved by the curb offset of
+ * `direction` at the zoom's icon size, and half the side of its square.
  */
 export function signBox({stopPoint, direction, zoom}) {
   const size = iconSizeAt(zoom)

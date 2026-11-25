@@ -4,13 +4,13 @@
 // and has the map's live region announce it after a move the rider made or
 // a fit, by the imported rules.
 //
-// The canvas takes `role="application"`: MapLibre's keyboard handler pans,
-// zooms, turns, and tilts the map from the keys pressed on the focused
-// canvas, and a screen reader in reading mode keeps those keys for itself
-// unless the focused element is an application. The role stays on the
-// canvas alone, which holds nothing to read, so the controls and popups
-// beside it keep reading mode.
-// https://maplibre.org/maplibre-gl-js/docs/API/classes/KeyboardHandler/ — checked 2026-11-09
+// The canvas takes `role="application"`: MapLibre's keyboard handler pans
+// and zooms the map from the keys pressed on the focused canvas, and a
+// screen reader in reading mode keeps those keys for itself unless the
+// focused element is an application. The role stays on the canvas alone,
+// which holds nothing to read, so the controls and popups beside it keep
+// reading mode.
+// https://maplibre.org/maplibre-gl-js/docs/API/classes/KeyboardHandler/ — checked 2026-11-24
 
 import {READY_EVENT_NAME} from "./basemap"
 import {announce} from "./map_live_region"

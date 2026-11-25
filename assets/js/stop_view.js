@@ -10,7 +10,7 @@ import {alertLines} from "./service_alerts"
 import {chipElements} from "./route_chips"
 import {CHIP_COUNT_MAX} from "./stop_marker_shapes"
 import {writeArrivals} from "./stop_arrivals"
-import {PillKind, codePill, directionPill} from "./stop_text"
+import {PillKind, codePill, directionPill, stopListRestText} from "./stop_text"
 import {
   addFavorite,
   favoriteCountMax,
@@ -41,6 +41,7 @@ const STOP_LIST_CLASS_NAME = "panel-detail-stop-list"
 const STOP_ROW_CLASS_NAME = "panel-detail-stop-row"
 const STOP_ROW_CHIPS_CLASS_NAME = "panel-detail-stop-row-chips"
 const STOP_ROW_NAME_CLASS_NAME = "panel-detail-stop-row-name"
+const STOP_LIST_REST_CLASS_NAME = "panel-detail-caption"
 const FAVORITE_MARK = "★"
 const NOT_FAVORITE_MARK = "☆"
 const FAVORITE_LABEL = "Your favorite stop"
@@ -139,8 +140,10 @@ function pillElement({pill, spokenPrefix}) {
   return element
 }
 
+// The pills of a stop's code and direction, as a `span` so they stand in
+// the stop list's buttons, which hold phrasing content alone.
 function pillsElement(stop) {
-  const pills = document.createElement("div")
+  const pills = document.createElement("span")
   pills.className = PILLS_CLASS_NAME
   const code = codePill(stop.code)
   const direction = directionPill(stop.direction)
@@ -184,8 +187,9 @@ export function writeTripLine({line, stopId}) {
 
 // The list of the stops under a tap, `stops`, nearest first: one button a
 // finger's height per stop, with the stop's route chips, its name, and the
-// pills of its code and direction, which calls `onChoose` with the stop.
-export function stopListElement({stops, onChoose}) {
+// pills of its code and direction, which calls `onChoose` with the stop,
+// and a line that counts the `restCount` stops the list leaves out.
+export function stopListElement({stops, restCount, onChoose}) {
   const list = document.createElement("ul")
   list.className = STOP_LIST_CLASS_NAME
 
@@ -210,6 +214,13 @@ export function stopListElement({stops, onChoose}) {
     const item = document.createElement("li")
     item.append(button)
     list.append(item)
+  }
+
+  if (restCount > 0) {
+    const rest = document.createElement("li")
+    rest.className = STOP_LIST_REST_CLASS_NAME
+    rest.textContent = stopListRestText(restCount)
+    list.append(rest)
   }
 
   return list

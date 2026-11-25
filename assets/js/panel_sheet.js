@@ -10,6 +10,9 @@ import {
   closeDetail,
   DESELECT_EVENT_NAME,
   DetailKind,
+  PARENT_CLEAR_EVENT_NAME,
+  backTitle,
+  focusDetailTitle,
   hasParentDetail,
   showParentDetail
 } from "./panel_detail"
@@ -183,12 +186,14 @@ export const PanelSheet = {
     this.focusOrigin = null
     this.onDetailChange = (event) => { this.followDetail(event.detail.shown) }
     this.onDeselect = () => { this.deselectCallback() }
+    this.onParentClear = () => { this.writeBackLabel() }
 
     if (this.detail !== null) {
       this.back = this.detail.querySelector("#panel-detail-back")
       this.back.addEventListener("click", () => { this.backCallback() })
       window.addEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
       window.addEventListener(DESELECT_EVENT_NAME, this.onDeselect)
+      window.addEventListener(PARENT_CLEAR_EVENT_NAME, this.onParentClear)
     }
 
     this.resizeObserver = new ResizeObserver(() => { this.writeInset() })
@@ -258,8 +263,8 @@ export const PanelSheet = {
     }
   },
 
-  // Shows the details view for an item, its back button named for the tab
-  // it returns to, or hides it for none. Focus that is outside the view, on
+  // Shows the details view for an item, its back button named for what it
+  // returns to, or hides it for none. Focus that is outside the view, on
   // the map, in the list of what is in view, or in a panel the view stands
   // in place of, moves to the back button, and the element that had it when
   // the view opened is kept for a deselecting tap to give it back to.
@@ -272,11 +277,10 @@ export const PanelSheet = {
     const focused = document.activeElement
 
     if (this.detail.hidden) {
-      const label = this.openTab().querySelector("[data-tab-label]").textContent
-      this.back.setAttribute("aria-label", BACK_LABEL_PREFIX + label)
       this.focusOrigin = focused
     }
 
+    this.writeBackLabel()
     this.detail.hidden = false
     this.setExpanded(true)
 
@@ -306,13 +310,24 @@ export const PanelSheet = {
     return this.tabs.find(isSelectedTab)
   },
 
-  // An item opened from another, a stop chosen from a list, returns to that
-  // other, and focus stays on the back button. Any other item closes the
-  // view: the tab it returns to is still the open one, so closing the view
-  // shows it, and focus that was in the view moves to that tab.
+  // Names the back button for what it returns to: the parent's title for
+  // an item with a parent, and the open tab's name for any other.
+  writeBackLabel() {
+    const tabTitle = this.openTab().querySelector("[data-tab-label]").textContent
+    this.back.setAttribute("aria-label", BACK_LABEL_PREFIX + backTitle(tabTitle))
+  },
+
+  // An item with a parent returns to that parent, and focus moves to its
+  // title, which a screen reader reads, wherever focus was, since Safari
+  // leaves a clicked back button unfocused.
+  // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#clicking_and_focus — checked 2026-11-24
+  // Any other item closes the view: the tab it returns to is still the open
+  // one, so closing the view shows it, and focus that was in the view moves
+  // to that tab.
   backCallback() {
     if (hasParentDetail()) {
       showParentDetail()
+      focusDetailTitle()
       return
     }
 
@@ -448,6 +463,7 @@ export const PanelSheet = {
     document.documentElement.style.removeProperty(KEYBOARD_INSET_PROPERTY)
     window.removeEventListener(DETAIL_CHANGE_EVENT_NAME, this.onDetailChange)
     window.removeEventListener(DESELECT_EVENT_NAME, this.onDeselect)
+    window.removeEventListener(PARENT_CLEAR_EVENT_NAME, this.onParentClear)
     document.documentElement.style.removeProperty(INSET_BOTTOM_PROPERTY)
   }
 }
