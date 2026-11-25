@@ -415,8 +415,8 @@ export function persistenceText(kind) {
  */
 export const SettingKind = Object.freeze({off: "off", on: "on", unsupported: "unsupported"})
 
-const OFF_MESSAGE = Object.freeze({headline: "Schedules not saved", caption: "Turn this on to plan trips offline."})
-const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save schedules", caption: "This browser can't save them for offline use."})
+const OFF_MESSAGE = Object.freeze({headline: "Nothing saved for offline use", caption: "Turn this on to plan trips and see schedules offline."})
+const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save for offline use", caption: "This browser can't save anything for offline use."})
 
 function fileCountText(count) {
   if (count === 1) {
@@ -429,8 +429,8 @@ function fileCountText(count) {
 /**
  * The status line's headline and caption for `setting`. A setting that is
  * on carries its bundle's `status`, the browser's `persistence`, and the
- * texts of the status's dates, `datesText`, of their newest build,
- * `updatedText`, and of the stored size, `sizeText`.
+ * texts of the status's dates, `datesText`, and of their newest build,
+ * `updatedText`.
  */
 export function statusMessage(setting) {
   switch (setting.kind) {
@@ -445,12 +445,12 @@ export function statusMessage(setting) {
   }
 }
 
-function onMessage({status, persistence, datesText, updatedText, sizeText}) {
+function onMessage({status, persistence, datesText, updatedText}) {
   const kept = persistenceText(persistence)
 
   switch (status.kind) {
     case StatusKind.saved:
-      return {headline: "Schedules saved for offline use", caption: `For ${datesText}, updated ${updatedText}, ${sizeText}. ${kept}`}
+      return {headline: "Schedules saved for offline use", caption: `For ${datesText}, updated ${updatedText}. ${kept}`}
     case StatusKind.incomplete:
       return {
         headline: "Schedules partly saved",

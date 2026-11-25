@@ -14,8 +14,6 @@ import {assertCondition, unreachable} from "#core/assert.js"
 import {ConnectionKind} from "./connection_rules.js"
 import {PersistenceKind} from "#core/offline_bundle.js"
 
-const MEGABYTE_BYTES = 1000 * 1000
-
 /** The Cache API store of the saved map, which the service worker reads and never deletes. */
 export const OFFLINE_BASEMAP_CACHE_NAME = "gobusgo-offline-basemap-v1"
 
@@ -24,9 +22,6 @@ export const CHANGE_EVENT_NAME = "gobusgo:offline-basemap-change"
 
 /** The kinds of a read of the saved map: the extract at `url` is stored, or none is. */
 export const BasemapSaveKind = Object.freeze({saved: "saved", notSaved: "notSaved"})
-
-/** The kinds of the setting's state: off, on, or a browser that cannot save the map. */
-export const SettingKind = Object.freeze({off: "off", on: "on", unsupported: "unsupported"})
 
 const NOT_SAVED = Object.freeze({kind: BasemapSaveKind.notSaved})
 
@@ -87,41 +82,20 @@ function persistenceText(kind) {
   }
 }
 
-function sizeText(bytes) {
-  assertCondition(Number.isSafeInteger(bytes), "offline basemap: the stored size is not an integer: " + String(bytes))
-  const megabytes = bytes / MEGABYTE_BYTES
-  return megabytes.toFixed(1) + " MB"
-}
-
-const OFF_MESSAGE = Object.freeze({headline: "Map not saved", caption: "Turn this on to keep streets and places offline."})
 const NOT_SAVED_MESSAGE = Object.freeze({headline: "Map not saved yet", caption: "It's saved while you're online."})
-const UNSUPPORTED_MESSAGE = Object.freeze({headline: "Can't save the map", caption: "This browser can't save it for offline use."})
 
-function onMessage({saved, bytes, persistence}) {
+/**
+ * The headline and caption the status line gives the map while the setting
+ * is on, from `saved`, the read of the store, and `persistence`, the
+ * browser's answer to keeping the page's storage.
+ */
+export function statusMessage({saved, persistence}) {
   switch (saved.kind) {
     case BasemapSaveKind.saved:
-      return {headline: "Map saved for offline use", caption: `It takes ${sizeText(bytes)}. ${persistenceText(persistence)}`}
+      return {headline: "Map saved for offline use", caption: persistenceText(persistence)}
     case BasemapSaveKind.notSaved:
       return NOT_SAVED_MESSAGE
     default:
       return unreachable(saved.kind, "basemap save kind")
-  }
-}
-
-/**
- * The headline and caption of the setting's status line for `setting`:
- * off; on, with the read of the store, the bytes it holds, and the
- * browser's answer to keeping the page's storage; or unsupported.
- */
-export function statusMessage(setting) {
-  switch (setting.kind) {
-    case SettingKind.off:
-      return OFF_MESSAGE
-    case SettingKind.on:
-      return onMessage(setting)
-    case SettingKind.unsupported:
-      return UNSUPPORTED_MESSAGE
-    default:
-      return unreachable(setting.kind, "offline basemap setting kind")
   }
 }

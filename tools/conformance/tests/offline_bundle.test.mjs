@@ -241,33 +241,32 @@ describe.each(implementationsWith("offlineBundle"))("offline bundle ($name)", ({
     expect(persistenceText(kind)).toBe(expected)
   })
 
-  // The status line says the setting's state in its headline, and the dates,
-  // the size, and whether the browser keeps them in its caption.
+  // The status line says the setting's state in its headline, and the dates
+  // and whether the browser keeps them in its caption.
   const onSetting = {
     kind: SettingKind.on,
     persistence: PersistenceKind.granted,
     datesText: "Sat, Nov 7 and Sun, Nov 8",
-    updatedText: "Nov 7, 4:12 AM",
-    sizeText: "3.4 MB"
+    updatedText: "Nov 7, 4:12 AM"
   }
 
   const statusMessageCases = [
     {
       name: "off",
       setting: () => ({kind: SettingKind.off}),
-      expected: {headline: "Schedules not saved", caption: "Turn this on to plan trips offline."}
+      expected: {headline: "Nothing saved for offline use", caption: "Turn this on to plan trips and see schedules offline."}
     },
     {
       name: "a browser that cannot save",
       setting: () => ({kind: SettingKind.unsupported}),
-      expected: {headline: "Can't save schedules", caption: "This browser can't save them for offline use."}
+      expected: {headline: "Can't save for offline use", caption: "This browser can't save anything for offline use."}
     },
     {
       name: "saved",
       setting: () => ({...onSetting, status: {kind: StatusKind.saved, dates: states.morning.dates}}),
       expected: {
         headline: "Schedules saved for offline use",
-        caption: "For Sat, Nov 7 and Sun, Nov 8, updated Nov 7, 4:12 AM, 3.4 MB. Your browser keeps them until you remove them."
+        caption: "For Sat, Nov 7 and Sun, Nov 8, updated Nov 7, 4:12 AM. Your browser keeps them until you remove them."
       }
     },
     {

@@ -52,7 +52,7 @@ button { margin-top: 8px; padding: 6px 16px; font: inherit; font-weight: 600; co
 <main>
 <h1>Gobusgo is offline</h1>
 <p>Gobusgo needs a network to show vehicles, stops, and arrivals, and this device has none right now.</p>
-<p>Schedules saved for offline use stay saved on this device. The map opens again once you are back online.</p>
+<p>What you saved with Save for offline use stays on this device. The map opens again once you are back online.</p>
 <button type="button" onclick="location.reload()">Try again</button>
 </main>
 </body>

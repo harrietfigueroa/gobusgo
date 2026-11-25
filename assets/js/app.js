@@ -15,9 +15,8 @@ import {MapItemList} from "./map_item_list"
 import {watchMapTaps} from "./map_taps"
 import {RouteLines} from "./route_lines"
 import {RouteStopTiles} from "./route_stop_tiles"
-import {OfflineBasemap} from "./offline_basemap_setting"
 import {handOffOfflineHost, startOfflineHost} from "./offline_boot"
-import {OfflineSchedules} from "./offline_schedules"
+import {OfflineUse} from "./offline_use"
 import {PanelSheet} from "./panel_sheet"
 import {registerServiceWorker} from "./release_update"
 import {LocalTime} from "./service_alerts"
@@ -59,8 +58,7 @@ const hooks = {
   LocalTime,
   MapDescription,
   MapItemList,
-  OfflineBasemap,
-  OfflineSchedules,
+  OfflineUse,
   PanelSheet,
   RouteLines,
   RouteStopTiles,

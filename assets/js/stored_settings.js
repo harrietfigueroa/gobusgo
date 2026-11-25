@@ -46,13 +46,11 @@
 //   falls back to, never a position; turning the button off and a denial
 //   remove the key. Any other text, and no key, read as off. Losing it ends
 //   the follow on load.
-// - `gobusgo:offline-schedules`: the text "off" while the rider keeps
-//   saving schedules for offline use turned off. No key is on, the default,
-//   and any other text reads as on. Losing it turns saving back on.
-// - `gobusgo:offline-basemap`: the text "on" while the rider keeps saving
-//   the map for offline use turned on. No key is off, the default, and any
-//   other text reads as off. Losing it stops saving the map, and the next
-//   page removes the saved copy.
+// - `gobusgo:offline-use`: the text "on" while the rider keeps Save for
+//   offline use turned on, which saves the schedules and, where the basemap
+//   has an offline extract, the map. No key is off, the default, and any
+//   other text reads as off. Losing it stops saving, and the next page that
+//   connects removes what was saved.
 // - `gobusgo:shared-vehicles`: the text "on" while the rider keeps the shared
 //   scooter and bike layer on. No key is off, the default, and any other
 //   text reads as off. Losing it turns the layer off.
@@ -64,18 +62,27 @@
 //   asks again. Any other text, and no key, read as never denied. Losing it
 //   asks once more on the next click that starts following.
 // - `gobusgo:stored-settings-version`: the schema version of the keys
-//   above, as decimal text, now "1". A key added whose absence reads as its
-//   default, as the recent trips and the last four are, leaves version 1's
-//   stored values as they are and needs no migration, so it keeps the
-//   version.
+//   above, as decimal text, now "2". A key added whose absence reads as its
+//   default, as the recent trips and the last three are, leaves the stored
+//   values as they are and needs no migration, so it keeps the version.
+//
+// The retired keys, which only a migration reads, and which it removes:
+//
+// - `gobusgo:offline-schedules`: version 1's "off" while saving schedules
+//   was turned off, on by default.
+// - `gobusgo:offline-basemap`: version 1's "on" while saving the map was
+//   turned on, off by default.
 //
 // The migration rule: on its first use in a page, the module reads the
 // version, runs the migration from each earlier version to the next in
 // order, and stores the current version. No version key is version 0, the
 // keys stored before this module existed, whose shapes are version 1's, so
-// its migration is the identity; text that is not a version reads as 0. A
-// version later than this module's, stored by a later release, is left as
-// it is, and each value is read with the checks above.
+// its migration is the identity; text that is not a version reads as 0.
+// Version 1 to 2 merges the two offline settings: `gobusgo:offline-use` is
+// "on" where `gobusgo:offline-basemap` was "on" and absent otherwise, and
+// both retired keys are removed. A version later than this module's,
+// stored by a later release, is left as it is, and each value is read with
+// the checks above.
 //
 // Storage that throws, as in a private window, reads as each key's default
 // and writes nothing, and every call that throws is logged through `warn`.
@@ -90,6 +97,9 @@ export const SCHEMA_VERSION = contract.schemaVersion
 /** The local storage key of each stored value. */
 export const StorageKey = Object.freeze({...contract.keys})
 
+/** The local storage key of each value an earlier version stored, which only a migration reads. */
+export const RetiredStorageKey = Object.freeze({...contract.retiredKeys})
+
 /** The texts of `gobusgo:theme` that name a theme; anything else is Match system. */
 export const STORED_THEMES = Object.freeze([...contract.storedThemes])
 
@@ -100,7 +110,7 @@ export const FilterKind = Object.freeze({found: "found", none: "none"})
 export const FavoriteChangeKind = Object.freeze({changed: "changed", unchanged: "unchanged"})
 
 const LOCATION_FOLLOW_STORED = "true"
-const OFFLINE_SCHEDULES_OFF = "off"
+const OFFLINE_USE_ON = "on"
 const OFFLINE_BASEMAP_ON = "on"
 const SHOW_DIRECTION_OFF = "off"
 const MOTION_PERMISSION_DENIED = "denied"
@@ -124,7 +134,7 @@ assertCondition(isEveryStoredTheme, "every stored theme must be a theme, got: " 
 
 // The migration from each version to the next, at the index of the version
 // it starts from. Each takes and returns the stored text of every key.
-const migrations = Object.freeze([migrateUnversioned])
+const migrations = Object.freeze([migrateUnversioned, mergeOfflineSettings])
 assertCondition(migrations.length === SCHEMA_VERSION, `there must be one migration per version, got ${migrations.length} for version ${SCHEMA_VERSION}`)
 
 function isTheme(value) {
@@ -133,6 +143,21 @@ function isTheme(value) {
 
 function migrateUnversioned(values) {
   return values
+}
+
+// Version 1 to 2: the rider who saved the map keeps offline use on, and
+// every other rider, the schedules setting's default included, has it off.
+function mergeOfflineSettings(values) {
+  const merged = {...values, [RetiredStorageKey.offlineSchedules]: null, [RetiredStorageKey.offlineBasemap]: null}
+  const isMapSaved = values[RetiredStorageKey.offlineBasemap] === OFFLINE_BASEMAP_ON
+
+  if (isMapSaved) {
+    merged[StorageKey.offlineUse] = OFFLINE_USE_ON
+  } else {
+    merged[StorageKey.offlineUse] = null
+  }
+
+  return merged
 }
 
 /**
@@ -269,31 +294,17 @@ export function openStoredSettings({storage, warn}) {
       })
     },
 
-    /** Whether saving schedules for offline use is on, the default. */
-    readOfflineSchedulesEnabled() {
-      return guarded({description: "Offline schedules setting not readable", fallback: true, operation: readOfflineSchedulesEnabledFrom})
+    /** Whether Save for offline use is on; off is the default. */
+    readOfflineUseEnabled() {
+      return guarded({description: "Offline use setting not readable", fallback: false, operation: readOfflineUseEnabledFrom})
     },
 
-    /** Stores whether saving schedules for offline use is on; on is stored as no key. */
-    writeOfflineSchedulesEnabled(enabled) {
+    /** Stores whether Save for offline use is on; off is stored as no key. */
+    writeOfflineUseEnabled(enabled) {
       guarded({
-        description: "Offline schedules setting not stored",
+        description: "Offline use setting not stored",
         fallback: undefined,
-        operation: (reached) => { writeOfflineSchedulesEnabledTo({reached, enabled}) }
-      })
-    },
-
-    /** Whether saving the map for offline use is on; off is the default. */
-    readOfflineBasemapEnabled() {
-      return guarded({description: "Offline basemap setting not readable", fallback: false, operation: readOfflineBasemapEnabledFrom})
-    },
-
-    /** Stores whether saving the map for offline use is on; off is stored as no key. */
-    writeOfflineBasemapEnabled(enabled) {
-      guarded({
-        description: "Offline basemap setting not stored",
-        fallback: undefined,
-        operation: (reached) => { writeOfflineBasemapEnabledTo({reached, enabled}) }
+        operation: (reached) => { writeOfflineUseEnabledTo({reached, enabled}) }
       })
     },
 
@@ -454,27 +465,15 @@ function writeLocationFollowTo({reached, isOn}) {
   }
 }
 
-function readOfflineSchedulesEnabledFrom(reached) {
-  return reached.getItem(StorageKey.offlineSchedules) !== OFFLINE_SCHEDULES_OFF
+function readOfflineUseEnabledFrom(reached) {
+  return reached.getItem(StorageKey.offlineUse) === OFFLINE_USE_ON
 }
 
-function writeOfflineSchedulesEnabledTo({reached, enabled}) {
+function writeOfflineUseEnabledTo({reached, enabled}) {
   if (enabled) {
-    reached.removeItem(StorageKey.offlineSchedules)
+    reached.setItem(StorageKey.offlineUse, OFFLINE_USE_ON)
   } else {
-    reached.setItem(StorageKey.offlineSchedules, OFFLINE_SCHEDULES_OFF)
-  }
-}
-
-function readOfflineBasemapEnabledFrom(reached) {
-  return reached.getItem(StorageKey.offlineBasemap) === OFFLINE_BASEMAP_ON
-}
-
-function writeOfflineBasemapEnabledTo({reached, enabled}) {
-  if (enabled) {
-    reached.setItem(StorageKey.offlineBasemap, OFFLINE_BASEMAP_ON)
-  } else {
-    reached.removeItem(StorageKey.offlineBasemap)
+    reached.removeItem(StorageKey.offlineUse)
   }
 }
 
@@ -534,10 +533,16 @@ function migrateStorage(reached) {
   reached.setItem(StorageKey.schemaVersion, String(SCHEMA_VERSION))
 }
 
+// Every key a migration reads or writes: the current ones and the retired
+// ones it removes.
+function migratedKeys() {
+  return [...Object.values(StorageKey), ...Object.values(RetiredStorageKey)]
+}
+
 function storedValues(reached) {
   const values = {}
 
-  for (const key of Object.values(StorageKey)) {
+  for (const key of migratedKeys()) {
     values[key] = reached.getItem(key)
   }
 
@@ -545,7 +550,7 @@ function storedValues(reached) {
 }
 
 function writeChangedValues({reached, values, migrated}) {
-  for (const key of Object.values(StorageKey)) {
+  for (const key of migratedKeys()) {
     const isChanged = migrated[key] !== values[key]
     const isRemoved = isChanged && migrated[key] === null
 

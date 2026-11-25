@@ -596,7 +596,9 @@ a.inline-target {
    centered on the part of the map beside the panel. It shows only while
    the document's root element says the page is offline, and never moves
    or fades. Its text keeps the panel sheet's colors, at a contrast of
-   4.5:1 or more against the surface fill in both themes. */
+   4.5:1 or more against the surface fill in both themes. It opens a
+   setting, so it reads as a link: its caption is underlined and a chevron
+   follows its text, both in its text's colors. */
 .connection-signal {
   position: fixed;
   top: var(--donation-button-inset);
@@ -636,6 +638,13 @@ a.inline-target {
   outline-offset: 2px;
 }
 
+/* The offline use status line takes focus, so it shows the focus ring a
+   control does. */
+#offline-use-status:focus-visible {
+  outline: 2px solid var(--close-button-focus-color);
+  outline-offset: 2px;
+}
+
 .connection-signal-icon {
   flex-shrink: 0;
   width: 20px;
@@ -657,6 +666,20 @@ a.inline-target {
 .connection-signal-caption {
   color: var(--connection-signal-age-color);
   font-weight: 400;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.connection-signal-chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* A status message: a bold headline that states the state over a muted
@@ -1163,8 +1186,7 @@ a.inline-target {
   font-size: 0.875rem;
 }
 
-/* A vehicle view's key-value rows: the key on the left and its value
-   aligned right. */
+/* Key-value rows: the key on the left and its value aligned right. */
 .panel-detail-rows {
   display: flex;
   flex-direction: column;

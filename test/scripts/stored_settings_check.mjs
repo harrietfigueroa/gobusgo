@@ -1,6 +1,7 @@
 // Checks the stored settings module against a storage double written out
 // by hand: each key's valid values, a value of the wrong shape, and a
-// missing key; the schema version and its migration; the favorites' limit
+// missing key; the schema version and its migrations, the merge of the two
+// offline settings into one among them; the favorites' limit
 // and their order, moved to each index and read again by a page loaded
 // anew; the recent trips' shapes, order, and limit; and storage that throws. It also runs the theme script of the service
 // worker's offline screen against the same double, so the screen reads the
@@ -15,6 +16,7 @@ import {resolveTheme, Theme, themeColor, ThemeSetting} from "../../assets/js/the
 import {
   FavoriteChangeKind,
   FilterKind,
+  RetiredStorageKey,
   SCHEMA_VERSION,
   STORED_THEMES,
   StorageKey,
@@ -28,12 +30,13 @@ const COUNT_PAST_MAX = COUNT_MAX + 1
 const VERSION_TEXT = String(SCHEMA_VERSION)
 // Under storage that throws: one warning for the migration, one per read
 // and per write, and the adds and the remove each read before they write.
-const THROWING_WARNING_COUNT = 23
+const THROWING_WARNING_COUNT = 21
 
-// Every key the module reads, each held as null until it is written, since
-// Storage's getItem answers null for a key it does not hold.
+// Every key the module reads, the retired keys its migrations read among
+// them, each held as null until it is written, since Storage's getItem
+// answers null for a key it does not hold.
 // https://html.spec.whatwg.org/multipage/webstorage.html#dom-storage-getitem — checked 2026-11-08
-const storageKeys = Object.values(StorageKey)
+const storageKeys = [...Object.values(StorageKey), ...Object.values(RetiredStorageKey)]
 const absentPairs = Array.from(storageKeys, absentEntry)
 const absentEntries = Object.fromEntries(absentPairs)
 
@@ -201,28 +204,33 @@ for (const followCase of followCases) {
   deepStrictEqual(storage.entries()[StorageKey.locationFollow], undefined, "location button turned off")
 }
 
-const offlineCases = [
-  {name: "off", entries: {[StorageKey.offlineSchedules]: "off"}, enabled: false},
-  {name: "another text", entries: {[StorageKey.offlineSchedules]: "on"}, enabled: true},
-  {name: "a missing key", entries: {}, enabled: true}
+// The offline use setting's cases store the current version, so no
+// migration runs before the read.
+const offlineUseCases = [
+  {name: "on", entries: {[StorageKey.offlineUse]: "on"}, enabled: true},
+  {name: "another text", entries: {[StorageKey.offlineUse]: "true"}, enabled: false},
+  {name: "a missing key, the default", entries: {}, enabled: false}
 ]
 
-for (const offlineCase of offlineCases) {
-  const {settings} = settingsOver(new MemoryStorage(offlineCase.entries))
-  const enabled = settings.readOfflineSchedulesEnabled()
-  deepStrictEqual(enabled, offlineCase.enabled, `offline read: ${offlineCase.name}`)
+deepStrictEqual(StorageKey.offlineUse, "gobusgo:offline-use", "the offline use setting's key")
+
+for (const offlineUseCase of offlineUseCases) {
+  const entries = {...offlineUseCase.entries, [StorageKey.schemaVersion]: VERSION_TEXT}
+  const {settings} = settingsOver(new MemoryStorage(entries))
+  const enabled = settings.readOfflineUseEnabled()
+  deepStrictEqual(enabled, offlineUseCase.enabled, `offline use read: ${offlineUseCase.name}`)
 }
 
-const offlineWriteCases = [
-  {enabled: false, stored: "off"},
-  {enabled: true, stored: undefined}
+const offlineUseWriteCases = [
+  {enabled: true, stored: "on"},
+  {enabled: false, stored: undefined}
 ]
 
-for (const writeCase of offlineWriteCases) {
-  const storage = new MemoryStorage({[StorageKey.offlineSchedules]: "off"})
+for (const writeCase of offlineUseWriteCases) {
+  const storage = new MemoryStorage({[StorageKey.offlineUse]: "on", [StorageKey.schemaVersion]: VERSION_TEXT})
   const {settings} = settingsOver(storage)
-  settings.writeOfflineSchedulesEnabled(writeCase.enabled)
-  deepStrictEqual(storage.entries()[StorageKey.offlineSchedules], writeCase.stored, `offline write: ${writeCase.enabled}`)
+  settings.writeOfflineUseEnabled(writeCase.enabled)
+  deepStrictEqual(storage.entries()[StorageKey.offlineUse], writeCase.stored, `offline use write: ${writeCase.enabled}`)
 }
 
 const showDirectionCases = [
@@ -294,30 +302,6 @@ for (const writeCase of sharedVehicleWriteCases) {
   const {settings} = settingsOver(storage)
   settings.writeSharedVehiclesShown(writeCase.shown)
   deepStrictEqual(storage.entries()[StorageKey.sharedVehicles], writeCase.stored, `shared vehicles write: ${writeCase.shown}`)
-}
-
-const offlineBasemapCases = [
-  {name: "on", entries: {[StorageKey.offlineBasemap]: "on"}, enabled: true},
-  {name: "another text", entries: {[StorageKey.offlineBasemap]: "true"}, enabled: false},
-  {name: "a missing key, the default", entries: {}, enabled: false}
-]
-
-for (const offlineBasemapCase of offlineBasemapCases) {
-  const {settings} = settingsOver(new MemoryStorage(offlineBasemapCase.entries))
-  const enabled = settings.readOfflineBasemapEnabled()
-  deepStrictEqual(enabled, offlineBasemapCase.enabled, `offline basemap read: ${offlineBasemapCase.name}`)
-}
-
-const offlineBasemapWriteCases = [
-  {enabled: true, stored: "on"},
-  {enabled: false, stored: undefined}
-]
-
-for (const writeCase of offlineBasemapWriteCases) {
-  const storage = new MemoryStorage({[StorageKey.offlineBasemap]: "on"})
-  const {settings} = settingsOver(storage)
-  settings.writeOfflineBasemapEnabled(writeCase.enabled)
-  deepStrictEqual(storage.entries()[StorageKey.offlineBasemap], writeCase.stored, `offline basemap write: ${writeCase.enabled}`)
 }
 
 const malformedEntries = [{stopId: ""}, {stopId: 7, name: "x"}, {stopId: "1_1"}, null, "1_2", favoriteB]
@@ -451,25 +435,85 @@ for (const index of [NEGATIVE_INDEX, FRACTIONAL_INDEX, Number.NaN]) {
   throws(() => settings.moveFavorite({stopId: favoriteA.stopId, index, countMax: COUNT_MAX}), AssertionError, `favorites move to ${index} asserts`)
 }
 
-// Today's values, as a browser stored them before the module existed.
+// Values a browser stored before the module existed that every version
+// keeps as they are.
 const unversionedEntries = {
   [StorageKey.theme]: "dark",
   [StorageKey.favoriteStops]: JSON.stringify([favoriteA, favoriteB]),
   [StorageKey.vehicleFilter]: JSON.stringify(filter),
-  [StorageKey.locationFollow]: "true",
-  [StorageKey.offlineSchedules]: "off"
+  [StorageKey.locationFollow]: "true"
 }
 
-deepStrictEqual(SCHEMA_VERSION, 1, "schema version")
+// The stored text of every key, as the module reads it before a migration.
+const unversionedValues = {...absentEntries, ...unversionedEntries}
+
+// The version whose migration merges the two offline settings into one,
+// and the version that holds the two settings it merges.
+const OFFLINE_MERGE_VERSION = 2
+const OFFLINE_SPLIT_VERSION = OFFLINE_MERGE_VERSION - 1
+const OFFLINE_SPLIT_VERSION_TEXT = String(OFFLINE_SPLIT_VERSION)
+
+deepStrictEqual(RetiredStorageKey.offlineSchedules, "gobusgo:offline-schedules", "the retired offline schedules key")
+deepStrictEqual(RetiredStorageKey.offlineBasemap, "gobusgo:offline-basemap", "the retired offline map key")
 
 {
-  const migrated = migrateValues({version: 0, values: unversionedEntries})
-  deepStrictEqual(migrated, unversionedEntries, "migration of unversioned values")
+  const migrated = migrateValues({version: 0, values: unversionedValues})
+  deepStrictEqual(migrated, unversionedValues, "migration of unversioned values")
 }
 
 {
-  const migrated = migrateValues({version: SCHEMA_VERSION, values: unversionedEntries})
-  deepStrictEqual(migrated, unversionedEntries, "migration of current values")
+  const migrated = migrateValues({version: SCHEMA_VERSION, values: unversionedValues})
+  deepStrictEqual(migrated, unversionedValues, "migration of current values")
+}
+
+// The split version's two offline settings become one: the map's "on" turns offline
+// use on, every other rider's is off, and both retired keys are removed.
+const offlineMergeCases = [
+  {name: "the map on", entries: {[RetiredStorageKey.offlineBasemap]: "on"}, offlineUse: "on"},
+  {
+    name: "the map on and schedules off",
+    entries: {[RetiredStorageKey.offlineBasemap]: "on", [RetiredStorageKey.offlineSchedules]: "off"},
+    offlineUse: "on"
+  },
+  {name: "the map off, schedules on by default", entries: {}, offlineUse: undefined},
+  {name: "schedules off", entries: {[RetiredStorageKey.offlineSchedules]: "off"}, offlineUse: undefined},
+  {name: "the map with another text", entries: {[RetiredStorageKey.offlineBasemap]: "true"}, offlineUse: undefined}
+]
+
+for (const mergeCase of offlineMergeCases) {
+  const values = {...absentEntries, ...unversionedEntries, ...mergeCase.entries}
+  const migrated = migrateValues({version: OFFLINE_SPLIT_VERSION, values})
+  const expected = {...unversionedValues}
+
+  if (mergeCase.offlineUse !== undefined) {
+    expected[StorageKey.offlineUse] = mergeCase.offlineUse
+  }
+
+  deepStrictEqual(migrated, expected, `offline merge: ${mergeCase.name}`)
+}
+
+for (const mergeCase of offlineMergeCases) {
+  const entries = {...unversionedEntries, ...mergeCase.entries, [StorageKey.schemaVersion]: OFFLINE_SPLIT_VERSION_TEXT}
+  const storage = new MemoryStorage(entries)
+  const {settings} = settingsOver(storage)
+  const enabled = settings.readOfflineUseEnabled()
+  const expected = {...unversionedEntries, [StorageKey.schemaVersion]: VERSION_TEXT}
+
+  if (mergeCase.offlineUse !== undefined) {
+    expected[StorageKey.offlineUse] = mergeCase.offlineUse
+  }
+
+  deepStrictEqual(enabled, mergeCase.offlineUse === "on", `offline merge read: ${mergeCase.name}`)
+  deepStrictEqual(storage.entries(), expected, `offline merge stored, both retired keys gone: ${mergeCase.name}`)
+}
+
+{
+  const entries = {[RetiredStorageKey.offlineBasemap]: "on", [RetiredStorageKey.offlineSchedules]: "off"}
+  const storage = new MemoryStorage(entries)
+  const {settings} = settingsOver(storage)
+  settings.readTheme()
+  const expected = {[StorageKey.offlineUse]: "on", [StorageKey.schemaVersion]: VERSION_TEXT}
+  deepStrictEqual(storage.entries(), expected, "an unversioned map setting migrates through version 1 to offline use")
 }
 
 {
@@ -486,7 +530,7 @@ deepStrictEqual(SCHEMA_VERSION, 1, "schema version")
 {
   const storage = new MemoryStorage({})
   const {settings} = settingsOver(storage)
-  settings.readOfflineSchedulesEnabled()
+  settings.readOfflineUseEnabled()
   deepStrictEqual(storage.entries(), {[StorageKey.schemaVersion]: VERSION_TEXT}, "first use of empty storage stores the version only")
 }
 
@@ -577,19 +621,17 @@ for (const throwingCase of throwingCases) {
   const theme = settings.readTheme()
   const read = settings.readVehicleFilter()
   const followed = settings.readLocationFollow()
-  const enabled = settings.readOfflineSchedulesEnabled()
+  const enabled = settings.readOfflineUseEnabled()
   const favorites = settings.listFavorites(COUNT_MAX)
   const isShown = settings.readShowDirection()
   const isDenied = settings.readMotionPermissionDenied()
-  const isBasemapSaved = settings.readOfflineBasemapEnabled()
   settings.writeTheme(ThemeSetting.dark)
   settings.writeVehicleFilter(filter)
   settings.removeVehicleFilter()
   settings.writeLocationFollow(true)
-  settings.writeOfflineSchedulesEnabled(false)
+  settings.writeOfflineUseEnabled(true)
   settings.writeShowDirection(false)
   settings.writeMotionPermissionDenied()
-  settings.writeOfflineBasemapEnabled(true)
   const added = settings.addFavorite({favorite: favoriteA, countMax: COUNT_MAX})
   const removed = settings.removeFavorite({stopId: favoriteA.stopId, countMax: COUNT_MAX})
   const recents = settings.listRecentTrips(COUNT_MAX)
@@ -600,11 +642,10 @@ for (const throwingCase of throwingCases) {
   deepStrictEqual(theme, ThemeSetting.system, `${throwingCase.name}: theme`)
   deepStrictEqual(read, {kind: FilterKind.none}, `${throwingCase.name}: filter`)
   deepStrictEqual(followed, false, `${throwingCase.name}: location button`)
-  deepStrictEqual(enabled, true, `${throwingCase.name}: offline`)
+  deepStrictEqual(enabled, false, `${throwingCase.name}: offline use`)
   deepStrictEqual(favorites, [], `${throwingCase.name}: favorites`)
   deepStrictEqual(isShown, true, `${throwingCase.name}: direction setting`)
   deepStrictEqual(isDenied, false, `${throwingCase.name}: motion denial`)
-  deepStrictEqual(isBasemapSaved, false, `${throwingCase.name}: offline basemap`)
   deepStrictEqual(added, {kind: FavoriteChangeKind.changed, favorites: [favoriteA]}, `${throwingCase.name}: add`)
   deepStrictEqual(removed, {kind: FavoriteChangeKind.unchanged}, `${throwingCase.name}: remove`)
   deepStrictEqual(warnings.length, THROWING_WARNING_COUNT, `${throwingCase.name}: warnings`)

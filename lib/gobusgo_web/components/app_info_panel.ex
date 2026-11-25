@@ -3,10 +3,9 @@ defmodule GobusgoWeb.AppInfoPanel do
   The info panel of a map page, in two groups. First the rider's settings,
   under a Settings heading: how to install the application where the
   browser offers it, the theme setting, what works offline and what needs
-  a connection, how schedules are saved for
-  offline use, with its setting and status line, how the map is saved for
-  offline use, with its setting and status line, where the basemap has an
-  offline extract, and the Show my direction
+  a connection, what is saved for offline use, the schedules and, where the
+  basemap has an offline extract, the map, with its one setting and status
+  line, and the Show my direction
   setting of the cone on the rider's location dot. Then, under an About
   heading, what the application is, a disclaimer, what donations fund where
   a donation address is configured, how to read the map, how
@@ -55,8 +54,9 @@ defmodule GobusgoWeb.AppInfoPanel do
   @doc """
   The panel's content. `agencies` are the agencies the panel credits, each
   with a `name`, in display order. `offline_archive` is the address and size
-  of the basemap's offline extract, which the offline map setting saves, or
-  `nil` for a page whose basemap has none, which offers no such setting.
+  of the basemap's offline extract, which the offline use setting saves with
+  the schedules, or `nil` for a page whose basemap has none, whose setting
+  saves the schedules alone.
   """
   attr :agencies, :list, required: true
   attr :offline_archive, :map, default: nil
@@ -73,23 +73,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         <.install_app />
         <.theme_setting />
         <.offline />
-        <section
-          id="app-info-offline-schedules"
-          class="flex flex-col gap-2"
-          phx-hook="OfflineSchedules"
-          phx-update="ignore"
-        >
-          <.setting
-            input_id="offline-schedules-enabled"
-            message={AppInfo.summary(:offline_schedules)}
-            checked
-          />
-          <p id="offline-schedules-status" data-offline-status aria-live="polite"></p>
-          <.more id="app-info-offline-schedules-more" summary="How schedules are saved">
-            <p>{AppInfo.offline_schedules()}</p>
-          </.more>
-        </section>
-        <.offline_basemap :if={@offline_archive != nil} offline_archive={@offline_archive} />
+        <.offline_use offline_archive={@offline_archive} />
         <section
           id="app-info-show-direction"
           class="flex flex-col gap-2"
@@ -139,14 +123,11 @@ defmodule GobusgoWeb.AppInfoPanel do
     """
   end
 
-  # The offline signal opens the Settings tab here and moves focus to the
-  # section, which takes focus from a script alone.
   defp offline(assigns) do
-    assigns =
-      assign(assigns, offline: AppInfo.offline(), section_id: ConnectionSignal.section_id())
+    assigns = assign(assigns, offline: AppInfo.offline())
 
     ~H"""
-    <section id={@section_id} class="flex flex-col gap-2" tabindex="-1">
+    <section id="app-info-offline" class="flex flex-col gap-2">
       <.heading message={AppInfo.summary(:offline)} />
       <.more id="app-info-offline-more" summary="What works and what needs a connection">
         <p>Without a connection, the page shows what it already has.</p>
@@ -164,28 +145,43 @@ defmodule GobusgoWeb.AppInfoPanel do
   end
 
   # The browser checks the stored setting, so the server renders the
-  # default, off, unchecked.
-  defp offline_basemap(assigns) do
+  # default, off, unchecked. The extract's address is left out where the
+  # basemap has none, so the hook saves the schedules alone. The status line
+  # takes focus from a script alone.
+  attr :offline_archive, :map, required: true
+
+  defp offline_use(assigns) do
+    assigns =
+      assign(assigns,
+        archive_url: archive_url(assigns.offline_archive),
+        setting_id: ConnectionSignal.setting_id(),
+        status_id: ConnectionSignal.status_id()
+      )
+
     ~H"""
     <section
-      id="app-info-offline-basemap"
+      id="app-info-offline-use"
       class="flex flex-col gap-2"
-      phx-hook="OfflineBasemap"
+      phx-hook="OfflineUse"
       phx-update="ignore"
-      data-archive-url={@offline_archive.url}
+      data-archive-url={@archive_url}
     >
       <.setting
-        input_id="offline-basemap-enabled"
-        message={AppInfo.offline_basemap_summary(@offline_archive)}
+        input_id={@setting_id}
+        message={AppInfo.offline_use_summary(@offline_archive)}
         checked={false}
       />
-      <p id="offline-basemap-status" data-offline-status aria-live="polite"></p>
-      <.more id="app-info-offline-basemap-more" summary="How the map is saved">
-        <p>{AppInfo.offline_basemap(@offline_archive)}</p>
+      <p id={@status_id} data-offline-status aria-live="polite" tabindex="-1"></p>
+      <dl id="offline-use-breakdown" class="panel-detail-rows" data-offline-breakdown hidden></dl>
+      <.more id="app-info-offline-use-more" summary="What is saved for offline use">
+        <p>{AppInfo.offline_use(@offline_archive)}</p>
       </.more>
     </section>
     """
   end
+
+  defp archive_url(nil), do: nil
+  defp archive_url(%{url: url}), do: url
 
   # The browser checks the stored setting, so the server renders the
   # default, Match system, checked.

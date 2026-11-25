@@ -1,7 +1,7 @@
 // Checks the offline basemap's pure rules against cases written out by
 // hand: which archive the map draws in each connection state, with the
 // extract saved and not saved, which stored copies a save deletes, and what the
-// setting's status line says. Run it with
+// status line says of the map while the setting is on. Run it with
 // `node test/scripts/offline_basemap_check.mjs`; it exits non-zero on the
 // first case that differs.
 
@@ -10,7 +10,6 @@ import {ConnectionKind, OfflineReason} from "../../assets/js/connection_rules.js
 import {PersistenceKind} from "../../assets/js/core/offline_bundle.js"
 import {
   BasemapSaveKind,
-  SettingKind,
   drawnArchiveUrl,
   savedBasemapOf,
   stalePaths,
@@ -66,44 +65,31 @@ for (const staleCase of staleCases) {
   deepStrictEqual(stale, staleCase.stale, `stale paths: ${staleCase.name}`)
 }
 
-const MEGABYTE_BYTES = 1000 * 1000
-const BYTES = 34_355_445
-
 const statusCases = [
   {
-    name: "off",
-    setting: {kind: SettingKind.off},
-    expected: {headline: "Map not saved", caption: "Turn this on to keep streets and places offline."}
+    name: "saved, kept by the browser",
+    read: {saved: SAVED, persistence: PersistenceKind.granted},
+    expected: {headline: "Map saved for offline use", caption: "Your browser keeps it until you remove it."}
   },
   {
-    name: "on, saved, kept by the browser",
-    setting: {kind: SettingKind.on, saved: SAVED, bytes: BYTES, persistence: PersistenceKind.granted},
-    expected: {headline: "Map saved for offline use", caption: "It takes 34.4 MB. Your browser keeps it until you remove it."}
+    name: "saved, open to eviction",
+    read: {saved: SAVED, persistence: PersistenceKind.notGranted},
+    expected: {headline: "Map saved for offline use", caption: "Your browser can remove it when the device runs short of space."}
   },
   {
-    name: "on, saved, open to eviction",
-    setting: {kind: SettingKind.on, saved: SAVED, bytes: MEGABYTE_BYTES, persistence: PersistenceKind.notGranted},
-    expected: {headline: "Map saved for offline use", caption: "It takes 1.0 MB. Your browser can remove it when the device runs short of space."}
+    name: "saved, with no answer from the browser",
+    read: {saved: SAVED, persistence: PersistenceKind.unknown},
+    expected: {headline: "Map saved for offline use", caption: "Your browser does not say whether it keeps it."}
   },
   {
-    name: "on, saved, with no answer from the browser",
-    setting: {kind: SettingKind.on, saved: SAVED, bytes: MEGABYTE_BYTES, persistence: PersistenceKind.unknown},
-    expected: {headline: "Map saved for offline use", caption: "It takes 1.0 MB. Your browser does not say whether it keeps it."}
-  },
-  {
-    name: "on, not saved yet",
-    setting: {kind: SettingKind.on, saved: NOT_SAVED, bytes: 0, persistence: PersistenceKind.unknown},
+    name: "not saved yet",
+    read: {saved: NOT_SAVED, persistence: PersistenceKind.unknown},
     expected: {headline: "Map not saved yet", caption: "It's saved while you're online."}
-  },
-  {
-    name: "unsupported",
-    setting: {kind: SettingKind.unsupported},
-    expected: {headline: "Can't save the map", caption: "This browser can't save it for offline use."}
   }
 ]
 
 for (const statusCase of statusCases) {
-  deepStrictEqual(statusMessage(statusCase.setting), statusCase.expected, `status: ${statusCase.name}`)
+  deepStrictEqual(statusMessage(statusCase.read), statusCase.expected, `status: ${statusCase.name}`)
 }
 
 console.log("offline basemap check passed")

@@ -16,6 +16,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
   alias Gobusgo.OneBusAway.Sources
   alias GobusgoWeb.AppInfo
   alias GobusgoWeb.AppInfoPanel
+  alias GobusgoWeb.ConnectionSignal
   alias GobusgoWeb.VehicleMarkers
 
   @moduletag :tmp_dir
@@ -165,14 +166,14 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert ids(view, @panel <> " > section") == ["app-info-settings", "app-info-about"]
     end
 
-    test "holds installing the app, the theme, offline, offline schedules, and the direction in the settings group, in that order" do
+    test "holds installing the app, the theme, offline, offline use, and the direction in the settings group, in that order" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert ids(view, "#app-info-settings > section") == [
                "app-info-install",
                "app-info-theme",
                "app-info-offline",
-               "app-info-offline-schedules",
+               "app-info-offline-use",
                "app-info-show-direction"
              ]
     end
@@ -219,7 +220,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
           {"app-info-install", "Install Gobusgo", nil},
           {"app-info-theme", "Theme", "Match system follows your device's light or dark setting"},
           {"app-info-offline", "Offline",
-           "The map, saved schedules, favorites, and trip planning keep working"},
+           "Favorites stay, and with Save for offline use on, the map, schedules, and trip planning keep working"},
           {"app-info-disclaimer", "An independent project",
            "Check with your agency before you rely on a position or a time."},
           {"app-info-shared-vehicles", "Scooters and bikes every 60 seconds",
@@ -248,7 +249,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     end
 
     for {input, headline, caption} <- [
-          {"offline-schedules-enabled", "Save schedules offline",
+          {"offline-use-enabled", "Save for offline use",
            "Plan trips and see scheduled times without signal"},
           {"show-direction-enabled", "Show my direction",
            "Your location dot points the way you face or travel"}
@@ -286,7 +287,7 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
     for {disclosure, summary} <- [
           {"app-info-theme-more", "How the theme is kept"},
           {"app-info-offline-more", "What works and what needs a connection"},
-          {"app-info-offline-schedules-more", "How schedules are saved"},
+          {"app-info-offline-use-more", "What is saved for offline use"},
           {"app-info-show-direction-more", "How your direction is found"},
           {"app-info-disclaimer-more", "Full disclaimer"},
           {"app-info-data-use-more", "How OneBusAway data is used"},
@@ -632,51 +633,75 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
       assert items.("#app-info-offline-needs-connection") == needs_connection
     end
 
-    test "lets the offline signal move focus to the offline section" do
+    test "gives the offline use checkbox the identifier the offline signal opens" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
+      setting_id = ConnectionSignal.setting_id()
 
-      assert has_element?(view, @panel <> ~s( #app-info-offline[tabindex="-1"]))
+      assert has_element?(
+               view,
+               @panel <> " #app-info-offline-use input##{setting_id}[type=checkbox]"
+             )
     end
 
-    test "says how schedules are saved for offline use, in a section of its own" do
+    test "lets the offline signal move focus to the offline use status line" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      status_id = ConnectionSignal.status_id()
+
+      assert has_element?(
+               view,
+               @panel <> ~s( #app-info-offline-use p##{status_id}[tabindex="-1"])
+             )
+    end
+
+    test "says what is saved for offline use, in a section of its own" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       text =
         view
-        |> element(@panel <> " #app-info-offline-schedules")
+        |> element(@panel <> " #app-info-offline-use")
         |> render()
         |> LazyHTML.from_fragment()
         |> LazyHTML.text()
 
-      assert text =~ AppInfo.offline_schedules()
+      assert text =~ AppInfo.offline_use(nil)
     end
 
-    test "offers the offline schedules setting, checked until the browser reads the rider's" do
+    test "offers the offline use setting unchecked, the default" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @panel <> " #offline-schedules-enabled[type=checkbox][checked]")
+      assert has_element?(view, @panel <> " #offline-use-enabled[type=checkbox]")
+      refute has_element?(view, @panel <> " #offline-use-enabled[checked]")
     end
 
-    test "hands the offline schedules section to its hook, which the server leaves alone" do
+    test "hands the offline use section to its hook, which the server leaves alone" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(
                view,
-               @panel <>
-                 ~s( #app-info-offline-schedules[phx-hook="OfflineSchedules"][phx-update="ignore"])
+               @panel <> ~s( #app-info-offline-use[phx-hook="OfflineUse"][phx-update="ignore"])
              )
     end
 
-    test "offers no offline map setting for a basemap without an offline extract", %{
+    test "holds the breakdown of stored data hidden and empty, for its hook to fill" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      breakdown = @panel <> " #app-info-offline-use dl#offline-use-breakdown"
+
+      assert has_element?(view, breakdown <> "[hidden]")
+      refute has_element?(view, breakdown <> " > *")
+    end
+
+    test "hands the offline use setting no extract's address for a basemap without one", %{
       tmp_dir: tmp_dir
     } do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      refute has_element?(view, @panel <> " #app-info-offline-basemap")
+      assert has_element?(view, @panel <> " #app-info-offline-use")
+      refute has_element?(view, @panel <> " #app-info-offline-use[data-archive-url]")
     end
 
-    test "puts the offline map setting after the offline schedules", %{tmp_dir: tmp_dir} do
+    test "offers one offline setting for a basemap with an offline extract", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir, @offline_manifest)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
@@ -684,44 +709,34 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
                "app-info-install",
                "app-info-theme",
                "app-info-offline",
-               "app-info-offline-schedules",
-               "app-info-offline-basemap",
+               "app-info-offline-use",
                "app-info-show-direction"
              ]
     end
 
-    test "says how the map is saved for offline use, with its size", %{tmp_dir: tmp_dir} do
+    test "says the map is saved for offline use too, with its size", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir, @offline_manifest)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       text =
         view
-        |> element(@panel <> " #app-info-offline-basemap")
+        |> element(@panel <> " #app-info-offline-use")
         |> render()
         |> LazyHTML.from_fragment()
         |> LazyHTML.text()
 
-      assert text =~ AppInfo.offline_basemap(%{bytes: @offline_bytes})
-      assert text(view, ~s(label[for="offline-basemap-enabled"])) == "Save the map offline"
+      assert text =~ AppInfo.offline_use(%{bytes: @offline_bytes})
+      assert text(view, ~s(label[for="offline-use-enabled"])) == "Save for offline use"
 
-      assert text(view, "#offline-basemap-enabled-caption") ==
-               "Keeps streets and places when you lose signal · 34 MB"
+      assert text(view, "#offline-use-enabled-caption") ==
+               "Plan trips, see scheduled times, and keep streets and places without signal · Map 34 MB"
     end
 
-    test "offers the offline map setting unchecked, the default", %{tmp_dir: tmp_dir} do
+    test "hands the offline use setting the extract's address", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir, @offline_manifest)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
-      assert has_element?(view, @panel <> " #offline-basemap-enabled[type=checkbox]")
-      refute has_element?(view, @panel <> " #offline-basemap-enabled[checked]")
-    end
-
-    test "hands the offline map setting the extract's address", %{tmp_dir: tmp_dir} do
-      write_manifest(tmp_dir, @offline_manifest)
-      {:ok, view, _html} = live(build_conn(), "/vehicles")
-
-      selector =
-        @panel <> ~s( #app-info-offline-basemap[phx-hook="OfflineBasemap"][phx-update="ignore"])
+      selector = @panel <> ~s( #app-info-offline-use[phx-hook="OfflineUse"])
 
       assert attribute(view, selector, "data-archive-url") ==
                "/basemap/basemap-20261004-01-z13.pmtiles"

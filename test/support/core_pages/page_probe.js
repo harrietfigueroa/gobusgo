@@ -3,8 +3,10 @@
 // the data of the map's sources in the page; it counts the offline
 // schedules' index each save of this page writes, the save's last write,
 // so the check knows when the page's save has ended; and it stores the
-// favorites a scenario hands in before the page reads them.
-((favorites) => {
+// stored settings' current version, the offline use setting turned on, so
+// the page saves the schedules the offline scenario reads, and the
+// favorites a scenario hands in, before the page reads them.
+((favorites, schemaVersion) => {
   window.addEventListener("basemap:ready", (event) => { window.__corePagesMap = event.detail.map }, {capture: true})
   window.__corePagesIndexSaves = 0
 
@@ -30,8 +32,10 @@
     }
   }
 
+  window.localStorage.setItem("gobusgo:stored-settings-version", schemaVersion)
+  window.localStorage.setItem("gobusgo:offline-use", "on")
+
   if (favorites.length > 0) {
-    window.localStorage.setItem("gobusgo:stored-settings-version", "1")
     window.localStorage.setItem("gobusgo:favorite-stops", JSON.stringify(favorites))
   }
-})(FAVORITES)
+})(FAVORITES, SCHEMA_VERSION)

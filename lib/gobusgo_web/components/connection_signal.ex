@@ -1,5 +1,6 @@
 defmodule GobusgoWeb.ConnectionSignal do
-  @section_id "app-info-offline"
+  @setting_id "offline-use-enabled"
+  @status_id "offline-use-status"
   @announcer_id "connection-announcement"
 
   @moduledoc """
@@ -10,16 +11,22 @@ defmodule GobusgoWeb.ConnectionSignal do
   and coming back.
 
   The signal is a button the `ConnectionSignal` hook writes and the server
-  leaves alone, with an icon beside its text. The stylesheet shows it while
-  the page is offline, and a click opens the Settings tab's offline
-  section, `##{@section_id}`.
+  leaves alone, with an icon before its text and a chevron after it. The
+  stylesheet shows it while the page is offline, and a click opens the
+  Settings tab at the Save for offline use setting, `##{@setting_id}`, and
+  moves focus to it, or to the setting's status line, `##{@status_id}`,
+  where the browser cannot save and the checkbox is disabled.
   """
 
   use Phoenix.Component
 
-  @doc "The identifier of the Settings tab's offline section, which the signal opens."
-  @spec section_id() :: String.t()
-  def section_id, do: @section_id
+  @doc "The identifier of the Save for offline use checkbox, which the signal opens."
+  @spec setting_id() :: String.t()
+  def setting_id, do: @setting_id
+
+  @doc "The identifier of the Save for offline use status line, which the signal opens in place of a disabled checkbox."
+  @spec status_id() :: String.t()
+  def status_id, do: @status_id
 
   @doc "The element of the `ConnectionState` hook, which shows nothing."
   def state_hook(assigns) do
@@ -30,7 +37,8 @@ defmodule GobusgoWeb.ConnectionSignal do
 
   @doc "The offline signal over a map, and its live region."
   def signal(assigns) do
-    assigns = assign(assigns, section_id: @section_id, announcer_id: @announcer_id)
+    assigns =
+      assign(assigns, setting_id: @setting_id, status_id: @status_id, announcer_id: @announcer_id)
 
     ~H"""
     <button
@@ -39,7 +47,8 @@ defmodule GobusgoWeb.ConnectionSignal do
       class="connection-signal surface"
       phx-hook="ConnectionSignal"
       phx-update="ignore"
-      data-section-id={@section_id}
+      data-setting-id={@setting_id}
+      data-status-id={@status_id}
       data-announcer-id={@announcer_id}
     >
       <svg aria-hidden="true" class="connection-signal-icon" viewBox="0 0 24 24">
@@ -50,6 +59,9 @@ defmodule GobusgoWeb.ConnectionSignal do
         <span data-signal-headline class="message-headline">Offline</span>
         <span data-signal-caption class="connection-signal-caption" hidden></span>
       </span>
+      <svg aria-hidden="true" class="connection-signal-chevron" viewBox="0 0 24 24">
+        <path d="M9 6 L15 12 L9 18" />
+      </svg>
     </button>
     <p id={@announcer_id} class="sr-only" role="status" aria-live="polite" phx-update="ignore"></p>
     """
