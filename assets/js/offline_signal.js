@@ -5,11 +5,11 @@
 //
 // The signal's headline says the page is offline. With the setting off its
 // caption points to the setting; in a browser that cannot save, the caption
-// says so; with the setting on, the caption says what the map
-// shows and how old the saved schedules are: by their newest build while a
-// saved date is current, and by when they were saved once every date has
-// ended. The signal opens the setting, so its accessible name holds its
-// visible text and says where it goes.
+// says so; with the setting on, the caption says what the map shows and how
+// old the saved schedules are: by their newest build while a saved date is
+// current, and by when they were saved once every date has ended. The
+// signal opens the setting, so its accessible name holds its visible text
+// and says where it goes.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 import {ConnectionKind} from "./connection_rules.js"

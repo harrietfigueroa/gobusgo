@@ -294,11 +294,14 @@ export const OfflineUse = {
 
   // A change of the setting in another tab of the page's origin. That tab
   // saves or deletes the stores this one shares, so this one follows its
-  // checkbox, stops a save of its own on a turn-off, and deletes nothing.
+  // checkbox, stops a save of its own on a turn-off, and deletes nothing. A
+  // `localStorage.clear()` there arrives with no key and turns it off.
   storageChanged(event) {
     const isOfflineUseKey = event.key === StorageKey.offlineUse
+    const isCleared = event.key === null
+    const isSettingChanged = isOfflineUseKey || isCleared
 
-    if (!isOfflineUseKey) {
+    if (!isSettingChanged) {
       return
     }
 
@@ -365,7 +368,12 @@ export const OfflineUse = {
     try {
       if (this.hasArchive()) {
         const saved = await readSavedBasemap(this.archiveUrl)
-        announceSavedBasemap(saved)
+
+        // A turn-off in this tab or another during the read has announced
+        // the map as not saved, which this read leaves standing.
+        if (isEnabled()) {
+          announceSavedBasemap(saved)
+        }
       }
 
       await this.show()

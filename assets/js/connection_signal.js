@@ -2,11 +2,11 @@
 // the page is offline and whose caption points to the Save for offline use
 // setting while it is off, says so in a browser that cannot save, and while
 // it is on says what the map shows and how old the saved schedules are, and
-// a polite live region that announces
-// going offline and coming back. The stylesheet shows the chip while the
-// document's root element carries `data-connection="offline"`; this hook
-// writes its texts and its accessible name, again on each change of the
-// setting, and opens the Settings tab at the setting on a click.
+// a polite live region that announces going offline and coming back. The
+// stylesheet shows the chip while the document's root element carries
+// `data-connection="offline"`; this hook writes its texts and its accessible
+// name, again on each change of the setting, and opens the Settings tab at
+// the setting on a click.
 
 import {AGE_REFRESH_MS, AnnouncementKind, OfflineUseKind, announcementOf, signalMessage} from "./offline_signal.js"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"

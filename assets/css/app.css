@@ -638,8 +638,8 @@ a.inline-target {
   outline-offset: 2px;
 }
 
-/* The offline use status line takes focus from a script where the browser
-   cannot save, so it shows the focus ring a control does. */
+/* The offline use status line takes focus, so it shows the focus ring a
+   control does. */
 #offline-use-status:focus-visible {
   outline: 2px solid var(--close-button-focus-color);
   outline-offset: 2px;
