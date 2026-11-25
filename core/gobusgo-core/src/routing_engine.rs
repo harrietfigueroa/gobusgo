@@ -34,11 +34,11 @@
 //!
 //! A query's stops, times, and walks are doubles, as the JavaScript compares
 //! and writes them, so a refusal's message reads the same from both cores. A
-//! label stores each time and each leg's duration as the JavaScript's
-//! `Int32Array` stores it, its `ToInt32`, and compares a new time with the
-//! stored one as a double, so a fractional minimum transfer, a time past
-//! `i32::MAX`, or a walk longer than that is answered as the JavaScript
-//! answers it.
+//! label stores each time as the JavaScript's `Int32Array` stores it, its
+//! `ToInt32`, and compares a new time with the stored one as a double, and a
+//! leg reads its duration back through the same `ToInt32`, so a fractional
+//! minimum transfer, a time past `i32::MAX`, or a walk longer than that is
+//! answered as the JavaScript answers it.
 
 use std::collections::BTreeMap;
 

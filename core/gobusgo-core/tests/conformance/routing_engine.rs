@@ -4,8 +4,9 @@
 // refuses fails with the message the JavaScript's refusal carries, the leaving
 // half of the table of `tools/conformance/tests/routing_engine.test.mjs`
 // restated, that a start stop named twice keeps its shorter walk in either
-// order, that a label stores a time as the JavaScript's Int32Array does, with
-// the JavaScript's answers restated, and that the core refuses the engine
+// order, that a label stores a time and a leg reads its duration back as the
+// JavaScript's Int32Array holds them, with the JavaScript's answers restated,
+// and that the core refuses the engine
 // inputs and views it cannot scan.
 
 use std::fmt::Debug;
@@ -36,6 +37,14 @@ const MEETING_LAST_ARRIVAL_S: i32 = 30_000;
 // 2^31, one past the largest `i32`.
 const INT32_PAST_MAX: f64 = 2_147_483_648.0;
 const LINK_S_PAST_INT32: u32 = 2_147_483_648;
+// One ride from stop 0 to stop 1 well before the day starts, then a walking
+// link of 2^31 + 5 seconds, which wraps to -2147483643 on its leg.
+const EARLY_RIDE_DEPARTURE_S: i32 = -100_000;
+const EARLY_RIDE_ARRIVAL_S: i32 = -50_000;
+const EARLY_QUERY_DEPARTURE_S: f64 = -200_000.0;
+const LINK_S_PAST_INT32_BY_5: u32 = 2_147_483_653;
+const ARRIVAL_AFTER_LONG_LINK_S: f64 = 2_147_433_653.0;
+const LEG_S_AFTER_LONG_LINK: f64 = -2_147_483_643.0;
 // A departure two seconds before a walk of 2^31 seconds ends at the largest
 // time a label holds below the unreached one.
 const DEPARTURE_BEFORE_WRAP_S: f64 = -2.0;
@@ -475,10 +484,6 @@ fn refused_engine_inputs() {
             "routing engine: the stop count 4294967296 exceeds a u32",
         ),
         (
-            edited(|input| input.connections.arrival_s.truncate(1)),
-            "routing engine: the arrival_s column holds 1 values, not 2",
-        ),
-        (
             edited(|input| input.connections.departure_s.reverse()),
             "routing engine: the connections are not ordered by departure",
         ),
@@ -739,4 +744,50 @@ fn refused_view_lengths() {
             format!("routing engine: the {name} column holds 1 values, not 2")
         );
     }
+}
+
+// A walk of 2^31 + 5 seconds after a ride reads back wrapped on its leg, while
+// the time it reaches counts the whole link; the answer is the JavaScript's
+// over the same inputs.
+#[test]
+fn a_walk_after_a_ride_past_an_int32_reads_back_wrapped() {
+    let engine = Engine::new(EngineInput {
+        stop_count: 3,
+        connections: Connections {
+            departure_s: vec![EARLY_RIDE_DEPARTURE_S],
+            arrival_s: vec![EARLY_RIDE_ARRIVAL_S],
+            departure_stop: vec![0],
+            arrival_stop: vec![1],
+            trip: vec![0],
+            sequence: vec![0],
+            boarding: vec![1],
+            alighting: vec![1],
+        },
+        transfers: Transfers {
+            from_stop: vec![1],
+            to_stop: vec![2],
+            duration_s: vec![LINK_S_PAST_INT32_BY_5],
+        },
+        minimum_transfer_s: MINIMUM_TRANSFER_S,
+    });
+    let frontier = route(
+        &engine.view(),
+        &from_stop_0(2.0, EARLY_QUERY_DEPARTURE_S).query(),
+    );
+    let expected = vec![Journey {
+        arrival_s: ARRIVAL_AFTER_LONG_LINK_S,
+        changes: 0,
+        legs: vec![
+            Leg::Ride {
+                board_connection: 0,
+                alight_connection: 0,
+            },
+            Leg::Walk {
+                from_stop: 1,
+                to_stop: 2,
+                duration_s: LEG_S_AFTER_LONG_LINK,
+            },
+        ],
+    }];
+    assert_eq!(frontier, expected);
 }
