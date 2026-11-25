@@ -663,6 +663,23 @@ fn refused_views() {
         ),
         (
             EngineView {
+                trip_count: 0,
+                ..view
+            },
+            "routing engine: the trip slot 0 is not below the trip count 0",
+        ),
+        (
+            EngineView {
+                connections: ConnectionColumns {
+                    departure_s: &[2, 1],
+                    ..view.connections
+                },
+                ..view
+            },
+            "routing engine: the connections are not ordered by departure",
+        ),
+        (
+            EngineView {
                 links: LinkColumns {
                     offsets: &[0, 2, 1, 2],
                     ..links

@@ -823,10 +823,12 @@ fn trip_slots(trips: &[u32]) -> (Vec<u32>, usize) {
 }
 
 // The shape a view's columns must hold for a query to index them: column
-// lengths that agree, every stop a connection or link names below the stop
-// count, outgoing and incoming link offsets of one length that never decrease
-// and end at their link counts, and a trip count bounded by the connections,
-// since a query allocates by it.
+// lengths that agree, connections ordered by departure, as the scan's search
+// for its first and last connection reads them, every trip slot below the trip
+// count, every stop a connection or link names below the stop count, outgoing
+// and incoming link offsets of one length that never decrease and end at their
+// link counts, and a trip count bounded by the connections, since a query
+// allocates by it.
 //
 // The stop checks read the four stop columns whole on every query, a pass over
 // every connection and link where the scan reads only its window of
@@ -867,6 +869,17 @@ fn assert_view(engine: &EngineView<'_>) {
             engine.trip_count
         )
     });
+    assert::condition(departure_s.is_sorted(), || {
+        "routing engine: the connections are not ordered by departure".to_owned()
+    });
+    for &slot in trip_slot {
+        assert::condition(index_of(slot) < engine.trip_count, || {
+            format!(
+                "routing engine: the trip slot {slot} is not below the trip count {}",
+                engine.trip_count
+            )
+        });
+    }
     let stop_count = engine.stop_count();
     let departure_stops = StopColumn {
         stops: departure_stop,
@@ -1866,8 +1879,9 @@ fn checked_back<'query>(engine: &EngineView<'_>, origin: Origin<'query>) -> Chec
 
             for &start in starts {
                 assert_start(engine, start);
-                let Some(walk_s) = walk_s_by_stop.get_mut(stop_index(start.stop)) else {
-                    assert::unreachable(&start.stop, "routing engine: a checked stop is a stop");
+                let start_stop = stop_index(start.stop);
+                let Some(walk_s) = walk_s_by_stop.get_mut(start_stop) else {
+                    assert::unreachable(&start_stop, "routing engine: a checked stop is a stop");
                 };
                 assert::condition(*walk_s == NOT_A_START_S, || {
                     format!(
