@@ -81,7 +81,7 @@ async function fetchAndStore({cache, url, signal}) {
 
 /**
  * Saves the extract at `url` in the store within the bound of `deadline`
- * (`save_deadline.js`), logging a save that fails or passes the bound; a
+ * logging a save that fails or passes the bound; a
  * save its controller aborts ends quietly.
  */
 export async function saveBasemap({url, deadline}) {

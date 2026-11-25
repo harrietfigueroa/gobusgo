@@ -355,7 +355,7 @@ function newestBuild(dates) {
 
 /**
  * Saves the region's schedules in the store, each file within the bound of
- * `deadline` (`save_deadline.js`), logging a save that fails or passes the
+ * `deadline`, logging a save that fails or passes the
  * bound; a save its controller aborts ends quietly and leaves the previous
  * bundle in use.
  */

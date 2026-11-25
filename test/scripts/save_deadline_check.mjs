@@ -39,7 +39,19 @@ function neverSettles() {
   return new Promise(ignoreExecutor)
 }
 
-function ignoreExecutor() {}
+function ignoreExecutor() {
+  // Neither callback is called, so the promise stays pending, as a store
+  // that never settles does.
+}
+
+async function storedValue() {
+  return "stored"
+}
+
+// A file whose fetch fails, as a rejected promise rather than a throw.
+function failing() {
+  return Promise.reject(new Error("network"))
+}
 
 deepStrictEqual(FILE_SAVE_MS_MAX, FIVE_MINUTES_MS, "the bound is five minutes")
 
@@ -47,7 +59,7 @@ deepStrictEqual(FILE_SAVE_MS_MAX, FIVE_MINUTES_MS, "the bound is five minutes")
   const timers = handTimers()
   const controller = new AbortController()
   const deadline = saveDeadlineOf({controller, timers, fileMsMax: FILE_MS_MAX})
-  const value = await deadline.withinBound(async () => "stored")
+  const value = await deadline.withinBound(storedValue)
   deepStrictEqual(value, "stored", "a file within its bound: its value")
   deepStrictEqual(timers.pending.size, 0, "a file within its bound: its timer cleared")
   deepStrictEqual(controller.signal.aborted, false, "a file within its bound: the save goes on")
@@ -95,11 +107,6 @@ deepStrictEqual(FILE_SAVE_MS_MAX, FIVE_MINUTES_MS, "the bound is five minutes")
   const timers = handTimers()
   const controller = new AbortController()
   const deadline = saveDeadlineOf({controller, timers, fileMsMax: FILE_MS_MAX})
-
-  async function failing() {
-    throw new Error("network")
-  }
-
   await rejects(deadline.withinBound(failing), {message: "network"}, "a file that fails: its failure")
   deepStrictEqual(timers.pending.size, 0, "a file that fails: its timer cleared")
   deepStrictEqual(controller.signal.aborted, false, "a file that fails: the save is not aborted")
