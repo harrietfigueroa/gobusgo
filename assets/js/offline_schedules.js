@@ -33,6 +33,7 @@ import {
   statusMessage,
   tripPathShardPlan
 } from "#core/offline_bundle.js"
+import {AssertionError} from "#core/assert.js"
 import {PackedOutcome} from "#core/packed_container.js"
 import {expandStream} from "./packed_stream.js"
 import {decodeTripPathIndex, indexEntries} from "#core/trip_path_shard.js"
@@ -358,6 +359,10 @@ export async function saveSchedules(deadline) {
       console.warn("Offline schedules not saved", outcome.reason)
     }
   } catch (error) {
+    if (error instanceof AssertionError) {
+      throw error
+    }
+
     if (error.name !== "AbortError") {
       console.warn("Offline schedules not saved", error)
     }
@@ -370,25 +375,14 @@ export async function deleteSavedSchedules() {
 }
 
 /**
- * The status line of the saved schedules while the setting is on: the
- * dates the store holds and `persistence`, the browser's answer to keeping
- * the page's storage. A store `caches.has` does not find reads
- * as an empty one and is not opened, so a read that follows a deletion
- * does not make the store again; a deletion between that check and the
- * open is followed by a store made anew and empty.
+ * The status line of the saved schedules while the setting is on, from
+ * `savedIndex`, a read of the saved index, `presentPaths`, the paths the
+ * store holds, and `persistence`, the browser's answer to keeping the
+ * page's storage: the dates the store holds and whether the browser keeps
+ * them. It reads no store.
  */
-export async function describeSchedules(persistence) {
-  const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)
-  let savedIndex = {kind: IndexKind.none}
-  let present = []
-
-  if (hasStore) {
-    const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-    savedIndex = await readIndex(cache)
-    present = await storedPaths(cache)
-  }
-
-  const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
+export function describeSchedules({savedIndex, presentPaths, persistence}) {
+  const status = bundleStatus({savedIndex, presentPaths, nowMs: Date.now()})
   let dates = []
 
   if (Object.hasOwn(status, "dates")) {

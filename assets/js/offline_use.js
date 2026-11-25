@@ -118,14 +118,18 @@ async function storedFiles() {
   return files
 }
 
-async function readBreakdownRows() {
-  const savedIndex = await readSavedIndex()
-  const files = await storedFiles()
-  const breakdown = offlineBreakdown({savedIndex, files})
-  return breakdownRows(breakdown)
+function schedulesPathsOf(files) {
+  const paths = []
+
+  for (const file of files) {
+    if (file.cacheName === OFFLINE_SCHEDULES_CACHE_NAME) {
+      paths.push(file.path)
+    }
+  }
+
+  return paths
 }
 
-// The list is hidden while it holds no row.
 function writeRows({element, rows}) {
   element.replaceChildren()
 
@@ -172,6 +176,7 @@ export const OfflineUse = {
     // The deletion of the stores a turn-off started, which a save waits for
     // so it never writes into a store about to be deleted.
     this.deletion = Promise.resolve()
+    this.showNumber = 0
 
     if (!isSupported()) {
       this.checkbox.checked = false
@@ -355,6 +360,10 @@ export const OfflineUse = {
         await saveBasemap({url: this.archiveUrl, deadline})
       }
     } catch (error) {
+      if (error instanceof AssertionError) {
+        throw error
+      }
+
       warnUnlessAborted({description: "Offline use not saved", error})
     } finally {
       this.controller = null
@@ -387,9 +396,14 @@ export const OfflineUse = {
     return await readPersistence()
   },
 
-  // The setting is read again after the reads, since the rider can turn it
-  // off while they run, and the off message then stands.
+  // Shows overlap, as a save's end and a turn-off can each start one, and
+  // they finish in any order, so a show writes only while it is the latest
+  // started. The setting is read again after the reads, since the rider can
+  // turn it off while they run, and the off message then stands.
   async show() {
+    this.showNumber += 1
+    const showNumber = this.showNumber
+
     if (!isEnabled()) {
       this.showOff()
       return
@@ -397,14 +411,23 @@ export const OfflineUse = {
 
     try {
       const persistence = await this.persistenceAnswer()
-      const schedulesMessage = await describeSchedules(persistence)
+      const savedIndex = await readSavedIndex()
+      const files = await storedFiles()
+      const presentPaths = schedulesPathsOf(files)
+      const schedulesMessage = describeSchedules({savedIndex, presentPaths, persistence})
       let mapMessage = null
 
       if (this.hasArchive()) {
         mapMessage = await describeBasemap({url: this.archiveUrl, persistence})
       }
 
-      const rows = await readBreakdownRows()
+      const breakdown = offlineBreakdown({savedIndex, files})
+      const rows = breakdownRows(breakdown)
+      const isLatest = showNumber === this.showNumber
+
+      if (!isLatest) {
+        return
+      }
 
       if (!isEnabled()) {
         this.showOff()

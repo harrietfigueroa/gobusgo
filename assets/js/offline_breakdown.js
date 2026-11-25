@@ -1,5 +1,5 @@
-// The breakdown of what Save for offline use stores, by part, as the
-// Settings tab shows it. Everything here is pure: the saved index and each
+// The breakdown of what Save for offline use stores, by part, in the order
+// `breakdownRows` lists them. Everything here is pure: the saved index and each
 // stored file's store, path, and size are given as values, and nothing here
 // touches a store.
 //
@@ -18,6 +18,7 @@ import {
   IndexKind,
   OFFLINE_SCHEDULES_CACHE_NAME
 } from "#core/offline_bundle.js"
+import {KINDS, PackedKind} from "#core/packed_container.js"
 import {OFFLINE_BASEMAP_CACHE_NAME} from "./offline_basemap.js"
 
 const KILOBYTE_BYTES = 1000
@@ -25,9 +26,25 @@ const MEGABYTE_BYTES = 1000 * 1000
 // Sizes under a tenth of a megabyte are shown in kilobytes, so a small file
 // never reads as 0.0 MB.
 const KILOBYTES_SHOWN_BYTES_MAX = 100_000
-const TRIP_PATH_NAME_PREFIX = "trip-paths-"
 
-/** The parts of the breakdown, in the order the Settings tab lists them. */
+function kindEntryOf(number) {
+  for (const entry of KINDS) {
+    if (entry.number === number) {
+      return entry
+    }
+  }
+
+  return unreachable(number, "offline breakdown: a packed kind the table lacks")
+}
+
+const tripPathNamePrefix = kindEntryOf(PackedKind.tripPathShard).prefix + "-"
+const tripPathIndexNamePrefix = kindEntryOf(PackedKind.tripPathIndex).prefix + "-"
+assertCondition(
+  tripPathIndexNamePrefix.startsWith(tripPathNamePrefix),
+  "offline breakdown: a trip path index's name does not start as a shard's: " + tripPathIndexNamePrefix
+)
+
+/** The parts of the breakdown, in the order `breakdownRows` lists them. */
 export const PartKind = Object.freeze({
   schedules: "schedules",
   tripPaths: "tripPaths",
@@ -58,7 +75,7 @@ function namedPathsOf(savedIndex) {
 function schedulesPartOf({path, savedIndex, namedPaths}) {
   const fileName = fileNameOf(path)
 
-  if (fileName.startsWith(TRIP_PATH_NAME_PREFIX)) {
+  if (fileName.startsWith(tripPathNamePrefix)) {
     return PartKind.tripPaths
   }
 

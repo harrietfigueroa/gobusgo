@@ -8,6 +8,8 @@
 // `Cache.put` can stay pending, so the file's wait also ends when the
 // signal aborts, and the save ends with it.
 
+import {AssertionError} from "#core/assert.js"
+
 /** The longest one file's fetch and store take before its save is aborted, 5 minutes. */
 export const FILE_SAVE_MS_MAX = 5 * 60 * 1000
 
@@ -42,8 +44,9 @@ export function saveDeadlineOf({controller, timers, fileMsMax}) {
     let isRaceSettled = false
 
     // An operation the abort outran settles after the save has moved on: a
-    // failure of the abort's making is expected, and anything else is
-    // logged. A failure that settles the race is the caller's.
+    // failure of the abort's making is expected, a programmer error is
+    // rethrown, and anything else is logged. A failure that settles the race
+    // is the caller's.
     function lateFailureCallback(error) {
       if (isRaceSettled) {
         warnLateFailure(error)
@@ -65,6 +68,10 @@ export function saveDeadlineOf({controller, timers, fileMsMax}) {
 }
 
 function warnLateFailure(error) {
+  if (error instanceof AssertionError) {
+    throw error
+  }
+
   const isAbort = error.name === "AbortError" || error.name === "TimeoutError"
 
   if (!isAbort) {

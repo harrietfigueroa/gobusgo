@@ -7,6 +7,7 @@
 // response whole or not at all, so a save that stops part way stores
 // nothing.
 
+import {AssertionError} from "#core/assert.js"
 import {
   CHANGE_EVENT_NAME,
   OFFLINE_BASEMAP_CACHE_NAME,
@@ -87,6 +88,10 @@ export async function saveBasemap({url, deadline}) {
   try {
     await save({url, deadline})
   } catch (error) {
+    if (error instanceof AssertionError) {
+      throw error
+    }
+
     if (error.name !== "AbortError") {
       console.warn("Offline map not saved", error)
     }

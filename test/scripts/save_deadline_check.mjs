@@ -1,11 +1,13 @@
 // Checks the bound on each file of a save for offline use with timers the
 // check fires by hand: a file within its bound, a file past it whose wait
 // never ends, a save its own controller aborts, a save already aborted,
-// and a file that fails. Run it with `node test/scripts/save_deadline_check.mjs`;
+// a file that fails, and a file the bound outran failing later, an
+// assertion failure among them. Run it with `node test/scripts/save_deadline_check.mjs`;
 // it exits non-zero on the first case that differs.
 
 import {deepStrictEqual, rejects} from "node:assert/strict"
 import {setImmediate as setImmediatePromise} from "node:timers/promises"
+import {AssertionError} from "../../assets/js/core/assert.js"
 import {FILE_SAVE_MS_MAX, saveDeadlineOf} from "../../assets/js/save_deadline.js"
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000
@@ -194,6 +196,40 @@ for (const lateCase of lateFailureCases) {
 
   const warnings = await warningsDuring(lateRun)
   deepStrictEqual(warnings.length, lateCase.warningCount, `a late failure, ${lateCase.name}: warnings`)
+}
+
+// A programmer error the bound outran is never a warning: it rejects
+// unhandled, which ends the process outside this check.
+{
+  const timers = handTimers()
+  const controller = new AbortController()
+  const deadline = saveDeadlineOf({controller, timers, fileMsMax: FILE_MS_MAX})
+  const late = settleableLater()
+  const failure = new AssertionError("a broken invariant")
+  const unhandled = []
+
+  function recordUnhandled(reason) {
+    unhandled.push(reason)
+  }
+
+  async function lateRun() {
+    const waiting = deadline.withinBound(late.operation)
+    timers.fireAll()
+    await rejects(waiting, {name: "TimeoutError"}, "a late assertion failure: the bound ends the wait")
+    late.reject(failure)
+  }
+
+  process.on("unhandledRejection", recordUnhandled)
+
+  try {
+    const warnings = await warningsDuring(lateRun)
+    await setImmediatePromise()
+    deepStrictEqual(warnings, [], "a late assertion failure: not warned")
+  } finally {
+    process.off("unhandledRejection", recordUnhandled)
+  }
+
+  deepStrictEqual(unhandled, [failure], "a late assertion failure: rethrown")
 }
 
 console.log("save deadline check passed")

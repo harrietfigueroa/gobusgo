@@ -136,13 +136,17 @@ const breakdownCases = [
   {
     name: "a file the index does not name",
     savedIndex: FULL_INDEX,
-    files: [...SCHEDULES_FILES, NEXT_DATE_STOPS_FILE],
+    files: [...FULL_FILES, NEXT_DATE_STOPS_FILE],
     expected: {
       parts: [
         {kind: PartKind.schedules, bytes: SCHEDULES_BYTES},
+        {kind: PartKind.tripPaths, bytes: TRIP_PATHS_BYTES},
+        {kind: PartKind.tiles, bytes: TILE_ARCHIVE_BYTES},
+        {kind: PartKind.places, bytes: PLACES_BYTES},
+        {kind: PartKind.map, bytes: EXTRACT_BYTES},
         {kind: PartKind.other, bytes: NEXT_DATE_STOPS_BYTES}
       ],
-      totalBytes: SCHEDULES_BYTES + NEXT_DATE_STOPS_BYTES
+      totalBytes: SCHEDULES_BYTES + TRIP_PATHS_BYTES + TILE_ARCHIVE_BYTES + PLACES_BYTES + EXTRACT_BYTES + NEXT_DATE_STOPS_BYTES
     }
   },
   {
@@ -192,8 +196,8 @@ const sizeCases = [
   {bytes: 1_001, text: "2 kB"},
   {bytes: 99_999, text: "100 kB"},
   {bytes: 100_000, text: "0.1 MB"},
-  {bytes: 1_090_000, text: "1.1 MB"},
-  {bytes: 34_355_445, text: "34.4 MB"}
+  {bytes: PLACES_BYTES, text: "1.1 MB"},
+  {bytes: EXTRACT_BYTES, text: "34.4 MB"}
 ]
 
 for (const sizeCase of sizeCases) {
