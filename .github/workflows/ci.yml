@@ -119,6 +119,7 @@ jobs:
       - run: mix assets.setup
       - run: mix assets.build
       - run: node test/scripts/core_binding_check.mjs
+      - run: node test/scripts/service_worker_release_check.mjs
 
   # The accessibility checks: the ExUnit rules of Gobusgo.Test.Accessibility over the rendered pages, html-eslint over the files that test writes, the node scan of the front end's JavaScript, and the visual checks of the stylesheet and the route chip rule.
   accessibility:

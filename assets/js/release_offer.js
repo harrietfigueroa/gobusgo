@@ -1,8 +1,9 @@
 // The rules of the offer to reload into a new release: whether a waiting
 // worker is offered or takes over with no offer, from the release the page
 // names and the release the worker answers with; what a click does, from the
-// state of the worker the offer names; and how long the page waits for each
-// answer. Everything here is pure.
+// state of the worker the offer names; whether a shown offer is withdrawn
+// once a worker of the page's own release takes over; and how long the page
+// waits for each answer. Everything here is pure.
 //
 // A page loaded from the network after a release already runs that release
 // under the worker before it, so a waiting worker of the page's own release
@@ -129,4 +130,22 @@ export function reloadStep({workerState}) {
   const isTakenOver = TAKEN_OVER_STATES.includes(workerState)
   assertCondition(isTakenOver, "the offer names a worker that has installed, got the state: " + String(workerState))
   return ReloadStepKind.reload
+}
+
+/**
+ * Whether the page withdraws an offer whose worker is in `workerState` once
+ * a worker of the page's own release takes over: an offer whose worker still
+ * waits stands, and any other is withdrawn. A worker that has not installed
+ * is refused.
+ */
+export function isOfferWithdrawn({workerState}) {
+  const isWaiting = workerState === WAITING_STATE
+
+  if (isWaiting) {
+    return false
+  }
+
+  const isTakenOver = TAKEN_OVER_STATES.includes(workerState)
+  assertCondition(isTakenOver, "the offer names a worker that has installed, got the state: " + String(workerState))
+  return true
 }

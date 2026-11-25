@@ -29,6 +29,7 @@ import {
   RELOAD_WAIT_MS,
   ReloadStepKind,
   TAKEOVER_LATE_MESSAGE,
+  isOfferWithdrawn,
   offerStep,
   pageReleaseOf,
   releaseAnswerOf,
@@ -44,7 +45,8 @@ const RELEASE_ELEMENT_SELECTOR = 'meta[name="gobusgo:release"]'
 // The page's one offer. Its click acts on the worker the offer named last,
 // so a newer release that installs while the offer is shown replaces the
 // worker it names. Returns `show`, which shows the offer for a worker, and
-// `withdraw`, which hides it once the page's own release takes over.
+// `withdraw`, which hides a shown offer unless its worker still waits
+// (`isOfferWithdrawn`).
 function releaseOffer() {
   const offer = document.getElementById("release-update")
   const button = offer.querySelector("[data-release-reload]")
@@ -89,8 +91,16 @@ function releaseOffer() {
   }
 
   function withdraw() {
-    offered = null
-    offer.hidden = true
+    const isShown = offered !== null
+
+    if (isShown) {
+      const isWithdrawn = isOfferWithdrawn({workerState: offered.state})
+
+      if (isWithdrawn) {
+        offered = null
+        offer.hidden = true
+      }
+    }
   }
 
   navigator.serviceWorker.addEventListener("controllerchange", controllerChanged)
@@ -142,9 +152,9 @@ function askRelease(worker) {
 }
 
 // Offers a waiting worker of another release, and has one of the page's own
-// release take over with no offer, withdrawing the offer of an older release
-// that waited before it. The worker's state is read after the answer, since
-// a newer install can replace it meanwhile.
+// release take over with no offer, withdrawing the shown offer unless its
+// worker still waits. The worker's state is read after the answer, since a
+// newer install can replace it meanwhile.
 async function settleWaiting({worker, pageRelease, offer}) {
   const answer = await askRelease(worker)
   const step = offerStep({pageRelease, answer, workerState: worker.state})
@@ -194,7 +204,7 @@ async function checkForRelease(registration) {
   try {
     await registration.update()
   } catch (error) {
-    console.warn("Service worker update not checked", error)
+    console.warn("Service worker update not checked", {err: {message: error.message, stack: error.stack}})
   }
 }
 
@@ -210,7 +220,7 @@ async function register() {
       updateViaCache: "none"
     })
   } catch (error) {
-    console.warn("Service worker not registered", error)
+    console.warn("Service worker not registered", {err: {message: error.message, stack: error.stack}})
     return
   }
 
