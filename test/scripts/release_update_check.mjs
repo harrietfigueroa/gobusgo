@@ -65,12 +65,19 @@ class FakeRegistration extends EventTarget {
   }
 
   // Install's steps as a page sees them: updatefound with the installing
-  // worker, then its state "installed" once it is the waiting worker.
+  // worker, the waiting worker it replaces made redundant, then its state
+  // "installed" once it is the waiting worker.
   install(worker) {
     this.installing = worker
     this.dispatchEvent(new Event("updatefound"))
     this.installing = null
+    const replaced = this.waiting
     this.waiting = worker
+
+    if (replaced !== null) {
+      replaced.moveTo("redundant")
+    }
+
     worker.moveTo("installed")
   }
 }
@@ -186,15 +193,17 @@ async function pageWith({controller, waiting, pageRelease}) {
   return {container, registration, offer, reloads, pass}
 }
 
-// The case's outcome, read before the ports the worker was handed are
-// closed: an open port with a listener keeps Node running.
-function outcomeOf({page, worker}) {
-  const outcome = {hidden: page.offer.hidden, activated: worker.messages.includes(MessageKind.activate), reloadCount: page.reloads.length}
-
+// An open port with a listener keeps Node running.
+function closePorts(worker) {
   for (const port of worker.ports) {
     port.close()
   }
+}
 
+// The case's outcome, read before the ports the worker was handed are closed.
+function outcomeOf({page, worker}) {
+  const outcome = {hidden: page.offer.hidden, activated: worker.messages.includes(MessageKind.activate), reloadCount: page.reloads.length}
+  closePorts(worker)
   return outcome
 }
 
@@ -300,6 +309,21 @@ const cases = [
       return outcomeOf({page, worker: waiting})
     },
     outcome: offered
+  },
+  {
+    name: "a page withdraws its offer of an older release once a worker of its own release installs and takes over",
+    async run() {
+      const older = new FakeWorker({state: "installed", release: RELEASE_ONE})
+      const active = new FakeWorker({state: "activated", release: RELEASE_ONE})
+      const page = await pageWith({controller: active, waiting: older, pageRelease: RELEASE_TWO})
+      const own = new FakeWorker({state: "installing", release: RELEASE_TWO})
+      page.registration.install(own)
+      await settle()
+      page.container.takeOver(own)
+      closePorts(older)
+      return outcomeOf({page, worker: own})
+    },
+    outcome: takenOverQuietly
   }
 ]
 

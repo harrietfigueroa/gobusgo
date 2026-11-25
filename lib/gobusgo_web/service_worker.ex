@@ -27,7 +27,7 @@ defmodule GobusgoWeb.ServiceWorker do
   @lock_path Path.expand("../../assets/vendor.lock.json", __DIR__)
   @external_resource @lock_path
 
-  @release_pattern ~r/\A[0-9a-f]{16}\z/
+  @release_pattern ~r/\A[0-9a-f]{#{@release_length}}\z/
 
   {:ok, lock} = @lock_path |> File.read!() |> Lock.decode()
   {:ok, %{content_sha256: content_sha256}} = Lock.fetch_archive(lock, @archive_name)
