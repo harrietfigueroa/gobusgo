@@ -295,7 +295,8 @@ export const OfflineUse = {
   // A change of the setting in another tab of the page's origin. That tab
   // saves or deletes the stores this one shares, so this one follows its
   // checkbox, stops a save of its own on a turn-off, and deletes nothing. A
-  // `localStorage.clear()` there arrives with no key and turns it off.
+  // clear of that tab's local storage arrives with no key and reads as a
+  // turn-off.
   storageChanged(event) {
     const isOfflineUseKey = event.key === StorageKey.offlineUse
     const isCleared = event.key === null
