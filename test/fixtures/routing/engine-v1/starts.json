@@ -43,6 +43,28 @@
         {"starts": [["A", 180]], "to": "C", "depart": "08:00", "expected": [{"arrive": "08:40", "changes": 1, "legs": ["walkFromPosition A 180", "ride T1 A 08:10 B 08:20", "ride T2 B 08:25 C 08:40"]}]},
         {"starts": [["A", 180]], "to": "C", "arriveBy": "08:40", "expected": [{"depart": "08:07", "arrive": "08:40", "changes": 1, "legs": ["walkFromPosition A 180", "ride T1 A 08:10 B 08:20", "ride T2 B 08:25 C 08:40"]}]}
       ]
+    },
+    {
+      "name": "the scan stops at the best departure plus the shortest walk, so a tie there keeps the later boarding",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:01"], ["C", "08:20"]]},
+        {"id": "T2", "stopTimes": [["B", "08:05"], ["C", "08:20"]]}
+      ],
+      "queries": [
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "depart": "08:00", "expected": [{"arrive": "08:20", "changes": 0, "legs": ["walkFromPosition A 60", "ride T1 A 08:01 C 08:20"]}]},
+        {"starts": [["A", 60], ["B", 300]], "to": "C", "arriveBy": "08:20", "expected": [{"depart": "08:00", "arrive": "08:20", "changes": 0, "legs": ["walkFromPosition B 300", "ride T2 B 08:05 C 08:20"]}]}
+      ]
+    },
+    {
+      "name": "of start stops left at one time the first in the query's order is kept",
+      "trips": [
+        {"id": "T1", "stopTimes": [["A", "08:02"], ["C", "08:20"]]},
+        {"id": "T2", "stopTimes": [["B", "08:04"], ["C", "08:20"]]},
+        {"id": "T3", "stopTimes": [["Z", "09:00"], ["C", "09:10"]]}
+      ],
+      "queries": [
+        {"starts": [["Z", 60], ["A", 120], ["B", 240]], "to": "C", "arriveBy": "08:20", "expected": [{"depart": "08:00", "arrive": "08:20", "changes": 0, "legs": ["walkFromPosition A 120", "ride T1 A 08:02 C 08:20"]}]}
+      ]
     }
   ]
 }

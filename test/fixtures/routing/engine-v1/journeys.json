@@ -201,6 +201,27 @@
       ]
     },
     {
+      "name": "two walks to rides that leave the origin at one second keep the first scanned",
+      "trips": [
+        {"id": "T1", "stopTimes": [["X", "08:01"], ["T", "08:10"]]},
+        {"id": "T2", "stopTimes": [["Y", "08:02"], ["T", "08:10"]]}
+      ],
+      "walks": [["O", "X", 60], ["O", "Y", 120]],
+      "queries": [
+        {"from": "O", "to": "T", "depart": "08:00", "expected": [{"arrive": "08:10", "changes": 0, "legs": ["walk O X 60", "ride T1 X 08:01 T 08:10"]}]},
+        {"from": "O", "to": "T", "arriveBy": "08:10", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["walk O Y 120", "ride T2 Y 08:02 T 08:10"]}]}
+      ]
+    },
+    {
+      "name": "a walk alone stays on the frontier beside a faster ride",
+      "trips": [{"id": "T1", "stopTimes": [["O", "08:22"], ["T", "08:28"]]}],
+      "walks": [["O", "T", 600]],
+      "queries": [
+        {"from": "O", "to": "T", "depart": "08:20", "expected": [{"arrive": "08:30", "changes": 0, "legs": ["walk O T 600"]}, {"arrive": "08:28", "changes": 0, "legs": ["ride T1 O 08:22 T 08:28"]}]},
+        {"from": "O", "to": "T", "arriveBy": "08:30", "expected": [{"depart": "08:20", "arrive": "08:30", "changes": 0, "legs": ["walk O T 600"]}, {"depart": "08:22", "arrive": "08:28", "changes": 0, "legs": ["ride T1 O 08:22 T 08:28"]}]}
+      ]
+    },
+    {
       "name": "a journey takes at most six rides",
       "trips": [
         {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:05"]]},
