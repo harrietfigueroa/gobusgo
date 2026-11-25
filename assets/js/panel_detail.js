@@ -3,11 +3,11 @@
 // sheet's tabs. This module is the one owner of what the view shows: a hook
 // writes its item into the view with `showDetail`, and every listener of
 // the change event learns when the view moves to another item or closes, so
-// the hook whose item it was lets go of it. An item opened from another,
-// a stop chosen from a list, keeps that other as its parent, which the back
-// button shows again.
+// the hook whose item it was lets go of it. Each item is shown with a
+// parent, the item it was opened from, or with none; `showParentDetail`
+// shows the parent in the item's place.
 
-import {assertCondition} from "#core/assert.js"
+import {assertCondition, unreachable} from "#core/assert.js"
 
 const CONTENT_ID = "panel-detail-content"
 const TITLE_ID = "panel-detail-title"
@@ -16,6 +16,10 @@ const TITLE_CLASS_NAME = "panel-sheet-detail-title"
 // The DOM event the window gets when the view shows another item or none,
 // with the item shown before and the item shown now in its detail.
 export const CHANGE_EVENT_NAME = "gobusgo:panel-detail-change"
+
+// The DOM event the window gets when `clearParentDetail` drops the parent
+// of the item the view shows.
+export const PARENT_CLEAR_EVENT_NAME = "gobusgo:panel-detail-parent-clear"
 
 export const DetailKind = Object.freeze({none: "none", stop: "stop", stopList: "stopList", vehicle: "vehicle", sharedVehicle: "sharedVehicle"})
 
@@ -72,6 +76,38 @@ export function showDetail({kind, id, title, content, parent = NO_PARENT}) {
 // Whether the item the view shows was opened from another.
 export function hasParentDetail() {
   return shownParent.kind === ParentKind.detail
+}
+
+/** The title the view's back button returns to: the parent's, or `tabTitle` for an item opened from none. */
+export function backTitle(tabTitle) {
+  switch (shownParent.kind) {
+    case ParentKind.detail:
+      return shownParent.detail.title
+    case ParentKind.none:
+      return tabTitle
+    default:
+      return unreachable(shownParent.kind, "panel detail: a parent of unknown kind")
+  }
+}
+
+// Drops the parent of the item the view shows, and announces it where it
+// had one.
+export function clearParentDetail() {
+  if (hasParentDetail()) {
+    shownParent = NO_PARENT
+    window.dispatchEvent(new CustomEvent(PARENT_CLEAR_EVENT_NAME))
+  }
+}
+
+// Moves focus to the title of the item the view shows, which a screen
+// reader then reads; a page with no map has no title to focus.
+export function focusDetailTitle() {
+  const heading = document.getElementById(TITLE_ID)
+
+  if (heading !== null) {
+    heading.tabIndex = -1
+    heading.focus({preventScroll: true})
+  }
 }
 
 // Shows again the item the view's item was opened from, in place of it.

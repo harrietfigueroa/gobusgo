@@ -1,16 +1,18 @@
 // The rules of the offer to reload into a new release: whether a waiting
 // worker is offered or takes over with no offer, from the release the page
 // names and the release the worker answers with; what a click does, from the
-// state of the worker the offer names; and how long the page waits for each
-// answer. Everything here is pure.
+// state of the worker the offer names; whether a shown offer is withdrawn
+// once a worker of the page's own release takes over; and how long the page
+// waits for each answer. Everything here is pure.
 //
 // A page loaded from the network after a release already runs that release
 // under the worker before it, so a waiting worker of the page's own release
 // takes over with no offer and no reload.
 //
-// Every open page shows the offer while a new worker waits, and taking it
-// in one page has that worker take over every page, so another page can
-// hold an offer whose worker is already active: its click reloads.
+// Every open page of another release shows the offer while a new worker
+// waits, and taking it in one page has that worker take over every page, so
+// another page can hold an offer whose worker is already active: its click
+// reloads.
 
 import {assertCondition} from "#core/assert.js"
 import {MessageKind} from "./service_worker_strategy.js"
@@ -51,8 +53,8 @@ const TAKEN_OVER_STATES = Object.freeze(["activating", "activated", "redundant"]
 // https://w3c.github.io/ServiceWorker/#installation-algorithm — checked 2026-11-20
 const REPLACED_STATE = "redundant"
 
-// The release GobusgoWeb.ServiceWorker names: 16 lowercase hexadecimal digits.
-const RELEASE_PATTERN = /^[0-9a-f]{16}$/
+const RELEASE_DIGIT_COUNT = 16
+const RELEASE_PATTERN = new RegExp(`^[0-9a-f]{${RELEASE_DIGIT_COUNT}}$`)
 
 function isRelease(value) {
   const isText = typeof value === "string"
@@ -129,4 +131,16 @@ export function reloadStep({workerState}) {
   const isTakenOver = TAKEN_OVER_STATES.includes(workerState)
   assertCondition(isTakenOver, "the offer names a worker that has installed, got the state: " + String(workerState))
   return ReloadStepKind.reload
+}
+
+/**
+ * Whether the page withdraws an offer whose worker is in `workerState` once
+ * a worker of the page's own release takes over: an offer whose click would
+ * only reload, its worker no longer waiting, is withdrawn, and one whose
+ * worker still waits stands. A worker that has not installed is refused, as
+ * `reloadStep` refuses it.
+ */
+export function isOfferWithdrawn({workerState}) {
+  const step = reloadStep({workerState})
+  return step === ReloadStepKind.reload
 }

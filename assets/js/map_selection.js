@@ -24,7 +24,8 @@ export function tapOutcome({isItemHit, isShowing}) {
 /** What the stop signs near a tap open: nothing, one stop, or a list of them. */
 export const StopTapKind = Object.freeze({none: "none", one: "one", list: "list"})
 
-const LIST_COUNT_MIN = 2
+/** The fewest stops a list of the stops under a tap holds; one stop opens alone. */
+export const LIST_COUNT_MIN = 2
 
 // The square of the distance from `point` to the nearest point of the
 // square sign of `halfSize` around `center`, 0 inside it.
@@ -39,33 +40,46 @@ function byNearness(left, right) {
     return left.distanceSquared - right.distanceSquared
   }
 
+  if (left.isUnderTap !== right.isUnderTap) {
+    return Number(right.isUnderTap) - Number(left.isUnderTap)
+  }
+
   return left.id.localeCompare(right.id, "en", {sensitivity: "variant", numeric: false})
 }
 
 /**
  * What a tap at `point` opens among `candidates`, the stop signs drawn near
- * it, each `{id, item, center, halfSize}` with its box on the screen: the
- * signs within `radiusPixels` of the tap, measured to each sign's box and
- * counted once per `id`, since a stop near a tile's edge comes back from
- * each tile. None opens nothing, one opens its `item`, and two or more open
- * a list of their `items`, nearest first and then by `id`, at most
- * `countMax`.
+ * it, each `{id, item, center, halfSize, isUnderTap}` with its box on the
+ * screen and whether the map draws it under `point`. A tap where the map
+ * draws no sign opens nothing, so the lines under it stay reachable. A tap
+ * on a drawn sign reaches every sign drawn under it and every sign within
+ * `radiusPixels` of it, measured to each sign's box, counted once per `id`,
+ * since a stop near a tile's edge comes back from each tile: one opens its
+ * `item`, and two or more open a list of their `items`, nearest first, a
+ * sign drawn under the tap at the tap and before another as near, then by
+ * `id`, at most `countMax`, with `count`, every stop reached.
  */
 export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
   assertCondition(radiusPixels >= 0, `a tap's radius is not negative, got: ${radiusPixels}`)
   assertCondition(countMax >= LIST_COUNT_MIN, `a list holds at least ${LIST_COUNT_MIN} stops, got: ${countMax}`)
   const radiusSquared = radiusPixels * radiusPixels
   const nearestById = new Map()
+  let isAnyUnderTap = false
 
   for (const candidate of candidates) {
-    const distanceSquared = signDistanceSquared({point, center: candidate.center, halfSize: candidate.halfSize})
+    let distanceSquared = signDistanceSquared({point, center: candidate.center, halfSize: candidate.halfSize})
+
+    if (candidate.isUnderTap) {
+      distanceSquared = 0
+      isAnyUnderTap = true
+    }
 
     if (distanceSquared > radiusSquared) {
       continue
     }
 
     const held = nearestById.get(candidate.id)
-    const near = {id: candidate.id, item: candidate.item, distanceSquared}
+    const near = {id: candidate.id, item: candidate.item, distanceSquared, isUnderTap: candidate.isUnderTap}
     const isFirstOrNearer = held === undefined || distanceSquared < held.distanceSquared
 
     if (isFirstOrNearer) {
@@ -76,7 +90,7 @@ export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
   // `Array.from` copies the map's values, which `sort` reorders in place.
   const nearest = Array.from(nearestById.values()).sort(byNearness)
 
-  if (nearest.length === 0) {
+  if (!isAnyUnderTap) {
     return {kind: StopTapKind.none}
   }
 
@@ -90,5 +104,5 @@ export function stopTapOutcome({candidates, point, radiusPixels, countMax}) {
     items.push(near.item)
   }
 
-  return {kind: StopTapKind.list, items}
+  return {kind: StopTapKind.list, items, count: nearest.length}
 }

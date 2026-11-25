@@ -1968,6 +1968,7 @@ a.inline-target {
 .panel-detail-action:focus-visible,
 .panel-detail-trip:focus-visible,
 .panel-detail-favorite:focus-visible,
+.panel-detail-stop-row:focus-visible,
 .favorite-stop-name:focus-visible,
 .favorite-stop-move:focus-visible,
 .panel-sheet-tab:focus-visible,

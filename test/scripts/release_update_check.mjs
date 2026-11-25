@@ -1,14 +1,16 @@
-// Checks when the page offers the reload into a new release and when it has
-// a waiting worker take over with no offer, by driving `registerServiceWorker`
-// against a stand-in for the browser's service worker
-// container, registration, and workers, and reading the offer's `hidden` and
-// the messages each worker received after each lifecycle step. The steps
+// Checks when the page offers the reload into a new release, when it has a
+// waiting worker take over with no offer, and when it withdraws a shown
+// offer, by driving `registerServiceWorker` against a stand-in for the
+// browser's service worker container, registration, and workers, and reading
+// the offer's `hidden`, the messages the case's worker received, and the
+// page's reloads and logged errors after each lifecycle step. The steps
 // follow the Service Worker spec's Install and Activate algorithms
 // (https://w3c.github.io/ServiceWorker/#installation-algorithm — checked
 // 2026-11-20); a stand-in worker answers the page's release question on the
-// port it is handed, or never. Run it with
-// `node test/scripts/release_update_check.mjs`; it prints each case and exits
-// non-zero when any case differs.
+// port it is handed, at once, when the case says, or never. Each case also
+// counts the errors the page logs, so a step that fails and is logged fails
+// its case. Run it with `node test/scripts/release_update_check.mjs`; it
+// prints each case and exits non-zero when any case differs.
 
 import {deepStrictEqual} from "node:assert/strict"
 import {RELEASE_ANSWER_WAIT_MS} from "../../assets/js/release_offer.js"
@@ -17,15 +19,18 @@ import {MessageKind} from "../../assets/js/service_worker_strategy.js"
 
 const RELEASE_ONE = "0123456789abcdef"
 const RELEASE_TWO = "fedcba9876543210"
+const RELEASE_THREE = "00112233445566ff"
 // The macrotask turns a case waits for a port's answer to arrive.
 const SETTLE_TURN_COUNT = 5
 
 class FakeWorker extends EventTarget {
-  // `release` is what the worker answers with, or null for a worker that never answers.
-  constructor({state, release}) {
+  // `release` is what the worker answers with, or null for a worker that
+  // never answers; a worker with `isAnswerHeld` answers when `answer` is called.
+  constructor({state, release, isAnswerHeld = false}) {
     super()
     this.state = state
     this.release = release
+    this.isAnswerHeld = isAnswerHeld
     this.messages = []
     this.ports = []
   }
@@ -40,10 +45,18 @@ class FakeWorker extends EventTarget {
     }
 
     const isReleaseQuestion = message.kind === MessageKind.release
-    const isAnswering = isReleaseQuestion && this.release !== null
+    const isAnswerNow = isReleaseQuestion && !this.isAnswerHeld
+
+    if (isAnswerNow) {
+      this.answer()
+    }
+  }
+
+  answer() {
+    const isAnswering = this.release !== null
 
     if (isAnswering) {
-      transfer[0].postMessage({kind: MessageKind.release, release: this.release})
+      this.ports[0].postMessage({kind: MessageKind.release, release: this.release})
     }
   }
 
@@ -65,12 +78,19 @@ class FakeRegistration extends EventTarget {
   }
 
   // Install's steps as a page sees them: updatefound with the installing
-  // worker, then its state "installed" once it is the waiting worker.
+  // worker, the waiting worker it replaces made redundant, then its state
+  // "installed" once it is the waiting worker.
   install(worker) {
     this.installing = worker
     this.dispatchEvent(new Event("updatefound"))
     this.installing = null
+    const replaced = this.waiting
     this.waiting = worker
+
+    if (replaced !== null) {
+      replaced.moveTo("redundant")
+    }
+
     worker.moveTo("installed")
   }
 }
@@ -142,6 +162,11 @@ async function pageWith({controller, waiting, pageRelease}) {
   const timers = []
   const timerIdsCleared = new Set()
   const windowListeners = []
+  const errorsLogged = []
+
+  function errorRecorded(...parts) {
+    errorsLogged.push(parts)
+  }
 
   function setTimeoutRecorded(callback, delayMs) {
     timers.push({callback, delayMs})
@@ -172,6 +197,7 @@ async function pageWith({controller, waiting, pageRelease}) {
   }
 
   Object.defineProperty(globalThis, "navigator", {value: {serviceWorker: container}, configurable: true})
+  console.error = errorRecorded
   globalThis.document = fakeDocument({offer, pageRelease})
   globalThis.window = {
     setInterval: () => 0,
@@ -183,24 +209,31 @@ async function pageWith({controller, waiting, pageRelease}) {
 
   registerServiceWorker()
   await settle()
-  return {container, registration, offer, reloads, pass}
+  return {container, registration, offer, reloads, errorsLogged, pass}
 }
 
-// The case's outcome, read before the ports the worker was handed are
-// closed: an open port with a listener keeps Node running.
-function outcomeOf({page, worker}) {
-  const outcome = {hidden: page.offer.hidden, activated: worker.messages.includes(MessageKind.activate), reloadCount: page.reloads.length}
-
+// An open port with a listener keeps Node running.
+function closePorts(worker) {
   for (const port of worker.ports) {
     port.close()
   }
+}
 
+// The case's outcome, read before the ports the worker was handed are closed.
+function outcomeOf({page, worker}) {
+  const outcome = {
+    hidden: page.offer.hidden,
+    activated: worker.messages.includes(MessageKind.activate),
+    reloadCount: page.reloads.length,
+    errorCount: page.errorsLogged.length
+  }
+  closePorts(worker)
   return outcome
 }
 
-const offered = {hidden: false, activated: false, reloadCount: 0}
-const takenOverQuietly = {hidden: true, activated: true, reloadCount: 0}
-const untouched = {hidden: true, activated: false, reloadCount: 0}
+const offered = {hidden: false, activated: false, reloadCount: 0, errorCount: 0}
+const takenOverQuietly = {hidden: true, activated: true, reloadCount: 0, errorCount: 0}
+const untouched = {hidden: true, activated: false, reloadCount: 0, errorCount: 0}
 
 const cases = [
   {
@@ -298,6 +331,38 @@ const cases = [
       const page = await pageWith({controller: active, waiting, pageRelease: RELEASE_ONE})
       page.container.takeOver(waiting)
       return outcomeOf({page, worker: waiting})
+    },
+    outcome: offered
+  },
+  {
+    name: "a page withdraws its offer of an older release once a worker of its own release installs and takes over",
+    async run() {
+      const older = new FakeWorker({state: "installed", release: RELEASE_THREE})
+      const active = new FakeWorker({state: "activated", release: RELEASE_ONE})
+      const page = await pageWith({controller: active, waiting: older, pageRelease: RELEASE_TWO})
+      const own = new FakeWorker({state: "installing", release: RELEASE_TWO})
+      page.registration.install(own)
+      await settle()
+      page.container.takeOver(own)
+      closePorts(older)
+      return outcomeOf({page, worker: own})
+    },
+    outcome: takenOverQuietly
+  },
+  {
+    name: "an offer whose worker still waits stands when a worker of the page's own release, which another page had take over, answers late",
+    async run() {
+      const own = new FakeWorker({state: "installed", release: RELEASE_TWO, isAnswerHeld: true})
+      const active = new FakeWorker({state: "activated", release: RELEASE_ONE})
+      const page = await pageWith({controller: active, waiting: own, pageRelease: RELEASE_TWO})
+      page.container.takeOver(own)
+      const third = new FakeWorker({state: "installing", release: RELEASE_THREE})
+      page.registration.install(third)
+      await settle()
+      own.answer()
+      await settle()
+      closePorts(own)
+      return outcomeOf({page, worker: third})
     },
     outcome: offered
   }

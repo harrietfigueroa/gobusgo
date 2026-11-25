@@ -1,8 +1,10 @@
 // Checks the rules of the offer to reload into a new release against cases
 // written out by hand: what a click does for each state the offered worker
-// can be in, with a state the offer is never shown in refused; how the
-// page's release and the waiting worker's answer are read; and whether a
-// waiting worker is offered or activated with no offer. Run it with
+// can be in, with a state the offer is never shown in refused; the bounds of
+// the two waits; how the page's release and the waiting worker's answer are
+// read; whether a waiting worker is offered or activated with no offer; and
+// whether a shown offer is withdrawn for each state of its worker, with the
+// same states refused. Run it with
 // `node test/scripts/release_offer_check.mjs`; it exits non-zero on the
 // first case that differs.
 
@@ -15,6 +17,7 @@ import {
   RELOAD_WAIT_MS,
   ReleaseAnswerKind,
   ReloadStepKind,
+  isOfferWithdrawn,
   offerStep,
   pageReleaseOf,
   releaseAnswerOf,
@@ -120,6 +123,44 @@ for (const testCase of offerCases) {
   deepStrictEqual(step, testCase.step, testCase.name)
 }
 
+const withdrawCases = [
+  {
+    name: "an offer whose worker still waits stands",
+    workerState: "installed",
+    isWithdrawn: false
+  },
+  {
+    name: "an offer whose worker another page asked to take over is withdrawn",
+    workerState: "activating",
+    isWithdrawn: true
+  },
+  {
+    name: "an offer whose worker controls the page is withdrawn",
+    workerState: "activated",
+    isWithdrawn: true
+  },
+  {
+    name: "an offer whose worker a newer install replaced is withdrawn",
+    workerState: "redundant",
+    isWithdrawn: true
+  }
+]
+
+for (const testCase of withdrawCases) {
+  deepStrictEqual(isOfferWithdrawn({workerState: testCase.workerState}), testCase.isWithdrawn, testCase.name)
+}
+
+for (const workerState of refusedStates) {
+  throws(() => isOfferWithdrawn({workerState}), AssertionError, `the state ${JSON.stringify(workerState)} is refused for a withdrawal`)
+}
+
 const caseCount =
-  stepCases.length + refusedStates.length + waitCases.length + pageReleaseCases.length + answerCases.length + offerCases.length
+  stepCases.length +
+  refusedStates.length +
+  waitCases.length +
+  pageReleaseCases.length +
+  answerCases.length +
+  offerCases.length +
+  withdrawCases.length +
+  refusedStates.length
 console.log(`release offer: ${caseCount} cases pass`)
