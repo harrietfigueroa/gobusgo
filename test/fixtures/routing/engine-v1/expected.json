@@ -1947,6 +1947,61 @@
    ]
   },
   {
+   "name": "a hop departing at the time a query arrives by is ridden",
+   "stopIds": [
+    "A",
+    "B",
+    "C"
+   ],
+   "engine": {
+    "stopCount": 3,
+    "connections": {
+     "departureS": [28800, 29400],
+     "arrivalS": [29400, 29400],
+     "departureStop": [0, 1],
+     "arrivalStop": [1, 2],
+     "trip": [0, 0],
+     "sequence": [0, 1],
+     "boarding": [1, 1],
+     "alighting": [1, 1]
+    },
+    "transfers": {
+     "fromStop": [],
+     "toStop": [],
+     "durationS": []
+    },
+    "minimumTransferS": 120
+   },
+   "queries": [
+    {
+     "name": "A to C arriving by 08:10",
+     "kind": "arrivingBy",
+     "query": {
+      "origin": {
+       "kind": "stop",
+       "stop": 0
+      },
+      "target": 2,
+      "arrivalS": 29400
+     },
+     "expected": [
+      {
+       "departureS": 28800,
+       "arrivalS": 29400,
+       "changes": 0,
+       "legs": [
+        {
+         "kind": "ride",
+         "boardConnection": 0,
+         "alightConnection": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
    "name": "a journey takes at most six rides",
    "stopIds": [
     "A",

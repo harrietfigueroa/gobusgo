@@ -222,6 +222,13 @@
       ]
     },
     {
+      "name": "a hop departing at the time a query arrives by is ridden",
+      "trips": [{"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:10"], ["C", "08:10"]]}],
+      "queries": [
+        {"from": "A", "to": "C", "arriveBy": "08:10", "expected": [{"depart": "08:00", "arrive": "08:10", "changes": 0, "legs": ["ride T1 A 08:00 C 08:10"]}]}
+      ]
+    },
+    {
       "name": "a journey takes at most six rides",
       "trips": [
         {"id": "T1", "stopTimes": [["A", "08:00"], ["B", "08:05"]]},

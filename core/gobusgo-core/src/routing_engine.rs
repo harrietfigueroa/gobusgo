@@ -80,6 +80,17 @@ const UNLEFT_S: i32 = -0x7fff_ffff;
 // The walk a query arriving by a time holds at a stop that is no start stop.
 const NOT_A_START_S: i32 = -1;
 
+// A label's stops before a leaving query reaches them, and before a query
+// arriving by a time leaves them.
+const UNREACHED: Fill<Parent> = Fill {
+    time_s: UNREACHED_S,
+    parent: Parent::None,
+};
+const UNLEFT: Fill<ParentBack> = Fill {
+    time_s: UNLEFT_S,
+    parent: ParentBack::None,
+};
+
 // The count of values a 32-bit integer takes, and half of it, the first value
 // ToInt32 wraps below zero.
 const INT32_VALUE_COUNT: f64 = 4_294_967_296.0;
@@ -332,6 +343,13 @@ struct Step<SetBy> {
 struct Label<SetBy> {
     time_s: Vec<i32>,
     parent: Vec<SetBy>,
+}
+
+// The time and the leg a label holds at every stop when it is made.
+#[derive(Debug, Clone, Copy)]
+struct Fill<SetBy> {
+    time_s: i32,
+    parent: SetBy,
 }
 
 // The labels of one round, and the earliest a ride reached each stop.
@@ -798,9 +816,10 @@ fn trip_slots(trips: &[u32]) -> (Vec<u32>, usize) {
 }
 
 // The shape a view's columns must hold for a query to index them: column
-// lengths that agree, outgoing and incoming link offsets of one length that
-// never decrease and end at their link counts, and a trip count bounded by the
-// connections, since a query allocates by it.
+// lengths that agree, every stop a connection or link names below the stop
+// count, outgoing and incoming link offsets of one length that never decrease
+// and end at their link counts, and a trip count bounded by the connections,
+// since a query allocates by it.
 #[track_caller]
 fn assert_view(engine: &EngineView<'_>) {
     let offsets = engine.links.offsets;
@@ -836,8 +855,24 @@ fn assert_view(engine: &EngineView<'_>) {
             engine.trip_count
         )
     });
+    let stop_count = engine.stop_count();
+    let departure_stops = StopColumn {
+        stops: departure_stop,
+        name: "departure_stop",
+    };
+    assert_stops(departure_stops, stop_count);
+    let arrival_stops = StopColumn {
+        stops: arrival_stop,
+        name: "arrival_stop",
+    };
+    assert_stops(arrival_stops, stop_count);
     let link_count = engine.links.to_stop.len();
     assert_lengths(&[("duration_s", engine.links.duration_s.len())], link_count);
+    let to_stops = StopColumn {
+        stops: engine.links.to_stop,
+        name: "to_stop",
+    };
+    assert_stops(to_stops, stop_count);
     let outgoing = OffsetColumn {
         offsets,
         name: "link",
@@ -856,6 +891,11 @@ fn assert_view(engine: &EngineView<'_>) {
         &[("incoming_duration_s", incoming.duration_s.len())],
         incoming_count,
     );
+    let from_stops = StopColumn {
+        stops: incoming.from_stop,
+        name: "incoming_from_stop",
+    };
+    assert_stops(from_stops, stop_count);
     let incoming_offsets = OffsetColumn {
         offsets: incoming.offsets,
         name: "incoming link",
@@ -894,11 +934,12 @@ impl EngineView<'_> {
 }
 
 impl<SetBy: Copy> Label<SetBy> {
-    // A label holding `time_s` and `parent` at each of `stop_count` stops.
-    fn filled(stop_count: usize, time_s: i32, parent: SetBy) -> Self {
+    // A label holding `fill.time_s` and `fill.parent` at each of `stop_count`
+    // stops.
+    fn filled(stop_count: usize, fill: Fill<SetBy>) -> Self {
         Self {
-            time_s: vec![time_s; stop_count],
-            parent: vec![parent; stop_count],
+            time_s: vec![fill.time_s; stop_count],
+            parent: vec![fill.parent; stop_count],
         }
     }
 
@@ -968,8 +1009,8 @@ impl<SetBy: Copy> Label<SetBy> {
 impl Round {
     fn unreached(stop_count: usize) -> Self {
         Self {
-            arrival: Label::filled(stop_count, UNREACHED_S, Parent::None),
-            ready: Label::filled(stop_count, UNREACHED_S, Parent::None),
+            arrival: Label::filled(stop_count, UNREACHED),
+            ready: Label::filled(stop_count, UNREACHED),
             ride_arrival_s: vec![UNREACHED_S; stop_count],
         }
     }
@@ -978,9 +1019,9 @@ impl Round {
 impl RoundBack {
     fn unleft(stop_count: usize) -> Self {
         Self {
-            depart: Label::filled(stop_count, UNLEFT_S, ParentBack::None),
-            alight_by: Label::filled(stop_count, UNLEFT_S, ParentBack::None),
-            boarded: Label::filled(stop_count, UNLEFT_S, ParentBack::None),
+            depart: Label::filled(stop_count, UNLEFT),
+            alight_by: Label::filled(stop_count, UNLEFT),
+            boarded: Label::filled(stop_count, UNLEFT),
         }
     }
 }

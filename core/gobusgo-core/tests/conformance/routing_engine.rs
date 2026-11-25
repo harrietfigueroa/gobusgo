@@ -62,6 +62,15 @@ const WALK_S_STORED_AS_MINUS_1: f64 = 4_294_967_295.0;
 const NEGATIVE_FIRST_DEPARTURE_S: i32 = -30_000;
 const NEGATIVE_MEETING_S: i32 = -29_400;
 const NEGATIVE_LAST_ARRIVAL_S: i32 = -28_800;
+// An arrival 100 seconds below -2^31, which a label holds as 2147483548.
+const ARRIVAL_S_BELOW_INT32_MIN: f64 = -2_147_483_748.0;
+// Two rides to stop 2: a direct one from stop 0 and one from stop 1 that
+// changes at stop 3.
+const DIRECT_DEPARTURE_S: i32 = 28_800;
+const CHANGE_FIRST_DEPARTURE_S: i32 = 29_400;
+const CHANGE_FIRST_ARRIVAL_S: i32 = 29_700;
+const CHANGE_SECOND_DEPARTURE_S: i32 = 29_880;
+const CHANGE_ARRIVAL_S: i32 = 30_000;
 
 fn cases() -> Value {
     fixture(include_str!(
@@ -1116,5 +1125,158 @@ fn a_start_walk_past_an_int32_reads_back_whole_when_arriving_by() {
             },
         ],
     }];
+    assert_eq!(frontier, expected);
+}
+
+// Each view whose connections or links name a stop at or past its stop count,
+// by the column, refused with the failure's message.
+#[test]
+fn refused_view_stops() {
+    let engine = Engine::new(linked_input());
+    let view = engine.view();
+    let columns = view.connections;
+    let refused = [
+        (
+            EngineView {
+                connections: ConnectionColumns {
+                    departure_stop: &[3, 1],
+                    ..columns
+                },
+                ..view
+            },
+            "departure_stop",
+        ),
+        (
+            EngineView {
+                connections: ConnectionColumns {
+                    arrival_stop: &[1, 3],
+                    ..columns
+                },
+                ..view
+            },
+            "arrival_stop",
+        ),
+        (
+            EngineView {
+                links: LinkColumns {
+                    to_stop: &[1, 3],
+                    ..view.links
+                },
+                ..view
+            },
+            "to_stop",
+        ),
+        (
+            EngineView {
+                incoming: IncomingLinkColumns {
+                    from_stop: &[0, 3],
+                    ..view.incoming
+                },
+                ..view
+            },
+            "incoming_from_stop",
+        ),
+    ];
+    let held = from_stop_0(2.0, f64::from(MEETING_LAST_ARRIVAL_S));
+    for (refused_view, name) in refused {
+        let expected =
+            format!("routing engine: 3 in the {name} column is not a stop of the snapshot");
+        let leaving = failure_of(|| route(&refused_view, &held.leaving()));
+        assert_eq!(leaving.message(), expected);
+        let arriving_by = failure_of(|| route_arriving_by(&refused_view, &held.arriving_by()));
+        assert_eq!(arriving_by.message(), expected);
+    }
+}
+
+// An arrival below -2^31 is held wrapped, as the JavaScript's Int32Array holds
+// it, so a query whose origin is its target leaves after the arrival it asked
+// for, which the engine refuses; the JavaScript refuses it with the same
+// message over the same inputs.
+#[test]
+fn a_journey_arriving_after_the_time_asked_is_refused() {
+    let engine = Engine::new(meeting_input(MINIMUM_TRANSFER_S));
+    let held = from_stop_0(0.0, ARRIVAL_S_BELOW_INT32_MIN);
+    let failure = failure_of(|| route_arriving_by(&engine.view(), &held.arriving_by()));
+    assert_eq!(
+        failure.message(),
+        "routing engine: a journey arrives at 2147483548, after -2147483748"
+    );
+}
+
+// The latest a rider can leave the position by the boarded labels subtracts
+// each start's whole walk, so a walk of 2^31 seconds leaves 2^31 seconds before
+// its boarding and the scan reaches the later start's ride with a change; the
+// answer is the JavaScript's over the same inputs.
+#[test]
+fn a_start_walk_past_an_int32_leaves_the_position_by_its_whole_walk() {
+    let engine = Engine::new(EngineInput {
+        stop_count: 4,
+        connections: Connections {
+            departure_s: vec![
+                DIRECT_DEPARTURE_S,
+                CHANGE_FIRST_DEPARTURE_S,
+                CHANGE_SECOND_DEPARTURE_S,
+            ],
+            arrival_s: vec![CHANGE_ARRIVAL_S, CHANGE_FIRST_ARRIVAL_S, CHANGE_ARRIVAL_S],
+            departure_stop: vec![0, 1, 3],
+            arrival_stop: vec![2, 3, 2],
+            trip: vec![0, 1, 2],
+            sequence: vec![0, 0, 0],
+            boarding: vec![1, 1, 1],
+            alighting: vec![1, 1, 1],
+        },
+        ..meeting_input(MINIMUM_TRANSFER_S)
+    });
+    let held = HeldQuery {
+        origin: HeldOrigin::Starts(vec![
+            Start {
+                stop: 0.0,
+                walk_s: INT32_PAST_MAX,
+            },
+            Start {
+                stop: 1.0,
+                walk_s: WALK_S_SHORTER,
+            },
+        ]),
+        target: 2.0,
+        time_s: f64::from(CHANGE_ARRIVAL_S),
+    };
+    let frontier = route_arriving_by(&engine.view(), &held.arriving_by());
+    let expected = vec![
+        JourneyArrivingBy {
+            departure_s: f64::from(DIRECT_DEPARTURE_S) - INT32_PAST_MAX,
+            arrival_s: f64::from(CHANGE_ARRIVAL_S),
+            changes: 0,
+            legs: vec![
+                Leg::WalkFromPosition {
+                    to_stop: 0,
+                    duration_s: INT32_PAST_MAX,
+                },
+                Leg::Ride {
+                    board_connection: 0,
+                    alight_connection: 0,
+                },
+            ],
+        },
+        JourneyArrivingBy {
+            departure_s: f64::from(CHANGE_FIRST_DEPARTURE_S) - WALK_S_SHORTER,
+            arrival_s: f64::from(CHANGE_ARRIVAL_S),
+            changes: 1,
+            legs: vec![
+                Leg::WalkFromPosition {
+                    to_stop: 1,
+                    duration_s: WALK_S_SHORTER,
+                },
+                Leg::Ride {
+                    board_connection: 1,
+                    alight_connection: 1,
+                },
+                Leg::Ride {
+                    board_connection: 2,
+                    alight_connection: 2,
+                },
+            ],
+        },
+    ];
     assert_eq!(frontier, expected);
 }
