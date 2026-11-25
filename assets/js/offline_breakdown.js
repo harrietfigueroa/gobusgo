@@ -28,13 +28,16 @@ const MEGABYTE_BYTES = 1000 * 1000
 const KILOBYTES_SHOWN_BYTES_MAX = 100_000
 
 function kindEntryOf(number) {
+  let found = undefined
+
   for (const entry of KINDS) {
     if (entry.number === number) {
-      return entry
+      found = entry
     }
   }
 
-  return unreachable(number, "offline breakdown: a packed kind the table lacks")
+  assertCondition(found !== undefined, "offline breakdown: a packed kind the table lacks: " + String(number))
+  return found
 }
 
 const tripPathNamePrefix = kindEntryOf(PackedKind.tripPathShard).prefix + "-"

@@ -218,6 +218,10 @@ async function currentPlacesFile({cache, deadline}) {
   try {
     return await deadline.withinBound(() => fetchPlacesFile(deadline.signal))
   } catch (error) {
+    if (error instanceof AssertionError) {
+      throw error
+    }
+
     // A save the bound or a turn-off stopped ends here, and its caller logs
     // or passes the abort.
     if (deadline.signal.aborted) {

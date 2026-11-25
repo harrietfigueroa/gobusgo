@@ -2,7 +2,7 @@
 // written out by hand: each part of a full store, a store with no places
 // file, one with no map extract, a file the index does not name, the files
 // of a save in progress before its index is written, and the empty store;
-// then the rows the Settings tab shows and the size each row reads. Run it
+// then the rows `breakdownRows` gives and the size each row reads. Run it
 // with `node test/scripts/offline_breakdown_check.mjs`; it exits non-zero on
 // the first case that differs.
 

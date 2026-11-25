@@ -274,6 +274,7 @@ export const OfflineUse = {
       storedSettings.writeOfflineUseEnabled(enabled)
       this.stopWaitingForLive()
       this.start()
+      this.show()
     } else {
       storedSettings.writeOfflineUseEnabled(enabled)
       this.clear()
