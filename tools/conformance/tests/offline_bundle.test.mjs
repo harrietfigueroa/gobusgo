@@ -241,14 +241,13 @@ describe.each(implementationsWith("offlineBundle"))("offline bundle ($name)", ({
     expect(persistenceText(kind)).toBe(expected)
   })
 
-  // The status line says the setting's state in its headline, and the dates,
-  // the size, and whether the browser keeps them in its caption.
+  // The status line says the setting's state in its headline, and the dates
+  // and whether the browser keeps them in its caption.
   const onSetting = {
     kind: SettingKind.on,
     persistence: PersistenceKind.granted,
     datesText: "Sat, Nov 7 and Sun, Nov 8",
-    updatedText: "Nov 7, 4:12 AM",
-    sizeText: "3.4 MB"
+    updatedText: "Nov 7, 4:12 AM"
   }
 
   const statusMessageCases = [
@@ -267,7 +266,7 @@ describe.each(implementationsWith("offlineBundle"))("offline bundle ($name)", ({
       setting: () => ({...onSetting, status: {kind: StatusKind.saved, dates: states.morning.dates}}),
       expected: {
         headline: "Schedules saved for offline use",
-        caption: "For Sat, Nov 7 and Sun, Nov 8, updated Nov 7, 4:12 AM, 3.4 MB. Your browser keeps them until you remove them."
+        caption: "For Sat, Nov 7 and Sun, Nov 8, updated Nov 7, 4:12 AM. Your browser keeps them until you remove them."
       }
     },
     {

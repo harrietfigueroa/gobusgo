@@ -429,8 +429,8 @@ function fileCountText(count) {
 /**
  * The status line's headline and caption for `setting`. A setting that is
  * on carries its bundle's `status`, the browser's `persistence`, and the
- * texts of the status's dates, `datesText`, of their newest build,
- * `updatedText`, and of the stored size, `sizeText`.
+ * texts of the status's dates, `datesText`, and of their newest build,
+ * `updatedText`.
  */
 export function statusMessage(setting) {
   switch (setting.kind) {
@@ -445,12 +445,12 @@ export function statusMessage(setting) {
   }
 }
 
-function onMessage({status, persistence, datesText, updatedText, sizeText}) {
+function onMessage({status, persistence, datesText, updatedText}) {
   const kept = persistenceText(persistence)
 
   switch (status.kind) {
     case StatusKind.saved:
-      return {headline: "Schedules saved for offline use", caption: `For ${datesText}, updated ${updatedText}, ${sizeText}. ${kept}`}
+      return {headline: "Schedules saved for offline use", caption: `For ${datesText}, updated ${updatedText}. ${kept}`}
     case StatusKind.incomplete:
       return {
         headline: "Schedules partly saved",

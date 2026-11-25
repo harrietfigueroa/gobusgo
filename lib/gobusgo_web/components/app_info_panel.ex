@@ -169,6 +169,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         checked={false}
       />
       <p id="offline-use-status" data-offline-status aria-live="polite"></p>
+      <dl id="offline-use-breakdown" class="panel-detail-rows" data-offline-breakdown hidden></dl>
       <.more id="app-info-offline-use-more" summary="What is saved for offline use">
         <p>{AppInfo.offline_use(@offline_archive)}</p>
       </.more>

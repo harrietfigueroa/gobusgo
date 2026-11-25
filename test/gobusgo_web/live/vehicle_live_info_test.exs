@@ -667,6 +667,15 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
+    test "holds the breakdown of stored data hidden and empty, for its hook to fill" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      breakdown = @panel <> " #app-info-offline-use dl#offline-use-breakdown"
+
+      assert has_element?(view, breakdown <> "[hidden]")
+      refute has_element?(view, breakdown <> " > *")
+    end
+
     test "hands the offline use setting no extract's address for a basemap without one", %{
       tmp_dir: tmp_dir
     } do

@@ -39,7 +39,6 @@ import {decodeTripPathIndex, indexEntries} from "#core/trip_path_shard.js"
 
 const MANIFEST_PATH = "/api/routing/manifest"
 const PLACES_MANIFEST_PATH = "/places/manifest.json"
-const MEBIBYTE_BYTES = 1024 * 1024
 
 /** The outcomes of one save. */
 const SaveKind = Object.freeze({saved: "saved", nothingToSave: "nothingToSave", stopped: "stopped", failed: "failed"})
@@ -323,19 +322,6 @@ async function save(deadline) {
   return {kind: SaveKind.saved}
 }
 
-async function storedBytes(cache) {
-  const requests = await cache.keys()
-  let bytes = 0
-
-  for (const request of requests) {
-    const response = await cache.match(request)
-    const blob = await response.blob()
-    bytes += blob.size
-  }
-
-  return bytes
-}
-
 function dateText(date) {
   const [year, month, day] = date.serviceDate.split("-")
   const monthIndex = Number(month) - 1
@@ -385,8 +371,8 @@ export async function deleteSavedSchedules() {
 
 /**
  * The status line of the saved schedules while the setting is on: the
- * dates the store holds, its size, and `persistence`, the browser's answer
- * to keeping the page's storage. A store `caches.has` does not find reads
+ * dates the store holds and `persistence`, the browser's answer to keeping
+ * the page's storage. A store `caches.has` does not find reads
  * as an empty one and is not opened, so a read that follows a deletion
  * does not make the store again; a deletion between that check and the
  * open is followed by a store made anew and empty.
@@ -395,13 +381,11 @@ export async function describeSchedules(persistence) {
   const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)
   let savedIndex = {kind: IndexKind.none}
   let present = []
-  let bytes = 0
 
   if (hasStore) {
     const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
     savedIndex = await readIndex(cache)
     present = await storedPaths(cache)
-    bytes = await storedBytes(cache)
   }
 
   const status = bundleStatus({savedIndex, presentPaths: present, nowMs: Date.now()})
@@ -411,7 +395,6 @@ export async function describeSchedules(persistence) {
     dates = status.dates
   }
 
-  const sizeText = (bytes / MEBIBYTE_BYTES).toFixed(1) + " MB"
   const datesShown = datesText(dates)
   let updatedText = ""
 
@@ -419,5 +402,5 @@ export async function describeSchedules(persistence) {
     updatedText = newestBuild(dates)
   }
 
-  return statusMessage({kind: SettingKind.on, status, persistence, datesText: datesShown, updatedText, sizeText})
+  return statusMessage({kind: SettingKind.on, status, persistence, datesText: datesShown, updatedText})
 }

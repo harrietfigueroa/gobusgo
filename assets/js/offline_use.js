@@ -3,7 +3,8 @@
 // While it is on, the region's schedules are saved, and, where the element
 // carries the address of the basemap's offline extract, the extract too,
 // each in its own Cache API store; turning it off deletes both stores. The
-// status element says what each store holds.
+// status element says what each store holds, and the breakdown list the size
+// of each part of what they hold, hidden while they hold nothing.
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, and runs again every 30 minutes and when the
@@ -17,9 +18,9 @@
 
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
 import {ConnectionKind} from "./connection_rules.js"
-import {SettingKind, statusMessage} from "#core/offline_bundle.js"
+import {OFFLINE_SCHEDULES_CACHE_NAME, SettingKind, statusMessage} from "#core/offline_bundle.js"
 import {appendMessage, writeMessage} from "./message"
-import {savedBasemapOf} from "./offline_basemap"
+import {OFFLINE_BASEMAP_CACHE_NAME, savedBasemapOf} from "./offline_basemap"
 import {
   announceSavedBasemap,
   deleteSavedBasemap,
@@ -27,7 +28,8 @@ import {
   readSavedBasemap,
   saveBasemap
 } from "./offline_basemap_setting"
-import {deleteSavedSchedules, describeSchedules, saveSchedules} from "./offline_schedules"
+import {breakdownRows, offlineBreakdown} from "./offline_breakdown.js"
+import {deleteSavedSchedules, describeSchedules, readSavedIndex, saveSchedules} from "./offline_schedules"
 import {FILE_SAVE_MS_MAX, saveDeadlineOf} from "./save_deadline.js"
 import {readPersistence, requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
@@ -41,6 +43,7 @@ const SAVE_RESTART_COUNT_MAX = 3
 // The address of no extract, the archive a page whose basemap has none
 // names.
 const NO_ARCHIVE_URL = ""
+const STORE_NAMES = Object.freeze([OFFLINE_SCHEDULES_CACHE_NAME, OFFLINE_BASEMAP_CACHE_NAME])
 
 function isSupported() {
   return "caches" in window
@@ -67,6 +70,76 @@ async function deleteStores() {
   }
 }
 
+function pathOf(request) {
+  return new URL(request.url).pathname
+}
+
+// Every file the store `cacheName` holds, with its size. A store `caches.has`
+// does not find is not opened, so a read after a deletion makes no store;
+// a file deleted between the listing and its read is left out.
+async function storedFilesOf(cacheName) {
+  const hasStore = await caches.has(cacheName)
+  const files = []
+
+  if (!hasStore) {
+    return files
+  }
+
+  const cache = await caches.open(cacheName)
+  const requests = await cache.keys()
+
+  for (const request of requests) {
+    const response = await cache.match(request)
+
+    if (response !== undefined) {
+      const blob = await response.blob()
+      files.push({cacheName, path: pathOf(request), bytes: blob.size})
+    }
+  }
+
+  return files
+}
+
+async function storedFiles() {
+  const files = []
+
+  for (const cacheName of STORE_NAMES) {
+    const storeFiles = await storedFilesOf(cacheName)
+
+    for (const file of storeFiles) {
+      files.push(file)
+    }
+  }
+
+  return files
+}
+
+async function readBreakdownRows() {
+  const savedIndex = await readSavedIndex()
+  const files = await storedFiles()
+  const breakdown = offlineBreakdown({savedIndex, files})
+  return breakdownRows(breakdown)
+}
+
+// Writes `rows` into the list `element` as text nodes, each term and its
+// definition in a group of their own, and hides the list while it holds none.
+function writeRows({element, rows}) {
+  element.replaceChildren()
+
+  for (const {term, definition} of rows) {
+    const group = document.createElement("div")
+    const termElement = document.createElement("dt")
+    termElement.textContent = term
+    const definitionElement = document.createElement("dd")
+    definitionElement.textContent = definition
+    group.append(termElement, definitionElement)
+    element.append(group)
+  }
+
+  const isEmpty = rows.length === 0
+  element.toggleAttribute("hidden", isEmpty)
+}
+
 function archiveUrlOf(element) {
   const url = element.dataset.archiveUrl
 
@@ -81,6 +154,7 @@ export const OfflineUse = {
   mounted() {
     this.checkbox = this.el.querySelector("input[type=checkbox]")
     this.status = this.el.querySelector("[data-offline-status]")
+    this.breakdown = this.el.querySelector("[data-offline-breakdown]")
     this.archiveUrl = archiveUrlOf(this.el)
     this.controller = null
     this.timer = null
@@ -323,6 +397,8 @@ export const OfflineUse = {
         mapMessage = await describeBasemap({url: this.archiveUrl, persistence})
       }
 
+      const rows = await readBreakdownRows()
+
       if (!isEnabled()) {
         this.showOff()
         return
@@ -333,6 +409,8 @@ export const OfflineUse = {
       if (mapMessage !== null) {
         appendMessage({element: this.status, message: mapMessage})
       }
+
+      writeRows({element: this.breakdown, rows})
     } catch (error) {
       console.warn("Offline use status not read", error)
     }
@@ -340,5 +418,6 @@ export const OfflineUse = {
 
   showOff() {
     writeMessage({element: this.status, message: statusMessage({kind: SettingKind.off})})
+    writeRows({element: this.breakdown, rows: []})
   }
 }

@@ -10,7 +10,6 @@
 import {
   CHANGE_EVENT_NAME,
   OFFLINE_BASEMAP_CACHE_NAME,
-  SettingKind,
   savedBasemapOf,
   stalePaths,
   statusMessage
@@ -99,24 +98,12 @@ export async function deleteSavedBasemap() {
   await caches.delete(OFFLINE_BASEMAP_CACHE_NAME)
 }
 
-async function storedBytes(url) {
-  const response = await caches.match(url, {cacheName: OFFLINE_BASEMAP_CACHE_NAME})
-
-  if (response === undefined) {
-    return 0
-  }
-
-  const blob = await response.blob()
-  return blob.size
-}
-
 /**
  * The status line of the saved map for the extract at `url` while the
- * setting is on: whether it is saved, its size, and `persistence`, the
- * browser's answer to keeping the page's storage.
+ * setting is on: whether it is saved, and `persistence`, the browser's
+ * answer to keeping the page's storage.
  */
 export async function describeBasemap({url, persistence}) {
   const saved = await readSavedBasemap(url)
-  const bytes = await storedBytes(url)
-  return statusMessage({kind: SettingKind.on, saved, bytes, persistence})
+  return statusMessage({saved, persistence})
 }
