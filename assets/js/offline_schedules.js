@@ -44,6 +44,9 @@ const MEBIBYTE_BYTES = 1024 * 1024
 /** The outcomes of one save. */
 const SaveKind = Object.freeze({saved: "saved", nothingToSave: "nothingToSave", stopped: "stopped", failed: "failed"})
 
+/** The kinds of a fetch of the routing manifest: the manifest, or the status that refused it. */
+const ManifestKind = Object.freeze({found: "found", refused: "refused"})
+
 const dateFormat = new Intl.DateTimeFormat(undefined, {weekday: "short", month: "short", day: "numeric", timeZone: "UTC"})
 const timeFormat = new Intl.DateTimeFormat(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})
 
@@ -71,9 +74,7 @@ function pathOf(request) {
   return new URL(request.url).pathname
 }
 
-async function readIndex(cache) {
-  const response = await cache.match(INDEX_PATH)
-
+async function indexOf(response) {
   if (response === undefined) {
     return {kind: IndexKind.none}
   }
@@ -82,24 +83,24 @@ async function readIndex(cache) {
   return {kind: IndexKind.found, index}
 }
 
+async function readIndex(cache) {
+  const response = await cache.match(INDEX_PATH)
+  return await indexOf(response)
+}
+
 /**
  * A read of the saved index of the offline schedules, which reads the
  * browser's store alone and so answers offline: none where the browser
- * cannot save schedules or holds no saved bundle.
+ * cannot save schedules or holds no saved bundle. A match with the store's
+ * name opens no cache, so a read never makes a store a deletion removed.
  */
 export async function readSavedIndex() {
   if (!isSupported()) {
     return {kind: IndexKind.none}
   }
 
-  const hasStore = await caches.has(OFFLINE_SCHEDULES_CACHE_NAME)
-
-  if (!hasStore) {
-    return {kind: IndexKind.none}
-  }
-
-  const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-  return await readIndex(cache)
+  const response = await caches.match(INDEX_PATH, {cacheName: OFFLINE_SCHEDULES_CACHE_NAME})
+  return await indexOf(response)
 }
 
 async function storedPaths(cache) {
@@ -108,15 +109,19 @@ async function storedPaths(cache) {
 }
 
 // Stores `path` unless the store holds it already, and says whether it is
-// stored. A file whose `byteSize` is known is stored only when the answer
-// holds that many bytes.
-async function storeFile({cache, path, byteSize, signal}) {
+// stored, within the bound of `deadline`. A file whose `byteSize` is known
+// is stored only when the answer holds that many bytes.
+async function storeFile({cache, path, byteSize, deadline}) {
   const stored = await cache.match(path)
 
   if (stored !== undefined) {
     return true
   }
 
+  return await deadline.withinBound(() => fetchAndStore({cache, path, byteSize, signal: deadline.signal}))
+}
+
+async function fetchAndStore({cache, path, byteSize, signal}) {
   const response = await fetch(path, {signal, priority: "low"})
 
   if (!response.ok) {
@@ -188,13 +193,13 @@ async function shardPlanOf({cache, path}) {
 
 // Stores each of `files`, a `{path, byteSize}`, and says what stopped it, or
 // nothing where every one is stored.
-async function storeFiles({cache, files, signal}) {
+async function storeFiles({cache, files, deadline}) {
   for (const {path, byteSize} of files) {
-    if (signal.aborted) {
+    if (deadline.signal.aborted) {
       return {kind: SaveKind.stopped}
     }
 
-    const isStored = await storeFile({cache, path, byteSize, signal})
+    const isStored = await storeFile({cache, path, byteSize, deadline})
 
     if (!isStored) {
       return {kind: SaveKind.failed, reason: path + " could not be fetched or differs from the size the manifest gives"}
@@ -209,16 +214,9 @@ async function storeFiles({cache, files, signal}) {
 // manifest that cannot be fetched, as offline, keeps the places file the
 // saved bundle holds, so a save offline deletes nothing it cannot fetch
 // again.
-async function currentPlacesFile({cache, signal}) {
+async function currentPlacesFile({cache, deadline}) {
   try {
-    const response = await fetch(PLACES_MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
-
-    if (!response.ok) {
-      return NO_PLACES_FILE
-    }
-
-    const placesManifest = await response.json()
-    return placesFileOf(placesManifest.file)
+    return await deadline.withinBound(() => fetchPlacesFile(deadline.signal))
   } catch (error) {
     console.warn("Places manifest not fetched; the saved places file is kept", error)
     const saved = await readIndex(cache)
@@ -233,26 +231,50 @@ async function currentPlacesFile({cache, signal}) {
   }
 }
 
-async function save(signal) {
-  const manifestResponse = await fetch(MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
+async function fetchPlacesFile(signal) {
+  const response = await fetch(PLACES_MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
 
-  if (!manifestResponse.ok) {
-    return {kind: SaveKind.failed, reason: "the manifest answered " + manifestResponse.status}
+  if (!response.ok) {
+    return NO_PLACES_FILE
   }
 
-  const manifest = await manifestResponse.json()
+  const placesManifest = await response.json()
+  return placesFileOf(placesManifest.file)
+}
+
+// The routing manifest, or the status it answered with.
+async function fetchManifest(signal) {
+  const response = await fetch(MANIFEST_PATH, {cache: "no-cache", signal, priority: "low"})
+
+  if (!response.ok) {
+    return {kind: ManifestKind.refused, status: response.status}
+  }
+
+  const manifest = await response.json()
+  return {kind: ManifestKind.found, manifest}
+}
+
+async function save(deadline) {
+  const {signal} = deadline
+  const manifestRead = await deadline.withinBound(() => fetchManifest(signal))
+
+  if (manifestRead.kind === ManifestKind.refused) {
+    return {kind: SaveKind.failed, reason: "the manifest answered " + manifestRead.status}
+  }
+
+  const {manifest} = manifestRead
   // Opening the store makes it, so a save stopped meanwhile, as by a
   // turn-off that deleted the store, opens none.
   signal.throwIfAborted()
   const cache = await caches.open(OFFLINE_SCHEDULES_CACHE_NAME)
-  const placesFile = await currentPlacesFile({cache, signal})
+  const placesFile = await currentPlacesFile({cache, deadline})
   const plan = planBundle({manifest, nowMs: Date.now(), tileArchivePath: tileArchivePath(), placesFile})
 
   if (plan.kind === PlanKind.nothingToSave) {
     return {kind: SaveKind.nothingToSave}
   }
 
-  const tablesOutcome = await storeFiles({cache, files: filesOf(plan), signal})
+  const tablesOutcome = await storeFiles({cache, files: filesOf(plan), deadline})
 
   if (tablesOutcome.kind !== SaveKind.saved) {
     return tablesOutcome
@@ -270,7 +292,7 @@ async function save(signal) {
   }
 
   const bundle = bundleWithTripPaths({plan, shardPlans})
-  const shardsOutcome = await storeFiles({cache, files: bundle.shardFiles, signal})
+  const shardsOutcome = await storeFiles({cache, files: bundle.shardFiles, deadline})
 
   if (shardsOutcome.kind !== SaveKind.saved) {
     return shardsOutcome
@@ -279,11 +301,11 @@ async function save(signal) {
   const jsonHeaders = {"content-type": "application/json"}
   const manifestText = JSON.stringify(bundle.manifest)
   const manifestCopy = new Response(manifestText, {headers: jsonHeaders})
-  await cache.put(BUNDLE_MANIFEST_PATH, manifestCopy)
+  await deadline.withinBound(() => cache.put(BUNDLE_MANIFEST_PATH, manifestCopy))
   const index = savedIndex({plan: bundle, savedAtMs: Date.now()})
   const indexText = JSON.stringify(index)
   const indexResponse = new Response(indexText, {headers: jsonHeaders})
-  await cache.put(INDEX_PATH, indexResponse)
+  await deadline.withinBound(() => cache.put(INDEX_PATH, indexResponse))
   const present = await storedPaths(cache)
   const keptPaths = [INDEX_PATH, BUNDLE_MANIFEST_PATH, ...bundle.paths]
   const stale = stalePaths({index: {paths: keptPaths}, storedPaths: present})
@@ -332,12 +354,14 @@ function newestBuild(dates) {
 }
 
 /**
- * Saves the region's schedules in the store, logging a save that fails; a
- * save `signal` aborts ends quietly and leaves the previous bundle in use.
+ * Saves the region's schedules in the store, each file within the bound of
+ * `deadline` (`save_deadline.js`), logging a save that fails or passes the
+ * bound; a save its controller aborts ends quietly and leaves the previous
+ * bundle in use.
  */
-export async function saveSchedules(signal) {
+export async function saveSchedules(deadline) {
   try {
-    const outcome = await save(signal)
+    const outcome = await save(deadline)
 
     if (outcome.kind === SaveKind.failed) {
       console.warn("Offline schedules not saved", outcome.reason)

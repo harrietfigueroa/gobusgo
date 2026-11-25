@@ -43,21 +43,18 @@ export function announceSavedBasemap(saved) {
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {saved}}))
 }
 
-// Stores the extract at `url` unless the store holds it, then deletes every
-// other copy, an earlier build's extract.
-async function save({url, signal}) {
+// Stores the extract at `url` unless the store holds it, within the bound
+// of `deadline`, then deletes every other copy, an earlier build's extract.
+async function save({url, deadline}) {
   const cache = await caches.open(OFFLINE_BASEMAP_CACHE_NAME)
   const stored = await cache.match(url)
 
   if (stored === undefined) {
-    const response = await fetch(url, {signal, priority: "low"})
+    const isStored = await deadline.withinBound(() => fetchAndStore({cache, url, signal: deadline.signal}))
 
-    if (!response.ok) {
-      console.warn("Offline map not saved", url, response.status)
+    if (!isStored) {
       return
     }
-
-    await cache.put(url, response)
   }
 
   const requests = await cache.keys()
@@ -69,13 +66,27 @@ async function save({url, signal}) {
   }
 }
 
+// Fetches the extract at `url` and stores it, and says whether it is stored.
+async function fetchAndStore({cache, url, signal}) {
+  const response = await fetch(url, {signal, priority: "low"})
+
+  if (!response.ok) {
+    console.warn("Offline map not saved", url, response.status)
+    return false
+  }
+
+  await cache.put(url, response)
+  return true
+}
+
 /**
- * Saves the extract at `url` in the store, logging a save that fails; a
- * save `signal` aborts ends quietly.
+ * Saves the extract at `url` in the store within the bound of `deadline`
+ * (`save_deadline.js`), logging a save that fails or passes the bound; a
+ * save its controller aborts ends quietly.
  */
-export async function saveBasemap({url, signal}) {
+export async function saveBasemap({url, deadline}) {
   try {
-    await save({url, signal})
+    await save({url, deadline})
   } catch (error) {
     if (error.name !== "AbortError") {
       console.warn("Offline map not saved", error)

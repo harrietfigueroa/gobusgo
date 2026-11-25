@@ -7,7 +7,9 @@
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, and runs again every 30 minutes and when the
-// browser comes back online.
+// browser comes back online. Each file of a save has a bound of its own,
+// past which the save is aborted, so a stuck file never holds back the
+// next save.
 //
 // A page that opens with the setting off deletes both stores once its
 // connection is live, so a page opened offline keeps drawing from what is
@@ -26,11 +28,16 @@ import {
   saveBasemap
 } from "./offline_basemap_setting"
 import {deleteSavedSchedules, describeSchedules, saveSchedules} from "./offline_schedules"
+import {FILE_SAVE_MS_MAX, saveDeadlineOf} from "./save_deadline.js"
 import {readPersistence, requestPersistence} from "./storage_persistence"
 import {storedSettings} from "./stored_settings"
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
 const IDLE_TIMEOUT_MS = 10 * 1000
+// The saves one start runs after its first, each asked for by a turn-off
+// and turn-on while the one before was ending; more wait for the next
+// refresh.
+const SAVE_RESTART_COUNT_MAX = 3
 // The address of no extract, the archive a page whose basemap has none
 // names.
 const NO_ARCHIVE_URL = ""
@@ -214,29 +221,24 @@ export const OfflineUse = {
       return
     }
 
-    this.controller = new AbortController()
-    const signal = this.controller.signal
+    let restartCount = 0
+    let isSaveDue = true
 
-    try {
-      await this.deletion
-      await saveSchedules(signal)
-      const isMapDue = this.hasArchive() && !signal.aborted
+    while (isSaveDue) {
+      await this.saveOnce()
+      const isRestartDue = this.isRestartDue
+      this.isRestartDue = false
+      const isRestartWanted = isRestartDue && isEnabled()
+      const isRestartLive = isRestartWanted && !this.isDestroyed
+      const isRestartWithinBound = restartCount < SAVE_RESTART_COUNT_MAX
+      const isRestartPastBound = isRestartLive && !isRestartWithinBound
+      isSaveDue = isRestartLive && isRestartWithinBound
 
-      if (isMapDue) {
-        await saveBasemap({url: this.archiveUrl, signal})
+      if (isRestartPastBound) {
+        console.warn("Offline use restarts past their bound", {restartCount})
       }
-    } catch (error) {
-      warnUnlessAborted({description: "Offline use not saved", error})
-    } finally {
-      this.controller = null
-    }
 
-    const isRestartDue = this.isRestartDue
-    this.isRestartDue = false
-
-    if (isRestartDue) {
-      await this.start()
-      return
+      restartCount += 1
     }
 
     if (this.isDestroyed) {
@@ -252,6 +254,29 @@ export const OfflineUse = {
       await this.show()
     } catch (error) {
       warnUnlessAborted({description: "Offline use status not read", error})
+    }
+  },
+
+  // One save of the schedules and then the map, each file within
+  // FILE_SAVE_MS_MAX; a file past it aborts the save with a TimeoutError,
+  // which the save logs, and the controller is released either way, so the
+  // next start saves again.
+  async saveOnce() {
+    this.controller = new AbortController()
+    const deadline = saveDeadlineOf({controller: this.controller, timers: window, fileMsMax: FILE_SAVE_MS_MAX})
+
+    try {
+      await this.deletion
+      await saveSchedules(deadline)
+      const isMapDue = this.hasArchive() && !deadline.signal.aborted
+
+      if (isMapDue) {
+        await saveBasemap({url: this.archiveUrl, deadline})
+      }
+    } catch (error) {
+      warnUnlessAborted({description: "Offline use not saved", error})
+    } finally {
+      this.controller = null
     }
   },
 
