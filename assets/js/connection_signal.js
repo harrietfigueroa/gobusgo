@@ -1,7 +1,8 @@
 // The offline signal of a map page: a chip over the map whose headline says
 // the page is offline and whose caption points to the Save for offline use
-// setting while it is off, and while it is on says what the map shows and
-// how old the saved schedules are, and a polite live region that announces
+// setting while it is off, says so in a browser that cannot save, and while
+// it is on says what the map shows and how old the saved schedules are, and
+// a polite live region that announces
 // going offline and coming back. The stylesheet shows the chip while the
 // document's root element carries `data-connection="offline"`; this hook
 // writes its texts and its accessible name, again on each change of the

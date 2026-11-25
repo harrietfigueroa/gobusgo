@@ -4,8 +4,9 @@
 // carries the address of the basemap's offline extract, the extract too,
 // each in its own Cache API store; turning it off deletes both stores. The
 // status element says what each store holds, and the breakdown list the size
-// of each part of what they hold, hidden while they hold nothing. Each
-// change of the checkbox is announced on the window.
+// of each part of what they hold, hidden while they hold nothing. The
+// checkbox follows a change made in another tab, and each change, here or
+// there, is announced on the window.
 //
 // A save never competes with the page: it starts once the page has loaded
 // and the browser is idle, and runs again every 30 minutes and when the
@@ -34,9 +35,9 @@ import {breakdownRows, offlineBreakdown} from "./offline_breakdown.js"
 import {deleteSavedSchedules, describeSchedules, readSavedIndex, saveSchedules} from "./offline_schedules"
 import {FILE_SAVE_MS_MAX, saveDeadlineOf} from "./save_deadline.js"
 import {readPersistence, requestPersistence} from "./storage_persistence"
-import {storedSettings} from "./stored_settings"
+import {StorageKey, storedSettings} from "./stored_settings"
 
-/** The window event that announces a change of the setting, its detail `{isEnabled}`. */
+/** The window event that announces a change of the setting, in this tab or another. */
 export const CHANGE_EVENT_NAME = "gobusgo:offline-use-change"
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000
@@ -194,8 +195,10 @@ export const OfflineUse = {
     this.checkbox.checked = enabled
     this.onChange = () => { this.changed() }
     this.onOnline = () => { this.start() }
+    this.onStorage = (event) => { this.storageChanged(event) }
     this.checkbox.addEventListener("change", this.onChange)
     window.addEventListener("online", this.onOnline)
+    window.addEventListener("storage", this.onStorage)
     this.timer = window.setInterval(this.onOnline, REFRESH_INTERVAL_MS)
     this.show()
 
@@ -212,6 +215,7 @@ export const OfflineUse = {
     if (this.onOnline !== undefined) {
       window.clearInterval(this.timer)
       window.removeEventListener("online", this.onOnline)
+      window.removeEventListener("storage", this.onStorage)
       this.checkbox.removeEventListener("change", this.onChange)
     }
 
@@ -285,7 +289,30 @@ export const OfflineUse = {
       this.clear()
     }
 
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME, {detail: {isEnabled: enabled}}))
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME))
+  },
+
+  // A change of the setting in another tab of the page's origin. That tab
+  // saves or deletes the stores this one shares, so this one follows its
+  // checkbox, stops a save of its own on a turn-off, and deletes nothing.
+  storageChanged(event) {
+    const isOfflineUseKey = event.key === StorageKey.offlineUse
+
+    if (!isOfflineUseKey) {
+      return
+    }
+
+    const enabled = isEnabled()
+    this.checkbox.checked = enabled
+
+    if (!enabled) {
+      this.stop()
+      const saved = savedBasemapOf({url: this.archiveUrl, isStored: false})
+      announceSavedBasemap(saved)
+    }
+
+    this.show()
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME))
   },
 
   hasArchive() {

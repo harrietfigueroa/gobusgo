@@ -80,7 +80,7 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
       assert has_element?(view, @signal <> ~s([data-setting-id="offline-use-enabled"]))
     end
 
-    test "names the offline use status line as its target where the checkbox is disabled", %{
+    test "names the offline use status line as its other target", %{
       tmp_dir: tmp_dir
     } do
       write_manifest(tmp_dir)
