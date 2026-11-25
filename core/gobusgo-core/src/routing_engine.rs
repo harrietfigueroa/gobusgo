@@ -141,6 +141,13 @@ impl OriginKind {
             Self::Starts => "starts",
         }
     }
+
+    /// The kind `name` names, where it names one; an origin of any other kind
+    /// is `Origin::Unknown`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
+    }
 }
 
 /// A snapshot's stop count, connections, walking links ordered by the stop
@@ -824,7 +831,7 @@ fn trip_slots(trips: &[u32]) -> (Vec<u32>, usize) {
 // The stop checks read the four stop columns whole on every query, a pass over
 // every connection and link where the scan reads only its window of
 // connections, because a view's columns can come from its caller on each call
-// and a stop past the count otherwise reaches an unreachable assertion.
+// and the scan indexes its labels and link offsets by those stops.
 #[track_caller]
 fn assert_view(engine: &EngineView<'_>) {
     let offsets = engine.links.offsets;

@@ -13,7 +13,7 @@
 
 use gobusgo_core::assert::{self, AssertionError as CoreAssertionError, number_text};
 use gobusgo_core::math::{angles, checks, geodesy, interpolation};
-use gobusgo_core::{packed_container, routing_snapshot, routing_walk, trip_path};
+use gobusgo_core::{packed_container, routing_engine, routing_snapshot, routing_walk, trip_path};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 // The length of an array that holds a position's two coordinates.
@@ -109,6 +109,39 @@ export function reachedValues(stops) {
   }
   return values
 }
+export function column(values) { return values }
+export function engineConnections(departureS, arrivalS, departureStop, arrivalStop, tripSlot, boarding, alighting) {
+  return {
+    departureS: departureS.slice(),
+    arrivalS: arrivalS.slice(),
+    departureStop: departureStop.slice(),
+    arrivalStop: arrivalStop.slice(),
+    tripSlot: tripSlot.slice(),
+    boarding: boarding.slice(),
+    alighting: alighting.slice()
+  }
+}
+export function engineLinks(offsets, toStop, durationS) {
+  return {offsets: offsets.slice(), toStop: toStop.slice(), durationS: durationS.slice()}
+}
+export function engineIncomingLinks(offsets, fromStop, durationS) {
+  return {offsets: offsets.slice(), fromStop: fromStop.slice(), durationS: durationS.slice()}
+}
+export function engine(connections, links, incomingLinks, tripCount, minimumTransferS) {
+  return {connections, links, incomingLinks, tripCount, minimumTransferS}
+}
+export function startValues(starts) {
+  const values = []
+  for (const start of starts) {
+    values.push(start.stop, start.walkS)
+  }
+  return values
+}
+export function ride(kind, boardConnection, alightConnection) { return {kind, boardConnection, alightConnection} }
+export function walk(kind, fromStop, toStop, durationS) { return {kind, fromStop, toStop, durationS} }
+export function walkFromPosition(kind, toStop, durationS) { return {kind, toStop, durationS} }
+export function journey(arrivalS, changes, legs) { return {arrivalS, changes, legs} }
+export function journeyArrivingBy(departureS, arrivalS, changes, legs) { return {departureS, arrivalS, changes, legs} }
 ")]
 extern "C" {
     #[wasm_bindgen(thread_local_v2, js_name = AssertionError)]
@@ -216,6 +249,87 @@ extern "C" {
 
     #[wasm_bindgen(catch, js_name = reachedValues)]
     fn try_reached_values(stops: &JsValue) -> Result<Vec<JsValue>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = column)]
+    fn try_uint32s(column: &JsValue) -> Result<Vec<u32>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = column)]
+    fn try_uint16s(column: &JsValue) -> Result<Vec<u16>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = column)]
+    fn try_uint8s(column: &JsValue) -> Result<Vec<u8>, JsValue>;
+
+    // Each column arrives as a view of the module's memory, which the builder
+    // copies with `slice` before the memory can grow under it.
+    #[wasm_bindgen(catch, js_name = engineConnections)]
+    fn try_engine_connections(
+        departure_s: &[i32],
+        arrival_s: &[i32],
+        departure_stop: &[u32],
+        arrival_stop: &[u32],
+        trip_slot: &[u32],
+        boarding: &[u8],
+        alighting: &[u8],
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = engineLinks)]
+    fn try_engine_links(
+        offsets: &[u32],
+        to_stop: &[u32],
+        duration_s: &[u32],
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = engineIncomingLinks)]
+    fn try_engine_incoming_links(
+        offsets: &[u32],
+        from_stop: &[u32],
+        duration_s: &[u32],
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = engine)]
+    fn try_engine(
+        connections: &JsValue,
+        links: &JsValue,
+        incoming_links: &JsValue,
+        trip_count: f64,
+        minimum_transfer_s: f64,
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = startValues)]
+    fn try_start_values(starts: &JsValue) -> Result<Vec<JsValue>, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = ride)]
+    fn try_ride(
+        kind: &str,
+        board_connection: f64,
+        alight_connection: f64,
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = walk)]
+    fn try_walk(
+        kind: &str,
+        from_stop: f64,
+        to_stop: f64,
+        duration_s: f64,
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = walkFromPosition)]
+    fn try_walk_from_position(
+        kind: &str,
+        to_stop: f64,
+        duration_s: f64,
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = journey)]
+    fn try_journey(arrival_s: f64, changes: f64, legs: Vec<JsValue>) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = journeyArrivingBy)]
+    fn try_journey_arriving_by(
+        departure_s: f64,
+        arrival_s: f64,
+        changes: f64,
+        legs: Vec<JsValue>,
+    ) -> Result<JsValue, JsValue>;
 }
 
 // JavaScript's `String(value)`, which throws for a value whose conversion to
@@ -723,6 +837,125 @@ pub fn starts_from_streets(options: &JsValue) -> JsValue {
     starts_value(&found)
 }
 
+/// `routing_engine.js`'s `ROUNDS_MAX`.
+#[wasm_bindgen(js_name = routingEngineRoundsMax)]
+#[must_use]
+// wasm-bindgen exports no const fn.
+#[expect(clippy::missing_const_for_fn)]
+pub fn routing_engine_rounds_max() -> usize {
+    routing_engine::ROUNDS_MAX
+}
+
+/// `routing_engine.js`'s `LegKind`, a frozen object of the kinds' names.
+#[wasm_bindgen(js_name = routingEngineLegKind)]
+#[must_use]
+pub fn routing_engine_leg_kind() -> JsValue {
+    names(
+        routing_engine::LegKind::ALL
+            .map(|kind| kind.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `routing_engine.js`'s `OriginKind`, a frozen object of the kinds' names.
+#[wasm_bindgen(js_name = routingEngineOriginKind)]
+#[must_use]
+pub fn routing_engine_origin_kind() -> JsValue {
+    names(
+        routing_engine::OriginKind::ALL
+            .map(|kind| kind.name().to_owned())
+            .to_vec(),
+    )
+}
+
+/// `routing_engine.js`'s `createEngine`: the engine over a snapshot's columns.
+///
+/// The engine is a plain object of copies of the columns and walking links a
+/// query reads, as typed arrays: `connections` (`departureS`, `arrivalS`,
+/// `departureStop`, `arrivalStop`, `tripSlot`, `boarding`, `alighting`),
+/// `links` (`offsets`, `toStop`, `durationS`), `incomingLinks` (`offsets`,
+/// `fromStop`, `durationS`), `tripCount`, and `minimumTransferS`. `route` and
+/// `routeArrivingBy` take it back on each call.
+#[wasm_bindgen(js_name = createEngine)]
+#[must_use]
+pub fn create_engine(options: &JsValue) -> JsValue {
+    let input = engine_input(options);
+    let engine = routing_engine::Engine::new(input);
+    engine_value(&engine.view())
+}
+
+/// `routing_engine.js`'s `route`: the frontier of journeys leaving at or after
+/// `query.departureS`, each `{arrivalS, changes, legs}`, over an engine
+/// `createEngine` returned.
+#[wasm_bindgen]
+#[must_use]
+pub fn route(engine: &JsValue, query: &JsValue) -> Vec<JsValue> {
+    let columns = EngineColumns::of(engine);
+    let target = number(
+        &property(query, "target"),
+        "binding: routing engine: the target",
+    );
+    let departure_s = number(
+        &property(query, "departureS"),
+        "binding: routing engine: the departure",
+    );
+    let origin = OriginValues::of(&property(query, "origin"));
+    let frontier = routing_engine::route(
+        &columns.view(),
+        &routing_engine::Query {
+            origin: origin.origin(),
+            target,
+            departure_s,
+        },
+    );
+    let mut journeys = Vec::with_capacity(frontier.len());
+    for journey in &frontier {
+        let legs = legs_value(&journey.legs);
+        let changes = count_number(journey.changes);
+        journeys.push(caught(
+            try_journey(journey.arrival_s, changes, legs),
+            "building a journey",
+        ));
+    }
+    journeys
+}
+
+/// `routing_engine.js`'s `routeArrivingBy`: the frontier of journeys arriving
+/// at or before `query.arrivalS`, each `{departureS, arrivalS, changes, legs}`,
+/// over an engine `createEngine` returned.
+#[wasm_bindgen(js_name = routeArrivingBy)]
+#[must_use]
+pub fn route_arriving_by(engine: &JsValue, query: &JsValue) -> Vec<JsValue> {
+    let columns = EngineColumns::of(engine);
+    let target = number(
+        &property(query, "target"),
+        "binding: routing engine: the target",
+    );
+    let arrival_s = number(
+        &property(query, "arrivalS"),
+        "binding: routing engine: the arrival",
+    );
+    let origin = OriginValues::of(&property(query, "origin"));
+    let frontier = routing_engine::route_arriving_by(
+        &columns.view(),
+        &routing_engine::QueryArrivingBy {
+            origin: origin.origin(),
+            target,
+            arrival_s,
+        },
+    );
+    let mut journeys = Vec::with_capacity(frontier.len());
+    for journey in &frontier {
+        let legs = legs_value(&journey.legs);
+        let changes = count_number(journey.changes);
+        journeys.push(caught(
+            try_journey_arriving_by(journey.departure_s, journey.arrival_s, changes, legs),
+            "building a journey",
+        ));
+    }
+    journeys
+}
+
 /// `trip_path.js`'s `TRIP_PATH_COUNT_MAX`.
 #[wasm_bindgen(js_name = tripPathCountMax)]
 #[must_use]
@@ -1126,6 +1359,353 @@ fn starts_value(found: &[routing_walk::Start]) -> JsValue {
         walk_seconds.push(start.walk_s);
     }
     caught(try_starts(stops, walk_seconds), "building starts")
+}
+
+// The arguments of `createEngine`, each column the typed array a snapshot
+// decoder returns for it.
+fn engine_input(options: &JsValue) -> routing_engine::EngineInput {
+    let stop_count = count_of(
+        &property(options, "stopCount"),
+        "binding: routing engine: stopCount",
+    );
+    let minimum_transfer_s = number(
+        &property(options, "minimumTransferS"),
+        "binding: routing engine: minimumTransferS",
+    );
+    let connections_value = property(options, "connections");
+    let transfers_value = property(options, "transfers");
+    let connections = Columns {
+        holder: &connections_value,
+        name: "connections",
+    };
+    let transfers = Columns {
+        holder: &transfers_value,
+        name: "transfers",
+    };
+    routing_engine::EngineInput {
+        stop_count,
+        connections: routing_snapshot::Connections {
+            departure_s: connections.int32s("departureS"),
+            arrival_s: connections.int32s("arrivalS"),
+            departure_stop: connections.uint32s("departureStop"),
+            arrival_stop: connections.uint32s("arrivalStop"),
+            trip: connections.uint32s("trip"),
+            sequence: connections.uint16s("sequence"),
+            boarding: connections.uint8s("boarding"),
+            alighting: connections.uint8s("alighting"),
+        },
+        transfers: routing_snapshot::Transfers {
+            from_stop: transfers.uint32s("fromStop"),
+            to_stop: transfers.uint32s("toStop"),
+            duration_s: transfers.uint32s("durationS"),
+        },
+        minimum_transfer_s,
+    }
+}
+
+// The engine `createEngine` returns, copied out of the module's memory.
+fn engine_value(view: &routing_engine::EngineView<'_>) -> JsValue {
+    let columns = view.connections;
+    let connections = caught(
+        try_engine_connections(
+            columns.departure_s,
+            columns.arrival_s,
+            columns.departure_stop,
+            columns.arrival_stop,
+            columns.trip_slot,
+            columns.boarding,
+            columns.alighting,
+        ),
+        "building the engine's connections",
+    );
+    let links = caught(
+        try_engine_links(
+            view.links.offsets,
+            view.links.to_stop,
+            view.links.duration_s,
+        ),
+        "building the engine's links",
+    );
+    let incoming_links = caught(
+        try_engine_incoming_links(
+            view.incoming.offsets,
+            view.incoming.from_stop,
+            view.incoming.duration_s,
+        ),
+        "building the engine's incoming links",
+    );
+    caught(
+        try_engine(
+            &connections,
+            &links,
+            &incoming_links,
+            count_number(view.trip_count),
+            view.minimum_transfer_s,
+        ),
+        "building an engine",
+    )
+}
+
+// An engine's columns as `createEngine` returns them, each read and copied into
+// the module's memory on every call, since its caller can change them between
+// calls.
+struct EngineColumns {
+    departure_s: Vec<i32>,
+    arrival_s: Vec<i32>,
+    departure_stop: Vec<u32>,
+    arrival_stop: Vec<u32>,
+    trip_slot: Vec<u32>,
+    boarding: Vec<u8>,
+    alighting: Vec<u8>,
+    link_offsets: Vec<u32>,
+    link_to_stop: Vec<u32>,
+    link_duration_s: Vec<u32>,
+    incoming_offsets: Vec<u32>,
+    incoming_from_stop: Vec<u32>,
+    incoming_duration_s: Vec<u32>,
+    trip_count: usize,
+    minimum_transfer_s: f64,
+}
+
+impl EngineColumns {
+    fn of(engine: &JsValue) -> Self {
+        let connections_value = property(engine, "connections");
+        let links_value = property(engine, "links");
+        let incoming_value = property(engine, "incomingLinks");
+        let connections = Columns {
+            holder: &connections_value,
+            name: "connections",
+        };
+        let links = Columns {
+            holder: &links_value,
+            name: "links",
+        };
+        let incoming = Columns {
+            holder: &incoming_value,
+            name: "incomingLinks",
+        };
+        Self {
+            departure_s: connections.int32s("departureS"),
+            arrival_s: connections.int32s("arrivalS"),
+            departure_stop: connections.uint32s("departureStop"),
+            arrival_stop: connections.uint32s("arrivalStop"),
+            trip_slot: connections.uint32s("tripSlot"),
+            boarding: connections.uint8s("boarding"),
+            alighting: connections.uint8s("alighting"),
+            link_offsets: links.uint32s("offsets"),
+            link_to_stop: links.uint32s("toStop"),
+            link_duration_s: links.uint32s("durationS"),
+            incoming_offsets: incoming.uint32s("offsets"),
+            incoming_from_stop: incoming.uint32s("fromStop"),
+            incoming_duration_s: incoming.uint32s("durationS"),
+            trip_count: count_of(
+                &property(engine, "tripCount"),
+                "binding: routing engine: tripCount",
+            ),
+            minimum_transfer_s: number(
+                &property(engine, "minimumTransferS"),
+                "binding: routing engine: minimumTransferS",
+            ),
+        }
+    }
+
+    fn view(&self) -> routing_engine::EngineView<'_> {
+        routing_engine::EngineView {
+            connections: routing_engine::ConnectionColumns {
+                departure_s: &self.departure_s,
+                arrival_s: &self.arrival_s,
+                departure_stop: &self.departure_stop,
+                arrival_stop: &self.arrival_stop,
+                trip_slot: &self.trip_slot,
+                boarding: &self.boarding,
+                alighting: &self.alighting,
+            },
+            links: routing_engine::LinkColumns {
+                offsets: &self.link_offsets,
+                to_stop: &self.link_to_stop,
+                duration_s: &self.link_duration_s,
+            },
+            incoming: routing_engine::IncomingLinkColumns {
+                offsets: &self.incoming_offsets,
+                from_stop: &self.incoming_from_stop,
+                duration_s: &self.incoming_duration_s,
+            },
+            trip_count: self.trip_count,
+            minimum_transfer_s: self.minimum_transfer_s,
+        }
+    }
+}
+
+// An object whose properties are columns, and the name a failure gives it.
+#[derive(Clone, Copy)]
+struct Columns<'holder> {
+    holder: &'holder JsValue,
+    name: &'static str,
+}
+
+// A typed array's name as `Object.prototype.toString` gives it, and the read
+// that copies one into the module's memory.
+struct Typed<Values> {
+    type_name: &'static str,
+    copy: fn(&JsValue) -> Result<Values, JsValue>,
+}
+
+impl Columns<'_> {
+    fn int32s(self, key: &str) -> Vec<i32> {
+        self.typed(
+            key,
+            &Typed {
+                type_name: INT32_ARRAY_TYPE_NAME,
+                copy: try_int32s,
+            },
+        )
+    }
+
+    fn uint32s(self, key: &str) -> Vec<u32> {
+        self.typed(
+            key,
+            &Typed {
+                type_name: "[object Uint32Array]",
+                copy: try_uint32s,
+            },
+        )
+    }
+
+    fn uint16s(self, key: &str) -> Vec<u16> {
+        self.typed(
+            key,
+            &Typed {
+                type_name: "[object Uint16Array]",
+                copy: try_uint16s,
+            },
+        )
+    }
+
+    fn uint8s(self, key: &str) -> Vec<u8> {
+        self.typed(
+            key,
+            &Typed {
+                type_name: "[object Uint8Array]",
+                copy: try_uint8s,
+            },
+        )
+    }
+
+    // The column `key`, which must be the typed array `typed` names, as no
+    // coercion of a value a caller hands is made.
+    fn typed<Values: Default>(self, key: &str, typed: &Typed<Values>) -> Values {
+        let column = property(self.holder, key);
+        let found = caught(try_type_name(&column), "naming a column's type");
+        assert::condition(found == typed.type_name, || {
+            format!(
+                "binding: routing engine: {}.{key} is {found}, not {}",
+                self.name, typed.type_name
+            )
+        });
+        caught((typed.copy)(&column), "reading a column")
+    }
+}
+
+// A query's origin as its object holds it: a stop, start stops, or an origin of
+// another kind, named as `String` writes its `kind`.
+enum OriginValues {
+    Stop(f64),
+    Starts(Vec<routing_walk::Start>),
+    Unknown(String),
+}
+
+impl OriginValues {
+    fn of(origin: &JsValue) -> Self {
+        let kind = property(origin, "kind");
+        let known = kind
+            .as_string()
+            .and_then(|name| routing_engine::OriginKind::named(&name));
+        match known {
+            Some(routing_engine::OriginKind::Stop) => Self::Stop(number(
+                &property(origin, "stop"),
+                "binding: routing engine: the origin stop",
+            )),
+            Some(routing_engine::OriginKind::Starts) => {
+                Self::Starts(start_stops(&property(origin, "starts")))
+            }
+            None => Self::Unknown(text(&kind)),
+        }
+    }
+
+    fn origin(&self) -> routing_engine::Origin<'_> {
+        match self {
+            Self::Stop(stop) => routing_engine::Origin::Stop { stop: *stop },
+            Self::Starts(starts) => routing_engine::Origin::Starts { starts },
+            Self::Unknown(kind) => routing_engine::Origin::Unknown { kind },
+        }
+    }
+}
+
+// The start stops of an origin, each `{stop, walkS}` of two numbers, as no
+// coercion of a value a caller hands is made.
+fn start_stops(starts: &JsValue) -> Vec<routing_walk::Start> {
+    let values = caught(try_start_values(starts), "reading the start stops");
+    let (pairs, _) = values.as_chunks::<2>();
+    let mut found = Vec::with_capacity(pairs.len());
+    for [stop, walk_s] in pairs {
+        found.push(routing_walk::Start {
+            stop: number(stop, "binding: routing engine: a start stop"),
+            walk_s: number(walk_s, "binding: routing engine: a start stop's walkS"),
+        });
+    }
+    found
+}
+
+fn legs_value(legs: &[routing_engine::Leg]) -> Vec<JsValue> {
+    let mut values = Vec::with_capacity(legs.len());
+    for leg in legs {
+        let kind = leg.kind().name();
+        let value = match *leg {
+            routing_engine::Leg::Ride {
+                board_connection,
+                alight_connection,
+            } => try_ride(
+                kind,
+                count_number(board_connection),
+                count_number(alight_connection),
+            ),
+            routing_engine::Leg::Walk {
+                from_stop,
+                to_stop,
+                duration_s,
+            } => try_walk(
+                kind,
+                count_number(from_stop),
+                count_number(to_stop),
+                duration_s,
+            ),
+            routing_engine::Leg::WalkFromPosition {
+                to_stop,
+                duration_s,
+            } => try_walk_from_position(kind, count_number(to_stop), duration_s),
+        };
+        values.push(caught(value, "building a leg"));
+    }
+    values
+}
+
+// A count or an index as a JavaScript number, which must fit a `u32`.
+fn count_number(count: usize) -> f64 {
+    let Ok(number) = u32::try_from(count) else {
+        assert::unreachable(&count, "binding: routing engine: a count fits a u32");
+    };
+    f64::from(number)
+}
+
+// The whole count `value` is, which must be a number; `name` names it in a
+// failure.
+fn count_of(value: &JsValue, name: &str) -> usize {
+    let counted = number(value, name);
+    let count = number_text(counted).parse::<usize>();
+    assert::condition(count.is_ok(), || {
+        format!("{name} {} is not a count", number_text(counted))
+    });
+    count.unwrap_or_default()
 }
 
 // The pair of positions `[lon, lat]` the JavaScript module destructures.

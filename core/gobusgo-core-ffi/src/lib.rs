@@ -8,11 +8,17 @@
 //! A failed assertion of the core aborts the app, as the release profile aborts
 //! on every panic: an assertion's failure is a programmer error, and a native
 //! caller handles none.
+//!
+//! `RoutingEngine` is the one object this binding holds state in: the engine
+//! it owns, built once, which each query borrows. A record crosses by being
+//! serialized on every call, a copy each way for a record as large as an
+//! engine, and a failure aborts the app, so no object outlives a failure.
 
 use gobusgo_core::math::angles::{self, Turn};
 use gobusgo_core::math::checks;
 use gobusgo_core::math::geodesy::{self, Between, PlaneCoverage, Position, TangentPlane};
 use gobusgo_core::math::interpolation::{self, Clamp, Lerp};
+use gobusgo_core::routing_engine;
 use gobusgo_core::routing_snapshot::{self, Connections, Transfers, Trip};
 use gobusgo_core::routing_walk::{self, ReachedStop, WalkBasis, WalkRules};
 use gobusgo_core::trip_path;
@@ -584,6 +590,217 @@ pub fn starts_from_streets(stops: &[ReachedStop], rules: WalkRules) -> Vec<WalkS
     routing_walk::starts_from_streets(stops, rules)
 }
 
+/// The most rides a journey takes.
+#[uniffi::export]
+#[must_use]
+pub fn rounds_max() -> u64 {
+    let Ok(rounds) = u64::try_from(routing_engine::ROUNDS_MAX) else {
+        gobusgo_core::assert::unreachable(
+            &routing_engine::ROUNDS_MAX,
+            "binding: the rounds' bound fits a u64",
+        );
+    };
+    rounds
+}
+
+/// A snapshot's stop count, connections ordered by departure, walking links
+/// ordered by the stop they leave, and minimum transfer in seconds.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct EngineInput {
+    pub stop_count: u32,
+    pub connections: Connections,
+    pub transfers: Transfers,
+    pub minimum_transfer_s: f64,
+}
+
+/// A query's origin: one stop, or start stops each with the whole seconds of
+/// its walk from the rider's position.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum Origin {
+    Stop { stop: f64 },
+    Starts { starts: Vec<WalkStart> },
+}
+
+impl Origin {
+    fn query(&self) -> routing_engine::Origin<'_> {
+        match self {
+            Self::Stop { stop } => routing_engine::Origin::Stop { stop: *stop },
+            Self::Starts { starts } => routing_engine::Origin::Starts { starts },
+        }
+    }
+}
+
+/// A query leaving `origin` for the stop `target` at or after `departure_s`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Query {
+    pub origin: Origin,
+    pub target: f64,
+    pub departure_s: f64,
+}
+
+/// A query from `origin` to the stop `target` arriving at or before
+/// `arrival_s`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct QueryArrivingBy {
+    pub origin: Origin,
+    pub target: f64,
+    pub arrival_s: f64,
+}
+
+/// A leg of a journey: a ride from one connection to another, a walking link
+/// between two stops, or the walk from the rider's position to a start stop.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum Leg {
+    Ride {
+        board_connection: u32,
+        alight_connection: u32,
+    },
+    Walk {
+        from_stop: u32,
+        to_stop: u32,
+        duration_s: f64,
+    },
+    WalkFromPosition {
+        to_stop: u32,
+        duration_s: f64,
+    },
+}
+
+/// A journey of a frontier: its arrival, its changes, and its legs.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Journey {
+    pub arrival_s: f64,
+    pub changes: u32,
+    pub legs: Vec<Leg>,
+}
+
+/// A journey of a frontier arriving by a time: the latest time it leaves the
+/// origin, its arrival, its changes, and its legs.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct JourneyArrivingBy {
+    pub departure_s: f64,
+    pub arrival_s: f64,
+    pub changes: u32,
+    pub legs: Vec<Leg>,
+}
+
+/// An engine over a snapshot, built once from its columns.
+#[derive(Debug, uniffi::Object)]
+pub struct RoutingEngine {
+    engine: routing_engine::Engine,
+}
+
+#[uniffi::export]
+impl RoutingEngine {
+    /// The engine over `input`.
+    #[uniffi::constructor]
+    #[must_use]
+    pub fn new(input: EngineInput) -> Self {
+        let engine = routing_engine::Engine::new(routing_engine::EngineInput {
+            stop_count: index_of(input.stop_count),
+            connections: input.connections,
+            transfers: input.transfers,
+            minimum_transfer_s: input.minimum_transfer_s,
+        });
+        Self { engine }
+    }
+
+    /// The frontier of journeys leaving at or after `query.departure_s`, fewest
+    /// changes first.
+    #[must_use]
+    pub fn route(&self, query: &Query) -> Vec<Journey> {
+        let frontier = routing_engine::route(
+            &self.engine.view(),
+            &routing_engine::Query {
+                origin: query.origin.query(),
+                target: query.target,
+                departure_s: query.departure_s,
+            },
+        );
+        let mut journeys = Vec::with_capacity(frontier.len());
+        for journey in frontier {
+            journeys.push(Journey {
+                arrival_s: journey.arrival_s,
+                changes: count_u32(journey.changes),
+                legs: legs_of(&journey.legs),
+            });
+        }
+        journeys
+    }
+
+    /// The frontier of journeys arriving at or before `query.arrival_s`, fewest
+    /// changes first.
+    #[must_use]
+    pub fn route_arriving_by(&self, query: &QueryArrivingBy) -> Vec<JourneyArrivingBy> {
+        let frontier = routing_engine::route_arriving_by(
+            &self.engine.view(),
+            &routing_engine::QueryArrivingBy {
+                origin: query.origin.query(),
+                target: query.target,
+                arrival_s: query.arrival_s,
+            },
+        );
+        let mut journeys = Vec::with_capacity(frontier.len());
+        for journey in frontier {
+            journeys.push(JourneyArrivingBy {
+                departure_s: journey.departure_s,
+                arrival_s: journey.arrival_s,
+                changes: count_u32(journey.changes),
+                legs: legs_of(&journey.legs),
+            });
+        }
+        journeys
+    }
+}
+
+fn legs_of(legs: &[routing_engine::Leg]) -> Vec<Leg> {
+    let mut crossed = Vec::with_capacity(legs.len());
+    for &leg in legs {
+        crossed.push(match leg {
+            routing_engine::Leg::Ride {
+                board_connection,
+                alight_connection,
+            } => Leg::Ride {
+                board_connection: count_u32(board_connection),
+                alight_connection: count_u32(alight_connection),
+            },
+            routing_engine::Leg::Walk {
+                from_stop,
+                to_stop,
+                duration_s,
+            } => Leg::Walk {
+                from_stop: count_u32(from_stop),
+                to_stop: count_u32(to_stop),
+                duration_s,
+            },
+            routing_engine::Leg::WalkFromPosition {
+                to_stop,
+                duration_s,
+            } => Leg::WalkFromPosition {
+                to_stop: count_u32(to_stop),
+                duration_s,
+            },
+        });
+    }
+    crossed
+}
+
+// A count or an index as a `u32`, which it must fit.
+fn count_u32(count: usize) -> u32 {
+    let Ok(number) = u32::try_from(count) else {
+        gobusgo_core::assert::unreachable(&count, "binding: routing engine: a count fits a u32");
+    };
+    number
+}
+
+// A `u32` as an index, which every platform the binding builds for holds.
+fn index_of(number: u32) -> usize {
+    let Ok(index) = usize::try_from(number) else {
+        gobusgo_core::assert::unreachable(&number, "binding: routing engine: a u32 fits a usize");
+    };
+    index
+}
+
 #[cfg(test)]
 mod tests {
     // The binding passes the core's value through unchanged.
@@ -598,5 +815,70 @@ mod tests {
         let reference = 47.6062;
         let plane = super::tangent_plane(reference);
         assert_eq!(plane, gobusgo_core::math::geodesy::tangent_plane(reference));
+    }
+
+    // An engine of one ride from stop 0 to stop 1, departing at 100 and
+    // arriving at 200.
+    fn one_ride_engine() -> super::RoutingEngine {
+        super::RoutingEngine::new(super::EngineInput {
+            stop_count: 2,
+            connections: super::Connections {
+                departure_s: vec![100],
+                arrival_s: vec![200],
+                departure_stop: vec![0],
+                arrival_stop: vec![1],
+                trip: vec![7],
+                sequence: vec![0],
+                boarding: vec![1],
+                alighting: vec![1],
+            },
+            transfers: super::Transfers {
+                from_stop: Vec::new(),
+                to_stop: Vec::new(),
+                duration_s: Vec::new(),
+            },
+            minimum_transfer_s: 0.0,
+        })
+    }
+
+    // A journey crosses as the binding's records, its ride by its connections.
+    #[test]
+    fn route_crosses_the_ride() {
+        let frontier = one_ride_engine().route(&super::Query {
+            origin: super::Origin::Stop { stop: 0.0 },
+            target: 1.0,
+            departure_s: 0.0,
+        });
+        let ride = super::Leg::Ride {
+            board_connection: 0,
+            alight_connection: 0,
+        };
+        let journey = super::Journey {
+            arrival_s: 200.0,
+            changes: 0,
+            legs: vec![ride],
+        };
+        assert_eq!(frontier, vec![journey]);
+    }
+
+    // A journey arriving by a time crosses with the time it leaves the origin.
+    #[test]
+    fn route_arriving_by_crosses_the_departure() {
+        let frontier = one_ride_engine().route_arriving_by(&super::QueryArrivingBy {
+            origin: super::Origin::Stop { stop: 0.0 },
+            target: 1.0,
+            arrival_s: 300.0,
+        });
+        let ride = super::Leg::Ride {
+            board_connection: 0,
+            alight_connection: 0,
+        };
+        let journey = super::JourneyArrivingBy {
+            departure_s: 100.0,
+            arrival_s: 200.0,
+            changes: 0,
+            legs: vec![ride],
+        };
+        assert_eq!(frontier, vec![journey]);
     }
 }

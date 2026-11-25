@@ -16,6 +16,10 @@ const refusedCallTimeoutMs = REFUSED_CALL_COUNT * FAILURE_BUDGET_MS
 // Walking rules the walk takes, so a call fails on its stops alone.
 const WALK_RULES = Object.freeze({walkRadiusM: 400, walkSpeedMPerS: 1.2, walkLinkCountPerStopMax: 64})
 
+// A query from the one stop of `oneStopEngineArguments` to itself, so a call
+// fails on its engine alone.
+const ONE_STOP_QUERY = Object.freeze({origin: {kind: "stop", stop: 0}, target: 0, departureS: 0})
+
 let stopsBuffer = null
 
 beforeAll(async () => {
@@ -53,12 +57,95 @@ function throwingPath() {
   }
 }
 
+// The arguments of an engine over one stop, with no connections and no
+// walking links.
+function oneStopEngineArguments() {
+  return {
+    stopCount: 1,
+    connections: {
+      departureS: new Int32Array(0),
+      arrivalS: new Int32Array(0),
+      departureStop: new Uint32Array(0),
+      arrivalStop: new Uint32Array(0),
+      trip: new Uint32Array(0),
+      sequence: new Uint16Array(0),
+      boarding: new Uint8Array(0),
+      alighting: new Uint8Array(0)
+    },
+    transfers: {fromStop: new Uint32Array(0), toStop: new Uint32Array(0), durationS: new Uint32Array(0)},
+    minimumTransferS: 0
+  }
+}
+
+// The arguments of an engine over one stop whose walking links leave from
+// `fromStop`, every other column empty.
+function engineArgumentsLeavingFrom(fromStop) {
+  const engineArguments = oneStopEngineArguments()
+  return {...engineArguments, transfers: {...engineArguments.transfers, fromStop}}
+}
+
+// A column whose bytes were transferred away, which no read can copy.
+function detachedColumn() {
+  const column = new Uint32Array(1)
+  column.buffer.transfer()
+  return column
+}
+
+// The engine over one stop that `routingEngine` builds.
+function oneStopEngine(routingEngine) {
+  const engineArguments = oneStopEngineArguments()
+  return routingEngine.createEngine(engineArguments)
+}
+
+// The engine over one stop, with `key` replaced by `value`.
+function oneStopEngineWith({routingEngine, key, value}) {
+  const engine = oneStopEngine(routingEngine)
+  return {...engine, [key]: value}
+}
+
+// An engine over one stop whose walking links leave from `fromStop`.
+function engineLeavingFrom({routingEngine, fromStop}) {
+  const engineArguments = engineArgumentsLeavingFrom(fromStop)
+  return routingEngine.createEngine(engineArguments)
+}
+
+// A route over the engine of one stop from `origin`.
+function oneStopRoute({routingEngine, origin}) {
+  const engine = oneStopEngine(routingEngine)
+  return routingEngine.route(engine, {...ONE_STOP_QUERY, origin})
+}
+
+// A start stop whose stop throws an error that cannot be written.
+function throwingStart() {
+  return {
+    get stop() {
+      throw unwritableError()
+    }
+  }
+}
+
 const refusedCalls = [
   {name: "the stops of a detached buffer", call: ({routingSnapshot}) => routingSnapshot.decodeStops(detachedBuffer())},
   {name: "the stops of a revoked proxy", call: ({routingSnapshot}) => routingSnapshot.decodeStops(revokedProxy())},
   {name: "a path whose points throw an unwritable error", call: ({tripPath}) => tripPath.decodeTripPath(throwingPath())},
   {name: "a built path with no stops to read", call: ({tripPath}) => tripPath.tripPathOf({tripId: "trip", routeId: "route", serviceDateMs: 0, points: [[0, 0]], stops: null})},
-  {name: "the street starts of a revoked proxy", call: ({routingWalk}) => routingWalk.startsFromStreets({stops: revokedProxy(), transferRules: WALK_RULES})}
+  {name: "the street starts of a revoked proxy", call: ({routingWalk}) => routingWalk.startsFromStreets({stops: revokedProxy(), transferRules: WALK_RULES})},
+  {name: "an engine of a revoked proxy", call: ({routingEngine}) => routingEngine.createEngine(revokedProxy())},
+  {name: "an engine whose walking links are a revoked proxy", call: ({routingEngine}) => routingEngine.createEngine({...oneStopEngineArguments(), transfers: revokedProxy()})},
+  {name: "an engine whose links' stops are a revoked proxy", call: ({routingEngine}) => engineLeavingFrom({routingEngine, fromStop: revokedProxy()})},
+  {name: "an engine whose links' stops are detached", call: ({routingEngine}) => engineLeavingFrom({routingEngine, fromStop: detachedColumn()})},
+  {name: "a route over a revoked proxy", call: ({routingEngine}) => routingEngine.route(revokedProxy(), ONE_STOP_QUERY)},
+  {
+    name: "a route over an engine whose connections are a revoked proxy",
+    call: ({routingEngine}) => routingEngine.route(oneStopEngineWith({routingEngine, key: "connections", value: revokedProxy()}), ONE_STOP_QUERY)
+  },
+  {name: "a route of a revoked proxy", call: ({routingEngine}) => routingEngine.route(oneStopEngine(routingEngine), revokedProxy())},
+  {name: "a route from an origin whose kind cannot be written", call: ({routingEngine}) => oneStopRoute({routingEngine, origin: {kind: unwritableError()}})},
+  {name: "a route from start stops of a revoked proxy", call: ({routingEngine}) => oneStopRoute({routingEngine, origin: {kind: "starts", starts: revokedProxy()}})},
+  {
+    name: "a route arriving by a time from a start whose stop throws an unwritable error",
+    call: ({routingEngine}) => routingEngine.routeArrivingBy(oneStopEngine(routingEngine), {origin: {kind: "starts", starts: [throwingStart()]}, target: 0, arrivalS: 0})
+  }
 ]
 
 // Calls `call` and swallows what it throws, a refusal either way.
@@ -70,7 +157,7 @@ function refusedOnce({call, implementation}) {
   }
 }
 
-describe.for(implementationsWith("routingSnapshot", "tripPath", "routingWalk"))("refused calls ($name)", (implementation) => {
+describe.for(implementationsWith("routingSnapshot", "tripPath", "routingWalk", "routingEngine"))("refused calls ($name)", (implementation) => {
   const {routingSnapshot} = implementation
 
   test.each(refusedCalls)("$name, repeated, leaves the core working", ({call}) => {
