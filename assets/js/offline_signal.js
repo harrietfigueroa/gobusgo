@@ -24,9 +24,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 /** The headline of the signal, which the server renders. */
 export const SIGNAL_HEADLINE = "Offline"
 
-/** The start of the signal's caption, which says what the map shows. */
+/** The start of the signal's caption. */
 export const SignalCaption = Object.freeze({
   offlineUseOff: "Turn on offline use in Settings",
+  offlineUseUnsupported: "This browser can't save for offline use",
   scheduledPositions: "Showing scheduled positions",
   noSavedSchedules: "No saved schedules",
   savedSchedulesEnded: "Saved schedules ended"
@@ -34,11 +35,11 @@ export const SignalCaption = Object.freeze({
 
 const CAPTION_SEPARATOR = " · "
 
-/** The end of the signal's accessible name while its caption says what the map shows. */
+/** The end of the signal's accessible name while its caption names no destination. */
 export const SIGNAL_DESTINATION = "Open offline use in Settings"
 
-/** Whether the Save for offline use setting is on; `on` carries a read of the saved index. */
-export const OfflineUseKind = Object.freeze({off: "off", on: "on"})
+/** The state of the Save for offline use setting; `on` carries a read of the saved index, and `unsupported` is a browser that cannot save. */
+export const OfflineUseKind = Object.freeze({off: "off", on: "on", unsupported: "unsupported"})
 
 /** What the page's polite live region says when the connection changes. */
 export const AnnouncementText = Object.freeze({offline: "You are offline.", online: "Back online."})
@@ -107,7 +108,8 @@ function savedCaption({savedIndex, nowMs}) {
 
 /**
  * The signal's headline, caption, and accessible name at `nowMs` for
- * `offlineUse`, the setting's state: `{kind: OfflineUseKind.off}`, or
+ * `offlineUse`, the setting's state: `{kind: OfflineUseKind.off}`,
+ * `{kind: OfflineUseKind.unsupported}`, or
  * `{kind: OfflineUseKind.on, savedIndex}` with a read of the offline
  * schedules' saved index.
  */
@@ -118,6 +120,11 @@ export function signalMessage({offlineUse, nowMs}) {
     case OfflineUseKind.off: {
       const caption = SignalCaption.offlineUseOff
       return {headline: SIGNAL_HEADLINE, caption, label: `${SIGNAL_HEADLINE}. ${caption}.`}
+    }
+    case OfflineUseKind.unsupported: {
+      const caption = SignalCaption.offlineUseUnsupported
+      const label = `${SIGNAL_HEADLINE}. ${caption}. ${SIGNAL_DESTINATION}.`
+      return {headline: SIGNAL_HEADLINE, caption, label}
     }
     case OfflineUseKind.on: {
       const caption = savedCaption({savedIndex: offlineUse.savedIndex, nowMs})

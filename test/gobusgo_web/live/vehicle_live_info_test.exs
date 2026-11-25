@@ -643,6 +643,16 @@ defmodule GobusgoWeb.VehicleLiveInfoTest do
              )
     end
 
+    test "lets the offline signal move focus to the offline use status line" do
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+      status_id = ConnectionSignal.status_id()
+
+      assert has_element?(
+               view,
+               @panel <> ~s( #app-info-offline-use p##{status_id}[tabindex="-1"])
+             )
+    end
+
     test "says what is saved for offline use, in a section of its own" do
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 

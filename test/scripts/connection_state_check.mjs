@@ -263,8 +263,20 @@ deepStrictEqual(
   "the signal's message with the offline use setting off"
 )
 
+// In a browser that cannot save, the caption says so, and the name says
+// where the signal goes.
+deepStrictEqual(
+  signalMessage({offlineUse: {kind: OfflineUseKind.unsupported}, nowMs: NOW_MS}),
+  {
+    headline: "Offline",
+    caption: "This browser can't save for offline use",
+    label: "Offline. This browser can't save for offline use. Open offline use in Settings."
+  },
+  "the signal's message in a browser that cannot save for offline use"
+)
+
 // The server renders the headline the hook's message names, and the hook
-// writes only the caption.
+// writes the caption and the accessible name.
 const signalMarkup = readFileSync("lib/gobusgo_web/components/connection_signal.ex", "utf8")
 ok(signalMarkup.includes(`class="message-headline">${SIGNAL_HEADLINE}</span>`), "the server renders the signal's headline")
 

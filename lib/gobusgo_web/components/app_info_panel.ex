@@ -146,15 +146,16 @@ defmodule GobusgoWeb.AppInfoPanel do
 
   # The browser checks the stored setting, so the server renders the
   # default, off, unchecked. The extract's address is left out where the
-  # basemap has none, so the hook saves the schedules alone. The offline
-  # signal opens the Settings tab at the checkbox and moves focus to it.
+  # basemap has none, so the hook saves the schedules alone. The status line
+  # takes focus from a script alone.
   attr :offline_archive, :map, required: true
 
   defp offline_use(assigns) do
     assigns =
       assign(assigns,
         archive_url: archive_url(assigns.offline_archive),
-        setting_id: ConnectionSignal.setting_id()
+        setting_id: ConnectionSignal.setting_id(),
+        status_id: ConnectionSignal.status_id()
       )
 
     ~H"""
@@ -170,7 +171,7 @@ defmodule GobusgoWeb.AppInfoPanel do
         message={AppInfo.offline_use_summary(@offline_archive)}
         checked={false}
       />
-      <p id="offline-use-status" data-offline-status aria-live="polite"></p>
+      <p id={@status_id} data-offline-status aria-live="polite" tabindex="-1"></p>
       <dl id="offline-use-breakdown" class="panel-detail-rows" data-offline-breakdown hidden></dl>
       <.more id="app-info-offline-use-more" summary="What is saved for offline use">
         <p>{AppInfo.offline_use(@offline_archive)}</p>

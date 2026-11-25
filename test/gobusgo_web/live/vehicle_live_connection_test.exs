@@ -73,16 +73,20 @@ defmodule GobusgoWeb.VehicleLiveConnectionTest do
              )
     end
 
-    test "opens the Settings tab at the offline use setting", %{tmp_dir: tmp_dir} do
+    test "names the offline use checkbox as its target", %{tmp_dir: tmp_dir} do
       write_manifest(tmp_dir)
       {:ok, view, _html} = live(build_conn(), "/vehicles")
 
       assert has_element?(view, @signal <> ~s([data-setting-id="offline-use-enabled"]))
+    end
 
-      assert has_element?(
-               view,
-               "#panel-settings #app-info-offline-use input#offline-use-enabled[type=checkbox]"
-             )
+    test "names the offline use status line as its target where the checkbox is disabled", %{
+      tmp_dir: tmp_dir
+    } do
+      write_manifest(tmp_dir)
+      {:ok, view, _html} = live(build_conn(), "/vehicles")
+
+      assert has_element?(view, @signal <> ~s([data-status-id="offline-use-status"]))
     end
 
     test "draws an icon hidden from assistive technology beside its text", %{tmp_dir: tmp_dir} do

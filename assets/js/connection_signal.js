@@ -9,15 +9,22 @@
 
 import {AGE_REFRESH_MS, AnnouncementKind, OfflineUseKind, announcementOf, signalMessage} from "./offline_signal.js"
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
-import {CHANGE_EVENT_NAME as OFFLINE_USE_CHANGE_EVENT_NAME} from "./offline_use"
+import {CHANGE_EVENT_NAME as OFFLINE_USE_CHANGE_EVENT_NAME, isSupported} from "./offline_use"
 import {ConnectionKind} from "./connection_rules.js"
 import {OPEN_EVENT_NAME} from "./panel_sheet"
 import {readSavedIndex} from "./offline_schedules"
 import {storedSettings} from "./stored_settings"
 
-// Reads the index only while the setting is on, since the caption names no
-// saved schedule while it is off.
-async function readOfflineUse(isEnabled) {
+// Reads the stored setting at each write, so a change made in another tab
+// is read too, and the index only while the setting is on, since the
+// caption names no saved schedule otherwise.
+async function readOfflineUse() {
+  if (!isSupported()) {
+    return {kind: OfflineUseKind.unsupported}
+  }
+
+  const isEnabled = storedSettings.readOfflineUseEnabled()
+
   if (!isEnabled) {
     return {kind: OfflineUseKind.off}
   }
@@ -31,13 +38,13 @@ export const ConnectionSignal = {
     this.caption = this.el.querySelector("[data-signal-caption]")
     this.announcer = document.getElementById(this.el.dataset.announcerId)
     this.setting = document.getElementById(this.el.dataset.settingId)
-    this.isOfflineUseEnabled = storedSettings.readOfflineUseEnabled()
+    this.status = document.getElementById(this.el.dataset.statusId)
     this.ageTimer = null
     // Counts the writes started, so a write that ends after a later one
     // started leaves the later one's texts.
     this.writeCount = 0
     this.onChange = (event) => { this.changed(event.detail) }
-    this.onOfflineUseChange = (event) => { this.offlineUseChanged(event.detail.isEnabled) }
+    this.onOfflineUseChange = () => { this.offlineUseChanged() }
     this.onClick = () => { this.openSetting() }
     window.addEventListener(CONNECTION_CHANGE_EVENT_NAME, this.onChange)
     window.addEventListener(OFFLINE_USE_CHANGE_EVENT_NAME, this.onOfflineUseChange)
@@ -63,8 +70,7 @@ export const ConnectionSignal = {
 
   // A change of the setting while offline is written at once; otherwise the
   // next offline state writes it.
-  offlineUseChanged(isEnabled) {
-    this.isOfflineUseEnabled = isEnabled
+  offlineUseChanged() {
     const isOffline = connectionState().kind === ConnectionKind.offline
 
     if (isOffline) {
@@ -103,7 +109,7 @@ export const ConnectionSignal = {
     const count = this.writeCount
 
     try {
-      const offlineUse = await readOfflineUse(this.isOfflineUseEnabled)
+      const offlineUse = await readOfflineUse()
 
       if (count !== this.writeCount) {
         return
@@ -119,10 +125,17 @@ export const ConnectionSignal = {
   },
 
   // Opens the Settings tab at the setting, and moves focus to its checkbox
-  // so a keyboard or a press of Space continues from it.
+  // so a keyboard or a press of Space continues from it; a disabled
+  // checkbox takes no focus, so its status line, which says why, takes it.
   openSetting() {
-    this.setting.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true}))
-    this.setting.scrollIntoView({block: "center"})
-    this.setting.focus({preventScroll: true})
+    let target = this.setting
+
+    if (this.setting.disabled) {
+      target = this.status
+    }
+
+    target.dispatchEvent(new CustomEvent(OPEN_EVENT_NAME, {bubbles: true}))
+    target.scrollIntoView({block: "center"})
+    target.focus({preventScroll: true})
   }
 }

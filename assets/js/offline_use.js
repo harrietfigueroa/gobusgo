@@ -50,7 +50,8 @@ const SAVE_RESTART_COUNT_MAX = 3
 const NO_ARCHIVE_URL = ""
 const STORE_NAMES = Object.freeze([OFFLINE_SCHEDULES_CACHE_NAME, OFFLINE_BASEMAP_CACHE_NAME])
 
-function isSupported() {
+/** Whether the browser can save for offline use, which takes the Cache API. */
+export function isSupported() {
   return "caches" in window
 }
 

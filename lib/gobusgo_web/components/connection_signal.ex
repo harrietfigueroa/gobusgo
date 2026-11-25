@@ -1,5 +1,6 @@
 defmodule GobusgoWeb.ConnectionSignal do
   @setting_id "offline-use-enabled"
+  @status_id "offline-use-status"
   @announcer_id "connection-announcement"
 
   @moduledoc """
@@ -13,7 +14,8 @@ defmodule GobusgoWeb.ConnectionSignal do
   leaves alone, with an icon before its text and a chevron after it. The
   stylesheet shows it while the page is offline, and a click opens the
   Settings tab at the Save for offline use setting, `##{@setting_id}`, and
-  moves focus to it.
+  moves focus to it, or to the setting's status line, `##{@status_id}`,
+  where the browser cannot save and the checkbox is disabled.
   """
 
   use Phoenix.Component
@@ -21,6 +23,10 @@ defmodule GobusgoWeb.ConnectionSignal do
   @doc "The identifier of the Save for offline use checkbox, which the signal opens."
   @spec setting_id() :: String.t()
   def setting_id, do: @setting_id
+
+  @doc "The identifier of the Save for offline use status line, which the signal opens in place of a disabled checkbox."
+  @spec status_id() :: String.t()
+  def status_id, do: @status_id
 
   @doc "The element of the `ConnectionState` hook, which shows nothing."
   def state_hook(assigns) do
@@ -31,7 +37,8 @@ defmodule GobusgoWeb.ConnectionSignal do
 
   @doc "The offline signal over a map, and its live region."
   def signal(assigns) do
-    assigns = assign(assigns, setting_id: @setting_id, announcer_id: @announcer_id)
+    assigns =
+      assign(assigns, setting_id: @setting_id, status_id: @status_id, announcer_id: @announcer_id)
 
     ~H"""
     <button
@@ -41,6 +48,7 @@ defmodule GobusgoWeb.ConnectionSignal do
       phx-hook="ConnectionSignal"
       phx-update="ignore"
       data-setting-id={@setting_id}
+      data-status-id={@status_id}
       data-announcer-id={@announcer_id}
     >
       <svg aria-hidden="true" class="connection-signal-icon" viewBox="0 0 24 24">
