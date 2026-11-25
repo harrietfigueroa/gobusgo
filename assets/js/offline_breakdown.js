@@ -3,12 +3,13 @@
 // stored file's store, path, and size are given as values, and nothing here
 // touches a store.
 //
-// A file of the saved map's store is the map. A file of the schedules' store
-// takes its part from the saved index: the tile archive and the places file
-// by the addresses the index gives them, a trip path index or shard by its
-// name, and the index, the bundle's manifest, and every other file the index
-// names are the schedules. A file the index does not name, such as one a
-// save in progress stored before writing its index, is other.
+// A file of the saved map's store is the map. In the schedules' store a trip
+// path index or shard is trip paths by its name alone, indexed or not; the
+// rest take their part from the saved index: the tile archive and the places
+// file by the addresses the index gives them, and the index, the bundle's
+// manifest, and every other file the index names are the schedules. Any
+// other file the index does not name, such as one a save in progress stored
+// before writing its index, is other.
 
 import {assertCondition, unreachable} from "#core/assert.js"
 import {
@@ -43,7 +44,6 @@ function fileNameOf(path) {
   return path.slice(slashIndex + 1)
 }
 
-// The paths the saved index names, the index's own among them.
 function namedPathsOf(savedIndex) {
   switch (savedIndex.kind) {
     case IndexKind.none:
@@ -56,6 +56,12 @@ function namedPathsOf(savedIndex) {
 }
 
 function schedulesPartOf({path, savedIndex, namedPaths}) {
+  const fileName = fileNameOf(path)
+
+  if (fileName.startsWith(TRIP_PATH_NAME_PREFIX)) {
+    return PartKind.tripPaths
+  }
+
   if (!namedPaths.has(path)) {
     return PartKind.other
   }
@@ -68,12 +74,6 @@ function schedulesPartOf({path, savedIndex, namedPaths}) {
 
   if (path === index.placesPath) {
     return PartKind.places
-  }
-
-  const fileName = fileNameOf(path)
-
-  if (fileName.startsWith(TRIP_PATH_NAME_PREFIX)) {
-    return PartKind.tripPaths
   }
 
   return PartKind.schedules
@@ -132,6 +132,7 @@ export function offlineBreakdown({savedIndex, files}) {
 /** The text of a size of `bytes`: kilobytes, rounded up, under a tenth of a megabyte, and megabytes to one decimal from there. */
 export function sizeText(bytes) {
   assertCondition(Number.isSafeInteger(bytes), "offline breakdown: a size that is not a whole number: " + String(bytes))
+  assertCondition(bytes >= 0, "offline breakdown: a negative size: " + String(bytes))
 
   if (bytes < KILOBYTES_SHOWN_BYTES_MAX) {
     const kilobytes = Math.ceil(bytes / KILOBYTE_BYTES)

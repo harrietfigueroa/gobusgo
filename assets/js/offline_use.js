@@ -17,6 +17,7 @@
 // saved. Every deletion announces the map as not saved.
 
 import {CONNECTION_CHANGE_EVENT_NAME, connectionState} from "./connection_state.js"
+import {AssertionError} from "#core/assert.js"
 import {ConnectionKind} from "./connection_rules.js"
 import {OFFLINE_SCHEDULES_CACHE_NAME, SettingKind, statusMessage} from "#core/offline_bundle.js"
 import {appendMessage, writeMessage} from "./message"
@@ -74,14 +75,17 @@ function pathOf(request) {
   return new URL(request.url).pathname
 }
 
-// Every file the store `cacheName` holds, with its size. A store `caches.has`
-// does not find is not opened, so a read after a deletion makes no store;
-// a file deleted between the listing and its read is left out.
+// Opening a store makes it, so a store is opened only where `caches.has`
+// finds it and the setting is still on in the turn the open starts in: a
+// turn-off writes the setting before it starts the deletion, so a deletion
+// under way when `caches.has` answers is never followed by an empty store
+// made again. A file deleted between the listing and its read is left out.
 async function storedFilesOf(cacheName) {
   const hasStore = await caches.has(cacheName)
+  const isOpenDue = hasStore && isEnabled()
   const files = []
 
-  if (!hasStore) {
+  if (!isOpenDue) {
     return files
   }
 
@@ -121,8 +125,7 @@ async function readBreakdownRows() {
   return breakdownRows(breakdown)
 }
 
-// Writes `rows` into the list `element` as text nodes, each term and its
-// definition in a group of their own, and hides the list while it holds none.
+// The list is hidden while it holds no row.
 function writeRows({element, rows}) {
   element.replaceChildren()
 
@@ -327,6 +330,10 @@ export const OfflineUse = {
 
       await this.show()
     } catch (error) {
+      if (error instanceof AssertionError) {
+        throw error
+      }
+
       warnUnlessAborted({description: "Offline use status not read", error})
     }
   },
@@ -412,6 +419,10 @@ export const OfflineUse = {
 
       writeRows({element: this.breakdown, rows})
     } catch (error) {
+      if (error instanceof AssertionError) {
+        throw error
+      }
+
       console.warn("Offline use status not read", error)
     }
   },

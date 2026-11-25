@@ -99,7 +99,7 @@ const breakdownCases = [
         {kind: PartKind.schedules, bytes: SCHEDULES_BYTES},
         {kind: PartKind.tripPaths, bytes: TRIP_PATHS_BYTES},
         {kind: PartKind.tiles, bytes: TILE_ARCHIVE_BYTES},
-        {kind: PartKind.places, bytes: 1_090_000},
+        {kind: PartKind.places, bytes: PLACES_BYTES},
         {kind: PartKind.map, bytes: EXTRACT_BYTES}
       ],
       totalBytes: SCHEDULES_BYTES + TRIP_PATHS_BYTES + TILE_ARCHIVE_BYTES + PLACES_BYTES + EXTRACT_BYTES
@@ -122,14 +122,15 @@ const breakdownCases = [
   {
     name: "a store with no map extract",
     savedIndex: FULL_INDEX,
-    files: [...SCHEDULES_FILES, TILE_ARCHIVE_FILE, PLACES_FILE],
+    files: [...SCHEDULES_FILES, TRIP_PATH_INDEX_FILE, TRIP_PATH_SHARD_FILE, TILE_ARCHIVE_FILE, PLACES_FILE],
     expected: {
       parts: [
         {kind: PartKind.schedules, bytes: SCHEDULES_BYTES},
+        {kind: PartKind.tripPaths, bytes: TRIP_PATHS_BYTES},
         {kind: PartKind.tiles, bytes: TILE_ARCHIVE_BYTES},
         {kind: PartKind.places, bytes: PLACES_BYTES}
       ],
-      totalBytes: SCHEDULES_BYTES + TILE_ARCHIVE_BYTES + PLACES_BYTES
+      totalBytes: SCHEDULES_BYTES + TRIP_PATHS_BYTES + TILE_ARCHIVE_BYTES + PLACES_BYTES
     }
   },
   {
@@ -150,8 +151,9 @@ const breakdownCases = [
     files: [STOPS_FILE, TRIP_PATH_SHARD_FILE, EXTRACT_FILE],
     expected: {
       parts: [
+        {kind: PartKind.tripPaths, bytes: TRIP_PATH_SHARD_BYTES},
         {kind: PartKind.map, bytes: EXTRACT_BYTES},
-        {kind: PartKind.other, bytes: STOPS_BYTES + TRIP_PATH_SHARD_BYTES}
+        {kind: PartKind.other, bytes: STOPS_BYTES}
       ],
       totalBytes: STOPS_BYTES + TRIP_PATH_SHARD_BYTES + EXTRACT_BYTES
     }
@@ -197,6 +199,14 @@ const sizeCases = [
 for (const sizeCase of sizeCases) {
   deepStrictEqual(sizeText(sizeCase.bytes), sizeCase.text, `size text of ${sizeCase.bytes} bytes`)
 }
+
+const NEGATIVE_BYTES = -1
+
+function negativeSizeText() {
+  return sizeText(NEGATIVE_BYTES)
+}
+
+throws(negativeSizeText, AssertionError, "size text refuses a negative size")
 
 {
   const breakdown = offlineBreakdown({savedIndex: FULL_INDEX, files: [...FULL_FILES, NEXT_DATE_STOPS_FILE]})
