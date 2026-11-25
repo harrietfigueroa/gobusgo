@@ -830,10 +830,12 @@ fn trip_slots(trips: &[u32]) -> (Vec<u32>, usize) {
 // link counts, and a trip count bounded by the connections, since a query
 // allocates by it.
 //
-// The stop checks read the four stop columns whole on every query, a pass over
-// every connection and link where the scan reads only its window of
-// connections, because a view's columns can come from its caller on each call
-// and the scan indexes its labels and link offsets by those stops.
+// The checks read the departure, trip slot, and four stop columns whole on
+// every query, a pass over every connection and link where the scan reads only
+// its window of connections, because a view's columns can come from its caller
+// on each call, the scan's search for its window reads the departures, and the
+// scan indexes its per-trip state by those slots and its labels and link
+// offsets by those stops.
 #[track_caller]
 fn assert_view(engine: &EngineView<'_>) {
     let offsets = engine.links.offsets;
